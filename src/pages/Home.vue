@@ -1,29 +1,25 @@
 <template>
   <div class="addisgo-container">
     <h1>AddisGo 🇪🇹</h1>
-    <p class="subtitle">
-      Book trusted drivers and hotels in Addis Ababa
-    </p>
+    <p class="subtitle">Book trusted drivers and hotels in Addis Ababa</p>
 
     <div class="cardx">
-      <router-link to="/drivers" class="action-link">
-        🚗 Book a Driver
-      </router-link>
+      <router-link to="/drivers" class="action-link">🚗 Book a Driver</router-link>
     </div>
 
     <div class="cardx">
-      <router-link to="/hotels" class="action-link">
-        🏨 Book a Hotel
-      </router-link>
+      <router-link to="/hotels" class="action-link">🏨 Book a Hotel</router-link>
     </div>
+
+    <!-- ✅ Footer goes INSIDE template -->
+    <footer class="footer">
+      © 2025 AddisGo • Trusted local bookings in Ethiopia
+    </footer>
   </div>
 </template>
 
 <script setup>
-/*
-  Home page
-  Shows main navigation for AddisGo
-*/
+// Home page
 </script>
 
 <style scoped>
@@ -52,8 +48,11 @@
   color: #2c3e50;
   font-weight: bold;
 }
+
+.footer {
+  margin-top: 40px;
+  font-size: 14px;
+  color: #777;
+}
 </style>
-<footer style="margin-top:40px; font-size:14px; color:#777;">
-  © 2025 AddisGo • Trusted local bookings in Ethiopia
-</footer>
 
