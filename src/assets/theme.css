@@ -1,0 +1,50 @@
+:root{
+  --primary:#0F5132;
+  --accent:#D4AF37;
+  --bg:#F8F9FA;
+  --text:#212529;
+  --border:#E9ECEF;
+  --radius:16px;
+}
+
+body{
+  background: var(--bg);
+  color: var(--text);
+  font-family: Inter, system-ui, -apple-system, Segoe UI, Roboto, Arial, sans-serif;
+}
+
+.addisgo-container{
+  max-width: 980px;
+  margin: 0 auto;
+  padding: 16px;
+}
+
+.cardx{
+  background:#fff;
+  border:1px solid var(--border);
+  border-radius: var(--radius);
+  padding:16px;
+  box-shadow: 0 6px 18px rgba(0,0,0,0.06);
+}
+
+.btn-primaryx{
+  background: var(--primary);
+  color:#fff;
+  border:none;
+  border-radius: 14px;
+  padding:12px 14px;
+  width:100%;
+  font-weight:600;
+  cursor:pointer;
+}
+
+.btn-accentx{
+  background: var(--accent);
+  color:#111;
+  border:none;
+  border-radius: 14px;
+  padding:12px 14px;
+  width:100%;
+  font-weight:700;
+  cursor:pointer;
+}
