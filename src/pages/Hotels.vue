@@ -1,46 +1,63 @@
-<script setup>
-import { ACTIVE_CONTACT } from "../config"
-
-const phone = ACTIVE_CONTACT.phone
-const callLink = `tel:${phone}`
-const whatsappLink = `https://wa.me/${phone.replace("+", "")}?text=Hi AddisGo! I want to book a hotel.`
-</script>
-
 <template>
   <div class="page">
-    <h2>Book a Hotel</h2>
-    <p>Contact us via phone or WhatsApp</p>
+    <h1 class="title">Book a Hotel</h1>
+    <p class="subtitle">Contact us via phone or WhatsApp</p>
 
-    <a :href="callLink" class="btn call">
-      📞 Call ({{ ACTIVE_CONTACT.label }})
-    </a>
+    <div class="card">
+      <a class="btn btn-blue" :href="telLink">
+        📞 Call (Ethiopia 🇪🇹)
+      </a>
 
-    <a :href="whatsappLink" class="btn whatsapp" target="_blank">
-      💬 WhatsApp
-    </a>
+      <a class="btn btn-green" :href="whatsAppLink" target="_blank" rel="noreferrer">
+        💬 WhatsApp
+      </a>
+
+      <button class="btn btn-gray" @click="goHome">
+        ⬅ Back Home
+      </button>
+    </div>
   </div>
 </template>
 
-<style scoped>
-.page {
-  max-width: 500px;
-  margin: auto;
+<script setup>
+import { computed } from "vue"
+import { useRouter } from "vue-router"
+
+const router = useRouter()
+
+// ✅ SAME NUMBER (or set a different one if hotels have another line)
+const PHONE = "+251912345678"
+
+const telLink = computed(() => `tel:${PHONE}`)
+
+const message = "Hi AddisGo! I want to book a hotel."
+const whatsAppLink = computed(() => {
+  const clean = PHONE.replace(/\+/g, "")
+  return `https://wa.me/${clean}?text=${encodeURIComponent(message)}`
+})
+
+function goHome() {
+  router.push("/")
 }
-.btn {
+</script>
+
+<style scoped>
+.page{ padding-top: 24px; }
+.title{ font-size: 36px; margin: 0 0 6px 0; }
+.subtitle{ margin: 0 0 18px 0; color: #555; }
+.card{ display: grid; gap: 14px; max-width: 560px; }
+.btn{
   display: block;
-  padding: 14px;
-  margin: 12px 0;
-  border-radius: 10px;
   text-align: center;
   text-decoration: none;
-  font-weight: bold;
-}
-.call {
-  background: #2563eb;
+  padding: 18px;
+  border-radius: 12px;
   color: white;
+  font-size: 20px;
+  font-weight: 700;
+  border: 0;
 }
-.whatsapp {
-  background: #25d366;
-  color: white;
-}
+.btn-blue{ background: #1f5cff; }
+.btn-green{ background: #15b85a; }
+.btn-gray{ background: #666; cursor: pointer; }
 </style>

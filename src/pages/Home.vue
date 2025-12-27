@@ -1,55 +1,72 @@
 <template>
-  <div class="addisgo-container">
-    <h1>AddisGo 🇪🇹</h1>
-    <p class="subtitle">
-      Book trusted drivers and hotels in Addis Ababa
-    </p>
+  <div class="page">
+    <h1 class="title">AddisGo 🇪🇹</h1>
+    <p class="subtitle">Book trusted drivers and hotels in Addis Ababa</p>
 
-    <div class="cardx">
-      <router-link to="/drivers" class="action-link">
+    <div class="card">
+      <button class="btn btn-blue" @click="goDrivers">
         🚗 Book a Driver
-      </router-link>
+      </button>
+
+      <button class="btn btn-green" @click="goHotels">
+        🏨 Book a Hotel
+      </button>
     </div>
 
-    <div class="cardx">
-      <router-link to="/hotels" class="action-link">
-        🏨 Book a Hotel
-      </router-link>
-    </div>
+    <!-- ✅ Footer belongs INSIDE template (this fixes your © build error) -->
+    <footer class="footer">
+      © {{ new Date().getFullYear() }} AddisGo • Trusted local bookings in Ethiopia
+    </footer>
   </div>
 </template>
 
 <script setup>
-/*
-  Home page
-  Shows main navigation for AddisGo
-*/
+import { useRouter } from "vue-router"
+const router = useRouter()
+
+function goDrivers() {
+  router.push("/drivers")
+}
+
+function goHotels() {
+  router.push("/hotels")
+}
 </script>
 
 <style scoped>
-.addisgo-container {
-  max-width: 900px;
-  margin: 0 auto;
-  padding: 24px;
+.page{
   text-align: center;
+  padding-top: 40px;
 }
-
-.subtitle {
+.title{
+  font-size: 44px;
+  margin: 0 0 8px 0;
+}
+.subtitle{
+  margin: 0 0 24px 0;
   color: #555;
-  margin-bottom: 32px;
 }
-
-.cardx {
-  border: 1px solid #ddd;
-  border-radius: 8px;
-  padding: 24px;
-  margin-bottom: 20px;
+.card{
+  margin: 0 auto;
+  max-width: 560px;
+  display: grid;
+  gap: 18px;
 }
-
-.action-link {
-  font-size: 18px;
-  text-decoration: none;
-  color: #2c3e50;
-  font-weight: bold;
+.btn{
+  width: 100%;
+  padding: 18px 18px;
+  border-radius: 12px;
+  border: 0;
+  color: white;
+  font-size: 20px;
+  font-weight: 700;
+  cursor: pointer;
+}
+.btn-blue{ background: #1f5cff; }
+.btn-green{ background: #15b85a; }
+.footer{
+  margin-top: 40px;
+  font-size: 14px;
+  color: #777;
 }
 </style>
