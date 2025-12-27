@@ -53,3 +53,7 @@
   font-weight: bold;
 }
 </style>
+<footer style="margin-top:40px; font-size:14px; color:#777;">
+  © 2025 AddisGo • Trusted local bookings in Ethiopia
+</footer>
+
