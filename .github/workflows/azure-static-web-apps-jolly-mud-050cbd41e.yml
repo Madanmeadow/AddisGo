@@ -17,12 +17,11 @@ jobs:
 
     steps:
       - name: Checkout repo
-      - uses: actions/checkout@v3
+        uses: actions/checkout@v3
         with:
           submodules: true
           lfs: false
 
-      # IMPORTANT: Use Node 20+ for Vite 7
       - name: Setup Node
         uses: actions/setup-node@v4
         with:
@@ -34,9 +33,7 @@ jobs:
       - name: Build Vite app
         run: npm run build
 
-      # IMPORTANT: Upload dist only (no Azure rebuild)
       - name: Deploy prebuilt dist to Azure Static Web Apps
-        id: deploy
         uses: Azure/static-web-apps-deploy@v1
         with:
           azure_static_web_apps_api_token: ${{ secrets.AZURE_STATIC_WEB_APPS_API_TOKEN_JOLLY_MUD_050CBD41E }}
@@ -57,5 +54,4 @@ jobs:
         with:
           azure_static_web_apps_api_token: ${{ secrets.AZURE_STATIC_WEB_APPS_API_TOKEN_JOLLY_MUD_050CBD41E }}
           action: "close"
-
 
