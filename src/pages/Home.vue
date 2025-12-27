@@ -26,10 +26,7 @@
       © 2025 AddisGo • Trusted local bookings in Ethiopia
     </footer>
 
-    <!-- ✅ Footer belongs INSIDE template (this fixes your © build error) -->
-    <footer class="footer">
-      © {{ new Date().getFullYear() }} AddisGo • Trusted local bookings in Ethiopia
-    </footer>
+    
   </div>
 </template>
 
