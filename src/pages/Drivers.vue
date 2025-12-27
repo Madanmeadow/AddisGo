@@ -26,7 +26,7 @@ import { useRouter } from "vue-router"
 const router = useRouter()
 
 // ✅ CHANGE THIS to your real number
-const PHONE = "+251912345678"
+const PHONE = "+251947980503"
 
 const telLink = computed(() => `tel:${PHONE}`)
 

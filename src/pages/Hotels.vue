@@ -26,7 +26,7 @@ import { useRouter } from "vue-router"
 const router = useRouter()
 
 // ✅ SAME NUMBER (or set a different one if hotels have another line)
-const PHONE = "+251912345678"
+const PHONE = "+251947980503"
 
 const telLink = computed(() => `tel:${PHONE}`)
 
