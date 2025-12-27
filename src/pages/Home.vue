@@ -1,17 +1,30 @@
 <template>
+  <div class="addisgo-container">
+    <h1>AddisGo 🇪🇹</h1>
+    <p class="subtitle">Book trusted drivers and hotels in Addis Ababa</p>
   <div class="page">
     <h1 class="title">AddisGo 🇪🇹</h1>
     <p class="subtitle">Book trusted drivers and hotels in Addis Ababa</p>
 
+    <div class="cardx">
+      <router-link to="/drivers" class="action-link">🚗 Book a Driver</router-link>
+    </div>
     <div class="card">
       <button class="btn btn-blue" @click="goDrivers">
         🚗 Book a Driver
       </button>
 
+    <div class="cardx">
+      <router-link to="/hotels" class="action-link">🏨 Book a Hotel</router-link>
       <button class="btn btn-green" @click="goHotels">
         🏨 Book a Hotel
       </button>
     </div>
+
+    <!-- ✅ Footer goes INSIDE template -->
+    <footer class="footer">
+      © 2025 AddisGo • Trusted local bookings in Ethiopia
+    </footer>
 
     <!-- ✅ Footer belongs INSIDE template (this fixes your © build error) -->
     <footer class="footer">
@@ -21,6 +34,7 @@
 </template>
 
 <script setup>
+// Home page
 import { useRouter } from "vue-router"
 const router = useRouter()
 
@@ -69,4 +83,11 @@ function goHotels() {
   font-size: 14px;
   color: #777;
 }
+
+.footer {
+  margin-top: 40px;
+  font-size: 14px;
+  color: #777;
+}
 </style>
+
