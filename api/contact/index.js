@@ -1,70 +1,74 @@
-// api/contact/index.js
-const sgMail = require("@sendgrid/mail");
+import sgMail from "@sendgrid/mail";
 
-module.exports = async function (context, req) {
+export default async function (context, req) {
+  // Allow POST only
+  if (req.method !== "POST") {
+    context.res = {
+      status: 405,
+      headers: { "Content-Type": "application/json" },
+      body: { error: "Method Not Allowed" },
+    };
+    return;
+  }
+
+  // Read body
+  const { name, email, subject, message } = req.body || {};
+
+  // Basic validation
+  if (!name || !email || !message) {
+    context.res = {
+      status: 400,
+      headers: { "Content-Type": "application/json" },
+      body: { error: "Missing required fields: name, email, message" },
+    };
+    return;
+  }
+
+  // Get settings from Azure Environment Variables
+  const apiKey = process.env.SENDGRID_API_KEY;
+  const fromEmail = process.env.FROM_EMAIL; // must be a verified sender in SendGrid
+  const toEmail = process.env.TO_EMAIL;     // where you want to receive messages
+
+  if (!apiKey || !fromEmail || !toEmail) {
+    context.res = {
+      status: 500,
+      headers: { "Content-Type": "application/json" },
+      body: { error: "Server is not configured (missing email settings)." },
+    };
+    return;
+  }
+
+  // Configure SendGrid
+  sgMail.setApiKey(apiKey);
+
   try {
-    const { name, email, subject, message } = req.body || {};
-
-    if (!name || !email || !subject || !message) {
-      context.res = {
-        status: 400,
-        headers: { "Content-Type": "application/json" },
-        body: { error: "Missing required fields." }
-      };
-      return;
-    }
-
-    // environment variables (set in Azure Static Web App Configuration)
-    const SENDGRID_API_KEY = process.env.SENDGRID_API_KEY;
-    const TO_EMAIL = process.env.CONTACT_TO_EMAIL;     // where you receive messages
-    const FROM_EMAIL = process.env.CONTACT_FROM_EMAIL; // verified sender in SendGrid
-
-    if (!SENDGRID_API_KEY || !TO_EMAIL || !FROM_EMAIL) {
-      context.res = {
-        status: 500,
-        headers: { "Content-Type": "application/json" },
-        body: { error: "Server is not configured (missing email settings)." }
-      };
-      return;
-    }
-
-    sgMail.setApiKey(SENDGRID_API_KEY);
-
+    // Send email
     await sgMail.send({
-      to: TO_EMAIL,
-      from: FROM_EMAIL,
-      replyTo: email, // so you can reply directly to the user
-      subject: `AddisGo Contact: ${subject}`,
-      text: `Name: ${name}\nEmail: ${email}\n\nMessage:\n${message}`,
-      html: `
-        <h2>AddisGo Contact Form</h2>
-        <p><b>Name:</b> ${escapeHtml(name)}</p>
-        <p><b>Email:</b> ${escapeHtml(email)}</p>
-        <p><b>Subject:</b> ${escapeHtml(subject)}</p>
-        <p><b>Message:</b><br/>${escapeHtml(message).replace(/\n/g, "<br/>")}</p>
-      `
+      to: toEmail,
+      from: fromEmail,
+      subject: subject ? subject : `New contact message from ${name}`,
+      text: `Name: ${name}
+Email: ${email}
+
+Message:
+${message}
+`,
+      // Optional: you can also add replyTo so you can reply directly to the sender
+      replyTo: email,
     });
 
     context.res = {
       status: 200,
       headers: { "Content-Type": "application/json" },
-      body: { ok: true }
+      body: { success: true, message: "Message sent successfully" },
     };
   } catch (err) {
-    context.log("Contact function error:", err);
+    context.log("SendGrid Error:", err);
+
     context.res = {
       status: 500,
       headers: { "Content-Type": "application/json" },
-      body: { error: "Failed to send message." }
+      body: { error: "Failed to send email" },
     };
   }
-};
-
-function escapeHtml(str = "") {
-  return str
-    .replace(/&/g, "&amp;")
-    .replace(/</g, "&lt;")
-    .replace(/>/g, "&gt;")
-    .replace(/"/g, "&quot;")
-    .replace(/'/g, "&#039;");
 }
