@@ -1,8 +1,3 @@
-import { createRouter, createWebHistory } from "vue-router"
-
-import Home from "../pages/Home.vue"
-import About from "../pages/About.vue"
-import Services from "../pages/Services.vue"
 import { createRouter, createWebHistory } from 'vue-router'
 
 import Home from '../pages/Home.vue'
