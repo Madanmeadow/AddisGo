@@ -1,0 +1,167 @@
+:root{
+  --bg: #0b1020;
+  --surface: #101a33;
+  --surface-2: #0f1830;
+  --text: #e9eefc;
+  --muted: rgba(233, 238, 252, 0.72);
+  --line: rgba(255,255,255,0.08);
+  --shadow: 0 12px 30px rgba(0,0,0,0.25);
+}
+
+/* Whole site background */
+html, body {
+  height: 100%;
+}
+
+body {
+  background: radial-gradient(1200px 800px at 10% 10%, rgba(110, 168, 254, 0.18), transparent 55%),
+              radial-gradient(900px 600px at 90% 10%, rgba(255, 99, 132, 0.14), transparent 55%),
+              radial-gradient(900px 700px at 70% 80%, rgba(99, 255, 218, 0.12), transparent 55%),
+              var(--bg);
+  color: var(--text);
+}
+
+/* Make bootstrap containers feel nicer */
+.page-main {
+  min-height: calc(100vh - 140px);
+}
+
+/* Brand (AddisGo) beautiful gradient */
+.brand-gradient {
+  font-weight: 800;
+  letter-spacing: 0.2px;
+  background: linear-gradient(90deg, #6ea8fe, #63ffdA, #ff6aa2);
+  -webkit-background-clip: text;
+  background-clip: text;
+  color: transparent;
+}
+
+/* Links in navbar */
+.navbar-dark .navbar-nav .nav-link {
+  color: rgba(255,255,255,0.75);
+}
+
+.navbar-dark .navbar-nav .nav-link:hover {
+  color: rgba(255,255,255,0.95);
+}
+
+.navbar-dark .navbar-nav .nav-link.router-link-active {
+  color: #fff;
+  font-weight: 700;
+  position: relative;
+}
+
+.navbar-dark .navbar-nav .nav-link.router-link-active::after {
+  content: "";
+  position: absolute;
+  left: 0;
+  bottom: -6px;
+  width: 100%;
+  height: 2px;
+  background: linear-gradient(90deg, #6ea8fe, #63ffdA, #ff6aa2);
+  border-radius: 999px;
+}
+
+/* Hero section */
+.hero {
+  background: linear-gradient(180deg, rgba(255,255,255,0.06), rgba(255,255,255,0.02));
+  border-bottom: 1px solid var(--line);
+  min-height: 72vh;
+  display: flex;
+  align-items: center;
+}
+
+/* Animated hero text */
+@keyframes fadeSlideUp {
+  from { opacity: 0; transform: translateY(14px); }
+  to { opacity: 1; transform: translateY(0); }
+}
+
+.hero-animate {
+  animation: fadeSlideUp 650ms ease-out both;
+}
+
+.hero-animate.delay-1 { animation-delay: 120ms; }
+.hero-animate.delay-2 { animation-delay: 240ms; }
+.hero-animate.delay-3 { animation-delay: 360ms; }
+
+@media (prefers-reduced-motion: reduce) {
+  .hero-animate { animation: none !important; }
+}
+
+/* Section background blocks */
+.section-soft {
+  background: rgba(255,255,255,0.04);
+  border: 1px solid var(--line);
+  border-radius: 16px;
+}
+
+/* Cards look and hover */
+.card {
+  background: rgba(255,255,255,0.06);
+  border: 1px solid var(--line);
+  box-shadow: none;
+  color: var(--text);
+}
+
+.card .text-muted { color: var(--muted) !important; }
+
+.card-hover {
+  transition: transform 200ms ease, box-shadow 200ms ease, border-color 200ms ease;
+}
+
+.card-hover:hover {
+  transform: translateY(-6px);
+  box-shadow: var(--shadow);
+  border-color: rgba(255,255,255,0.14);
+}
+
+/* Buttons feel premium */
+.btn {
+  border-radius: 12px;
+}
+
+.btn-outline-light {
+  border-color: rgba(255,255,255,0.35);
+  color: rgba(255,255,255,0.9);
+}
+
+.btn-outline-light:hover {
+  border-color: rgba(255,255,255,0.7);
+  color: #0b1020;
+  background: #fff;
+}
+
+/* Footer */
+.footer {
+  border-top: 1px solid var(--line);
+  background: rgba(0,0,0,0.25);
+  color: var(--muted);
+}
+
+/* Form inputs on dark bg */
+.form-control, .form-select, textarea {
+  background: rgba(255,255,255,0.06) !important;
+  border: 1px solid rgba(255,255,255,0.14) !important;
+  color: var(--text) !important;
+  border-radius: 12px;
+}
+
+.form-control::placeholder, textarea::placeholder {
+  color: rgba(233,238,252,0.55);
+}
+
+.form-control:focus, textarea:focus, .form-select:focus {
+  box-shadow: 0 0 0 0.25rem rgba(110,168,254,0.18) !important;
+  border-color: rgba(110,168,254,0.65) !important;
+}
+
+/* Small helpers */
+.section-title {
+  font-weight: 800;
+  letter-spacing: 0.2px;
+}
+
+.lead-muted {
+  color: var(--muted);
+}

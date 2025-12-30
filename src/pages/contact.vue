@@ -1,135 +1,235 @@
 <template>
-  <div class="page">
-    <h1 class="title">Contact Us</h1>
-    <p class="subtitle">Send us a message and we’ll reply as soon as possible.</p>
+  <section class="container py-5">
+    <div class="mb-4">
+      <h1 class="section-title">Contact</h1>
+      <p class="lead lead-muted mb-0">
+        Tell me what you need. I’ll respond with a simple plan and next steps.
+      </p>
+    </div>
 
-    <form class="card" @submit.prevent="submitForm">
-      <label class="label">Name</label>
-      <input class="input" v-model.trim="name" type="text" placeholder="Your name" required />
+    <div class="row g-4">
+      <!-- Form -->
+      <div class="col-lg-7">
+        <div class="card card-hover">
+          <div class="card-body p-4">
+            <h4 class="mb-3">Send a message</h4>
 
-      <label class="label">Email</label>
-      <input class="input" v-model.trim="email" type="email" placeholder="you@example.com" required />
+            <div v-if="status.type" class="alert" :class="statusClass" role="alert">
+              {{ status.message }}
+            </div>
 
-      <label class="label">Subject</label>
-      <input class="input" v-model.trim="subject" type="text" placeholder="What is this about?" required />
+            <form @submit.prevent="submitForm">
+              <div class="row g-3">
+                <div class="col-md-6">
+                  <label class="form-label">Name</label>
+                  <input v-model.trim="form.name" class="form-control" placeholder="Your name" />
+                  <div v-if="errors.name" class="text-danger small mt-1">{{ errors.name }}</div>
+                </div>
 
-      <label class="label">Message</label>
-      <textarea class="input" v-model.trim="message" rows="6" placeholder="Type your message..." required></textarea>
+                <div class="col-md-6">
+                  <label class="form-label">Email</label>
+                  <input v-model.trim="form.email" class="form-control" placeholder="you@example.com" />
+                  <div v-if="errors.email" class="text-danger small mt-1">{{ errors.email }}</div>
+                </div>
 
-      <!-- simple anti-bot field (hidden) -->
-      <input v-model="website" type="text" class="honeypot" autocomplete="off" tabindex="-1" />
+                <div class="col-12">
+                  <label class="form-label">Subject</label>
+                  <input v-model.trim="form.subject" class="form-control" placeholder="What is this about?" />
+                  <div v-if="errors.subject" class="text-danger small mt-1">{{ errors.subject }}</div>
+                </div>
 
-      <button class="btn btn-blue" type="submit" :disabled="loading">
-        {{ loading ? "Sending..." : "Send Message" }}
-      </button>
+                <div class="col-12">
+                  <label class="form-label">Message</label>
+                  <textarea
+                    v-model.trim="form.message"
+                    class="form-control"
+                    rows="6"
+                    placeholder="Describe what you want (pages, style, deadline, budget, etc.)"
+                  ></textarea>
+                  <div v-if="errors.message" class="text-danger small mt-1">{{ errors.message }}</div>
+                </div>
 
-      <p v-if="success" class="success">✅ Message sent! We’ll get back to you soon.</p>
-      <p v-if="error" class="error">❌ {{ error }}</p>
+                <div class="col-12 d-flex flex-wrap gap-2">
+                  <button class="btn btn-primary px-4" type="submit" :disabled="loading">
+                    {{ loading ? "Sending..." : "Send message" }}
+                  </button>
+                  <button class="btn btn-outline-light px-4" type="button" @click="resetForm" :disabled="loading">
+                    Clear
+                  </button>
+                </div>
 
-      <router-link to="/" class="btn btn-gray">⬅ Back Home</router-link>
-    </form>
-  </div>
+                <div class="col-12 small" style="color: rgba(233,238,252,0.65);">
+                  Note: The form will try <code>/api/contact</code>. If your email service isn’t configured yet,
+                  you may see an error — the UI still works.
+                </div>
+              </div>
+            </form>
+          </div>
+        </div>
+      </div>
+
+      <!-- Contact info -->
+      <div class="col-lg-5">
+        <div class="section-soft p-4 h-100">
+          <h4 class="section-title mb-3">What to include</h4>
+          <ul class="lead-muted">
+            <li>What type of website you need</li>
+            <li>Pages (Home, About, Services, Contact, etc.)</li>
+            <li>Any examples you like</li>
+            <li>Timeline / deadline</li>
+          </ul>
+
+          <hr style="border-color: rgba(255,255,255,0.12);" />
+
+          <h5 class="section-title mb-2">Quick options</h5>
+          <div class="row g-3">
+            <div class="col-12">
+              <div class="card card-hover">
+                <div class="card-body p-3">
+                  <div class="fw-bold">Basic Site</div>
+                  <div class="text-muted">Home + About + Services + Contact</div>
+                </div>
+              </div>
+            </div>
+
+            <div class="col-12">
+              <div class="card card-hover">
+                <div class="card-body p-3">
+                  <div class="fw-bold">Landing Page</div>
+                  <div class="text-muted">One page + strong CTA</div>
+                </div>
+              </div>
+            </div>
+          </div>
+
+          <div class="mt-4 small" style="color: rgba(233,238,252,0.65);">
+            Built with <span class="brand-gradient">AddisGo</span> style: clean, modern, and mobile-first.
+          </div>
+        </div>
+      </div>
+    </div>
+  </section>
 </template>
 
 <script setup>
-import { ref } from "vue"
+import { computed, reactive, ref } from "vue"
 
-// Put your Formspree endpoint here after you create it
-// Example: https://formspree.io/f/abcdwxyz
-const FORMSPREE_URL = import.meta.env.VITE_FORMSPREE_URL
+const form = reactive({
+  name: "",
+  email: "",
+  subject: "",
+  message: "",
+})
 
-const name = ref("")
-const email = ref("")
-const subject = ref("")
-const message = ref("")
-const website = ref("") // honeypot
+const errors = reactive({
+  name: "",
+  email: "",
+  subject: "",
+  message: "",
+})
 
 const loading = ref(false)
-const success = ref(false)
-const error = ref("")
+const status = reactive({
+  type: "", // "success" | "error"
+  message: "",
+})
+
+const statusClass = computed(() => {
+  return status.type === "success" ? "alert-success" : "alert-danger"
+})
+
+function validate() {
+  errors.name = ""
+  errors.email = ""
+  errors.subject = ""
+  errors.message = ""
+
+  let ok = true
+
+  if (!form.name || form.name.length < 2) {
+    errors.name = "Please enter your name."
+    ok = false
+  }
+
+  const emailRegex = /^[^\s@]+@[^\s@]+\.[^\s@]+$/
+  if (!form.email || !emailRegex.test(form.email)) {
+    errors.email = "Please enter a valid email."
+    ok = false
+  }
+
+  if (!form.subject || form.subject.length < 2) {
+    errors.subject = "Please enter a subject."
+    ok = false
+  }
+
+  if (!form.message || form.message.length < 10) {
+    errors.message = "Please write a message (at least 10 characters)."
+    ok = false
+  }
+
+  return ok
+}
+
+function resetForm() {
+  form.name = ""
+  form.email = ""
+  form.subject = ""
+  form.message = ""
+
+  status.type = ""
+  status.message = ""
+
+  errors.name = ""
+  errors.email = ""
+  errors.subject = ""
+  errors.message = ""
+}
 
 async function submitForm() {
-  success.value = false
-  error.value = ""
+  status.type = ""
+  status.message = ""
 
-  // bot check
-  if (website.value) return
-
-  if (!FORMSPREE_URL) {
-    error.value = "Form is not configured yet (missing VITE_FORMSPREE_URL)."
-    return
-  }
+  if (!validate()) return
 
   loading.value = true
   try {
-    const res = await fetch(FORMSPREE_URL, {
+    const res = await fetch("/api/contact", {
       method: "POST",
-      headers: { "Content-Type": "application/json", "Accept": "application/json" },
+      headers: { "Content-Type": "application/json" },
       body: JSON.stringify({
-        name: name.value,
-        email: email.value,
-        subject: subject.value,
-        message: message.value,
+        name: form.name,
+        email: form.email,
+        subject: form.subject,
+        message: form.message,
       }),
     })
 
-    if (!res.ok) throw new Error("Submission failed. Please try again.")
+    // Try to read JSON (may fail if server returns HTML)
+    let data = null
+    try {
+      data = await res.json()
+    } catch {
+      data = null
+    }
 
-    success.value = true
-    name.value = ""
-    email.value = ""
-    subject.value = ""
-    message.value = ""
-  } catch (e) {
-    error.value = e.message || "Something went wrong."
+    if (!res.ok) {
+      const msg =
+        (data && (data.error || data.message)) ||
+        `Server error (${res.status}). If email service is not configured yet, this is expected.`
+      throw new Error(msg)
+    }
+
+    status.type = "success"
+    status.message = (data && data.message) || "Message sent successfully!"
+    resetForm()
+    // keep success message after reset:
+    status.type = "success"
+    status.message = "Message sent successfully!"
+  } catch (err) {
+    status.type = "error"
+    status.message = err?.message || "Something went wrong."
   } finally {
     loading.value = false
   }
 }
 </script>
-
-<style scoped>
-.page { text-align: center; padding: 40px 16px; }
-.title { font-size: 44px; margin: 0 0 8px; }
-.subtitle { margin: 0 0 24px; color: #555; }
-
-.card {
-  margin: 0 auto;
-  max-width: 560px;
-  text-align: left;
-  padding: 18px;
-  border-radius: 14px;
-  background: #fff;
-  display: grid;
-  gap: 10px;
-}
-
-.label { font-weight: 600; margin-top: 8px; }
-.input {
-  width: 100%;
-  padding: 12px;
-  border-radius: 10px;
-  border: 1px solid #ddd;
-  font-size: 16px;
-  box-sizing: border-box;
-}
-
-.btn {
-  width: 100%;
-  border: 0;
-  padding: 14px;
-  border-radius: 12px;
-  font-size: 18px;
-  font-weight: 700;
-  cursor: pointer;
-  text-align: center;
-  text-decoration: none;
-}
-.btn-blue { background: #2563eb; color: white; }
-.btn-gray { background: #666; color: white; display: block; }
-
-.success { color: #0a7a2f; font-weight: 700; }
-.error { color: #b00020; font-weight: 700; }
-
-.honeypot { display:none; }
-</style>
