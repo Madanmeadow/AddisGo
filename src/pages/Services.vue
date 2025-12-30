@@ -1,120 +1,106 @@
-<template>
-  <section class="container py-5">
-    <div class="mb-4">
-      <h1 class="section-title">Services</h1>
-      <p class="lead lead-muted mb-0">
-        Choose a simple package, or mix and match. Everything is responsive and clean.
+<><template>
+  <section class="py-5">
+    <div class="container">
+      <h1 class="fw-bold mb-2">Services</h1>
+      <p class="text-muted mb-4">
+        Pick what you need — or tell me your goal and I’ll recommend the best option.
       </p>
-    </div>
 
-    <!-- Service Cards -->
-    <div class="row g-4">
-      <div class="col-lg-4">
-        <div class="card card-hover h-100">
-          <div class="card-body p-4">
-            <h4 class="mb-1">Landing Page</h4>
-            <div class="lead-muted mb-3">Perfect for one offer or one product.</div>
-
-            <ul class="lead-muted">
-              <li>Hero section + call-to-action</li>
-              <li>Features / benefits section</li>
-              <li>Contact section</li>
-              <li>Mobile-first layout</li>
-            </ul>
-
-            <div class="section-soft p-3 mt-3">
-              <strong>Typical range:</strong> $250 – $900
+      <div class="row g-3 g-md-4">
+        <div class="col-md-6 col-lg-4">
+          <div class="card card-hover rounded-4 h-100">
+            <div class="card-body p-4">
+              <h5 class="fw-bold">Landing Page</h5>
+              <p class="text-muted">
+                One-page site to promote a service, product, or event.
+              </p>
+              <ul class="text-muted mb-0">
+                <li>Hero + CTA</li>
+                <li>Services highlights</li>
+                <li>Contact section</li>
+              </ul>
             </div>
           </div>
         </div>
-      </div>
 
-      <div class="col-lg-4">
-        <div class="card card-hover h-100">
-          <div class="card-body p-4">
-            <h4 class="mb-1">Business Website</h4>
-            <div class="lead-muted mb-3">Multi-page site that looks professional.</div>
-
-            <ul class="lead-muted">
-              <li>Home / About / Services / Contact</li>
-              <li>Navbar + routing</li>
-              <li>Cards, spacing, clean layout</li>
-              <li>Deployment-ready</li>
-            </ul>
-
-            <div class="section-soft p-3 mt-3">
-              <strong>Typical range:</strong> $900 – $2,500
+        <div class="col-md-6 col-lg-4">
+          <div class="card card-hover rounded-4 h-100">
+            <div class="card-body p-4">
+              <h5 class="fw-bold">Business Website</h5>
+              <p class="text-muted">
+                Multi-page site with routing (Home / About / Services / Contact).
+              </p>
+              <ul class="text-muted mb-0">
+                <li>Professional layout</li>
+                <li>Clean navigation</li>
+                <li>Mobile responsive</li>
+              </ul>
             </div>
           </div>
         </div>
-      </div>
 
-      <div class="col-lg-4">
-        <div class="card card-hover h-100">
-          <div class="card-body p-4">
-            <h4 class="mb-1">Fixes & Improvements</h4>
-            <div class="lead-muted mb-3">For existing sites that need cleanup.</div>
-
-            <ul class="lead-muted">
-              <li>Mobile spacing fixes</li>
-              <li>UI cleanup + consistency</li>
-              <li>Performance basics</li>
-              <li>Small feature updates</li>
-            </ul>
-
-            <div class="section-soft p-3 mt-3">
-              <strong>Typical range:</strong> $50 – $500 (depends on scope)
+        <div class="col-md-6 col-lg-4">
+          <div class="card card-hover rounded-4 h-100">
+            <div class="card-body p-4">
+              <h5 class="fw-bold">Fixes & Updates</h5>
+              <p class="text-muted">
+                Improve an existing website without rebuilding everything.
+              </p>
+              <ul class="text-muted mb-0">
+                <li>Bug fixes</li>
+                <li>Design cleanup</li>
+                <li>Performance & spacing</li>
+              </ul>
             </div>
           </div>
         </div>
-      </div>
-    </div>
 
-    <!-- Details -->
-    <div class="row g-4 mt-4">
-      <div class="col-lg-7">
-        <div class="section-soft p-4 h-100">
-          <h3 class="section-title mb-3">What you get</h3>
-          <ul class="lead-muted mb-0">
-            <li><strong>Modern layout:</strong> clean sections, consistent spacing, good typography.</li>
-            <li><strong>Responsive:</strong> built for phones first, then desktop.</li>
-            <li><strong>Deploy-ready:</strong> GitHub Actions + Azure Static Web Apps support.</li>
-            <li><strong>Easy updates:</strong> organized components and pages.</li>
-          </ul>
-        </div>
-      </div>
-
-      <div class="col-lg-5">
-        <div class="card card-hover h-100">
-          <div class="card-body p-4">
-            <h3 class="section-title mb-3">FAQ</h3>
-
-            <div class="mb-3">
-              <div class="fw-bold">How long does it take?</div>
-              <div class="lead-muted">Landing page: 1–3 days. Full site: 3–10 days depending on content.</div>
-            </div>
-
-            <div class="mb-3">
-              <div class="fw-bold">Do you do hosting?</div>
-              <div class="lead-muted">Yes — Azure Static Web Apps + custom domain setup.</div>
-            </div>
-
-            <div>
-              <div class="fw-bold">Can you add a contact form?</div>
-              <div class="lead-muted">
-                Yes. (Your SendGrid API will power it once configured.)
-              </div>
-            </div>
-
-            <div class="mt-4">
-              <router-link class="btn btn-primary w-100" to="/contact">Request a quote</router-link>
+        <div class="col-md-6 col-lg-4">
+          <div class="card card-hover rounded-4 h-100">
+            <div class="card-body p-4">
+              <h5 class="fw-bold">Deploy + Domain</h5>
+              <p class="text-muted">
+                Get your site online with Azure Static Web Apps and a custom domain.
+              </p>
+              <ul class="text-muted mb-0">
+                <li>CI/CD from GitHub</li>
+                <li>Custom domain setup</li>
+                <li>HTTPS enabled</li>
+              </ul>
             </div>
           </div>
         </div>
+
+        <div class="col-md-6 col-lg-4">
+          <div class="card card-hover rounded-4 h-100">
+            <div class="card-body p-4">
+              <h5 class="fw-bold">Simple Forms</h5>
+              <p class="text-muted">
+                Contact form UI + basic validation (API wiring can be added later).
+              </p>
+              <ul class="text-muted mb-0">
+                <li>Clean form layout</li>
+                <li>Validation messages</li>
+                <li>Success state UI</li>
+              </ul>
+            </div>
+          </div>
+        </div>
+
+      </div>
+
+      <div class="mt-5 p-4 bg-white border rounded-4">
+        <h4 class="fw-bold mb-2">Not sure what to pick?</h4>
+        <p class="text-muted mb-3">
+          Tell me: what’s your business/service, and what do you want visitors to do?
+        </p>
+        <RouterLink class="btn btn-primary" to="/contact">Message me</RouterLink>
       </div>
     </div>
   </section>
 </template>
 
 <script setup>
+import { RouterLink } from "vue-router"
 </script>
+

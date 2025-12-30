@@ -1,5 +1,115 @@
 <template>
+  <<template>
   <!-- HERO -->
+  <section class="hero">
+    <div class="container py-5">
+      <div class="row align-items-center g-4">
+        <div class="col-lg-7">
+          <h1 class="hero-title display-4 fade-up">
+            <span class="brand">AddisGo</span>
+          </h1>
+
+          <p class="hero-subtitle lead mt-3 fade-up delay-1">
+            Clean, modern websites — built with Vue + Azure Static Web Apps.
+            Fast, responsive, and designed to look professional on every screen.
+          </p>
+
+          <div class="d-flex flex-wrap gap-2 mt-4 fade-up delay-2">
+            <RouterLink class="btn btn-primary btn-lg" to="/contact">Get in touch</RouterLink>
+            <RouterLink class="btn btn-outline-light btn-lg" to="/services">View services</RouterLink>
+          </div>
+
+          <div class="mt-4 text-white-50 small fade-up delay-3">
+            Typical turnaround: 3–7 days depending on scope.
+          </div>
+        </div>
+
+        <div class="col-lg-5">
+          <div class="card card-hover rounded-4 shadow-sm">
+            <div class="card-body p-4">
+              <h5 class="fw-bold mb-2">What you get</h5>
+              <ul class="mb-0 text-muted">
+                <li>Mobile-first layout</li>
+                <li>Clean navigation + routing</li>
+                <li>Modern sections (hero, cards, footer)</li>
+                <li>Ready to deploy</li>
+              </ul>
+            </div>
+          </div>
+        </div>
+      </div>
+    </div>
+  </section>
+
+  <!-- WHAT WE DO -->
+  <section class="section-soft py-5">
+    <div class="container">
+      <div class="d-flex align-items-end justify-content-between gap-2 flex-wrap mb-3">
+        <h2 class="fw-bold mb-0">What we do</h2>
+        <RouterLink class="small text-decoration-none" to="/services">See full services →</RouterLink>
+      </div>
+
+      <div class="row g-3 g-md-4">
+        <div class="col-md-4">
+          <div class="card card-hover rounded-4 h-100">
+            <div class="card-body p-4">
+              <h5 class="fw-bold">Websites</h5>
+              <p class="text-muted mb-0">
+                Simple business sites, landing pages, portfolios — clean and modern.
+              </p>
+            </div>
+          </div>
+        </div>
+
+        <div class="col-md-4">
+          <div class="card card-hover rounded-4 h-100">
+            <div class="card-body p-4">
+              <h5 class="fw-bold">Fixes & Improvements</h5>
+              <p class="text-muted mb-0">
+                Bug fixes, design cleanup, performance, accessibility, and updates.
+              </p>
+            </div>
+          </div>
+        </div>
+
+        <div class="col-md-4">
+          <div class="card card-hover rounded-4 h-100">
+            <div class="card-body p-4">
+              <h5 class="fw-bold">Deployments</h5>
+              <p class="text-muted mb-0">
+                Azure deploy, custom domains, and simple CI/CD setup.
+              </p>
+            </div>
+          </div>
+        </div>
+      </div>
+    </div>
+  </section>
+
+  <!-- CTA -->
+  <section class="py-5">
+    <div class="container">
+      <div class="p-4 p-md-5 bg-white border rounded-4">
+        <div class="row align-items-center g-3">
+          <div class="col-lg-8">
+            <h3 class="fw-bold mb-2">Need a clean website this week?</h3>
+            <p class="text-muted mb-0">
+              Tell me what you want, show examples you like, and I’ll build it fast and clean.
+            </p>
+          </div>
+          <div class="col-lg-4 text-lg-end">
+            <RouterLink class="btn btn-primary btn-lg" to="/contact">Contact</RouterLink>
+          </div>
+        </div>
+      </div>
+    </div>
+  </section>
+</template>
+
+<script setup>
+import { RouterLink } from "vue-router"
+</script>
+!-- HERO -->
   <section class="hero">
     <div class="container py-5">
       <div class="row align-items-center g-4">
