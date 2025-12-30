@@ -109,7 +109,7 @@
 <script setup>
 import { RouterLink } from "vue-router"
 </script>
-!-- HERO -->
+
   <section class="hero">
     <div class="container py-5">
       <div class="row align-items-center g-4">
