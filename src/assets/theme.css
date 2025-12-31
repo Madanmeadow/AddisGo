@@ -53,4 +53,39 @@ body{
   font-weight:700;
   cursor:pointer;
 }
+/* Hero button hover: scale + glow */
+.hero-btn {
+  transition: transform .18s ease, box-shadow .18s ease, filter .18s ease;
+  will-change: transform;
+}
+
+.hero-btn:hover {
+  transform: translateY(-2px) scale(1.03);
+  box-shadow: 0 14px 34px rgba(59, 130, 246, 0.28);
+  filter: brightness(1.02);
+}
+
+.hero-btn.secondary:hover {
+  box-shadow: 0 14px 34px rgba(255, 255, 255, 0.14);
+}
+/* Scroll reveal */
+.reveal {
+  opacity: 0;
+  transform: translateY(14px);
+  transition: opacity .6s ease, transform .6s ease;
+}
+
+.reveal.reveal--in {
+  opacity: 1;
+  transform: translateY(0);
+}
+
+/* optional: respect reduced motion */
+@media (prefers-reduced-motion: reduce) {
+  .reveal {
+    transition: none;
+    transform: none;
+    opacity: 1;
+  }
+}
 
