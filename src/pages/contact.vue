@@ -162,7 +162,7 @@
               <div class="mt-4 small text-muted">
                 Or email:
                 <a class="contact-link" href="mailto:you@example.com">
-                  you@example.com
+                  meadowmadan@gmail.com
                 </a>
               </div>
             </div>
