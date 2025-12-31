@@ -54,7 +54,7 @@
                       v-model.trim="form.email"
                       type="email"
                       class="form-control"
-                      placeholder="meadowmadan@gmail.com"
+                      placeholder="you@example.com"
                       required
                     />
                   </div>
