@@ -1,6 +1,6 @@
 :root{
   --primary:#0F5132;
-  --accent:#D4AF37;
+  --accent:#d4af37d7;
   --bg:#F8F9FA;
   --text:#212529;
   --border:#E9ECEF;
@@ -17,6 +17,19 @@ body{
   max-width: 980px;
   margin: 0 auto;
   padding: 16px;
+}
+.hero {
+  min-height: 520px;
+  padding: 5rem 0;
+  display: flex;
+  align-items: center;
+}
+
+@media (max-width: 768px) {
+  .hero {
+    min-height: 480px;
+    padding: 3.25rem 0;
+  }
 }
 
 .cardx{
@@ -48,3 +61,4 @@ body{
   font-weight:700;
   cursor:pointer;
 }
+
