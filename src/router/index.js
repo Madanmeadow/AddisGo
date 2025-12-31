@@ -3,7 +3,7 @@ import { createRouter, createWebHistory } from "vue-router"
 import Home from "../pages/Home.vue"
 import About from "../pages/About.vue"
 import Services from "../pages/Services.vue"
-import Contact from "../pages/Contact.vue"
+import Contact from "../pages/contact.vue"
 
 // Optional pages you have:
 import Drivers from "../pages/Drivers.vue"
