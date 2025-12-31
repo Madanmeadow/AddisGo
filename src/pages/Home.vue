@@ -1,134 +1,156 @@
 <template>
-  <!-- HERO -->
-  <section class="hero-section text-light">
-    <div class="container">
-      <div class="row align-items-center g-5">
-        <!-- Left -->
-        <div class="col-lg-7">
-          <h1 class="display-5 fw-bold mb-3">
-            Addis<span class="text-accent">Go</span>
-          </h1>
+  <main class="page">
+    <!-- Page header -->
+    <section class="page-hero">
+      <div class="container py-5">
+        <h1 class="display-5 fw-bold mb-2">Services</h1>
+        <p class="lead mb-0">Simple packages, clear pricing, and fast delivery.</p>
+      </div>
+    </section>
 
-          <p class="lead mb-4">
-            Clean, modern websites — built with Vue & Azure Static Web Apps.
-          </p>
+    <!-- Packages -->
+    <section class="section bg-soft">
+      <div class="container py-5">
+        <div class="row g-4 align-items-stretch">
+          <!-- Starter -->
+          <div class="col-12 col-lg-4">
+            <div class="card pricing-card h-100 shadow-sm">
+              <div class="card-body p-4">
+                <div class="d-flex align-items-start justify-content-between mb-2">
+                  <h2 class="h4 fw-bold mb-0">Starter Website</h2>
+                  <span class="badge text-bg-primary price-badge">$499+</span>
+                </div>
 
-          <div class="d-flex gap-3 flex-wrap mb-3">
-            <!-- ✅ THESE BUTTONS -->
-            <RouterLink
-              to="/contact"
-              class="btn btn-primary btn-glow btn-hero"
-            >
-              Get in touch
-            </RouterLink>
+                <p class="text-muted mb-4">
+                  Perfect for a simple business site or personal brand.
+                </p>
 
-            <RouterLink
-              to="/services"
-              class="btn btn-outline-light btn-hero"
-            >
-              View services
-            </RouterLink>
+                <ul class="list-unstyled small text-muted mb-4">
+                  <li class="mb-2">• 1–3 pages</li>
+                  <li class="mb-2">• Mobile responsive</li>
+                  <li class="mb-2">• Basic SEO</li>
+                  <li class="mb-2">• Contact form</li>
+                </ul>
+
+                <RouterLink
+                  class="btn btn-outline-primary w-100"
+                  :to="{ path: '/contact', query: { package: 'Starter Website' } }"
+                >
+                  Request this package
+                </RouterLink>
+              </div>
+            </div>
           </div>
 
-          <p class="small text-muted">
-            Quick turnaround · Mobile-first · Professional look
-          </p>
+          <!-- Business (featured) -->
+          <div class="col-12 col-lg-4">
+            <div class="card pricing-card h-100 shadow pricing-featured">
+              <div class="card-body p-4">
+                <div class="d-flex align-items-start justify-content-between mb-2">
+                  <h2 class="h4 fw-bold mb-0">Business Website</h2>
+                  <span class="badge text-bg-primary price-badge">$899+</span>
+                </div>
+
+                <p class="text-muted mb-4">
+                  A polished site that builds trust and converts visitors.
+                </p>
+
+                <ul class="list-unstyled small text-muted mb-4">
+                  <li class="mb-2">• Up to 6 pages</li>
+                  <li class="mb-2">• Better design + sections</li>
+                  <li class="mb-2">• Speed optimization</li>
+                  <li class="mb-2">• Analytics setup</li>
+                </ul>
+
+                <RouterLink
+                  class="btn btn-primary w-100"
+                  :to="{ path: '/contact', query: { package: 'Business Website' } }"
+                >
+                  Request this package
+                </RouterLink>
+              </div>
+            </div>
+          </div>
+
+          <!-- Fixes -->
+          <div class="col-12 col-lg-4">
+            <div class="card pricing-card h-100 shadow-sm">
+              <div class="card-body p-4">
+                <div class="d-flex align-items-start justify-content-between mb-2">
+                  <h2 class="h4 fw-bold mb-0">Fixes & Improvements</h2>
+                  <span class="badge text-bg-secondary price-badge">$75/hr</span>
+                </div>
+
+                <p class="text-muted mb-4">
+                  Updates, redesigns, and performance fixes for existing sites.
+                </p>
+
+                <ul class="list-unstyled small text-muted mb-4">
+                  <li class="mb-2">• Bug fixes</li>
+                  <li class="mb-2">• UI clean-up</li>
+                  <li class="mb-2">• Performance</li>
+                  <li class="mb-2">• Deployment help</li>
+                </ul>
+
+                <RouterLink
+                  class="btn btn-outline-primary w-100"
+                  :to="{ path: '/contact', query: { package: 'Fixes & Improvements' } }"
+                >
+                  Request a quote
+                </RouterLink>
+              </div>
+            </div>
+          </div>
         </div>
 
-        <!-- Right -->
-        <div class="col-lg-5">
-          <div class="why-card shadow-sm">
-            <h5 class="fw-semibold mb-3">Why AddisGo?</h5>
-            <ul class="list-unstyled mb-0">
-              <li>✔ Fast & responsive design</li>
-              <li>✔ Clean UI / UX</li>
-              <li>✔ Azure deployment</li>
-            </ul>
-          </div>
+        <!-- Small helper CTA (NOT the big footer CTA) -->
+        <div class="text-center mt-5">
+          <p class="mb-3 text-muted">
+            Not sure which package fits? Send a message and I’ll recommend the best option.
+          </p>
+          <RouterLink class="btn btn-primary" to="/contact">
+            Get a free plan
+          </RouterLink>
         </div>
       </div>
-    </div>
-  </section>
-
-  <!-- WHAT WE DO -->
-  <section v-reveal class="py-5 section-soft">
-    <div class="container">
-      <h2 class="fw-semibold mb-4 text-center">What we do</h2>
-
-      <div class="row g-4">
-        <div class="col-md-4">
-          <div class="service-card h-100">
-            <h5>Websites</h5>
-            <p>
-              Business websites, landing pages, and personal portfolios built
-              with modern tools.
-            </p>
-          </div>
-        </div>
-
-        <div class="col-md-4">
-          <div class="service-card h-100">
-            <h5>Fixes & Improvements</h5>
-            <p>
-              Bug fixes, redesigns, performance improvements, and UI clean-ups.
-            </p>
-          </div>
-        </div>
-
-        <div class="col-md-4">
-          <div class="service-card h-100">
-            <h5>Deployment</h5>
-            <p>
-              Azure Static Web Apps, CI/CD, custom domains, and hosting setup.
-            </p>
-          </div>
-        </div>
-      </div>
-    </div>
-  </section>
+    </section>
+  </main>
 </template>
 
 <script setup>
+// No JS needed here
 </script>
 
 <style scoped>
-/* HERO */
-.hero-section {
-  background: linear-gradient(
-    135deg,
-    #0b3c6d,
-    #0d6efd
-  );
-  padding: 5rem 0;
+.page-hero {
+  background: radial-gradient(1200px 600px at 20% 10%, rgba(255, 255, 255, 0.14), transparent 60%),
+    linear-gradient(120deg, #123c7a, #1b5fb8);
+  color: #fff;
 }
 
-.text-accent {
-  color: #7dd3fc;
+.bg-soft {
+  background: #f6f8fb;
 }
 
-/* WHY CARD */
-.why-card {
-  background: rgba(255, 255, 255, 0.85);
-  color: #111;
-  border-radius: 0.75rem;
-  padding: 1.5rem;
+.pricing-card {
+  border: 0;
+  border-radius: 14px;
 }
 
-/* SERVICES */
-.section-soft {
-  background: #f8fafc;
+.price-badge {
+  font-weight: 700;
+  padding: 0.55rem 0.75rem;
+  border-radius: 999px;
 }
 
-.service-card {
-  background: #ffffff;
-  padding: 1.5rem;
-  border-radius: 0.75rem;
-  border: 1px solid rgba(0, 0, 0, 0.05);
-  transition: transform 180ms ease, box-shadow 180ms ease;
+.pricing-featured {
+  transform: translateY(-6px);
 }
 
-.service-card:hover {
-  transform: translateY(-4px);
-  box-shadow: 0 10px 25px rgba(0, 0, 0, 0.08);
+@media (max-width: 991px) {
+  .pricing-featured {
+    transform: none;
+  }
 }
 </style>
+

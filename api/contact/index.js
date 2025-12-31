@@ -1,115 +1,124 @@
-// api/contact/index.js
-import sgMail from "@sendgrid/mail";
+// Azure Static Web Apps (Azure Functions) endpoint:
+// POST /api/contact
+//
+// Env vars you set in Azure Static Web App → Environment variables:
+// SENDGRID_API_KEY
+// TO_EMAIL=madanmeadow@gmail.com
+// FROM_EMAIL=your_verified_sendgrid_sender_email
+// TWILIO_ACCOUNT_SID
+// TWILIO_AUTH_TOKEN
+// TWILIO_FROM_NUMBER=+1218xxxxxxxx   (your Twilio number once bought)
+// OWNER_PHONE=+16512637198
 
-export default async function (context, req) {
+const sgMail = require("@sendgrid/mail");
+const twilio = require("twilio");
+
+function isEmail(value) {
+  return typeof value === "string" && value.includes("@") && value.includes(".");
+}
+
+module.exports = async function (context, req) {
   try {
-    // ✅ Read env vars (set these in Azure Static Web App → Environment variables)
-    const SENDGRID_API_KEY = process.env.SENDGRID_API_KEY;
-    const FROM_EMAIL = process.env.FROM_EMAIL; // must be a verified sender in SendGrid
-    const TO_EMAIL = process.env.TO_EMAIL;     // where you want to receive the message
-
-    // ✅ Validate env vars
-    const missing = [];
-    if (!SENDGRID_API_KEY) missing.push("SENDGRID_API_KEY");
-    if (!FROM_EMAIL) missing.push("FROM_EMAIL");
-    if (!TO_EMAIL) missing.push("TO_EMAIL");
-
-    if (missing.length > 0) {
-      context.res = {
-        status: 500,
-        headers: { "Content-Type": "application/json" },
-        body: {
-          error: "Server is not configured (missing email settings).",
-          missing,
-        },
-      };
+    if (req.method !== "POST") {
+      context.res = { status: 405, jsonBody: { message: "Method not allowed" } };
       return;
     }
 
-    sgMail.setApiKey(SENDGRID_API_KEY);
-
-    // ✅ Parse body (Static Web Apps usually gives req.body already as object)
     const body = req.body || {};
     const name = (body.name || "").trim();
     const email = (body.email || "").trim();
-    const subject = (body.subject || "").trim();
+    const phone = (body.phone || "").trim();
+    const subject = (body.subject || "New website inquiry").trim();
     const message = (body.message || "").trim();
+    const consentToText = !!body.consentToText;
 
-    // ✅ Validate request
-    if (!name || !email || !subject || !message) {
+    if (!name || !message || (!email && !phone)) {
       context.res = {
         status: 400,
-        headers: { "Content-Type": "application/json" },
-        body: {
-          error: "Missing required fields",
-          required: ["name", "email", "subject", "message"],
-          got: { name: !!name, email: !!email, subject: !!subject, message: !!message },
-        },
+        jsonBody: { message: "Please include name, message, and at least email or phone." }
       };
       return;
     }
 
-    // ✅ Email content
-    const text = `New contact form submission:
+    // 1) EMAIL (owner) + auto-reply (customer)
+    const SENDGRID_API_KEY = process.env.SENDGRID_API_KEY;
+    const TO_EMAIL = process.env.TO_EMAIL;
+    const FROM_EMAIL = process.env.FROM_EMAIL;
+
+    if (SENDGRID_API_KEY && TO_EMAIL && FROM_EMAIL) {
+      sgMail.setApiKey(SENDGRID_API_KEY);
+
+      // Owner email
+      await sgMail.send({
+        to: TO_EMAIL,
+        from: FROM_EMAIL,
+        subject: `AddisGo Lead: ${subject}`,
+        text:
+`New lead from your website:
 
 Name: ${name}
-Email: ${email}
-Subject: ${subject}
+Email: ${email || "(not provided)"}
+Phone: ${phone || "(not provided)"}
+Consent to Text: ${consentToText ? "YES" : "NO"}
 
 Message:
-${message}
-`;
+${message}`
+      });
 
-    const html = `
-      <h2>New contact form submission</h2>
-      <p><strong>Name:</strong> ${escapeHtml(name)}</p>
-      <p><strong>Email:</strong> ${escapeHtml(email)}</p>
-      <p><strong>Subject:</strong> ${escapeHtml(subject)}</p>
-      <p><strong>Message:</strong><br/>${escapeHtml(message).replace(/\n/g, "<br/>")}</p>
-    `;
+      // Customer auto-reply (only if email looks valid)
+      if (isEmail(email)) {
+        await sgMail.send({
+          to: email,
+          from: FROM_EMAIL,
+          subject: "Got your message — AddisGo",
+          text:
+`Hi ${name},
 
-    // ✅ Send email (FROM must be verified in SendGrid)
-    await sgMail.send({
-      to: TO_EMAIL,
-      from: FROM_EMAIL,
-      replyTo: email, // lets you hit Reply and respond to the user
-      subject: `Contact Form: ${subject}`,
-      text,
-      html,
-    });
+Thanks for reaching out! I got your message and I’ll reply with a clear plan + next steps soon.
 
-    context.res = {
-      status: 200,
-      headers: { "Content-Type": "application/json" },
-      body: { ok: true, message: "Email sent successfully" },
-    };
+— AddisGo
+Phone: (651) 263-7198
+Email: madanmeadow@gmail.com`
+        });
+      }
+    }
+
+    // 2) SMS (notify owner) + optional customer confirmation (ONLY if consent)
+    const TWILIO_ACCOUNT_SID = process.env.TWILIO_ACCOUNT_SID;
+    const TWILIO_AUTH_TOKEN = process.env.TWILIO_AUTH_TOKEN;
+    const TWILIO_FROM_NUMBER = process.env.TWILIO_FROM_NUMBER;
+    const OWNER_PHONE = process.env.OWNER_PHONE;
+
+    const canText = TWILIO_ACCOUNT_SID && TWILIO_AUTH_TOKEN && TWILIO_FROM_NUMBER;
+
+    if (canText) {
+      const client = twilio(TWILIO_ACCOUNT_SID, TWILIO_AUTH_TOKEN);
+
+      // SMS to owner
+      if (OWNER_PHONE) {
+        await client.messages.create({
+          from: TWILIO_FROM_NUMBER,
+          to: OWNER_PHONE,
+          body: `New AddisGo lead: ${name}. ${phone ? `Phone: ${phone}. ` : ""}${email ? `Email: ${email}. ` : ""}Subject: ${subject}`
+        });
+      }
+
+      // Optional SMS to customer (ONLY if they consent + provided phone)
+      if (consentToText && phone) {
+        await client.messages.create({
+          from: TWILIO_FROM_NUMBER,
+          to: phone,
+          body: `Hi ${name} — thanks for contacting AddisGo! I got your message and I’ll reply soon.`
+        });
+      }
+    }
+
+    context.res = { status: 200, jsonBody: { ok: true, message: "Message sent successfully." } };
   } catch (err) {
-    // Helpful debugging info without exposing secrets
-    const statusCode = err?.code || err?.response?.statusCode || 500;
-
-    context.log("SendGrid error:", {
-      message: err?.message,
-      statusCode,
-      responseBody: err?.response?.body,
-    });
-
+    context.log("CONTACT API ERROR:", err);
     context.res = {
       status: 500,
-      headers: { "Content-Type": "application/json" },
-      body: {
-        error: "Failed to send email",
-        details: err?.response?.body || err?.message || "Unknown error",
-      },
+      jsonBody: { ok: false, message: "Server error sending message." }
     };
   }
-}
-
-// Small helper to avoid HTML injection
-function escapeHtml(str) {
-  return String(str)
-    .replace(/&/g, "&amp;")
-    .replace(/</g, "&lt;")
-    .replace(/>/g, "&gt;")
-    .replace(/"/g, "&quot;")
-    .replace(/'/g, "&#039;");
-}
+};
