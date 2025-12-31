@@ -1,12 +1,16 @@
-import { createApp } from "vue"
-import App from "./App.vue"
-import router from "./router"
 
-// Bootstrap (installed via npm)
-import "bootstrap/dist/css/bootstrap.min.css"
-import "bootstrap/dist/js/bootstrap.bundle.min.js"
+import { createApp } from "vue";
+import App from "./App.vue";
+import router from "./router";
 
-// Your custom styles
-import "./assets/main.css"
+import "bootstrap/dist/css/bootstrap.min.css";
+import "./assets/theme.css";
 
-createApp(App).use(router).mount("#app")
+import reveal from "./directives/reveal";
+
+const app = createApp(App);
+
+app.directive("reveal", reveal);
+
+app.use(router);
+app.mount("#app");

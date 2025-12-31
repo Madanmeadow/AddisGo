@@ -1,36 +1,44 @@
 <template>
   <!-- HERO -->
-  <section class="hero">
+  <section class="hero-section text-light">
     <div class="container">
       <div class="row align-items-center g-5">
+        <!-- Left -->
         <div class="col-lg-7">
-          <h1 class="hero-title animate-fade">
-            Addis<span class="brand-accent">Go</span>
+          <h1 class="display-5 fw-bold mb-3">
+            Addis<span class="text-accent">Go</span>
           </h1>
 
-          <p class="hero-subtitle mt-3">
-            Clean, modern websites — built with
-            <strong>Vue</strong> & <strong>Azure Static Web Apps</strong>.
+          <p class="lead mb-4">
+            Clean, modern websites — built with Vue & Azure Static Web Apps.
           </p>
 
-          <div class="d-flex gap-3 mt-4 flex-wrap">
-            <RouterLink to="/contact" class="btn btn-primary btn-lg">
+          <div class="d-flex gap-3 flex-wrap mb-3">
+            <!-- ✅ THESE BUTTONS -->
+            <RouterLink
+              to="/contact"
+              class="btn btn-primary btn-glow btn-hero"
+            >
               Get in touch
             </RouterLink>
 
-            <RouterLink to="/services" class="btn btn-outline-light btn-lg">
+            <RouterLink
+              to="/services"
+              class="btn btn-outline-light btn-hero"
+            >
               View services
             </RouterLink>
           </div>
 
-          <p class="hero-meta mt-4">
-            Quick turnaround • Mobile-first • Professional look
+          <p class="small text-muted">
+            Quick turnaround · Mobile-first · Professional look
           </p>
         </div>
 
-        <div class="col-lg-5 d-none d-lg-block">
-          <div class="hero-card shadow-sm">
-            <p class="mb-2 fw-semibold">Why AddisGo?</p>
+        <!-- Right -->
+        <div class="col-lg-5">
+          <div class="why-card shadow-sm">
+            <h5 class="fw-semibold mb-3">Why AddisGo?</h5>
             <ul class="list-unstyled mb-0">
               <li>✔ Fast & responsive design</li>
               <li>✔ Clean UI / UX</li>
@@ -43,9 +51,9 @@
   </section>
 
   <!-- WHAT WE DO -->
-  <section class="section-soft">
-    <div class="container py-5">
-      <h2 class="mb-4 text-center">What we do</h2>
+  <section v-reveal class="py-5 section-soft">
+    <div class="container">
+      <h2 class="fw-semibold mb-4 text-center">What we do</h2>
 
       <div class="row g-4">
         <div class="col-md-4">
@@ -81,96 +89,46 @@
 </template>
 
 <script setup>
-import { RouterLink } from "vue-router"
 </script>
 
 <style scoped>
 /* HERO */
-.hero {
+.hero-section {
   background: linear-gradient(
-    180deg,
-    #0b1f3a 0%,
-    #123a67 55%,
-    #0b1f3a 100%
+    135deg,
+    #0b3c6d,
+    #0d6efd
   );
-  color: #fff;
   padding: 5rem 0;
-  min-height: 520px;
-  display: flex;
-  align-items: center;
 }
 
-.hero-title {
-  font-size: 3rem;
-  font-weight: 700;
-  letter-spacing: -0.5px;
+.text-accent {
+  color: #7dd3fc;
 }
 
-.brand-accent {
-  color: #4dabf7;
-}
-
-.hero-subtitle {
-  font-size: 1.15rem;
-  max-width: 520px;
-  opacity: 0.95;
-}
-
-.hero-meta {
-  font-size: 0.9rem;
-  opacity: 0.8;
-}
-
-/* Right card */
-.hero-card {
-  background: #ffffff;
-  color: #1f2937;
-  border-radius: 12px;
+/* WHY CARD */
+.why-card {
+  background: rgba(255, 255, 255, 0.85);
+  color: #111;
+  border-radius: 0.75rem;
   padding: 1.5rem;
 }
 
-/* WHAT WE DO */
+/* SERVICES */
 .section-soft {
-  background: #f5f7fb;
+  background: #f8fafc;
 }
 
 .service-card {
   background: #ffffff;
-  border-radius: 12px;
-  padding: 1.75rem;
-  transition: transform 0.2s ease, box-shadow 0.2s ease;
+  padding: 1.5rem;
+  border-radius: 0.75rem;
+  border: 1px solid rgba(0, 0, 0, 0.05);
+  transition: transform 180ms ease, box-shadow 180ms ease;
 }
 
 .service-card:hover {
   transform: translateY(-4px);
-  box-shadow: 0 12px 24px rgba(0, 0, 0, 0.08);
-}
-
-/* Animation */
-.animate-fade {
-  animation: fadeUp 0.7s ease forwards;
-}
-
-@keyframes fadeUp {
-  from {
-    opacity: 0;
-    transform: translateY(12px);
-  }
-  to {
-    opacity: 1;
-    transform: translateY(0);
-  }
-}
-
-/* Mobile */
-@media (max-width: 768px) {
-  .hero {
-    padding: 3.5rem 0;
-    min-height: auto;
-  }
-
-  .hero-title {
-    font-size: 2.3rem;
-  }
+  box-shadow: 0 10px 25px rgba(0, 0, 0, 0.08);
 }
 </style>

@@ -88,4 +88,30 @@ body{
     opacity: 1;
   }
 }
+/* Scroll reveal */
+.reveal {
+  opacity: 0;
+  transform: translateY(14px);
+  transition: opacity 600ms ease, transform 600ms ease;
+}
+
+.reveal--visible {
+  opacity: 1;
+  transform: translateY(0);
+}
+/* Smooth button hover */
+.btn-hero {
+  transition: transform 160ms ease, box-shadow 160ms ease, filter 160ms ease;
+  will-change: transform;
+}
+
+.btn-hero:hover {
+  transform: translateY(-1px) scale(1.03);
+  filter: brightness(1.03);
+}
+
+/* Glow for primary */
+.btn-glow:hover {
+  box-shadow: 0 0 0 0.2rem rgba(13,110,253,0.18), 0 10px 30px rgba(13,110,253,0.20);
+}
 
