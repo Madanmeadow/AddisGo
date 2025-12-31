@@ -1,77 +1,110 @@
 <template>
-  <section class="py-5">
+  <section class="page-hero">
     <div class="container">
-      <h1 class="fw-bold mb-2">Contact</h1>
-      <p class="text-muted mb-4">
-        Send a message and I’ll reply with next steps (scope + timeline).
+      <h1 class="mb-2">Contact</h1>
+      <p class="lead mb-0">
+        Tell me what you need — I’ll reply with a clear plan and next steps.
       </p>
+    </div>
+  </section>
 
+  <section class="section-soft">
+    <div class="container py-5">
       <div class="row g-4">
+        <!-- FORM -->
         <div class="col-lg-7">
-          <div class="bg-white border rounded-4 p-4 p-md-5">
-            <h5 class="fw-bold mb-3">Quick message</h5>
+          <div class="card soft-card">
+            <div class="card-body p-4">
+              <h3 class="mb-1">Send a message</h3>
+              <p class="text-muted mb-4">
+                I usually respond within 24 hours.
+              </p>
 
-            <!-- UI only for now (API later) -->
-            <form @submit.prevent="handleSubmit">
-              <div class="row g-3">
-                <div class="col-md-6">
-                  <label class="form-label">Name</label>
-                  <input v-model="form.name" class="form-control" placeholder="Your name" required />
-                </div>
-                <div class="col-md-6">
-                  <label class="form-label">Email</label>
-                  <input v-model="form.email" type="email" class="form-control" placeholder="you@email.com" required />
-                </div>
-                <div class="col-12">
-                  <label class="form-label">Subject</label>
-                  <input v-model="form.subject" class="form-control" placeholder="Website help / new site / updates..." required />
-                </div>
-                <div class="col-12">
-                  <label class="form-label">Message</label>
-                  <textarea v-model="form.message" class="form-control" rows="5" placeholder="Tell me what you need..." required></textarea>
-                </div>
-              </div>
+              <form @submit.prevent="handleSubmit">
+                <div class="row g-3">
+                  <div class="col-md-6">
+                    <label class="form-label">Name</label>
+                    <input v-model="form.name" class="form-control" required />
+                  </div>
 
-              <div class="d-flex flex-wrap gap-2 mt-3">
-                <button class="btn btn-primary" type="submit">Send message</button>
-                <button class="btn btn-outline-secondary" type="button" @click="reset">Clear</button>
-              </div>
+                  <div class="col-md-6">
+                    <label class="form-label">Email</label>
+                    <input v-model="form.email" type="email" class="form-control" required />
+                  </div>
 
-              <div v-if="status" class="alert alert-info mt-3 mb-0">
-                {{ status }}
-              </div>
-            </form>
+                  <div class="col-12">
+                    <label class="form-label">Subject</label>
+                    <input v-model="form.subject" class="form-control" required />
+                  </div>
 
-            <p class="text-muted small mt-3 mb-0">
-              Note: This form is UI-only right now. We’ll re-connect it to the API once SendGrid is ready.
-            </p>
+                  <div class="col-12">
+                    <label class="form-label">Message</label>
+                    <textarea v-model="form.message" rows="5" class="form-control" required></textarea>
+                  </div>
+
+                  <div class="col-12 d-flex gap-2 flex-wrap">
+                    <button class="btn btn-primary btn-lg" type="submit" :disabled="loading">
+                      {{ loading ? "Sending..." : "Send message" }}
+                    </button>
+
+                    <button class="btn btn-outline-secondary btn-lg" type="button" @click="reset" :disabled="loading">
+                      Clear
+                    </button>
+                  </div>
+
+                  <div v-if="status.message" class="col-12">
+                    <div :class="['alert', status.type === 'success' ? 'alert-success' : 'alert-danger']" class="mb-0">
+                      {{ status.message }}
+                    </div>
+                  </div>
+
+                  <p class="text-muted small mb-0">
+                    (Email sending can be connected later — for now the form UI is ready.)
+                  </p>
+                </div>
+              </form>
+            </div>
           </div>
         </div>
 
+        <!-- DETAILS -->
         <div class="col-lg-5">
-          <div class="card card-hover rounded-4">
+          <div class="card soft-card h-100">
             <div class="card-body p-4">
-              <h5 class="fw-bold">What to include</h5>
-              <ul class="text-muted mb-0">
-                <li>What your website is for</li>
-                <li>Any examples you like (links)</li>
-                <li>Pages you want (Home/About/Services/Contact)</li>
-                <li>Deadline (if any)</li>
-              </ul>
+              <h3 class="mb-3">Details</h3>
+
+              <div class="mb-3">
+                <div class="fw-semibold">What to include</div>
+                <ul class="mb-0">
+                  <li>Business name & goal</li>
+                  <li>Pages you want (Home/About/Services)</li>
+                  <li>Any examples you like</li>
+                  <li>Deadline (if any)</li>
+                </ul>
+              </div>
+
+              <hr />
+
+              <div class="mb-3">
+                <div class="fw-semibold">Typical turnaround</div>
+                <div class="text-muted">1–3 days for small sites, depending on content.</div>
+              </div>
+
+              <div class="callout">
+                <div class="fw-semibold">Want it deployed on Azure?</div>
+                <div class="text-muted mb-0">
+                  I can connect GitHub → Azure Static Web Apps so updates deploy automatically.
+                </div>
+              </div>
+
+              <div class="mt-4 small text-muted">
+                © 2025 AddisGo
+              </div>
             </div>
           </div>
-
-          <div class="card card-hover rounded-4 mt-3">
-            <div class="card-body p-4">
-              <h5 class="fw-bold">Response time</h5>
-              <p class="text-muted mb-0">
-                Usually same day or within 24 hours.
-              </p>
-            </div>
-          </div>
-
         </div>
       </div>
+
     </div>
   </section>
 </template>
@@ -86,10 +119,29 @@ const form = reactive({
   message: "",
 })
 
-const status = ref("")
+const loading = ref(false)
+const status = reactive({ type: "success", message: "" })
 
-function handleSubmit() {
-  status.value = "✅ Message captured (UI only). Next step: reconnect to /api/contact once email service is working."
+async function handleSubmit() {
+  // For now: just show success UI (we’ll connect /api/contact later)
+  loading.value = true
+  status.message = ""
+
+  try {
+    // Later you can replace this with:
+    // await fetch("/api/contact", { method:"POST", headers:{...}, body: JSON.stringify(form) })
+
+    await new Promise((r) => setTimeout(r, 600))
+
+    status.type = "success"
+    status.message = "✅ Message captured! (Email sending will be connected later.)"
+    reset()
+  } catch (e) {
+    status.type = "error"
+    status.message = "❌ Something went wrong. Try again."
+  } finally {
+    loading.value = false
+  }
 }
 
 function reset() {
@@ -97,6 +149,29 @@ function reset() {
   form.email = ""
   form.subject = ""
   form.message = ""
-  status.value = ""
 }
 </script>
+
+<style scoped>
+.page-hero {
+  background: linear-gradient(180deg, #0b1f3a 0%, #123a67 100%);
+  color: #fff;
+  padding: 3.5rem 0;
+}
+
+.section-soft {
+  background: #f5f7fb;
+}
+
+.soft-card {
+  border: 0;
+  border-radius: 14px;
+  box-shadow: 0 10px 25px rgba(0, 0, 0, 0.06);
+}
+
+.callout {
+  background: rgba(77, 171, 247, 0.12);
+  border-radius: 12px;
+  padding: 1rem;
+}
+</style>

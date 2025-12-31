@@ -1,56 +1,119 @@
 <template>
-  <section class="py-5">
+  <section class="page-hero">
     <div class="container">
-      <h1 class="fw-bold mb-3">About AddisGo</h1>
+      <h1 class="mb-2">About AddisGo</h1>
+      <p class="lead mb-0">
+        I build clean, modern websites that load fast, look great on mobile, and deploy smoothly on Azure.
+      </p>
+    </div>
+  </section>
 
-      <div class="row g-4">
+  <section class="section-soft">
+    <div class="container py-5">
+      <div class="row g-4 align-items-stretch">
         <div class="col-lg-7">
-          <div class="bg-white border rounded-4 p-4 p-md-5">
-            <p class="lead mb-3">
-              AddisGo builds clean, modern websites that load fast and look great on mobile.
-            </p>
-
-            <p class="text-muted mb-3">
-              I focus on simple, professional layout, clear navigation, and a design that feels
-              trustworthy for customers. Everything is built with Vue and ready for Azure Static Web Apps.
-            </p>
-
-            <h5 class="fw-bold mt-4">How I work</h5>
-            <ul class="text-muted mb-0">
-              <li>We agree on the goal (what the site is for)</li>
-              <li>I design the sections (hero, services, about, contact)</li>
-              <li>You review and request changes</li>
-              <li>Deploy + domain setup</li>
-            </ul>
-          </div>
-        </div>
-
-        <div class="col-lg-5">
-          <div class="card card-hover rounded-4">
+          <div class="card soft-card h-100">
             <div class="card-body p-4">
-              <h5 class="fw-bold">What I care about</h5>
-              <div class="mt-3 d-grid gap-2">
-                <div class="p-3 bg-light rounded-3">
-                  <div class="fw-semibold">Clarity</div>
-                  <div class="text-muted small">Visitors understand your service in 5 seconds.</div>
-                </div>
-                <div class="p-3 bg-light rounded-3">
-                  <div class="fw-semibold">Speed</div>
-                  <div class="text-muted small">Fast load time, clean code, simple assets.</div>
-                </div>
-                <div class="p-3 bg-light rounded-3">
-                  <div class="fw-semibold">Mobile-first</div>
-                  <div class="text-muted small">Looks good on phones and tablets.</div>
-                </div>
-              </div>
+              <h3 class="mb-3">My mission</h3>
+              <p class="mb-3">
+                AddisGo is focused on simple, high-quality web builds: clear layouts, strong spacing,
+                and professional sections that help people trust your business.
+              </p>
+              <p class="mb-0">
+                I use <strong>Vue 3</strong> + <strong>Vue Router</strong> + <strong>Bootstrap 5</strong>, and deploy using
+                <strong>Azure Static Web Apps</strong> with GitHub CI/CD.
+              </p>
             </div>
           </div>
         </div>
 
+        <div class="col-lg-5">
+          <div class="card soft-card h-100">
+            <div class="card-body p-4">
+              <h3 class="mb-3">What I’m good at</h3>
+
+              <div class="pill-wrap">
+                <span class="pill">Vue 3</span>
+                <span class="pill">Vue Router</span>
+                <span class="pill">Bootstrap 5</span>
+                <span class="pill">APIs</span>
+                <span class="pill">Azure Deploy</span>
+                <span class="pill">GitHub</span>
+              </div>
+
+              <hr class="my-4" />
+
+              <h5 class="mb-2">What you can expect</h5>
+              <ul class="mb-0">
+                <li>Fast turnaround</li>
+                <li>Mobile-first layout</li>
+                <li>Clean code & comments</li>
+                <li>Professional look</li>
+              </ul>
+            </div>
+          </div>
+        </div>
+      </div>
+
+      <div class="row g-4 mt-1">
+        <div class="col-lg-4">
+          <div class="mini-card">
+            <h5>Simple & clean</h5>
+            <p class="mb-0">No messy pages — easy navigation and clear sections.</p>
+          </div>
+        </div>
+        <div class="col-lg-4">
+          <div class="mini-card">
+            <h5>Mobile first</h5>
+            <p class="mb-0">Looks great on phone, tablet, and desktop.</p>
+          </div>
+        </div>
+        <div class="col-lg-4">
+          <div class="mini-card">
+            <h5>Deployed on Azure</h5>
+            <p class="mb-0">CI/CD from GitHub → Azure for smooth updates.</p>
+          </div>
+        </div>
       </div>
     </div>
   </section>
 </template>
 
-<script setup>
-</script>
+<style scoped>
+.page-hero {
+  background: linear-gradient(180deg, #0b1f3a 0%, #123a67 100%);
+  color: #fff;
+  padding: 3.5rem 0;
+}
+
+.section-soft {
+  background: #f5f7fb;
+}
+
+.soft-card {
+  border: 0;
+  border-radius: 14px;
+  box-shadow: 0 10px 25px rgba(0, 0, 0, 0.06);
+}
+
+.pill-wrap {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 10px;
+}
+
+.pill {
+  background: rgba(77, 171, 247, 0.12);
+  color: #0b1f3a;
+  padding: 8px 12px;
+  border-radius: 999px;
+  font-weight: 600;
+}
+
+.mini-card {
+  background: #fff;
+  border-radius: 14px;
+  padding: 1.25rem;
+  border: 1px solid rgba(0,0,0,0.06);
+}
+</style>

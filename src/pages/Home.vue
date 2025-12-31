@@ -1,40 +1,41 @@
 <template>
-  <<template>
   <!-- HERO -->
   <section class="hero">
-    <div class="container py-5">
-      <div class="row align-items-center g-4">
+    <div class="container">
+      <div class="row align-items-center g-5">
         <div class="col-lg-7">
-          <h1 class="hero-title display-4 fade-up">
-            <span class="brand">AddisGo</span>
+          <h1 class="hero-title animate-fade">
+            Addis<span class="brand-accent">Go</span>
           </h1>
 
-          <p class="hero-subtitle lead mt-3 fade-up delay-1">
-            Clean, modern websites — built with Vue + Azure Static Web Apps.
-            Fast, responsive, and designed to look professional on every screen.
+          <p class="hero-subtitle mt-3">
+            Clean, modern websites — built with
+            <strong>Vue</strong> & <strong>Azure Static Web Apps</strong>.
           </p>
 
-          <div class="d-flex flex-wrap gap-2 mt-4 fade-up delay-2">
-            <RouterLink class="btn btn-primary btn-lg" to="/contact">Get in touch</RouterLink>
-            <RouterLink class="btn btn-outline-light btn-lg" to="/services">View services</RouterLink>
+          <div class="d-flex gap-3 mt-4 flex-wrap">
+            <RouterLink to="/contact" class="btn btn-primary btn-lg">
+              Get in touch
+            </RouterLink>
+
+            <RouterLink to="/services" class="btn btn-outline-light btn-lg">
+              View services
+            </RouterLink>
           </div>
 
-          <div class="mt-4 text-white-50 small fade-up delay-3">
-            Typical turnaround: 3–7 days depending on scope.
-          </div>
+          <p class="hero-meta mt-4">
+            Quick turnaround • Mobile-first • Professional look
+          </p>
         </div>
 
-        <div class="col-lg-5">
-          <div class="card card-hover rounded-4 shadow-sm">
-            <div class="card-body p-4">
-              <h5 class="fw-bold mb-2">What you get</h5>
-              <ul class="mb-0 text-muted">
-                <li>Mobile-first layout</li>
-                <li>Clean navigation + routing</li>
-                <li>Modern sections (hero, cards, footer)</li>
-                <li>Ready to deploy</li>
-              </ul>
-            </div>
+        <div class="col-lg-5 d-none d-lg-block">
+          <div class="hero-card shadow-sm">
+            <p class="mb-2 fw-semibold">Why AddisGo?</p>
+            <ul class="list-unstyled mb-0">
+              <li>✔ Fast & responsive design</li>
+              <li>✔ Clean UI / UX</li>
+              <li>✔ Azure deployment</li>
+            </ul>
           </div>
         </div>
       </div>
@@ -42,63 +43,36 @@
   </section>
 
   <!-- WHAT WE DO -->
-  <section class="section-soft py-5">
-    <div class="container">
-      <div class="d-flex align-items-end justify-content-between gap-2 flex-wrap mb-3">
-        <h2 class="fw-bold mb-0">What we do</h2>
-        <RouterLink class="small text-decoration-none" to="/services">See full services →</RouterLink>
-      </div>
+  <section class="section-soft">
+    <div class="container py-5">
+      <h2 class="mb-4 text-center">What we do</h2>
 
-      <div class="row g-3 g-md-4">
+      <div class="row g-4">
         <div class="col-md-4">
-          <div class="card card-hover rounded-4 h-100">
-            <div class="card-body p-4">
-              <h5 class="fw-bold">Websites</h5>
-              <p class="text-muted mb-0">
-                Simple business sites, landing pages, portfolios — clean and modern.
-              </p>
-            </div>
-          </div>
-        </div>
-
-        <div class="col-md-4">
-          <div class="card card-hover rounded-4 h-100">
-            <div class="card-body p-4">
-              <h5 class="fw-bold">Fixes & Improvements</h5>
-              <p class="text-muted mb-0">
-                Bug fixes, design cleanup, performance, accessibility, and updates.
-              </p>
-            </div>
-          </div>
-        </div>
-
-        <div class="col-md-4">
-          <div class="card card-hover rounded-4 h-100">
-            <div class="card-body p-4">
-              <h5 class="fw-bold">Deployments</h5>
-              <p class="text-muted mb-0">
-                Azure deploy, custom domains, and simple CI/CD setup.
-              </p>
-            </div>
-          </div>
-        </div>
-      </div>
-    </div>
-  </section>
-
-  <!-- CTA -->
-  <section class="py-5">
-    <div class="container">
-      <div class="p-4 p-md-5 bg-white border rounded-4">
-        <div class="row align-items-center g-3">
-          <div class="col-lg-8">
-            <h3 class="fw-bold mb-2">Need a clean website this week?</h3>
-            <p class="text-muted mb-0">
-              Tell me what you want, show examples you like, and I’ll build it fast and clean.
+          <div class="service-card h-100">
+            <h5>Websites</h5>
+            <p>
+              Business websites, landing pages, and personal portfolios built
+              with modern tools.
             </p>
           </div>
-          <div class="col-lg-4 text-lg-end">
-            <RouterLink class="btn btn-primary btn-lg" to="/contact">Contact</RouterLink>
+        </div>
+
+        <div class="col-md-4">
+          <div class="service-card h-100">
+            <h5>Fixes & Improvements</h5>
+            <p>
+              Bug fixes, redesigns, performance improvements, and UI clean-ups.
+            </p>
+          </div>
+        </div>
+
+        <div class="col-md-4">
+          <div class="service-card h-100">
+            <h5>Deployment</h5>
+            <p>
+              Azure Static Web Apps, CI/CD, custom domains, and hosting setup.
+            </p>
           </div>
         </div>
       </div>
@@ -110,99 +84,93 @@
 import { RouterLink } from "vue-router"
 </script>
 
-  <section class="hero">
-    <div class="container py-5">
-      <div class="row align-items-center g-4">
-        <div class="col-lg-7">
-          <h1 class="display-4 hero-animate">
-            <span class="brand-gradient">AddisGo</span>
-          </h1>
+<style scoped>
+/* HERO */
+.hero {
+  background: linear-gradient(
+    180deg,
+    #0b1f3a 0%,
+    #123a67 55%,
+    #0b1f3a 100%
+  );
+  color: #fff;
+  padding: 5rem 0;
+  min-height: 520px;
+  display: flex;
+  align-items: center;
+}
 
-          <p class="lead lead-muted hero-animate delay-1">
-            Clean, modern websites — built with Vue + Azure Static Web Apps.
-          </p>
+.hero-title {
+  font-size: 3rem;
+  font-weight: 700;
+  letter-spacing: -0.5px;
+}
 
-          <div class="d-flex flex-wrap gap-2 hero-animate delay-2">
-            <router-link class="btn btn-primary px-4" to="/contact">Get in touch</router-link>
-            <router-link class="btn btn-outline-light px-4" to="/services">View services</router-link>
-          </div>
+.brand-accent {
+  color: #4dabf7;
+}
 
-          <div class="mt-4 hero-animate delay-3 small" style="color: rgba(233,238,252,0.6);">
-            Quick turnaround • Mobile-first • Professional look
-          </div>
-        </div>
+.hero-subtitle {
+  font-size: 1.15rem;
+  max-width: 520px;
+  opacity: 0.95;
+}
 
-        <div class="col-lg-5">
-          <div class="section-soft p-4">
-            <h5 class="mb-2 section-title">Fast • Responsive • Deploy-ready</h5>
-            <p class="mb-0 lead-muted">
-              Built to look great on phone + desktop, with smooth navigation and clean sections.
-              Ready for custom domains, CI/CD, and Azure hosting.
-            </p>
-          </div>
-        </div>
-      </div>
-    </div>
-  </section>
+.hero-meta {
+  font-size: 0.9rem;
+  opacity: 0.8;
+}
 
-  <!-- WHAT WE DO -->
-  <section class="container py-5">
-    <div class="mb-4">
-      <h2 class="section-title">What we do</h2>
-      <p class="lead-muted mb-0">
-        Simple services that make your website look better, load faster, and convert more visitors.
-      </p>
-    </div>
+/* Right card */
+.hero-card {
+  background: #ffffff;
+  color: #1f2937;
+  border-radius: 12px;
+  padding: 1.5rem;
+}
 
-    <div class="row g-4">
-      <div class="col-md-4">
-        <div class="card card-hover h-100">
-          <div class="card-body p-4">
-            <h5 class="card-title">Websites</h5>
-            <p class="text-muted mb-0">
-              Clean business sites, landing pages, portfolios, and simple multi-page sites.
-            </p>
-          </div>
-        </div>
-      </div>
+/* WHAT WE DO */
+.section-soft {
+  background: #f5f7fb;
+}
 
-      <div class="col-md-4">
-        <div class="card card-hover h-100">
-          <div class="card-body p-4">
-            <h5 class="card-title">Fixes & Improvements</h5>
-            <p class="text-muted mb-0">
-              Bug fixes, design cleanup, mobile spacing, performance, and SEO basics.
-            </p>
-          </div>
-        </div>
-      </div>
+.service-card {
+  background: #ffffff;
+  border-radius: 12px;
+  padding: 1.75rem;
+  transition: transform 0.2s ease, box-shadow 0.2s ease;
+}
 
-      <div class="col-md-4">
-        <div class="card card-hover h-100">
-          <div class="card-body p-4">
-            <h5 class="card-title">Deployments</h5>
-            <p class="text-muted mb-0">
-              Azure deploy, custom domains, GitHub Actions, environment variables, CI/CD.
-            </p>
-          </div>
-        </div>
-      </div>
-    </div>
+.service-card:hover {
+  transform: translateY(-4px);
+  box-shadow: 0 12px 24px rgba(0, 0, 0, 0.08);
+}
 
-    <!-- CTA strip -->
-    <div class="section-soft p-4 mt-5">
-      <div class="row align-items-center g-3">
-        <div class="col-lg-8">
-          <h4 class="mb-1 section-title">Want a clean website that looks legit?</h4>
-          <div class="lead-muted mb-0">Tell me what you need and I’ll reply with a simple plan + timeline.</div>
-        </div>
-        <div class="col-lg-4 text-lg-end">
-          <router-link class="btn btn-primary px-4" to="/contact">Contact</router-link>
-        </div>
-      </div>
-    </div>
-  </section>
-</template>
+/* Animation */
+.animate-fade {
+  animation: fadeUp 0.7s ease forwards;
+}
 
-<script setup>
-</script>
+@keyframes fadeUp {
+  from {
+    opacity: 0;
+    transform: translateY(12px);
+  }
+  to {
+    opacity: 1;
+    transform: translateY(0);
+  }
+}
+
+/* Mobile */
+@media (max-width: 768px) {
+  .hero {
+    padding: 3.5rem 0;
+    min-height: auto;
+  }
+
+  .hero-title {
+    font-size: 2.3rem;
+  }
+}
+</style>
