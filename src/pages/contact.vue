@@ -13,6 +13,6 @@ import ContactForm from "../components/ContactForm.vue"
 .container {
   max-width: 600px;
   margin: auto;
+  padding: 40px 20px;
 }
 </style>
-
