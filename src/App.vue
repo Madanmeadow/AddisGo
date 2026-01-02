@@ -1,25 +1,38 @@
 <script setup>
 import SiteNavbar from "./components/SiteNavbar.vue"
+import SiteFooter from "./components/SiteFooter.vue"
+
+// Pages
 import Home from "./pages/Home.vue"
 import Services from "./pages/Services.vue"
 import Contact from "./pages/Contact.vue"
-import SiteFooter from "./components/SiteFooter.vue"
 </script>
 
 <template>
   <SiteNavbar />
 
   <main>
-    <Home />
-    <Services />
-    <Contact />
+    <section id="home">
+      <Home />
+    </section>
+
+    <section id="services">
+      <Services />
+    </section>
+
+    <section id="contact">
+      <Contact />
+    </section>
   </main>
 
   <SiteFooter />
 </template>
 
-<style scoped>
+<style>
 main {
-  margin-top: 70px;
+  min-height: 100vh;
+}
+section {
+  scroll-margin-top: 80px;
 }
 </style>

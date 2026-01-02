@@ -1,8 +1,8 @@
 <template>
-  <header class="topbar">
+  <header class="navbar">
     <div class="brand">AddisGo</div>
 
-    <nav class="nav">
+    <nav>
       <a href="#home">Home</a>
       <a href="#services">Services</a>
       <a href="#contact">Contact</a>
@@ -11,34 +11,25 @@
 </template>
 
 <style scoped>
-.topbar {
-  position: fixed;
+.navbar {
+  position: sticky;
   top: 0;
-  left: 0;
-  right: 0;
-  height: 70px;
+  background: #1e5bff;
+  color: white;
   display: flex;
-  align-items: center;
   justify-content: space-between;
-  padding: 0 24px;
-  background: #1f5bd8;
-  color: white;
-  z-index: 999;
+  padding: 16px 24px;
+  z-index: 100;
 }
 
-.brand {
-  font-weight: 700;
-  font-size: 20px;
-}
-
-.nav a {
+.navbar a {
   color: white;
+  margin-left: 20px;
   text-decoration: none;
-  margin-left: 18px;
-  font-weight: 600;
+  font-weight: 500;
 }
 
-.nav a:hover {
+.navbar a:hover {
   text-decoration: underline;
 }
 </style>
