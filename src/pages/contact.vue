@@ -1,3 +1,6 @@
+<script setup>
+import ContactForm from "../components/ContactForm.vue"
+</script>
 
 <template>
   <section id="contact" class="section">
@@ -8,17 +11,13 @@
   </section>
 </template>
 
-<script setup>
-import ContactForm from "../components/ContactForm.vue"
-</script>
-
 <style scoped>
 .section {
-  padding: 80px 20px;
+  padding: 60px 20px;
+  background: white;
 }
 .container {
   max-width: 900px;
   margin: 0 auto;
 }
 </style>
-

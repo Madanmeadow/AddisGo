@@ -1,43 +1,71 @@
-const { Resend } = require("resend");
-
 module.exports = async function (context, req) {
   try {
-    const { name, email, message } = req.body || {};
+    // Body can be string or object depending on runtime
+    const body = typeof req.body === "string" ? JSON.parse(req.body) : req.body
+
+    const name = (body?.name || "").trim()
+    const email = (body?.email || "").trim()
+    const message = (body?.message || "").trim()
 
     if (!name || !email || !message) {
       context.res = {
         status: 400,
-        jsonBody: { ok: false, message: "Name, email, and message are required." },
-      };
-      return;
+        headers: { "Content-Type": "application/json" },
+        body: { ok: false, message: "Missing name, email, or message." }
+      }
+      return
     }
 
-    const resend = new Resend(process.env.RESEND_API_KEY);
+    const RESEND_API_KEY = process.env.RESEND_API_KEY
+    const FROM_EMAIL = process.env.FROM_EMAIL
+    const CONTACT_EMAIL = process.env.CONTACT_EMAIL
+
+    if (!RESEND_API_KEY || !FROM_EMAIL || !CONTACT_EMAIL) {
+      context.res = {
+        status: 500,
+        headers: { "Content-Type": "application/json" },
+        body: { ok: false, message: "Server env vars missing." }
+      }
+      return
+    }
+
+    // Resend v4 is ESM; dynamic import works in Azure Functions
+    const { Resend } = await import("resend")
+    const resend = new Resend(RESEND_API_KEY)
 
     await resend.emails.send({
-      from: process.env.FROM_EMAIL, // Example: "AddisGo <onboarding@resend.dev>"
-      to: process.env.TO_EMAIL,     // Your inbox
+      from: FROM_EMAIL,          // ex: "AddisGo <onboarding@resend.dev>" or your verified sender
+      to: CONTACT_EMAIL,         // your email to receive messages
+      subject: `New message from ${name} (AddisGo Contact Form)`,
       reply_to: email,
-      subject: `New message from ${name}`,
       html: `
-        <h2>New Contact Message</h2>
-        <p><b>Name:</b> ${name}</p>
-        <p><b>Email:</b> ${email}</p>
-        <p><b>Message:</b><br/>${String(message).replace(/\n/g, "<br/>")}</p>
-      `,
-    });
+        <h2>New Contact Form Message</h2>
+        <p><b>Name:</b> ${escapeHtml(name)}</p>
+        <p><b>Email:</b> ${escapeHtml(email)}</p>
+        <p><b>Message:</b><br/>${escapeHtml(message).replace(/\n/g, "<br/>")}</p>
+      `
+    })
 
     context.res = {
       status: 200,
-      jsonBody: { ok: true, message: "Message sent!" },
-    };
+      headers: { "Content-Type": "application/json" },
+      body: { ok: true, message: "Message sent successfully." }
+    }
   } catch (err) {
-    context.log("CONTACT API ERROR:", err);
+    context.log("CONTACT API ERROR:", err)
     context.res = {
       status: 500,
-      jsonBody: { ok: false, message: "Server error sending message." },
-    };
+      headers: { "Content-Type": "application/json" },
+      body: { ok: false, message: "Server error sending message." }
+    }
   }
-};
+}
 
-
+function escapeHtml(str) {
+  return String(str)
+    .replace(/&/g, "&amp;")
+    .replace(/</g, "&lt;")
+    .replace(/>/g, "&gt;")
+    .replace(/"/g, "&quot;")
+    .replace(/'/g, "&#039;")
+}

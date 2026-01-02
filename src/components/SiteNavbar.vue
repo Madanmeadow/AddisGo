@@ -1,72 +1,44 @@
 <template>
-  <nav class="navbar navbar-expand-lg navbar-dark bg-dark py-3 shadow-sm">
-    <div class="container">
-      <!-- Brand -->
-      <RouterLink class="navbar-brand fw-bold brand-gradient" to="/">
-        AddisGo
-      </RouterLink>
+  <header class="topbar">
+    <div class="brand">AddisGo</div>
 
-      <!-- Mobile toggle -->
-      <button
-        class="navbar-toggler"
-        type="button"
-        data-bs-toggle="collapse"
-        data-bs-target="#mainNav"
-        aria-controls="mainNav"
-        aria-expanded="false"
-        aria-label="Toggle navigation"
-      >
-        <span class="navbar-toggler-icon"></span>
-      </button>
-
-      <!-- Links -->
-      <div class="collapse navbar-collapse" id="mainNav">
-        <ul class="navbar-nav ms-auto align-items-lg-center gap-lg-2">
-          <li class="nav-item">
-            <RouterLink class="nav-link" active-class="active" to="/">Home</RouterLink>
-          </li>
-
-          <li class="nav-item">
-            <RouterLink class="nav-link" active-class="active" to="/about">About</RouterLink>
-          </li>
-
-          <li class="nav-item">
-            <RouterLink class="nav-link" active-class="active" to="/services">Services</RouterLink>
-          </li>
-
-          <li class="nav-item">
-            <RouterLink class="nav-link" active-class="active" to="/contact">Contact</RouterLink>
-          </li>
-
-          <li class="nav-item ms-lg-2">
-            <RouterLink class="btn btn-primary btn-sm px-3" to="/contact">
-              Get in touch
-            </RouterLink>
-          </li>
-        </ul>
-      </div>
-    </div>
-  </nav>
+    <nav class="nav">
+      <a href="#home">Home</a>
+      <a href="#services">Services</a>
+      <a href="#contact">Contact</a>
+    </nav>
+  </header>
 </template>
 
-<script setup>
-import { RouterLink } from "vue-router"
-</script>
-
 <style scoped>
-.brand-gradient{
-  background: linear-gradient(90deg, #57d2ff, #8a7dff, #ff6bd6);
-  -webkit-background-clip: text;
-  background-clip: text;
-  color: transparent;
-  letter-spacing: 0.2px;
+.topbar {
+  position: fixed;
+  top: 0;
+  left: 0;
+  right: 0;
+  height: 70px;
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  padding: 0 24px;
+  background: #1f5bd8;
+  color: white;
+  z-index: 999;
 }
-.nav-link{
-  opacity: 0.85;
+
+.brand {
+  font-weight: 700;
+  font-size: 20px;
 }
-.nav-link.active{
-  opacity: 1;
+
+.nav a {
+  color: white;
+  text-decoration: none;
+  margin-left: 18px;
+  font-weight: 600;
+}
+
+.nav a:hover {
   text-decoration: underline;
-  text-underline-offset: 6px;
 }
 </style>
