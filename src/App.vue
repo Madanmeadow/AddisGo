@@ -1,64 +1,135 @@
 <template>
-  <div class="app-shell">
-    <nav class="navbar navbar-expand-lg navbar-dark bg-primary shadow-sm">
-      <div class="container">
-        <RouterLink class="navbar-brand fw-bold" to="/">AddisGo</RouterLink>
+  <div>
+    <!-- NAVBAR -->
+    <header class="navbar">
+      <div class="brand">AddisGo</div>
 
-        <button
-          class="navbar-toggler"
-          type="button"
-          data-bs-toggle="collapse"
-          data-bs-target="#nav"
-        >
-          <span class="navbar-toggler-icon"></span>
-        </button>
+      <nav class="nav-links">
+        <a href="#home" @click.prevent="scrollTo('home')">Home</a>
+        <a href="#services" @click.prevent="scrollTo('services')">Services</a>
+        <a href="#contact" @click.prevent="scrollTo('contact')">Contact</a>
+      </nav>
 
-        <div id="nav" class="collapse navbar-collapse">
-          <ul class="navbar-nav ms-auto align-items-lg-center gap-lg-2">
-            <li class="nav-item"><RouterLink class="nav-link" to="/">Home</RouterLink></li>
-            <li class="nav-item"><RouterLink class="nav-link" to="/services">Services</RouterLink></li>
-            <li class="nav-item"><RouterLink class="nav-link" to="/contact">Contact</RouterLink></li>
-            <li class="nav-item ms-lg-2">
-              <RouterLink class="btn btn-light btn-sm fw-semibold" to="/contact">Get in touch</RouterLink>
-            </li>
-          </ul>
+      <button class="cta" @click="scrollTo('contact')">Get in touch</button>
+    </header>
+
+    <!-- PAGE SECTIONS (IMPORTANT: IDs must match nav links) -->
+    <main>
+      <section id="home" class="section hero">
+        <!-- If you have a hero overlay, it must NOT block clicks -->
+        <div class="hero-overlay"></div>
+
+        <div class="hero-content">
+          <h1>Fast delivery & great pricing</h1>
+          <p>Welcome to AddisGo.</p>
         </div>
-      </div>
-    </nav>
+      </section>
 
-    <main class="flex-grow-1">
-      <RouterView />
+      <section id="services" class="section">
+        <h2>Services</h2>
+        <p>Your services cards go here...</p>
+      </section>
+
+      <section id="contact" class="section">
+        <h2>Contact</h2>
+        <p>Contact form goes here...</p>
+      </section>
     </main>
-
-    <!-- Global CTA + Footer (so it doesn't double on Services) -->
-    <section class="cta-strip border-top">
-      <div class="container py-4">
-        <div class="d-flex flex-column flex-md-row align-items-md-center justify-content-between gap-3">
-          <div>
-            <h5 class="mb-1">Ready to start? Let’s talk.</h5>
-            <div class="text-muted">Tell me what you need — I’ll reply with a clear plan and next steps.</div>
-          </div>
-          <RouterLink to="/contact" class="btn btn-primary">Get in touch</RouterLink>
-        </div>
-      </div>
-    </section>
-
-    <footer class="footer bg-light border-top">
-      <div class="container py-3 d-flex flex-column flex-md-row justify-content-between gap-2">
-        <div class="text-muted small">© 2025 AddisGo</div>
-        <div class="text-muted small">Built with Vue + Azure Static Web Apps</div>
-      </div>
-    </footer>
   </div>
 </template>
 
-<style scoped>
-.app-shell {
-  min-height: 100vh;
-  display: flex;
-  flex-direction: column;
+<script setup>
+const NAV_HEIGHT = 72
+
+function scrollTo(id) {
+  const el = document.getElementById(id)
+  if (!el) return
+
+  const y = el.getBoundingClientRect().top + window.scrollY - NAV_HEIGHT
+  window.scrollTo({ top: y, behavior: "smooth" })
 }
-.cta-strip {
-  background: #f8f9fa;
+</script>
+
+<style>
+/* Global smooth scroll (works for normal anchor too) */
+html {
+  scroll-behavior: smooth;
+}
+
+/* NAVBAR MUST BE ABOVE EVERYTHING */
+.navbar {
+  position: sticky;   /* use fixed if you want it always pinned */
+  top: 0;
+  z-index: 9999;      /* key fix */
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 16px;
+  padding: 14px 18px;
+  background: #1f4ed8;
+  color: white;
+}
+
+/* Make sure navbar is clickable even if something weird happens */
+.navbar, .navbar * {
+  pointer-events: auto;
+}
+
+.brand {
+  font-weight: 700;
+}
+
+.nav-links {
+  display: flex;
+  gap: 18px;
+}
+
+.nav-links a {
+  color: white;
+  text-decoration: none;
+  font-weight: 600;
+}
+
+.nav-links a:hover {
+  text-decoration: underline;
+}
+
+.cta {
+  border: 0;
+  background: white;
+  color: #1f4ed8;
+  padding: 8px 12px;
+  border-radius: 8px;
+  font-weight: 700;
+  cursor: pointer;
+}
+
+/* Sections */
+.section {
+  min-height: 70vh;
+  padding: 70px 18px;
+  background: #f6f7fb;
+  border-bottom: 1px solid #e7e7e7;
+}
+
+/* HERO with overlay */
+.hero {
+  position: relative;
+  background: linear-gradient(180deg, #1f4ed8, #153aa3);
+  color: white;
+}
+
+/* IMPORTANT FIX: overlay should NOT block clicking */
+.hero-overlay {
+  position: absolute;
+  inset: 0;
+  background: rgba(0,0,0,0.15);
+  pointer-events: none; /* key fix */
+}
+
+.hero-content {
+  position: relative;
+  z-index: 1; /* above overlay */
+  max-width: 900px;
 }
 </style>
