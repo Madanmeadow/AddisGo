@@ -1,72 +1,8 @@
-:root{
-  --page-bg: #f6f7fb;
-  --card-border: rgba(0,0,0,0.06);
+html {
+  scroll-behavior: smooth;
 }
 
-body{
-  background: var(--page-bg);
-}
-
-.section-soft{
-  background: #ffffff;
-  border-top: 1px solid var(--card-border);
-  border-bottom: 1px solid var(--card-border);
-}
-
-.hero{
-  background: radial-gradient(1200px 500px at 10% 10%, rgba(87,210,255,0.25), transparent),
-              radial-gradient(900px 450px at 90% 20%, rgba(255,107,214,0.20), transparent),
-              linear-gradient(180deg, #0b1220 0%, #111827 100%);
-  color: #fff;
-  min-height: 420px; /* slightly taller */
-  display: flex;
-  align-items: center;
-}
-
-.hero-title{
-  font-weight: 800;
-  letter-spacing: -0.6px;
-  line-height: 1.1;
-}
-
-.hero-title .brand{
-  background: linear-gradient(90deg, #57d2ff, #8a7dff, #ff6bd6);
-  -webkit-background-clip: text;
-  background-clip: text;
-  color: transparent;
-}
-
-.hero-subtitle{
-  opacity: 0.9;
-  max-width: 52ch;
-}
-
-.fade-up{
-  animation: fadeUp 700ms ease-out both;
-}
-
-.delay-1{ animation-delay: 120ms; }
-.delay-2{ animation-delay: 240ms; }
-.delay-3{ animation-delay: 360ms; }
-
-@keyframes fadeUp{
-  from { opacity: 0; transform: translateY(12px); }
-  to   { opacity: 1; transform: translateY(0); }
-}
-
-.card-hover{
-  transition: transform 160ms ease, box-shadow 160ms ease;
-  border: 1px solid var(--card-border);
-}
-.card-hover:hover{
-  transform: translateY(-3px);
-  box-shadow: 0 10px 30px rgba(0,0,0,0.10);
-}
-
-@media (max-width: 576px){
-  .hero{
-    min-height: 520px;
-    padding-top: 28px;
-    padding-bottom: 28px;
-  }
+/* prevents “sticky header” from covering section titles */
+#home, #services, #contact {
+  scroll-margin-top: 80px;
 }
