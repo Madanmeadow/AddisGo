@@ -1,28 +1,22 @@
-import { createRouter, createWebHistory } from "vue-router"
+import { createRouter, createWebHashHistory } from "vue-router"
 
 import Home from "../pages/Home.vue"
-import About from "../pages/About.vue"
 import Services from "../pages/Services.vue"
-import Contact from "../pages/contact.vue"
-
-// Optional pages you have:
+import Contact from "../pages/Contact.vue"
+import About from "../pages/About.vue"
 import Drivers from "../pages/Drivers.vue"
 import Hotels from "../pages/Hotels.vue"
 
-const routes = [
-  { path: "/", name: "Home", component: Home },
-  { path: "/about", name: "About", component: About },
-  { path: "/services", name: "Services", component: Services },
-  { path: "/contact", name: "Contact", component: Contact },
-
-  // Optional
-  { path: "/drivers", name: "Drivers", component: Drivers },
-  { path: "/hotels", name: "Hotels", component: Hotels },
-]
-
 const router = createRouter({
-  history: createWebHistory(),
-  routes,
+  history: createWebHashHistory(), // best for static hosting
+  routes: [
+    { path: "/", component: Home },
+    { path: "/services", component: Services },
+    { path: "/contact", component: Contact },
+    { path: "/about", component: About },
+    { path: "/drivers", component: Drivers },
+    { path: "/hotels", component: Hotels },
+  ],
   scrollBehavior() {
     return { top: 0 }
   },

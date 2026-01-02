@@ -5,20 +5,15 @@ const name = ref("")
 const email = ref("")
 const message = ref("")
 
-const loading = ref(false)
-const status = ref("")        // success message
-const error = ref("")         // error message
+const statusMsg = ref("")
+const isError = ref(false)
+const isSending = ref(false)
 
-async function submitForm() {
-  status.value = ""
-  error.value = ""
+async function sendMessage() {
+  statusMsg.value = ""
+  isError.value = false
+  isSending.value = true
 
-  if (!name.value.trim() || !email.value.trim() || !message.value.trim()) {
-    error.value = "Please fill out all fields."
-    return
-  }
-
-  loading.value = true
   try {
     const res = await fetch("/api/contact", {
       method: "POST",
@@ -26,79 +21,85 @@ async function submitForm() {
       body: JSON.stringify({
         name: name.value,
         email: email.value,
-        message: message.value
-      })
+        message: message.value,
+      }),
     })
 
     const data = await res.json().catch(() => ({}))
 
     if (!res.ok) {
-      error.value = data?.message || "Network error sending message."
-      return
+      throw new Error(data?.message || "Network error sending message.")
     }
 
-    status.value = "✅ Message sent successfully!"
+    statusMsg.value = "Message sent successfully ✅"
     name.value = ""
     email.value = ""
     message.value = ""
-  } catch (e) {
-    error.value = "Network error sending message."
+  } catch (err) {
+    isError.value = true
+    statusMsg.value = err.message || "Network error sending message."
   } finally {
-    loading.value = false
+    isSending.value = false
   }
 }
 </script>
 
 <template>
-  <form class="card" @submit.prevent="submitForm">
-    <label>Name</label>
-    <input v-model="name" type="text" placeholder="Your name" />
+  <form class="card" @submit.prevent="sendMessage">
+    <label>
+      Name
+      <input v-model="name" required />
+    </label>
 
-    <label>Email</label>
-    <input v-model="email" type="email" placeholder="you@email.com" />
+    <label>
+      Email
+      <input v-model="email" type="email" required />
+    </label>
 
-    <label>Message</label>
-    <textarea v-model="message" rows="5" placeholder="Write your message..."></textarea>
+    <label>
+      Message
+      <textarea v-model="message" rows="5" required />
+    </label>
 
-    <button :disabled="loading" type="submit">
-      {{ loading ? "Sending..." : "Send Message" }}
+    <button type="submit" :disabled="isSending">
+      {{ isSending ? "Sending..." : "Send Message" }}
     </button>
 
-    <p v-if="status" class="ok">{{ status }}</p>
-    <p v-if="error" class="bad">❌ {{ error }}</p>
+    <p v-if="statusMsg" :class="isError ? 'err' : 'ok'">{{ statusMsg }}</p>
   </form>
 </template>
 
 <style scoped>
 .card {
-  margin-top: 18px;
-  border: 1px solid #e3e5ee;
-  padding: 18px;
+  border: 1px solid #ddd;
   border-radius: 10px;
-  background: #fff;
+  padding: 18px;
+  background: white;
+  display: grid;
+  gap: 12px;
 }
 
 label {
-  display: block;
-  font-weight: 700;
-  margin: 12px 0 6px;
+  display: grid;
+  gap: 6px;
+  font-weight: 600;
 }
 
-input, textarea {
-  width: 100%;
+input,
+textarea {
   padding: 10px;
-  border: 1px solid #cfd5e6;
+  border: 1px solid #ccc;
   border-radius: 8px;
-  font-size: 14px;
+  font: inherit;
 }
 
 button {
-  margin-top: 14px;
-  background: #1f5bd8;
-  color: white;
-  border: none;
+  width: fit-content;
   padding: 10px 14px;
+  border: none;
   border-radius: 8px;
+  background: #0a56c2;
+  color: white;
   font-weight: 700;
   cursor: pointer;
 }
@@ -108,6 +109,14 @@ button:disabled {
   cursor: not-allowed;
 }
 
-.ok { margin-top: 12px; color: #0b7a2c; font-weight: 700; }
-.bad { margin-top: 12px; color: #b00020; font-weight: 700; }
+.ok {
+  color: #0a7a2f;
+  margin: 6px 0 0;
+}
+
+.err {
+  color: #b00020;
+  margin: 6px 0 0;
+}
 </style>
+

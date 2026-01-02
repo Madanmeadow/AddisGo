@@ -11,8 +11,8 @@ import ContactForm from "../components/ContactForm.vue"
 
 <style scoped>
 .container {
-  max-width: 600px;
-  margin: auto;
+  max-width: 800px;
+  margin: 0 auto;
   padding: 40px 20px;
 }
 </style>

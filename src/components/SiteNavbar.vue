@@ -1,35 +1,53 @@
 <template>
-  <header class="navbar">
+  <header class="topbar">
     <div class="brand">AddisGo</div>
 
-    <nav>
-      <a href="#home">Home</a>
-      <a href="#services">Services</a>
-      <a href="#contact">Contact</a>
+    <nav class="nav">
+      <RouterLink class="link" to="/">Home</RouterLink>
+      <RouterLink class="link" to="/services">Services</RouterLink>
+      <RouterLink class="link" to="/contact">Contact</RouterLink>
     </nav>
   </header>
 </template>
 
+<script setup>
+import { RouterLink } from "vue-router"
+</script>
+
 <style scoped>
-.navbar {
-  position: sticky;
-  top: 0;
-  background: #1e5bff;
+.topbar {
+  background: #0a56c2;
   color: white;
-  display: flex;
-  justify-content: space-between;
   padding: 16px 24px;
-  z-index: 100;
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
 }
 
-.navbar a {
+.brand {
+  font-weight: 700;
+  letter-spacing: 0.3px;
+}
+
+.nav {
+  display: flex;
+  gap: 18px;
+}
+
+.link {
   color: white;
-  margin-left: 20px;
   text-decoration: none;
-  font-weight: 500;
+  font-weight: 600;
+  opacity: 0.9;
 }
 
-.navbar a:hover {
+.link:hover {
+  opacity: 1;
   text-decoration: underline;
+}
+
+.router-link-active {
+  text-decoration: underline;
+  opacity: 1;
 }
 </style>
