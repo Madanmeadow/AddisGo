@@ -1,13 +1,15 @@
 <template>
-  <header class="topbar">
-    <div class="brand">AddisGo</div>
+  <nav class="navbar">
+    <div class="container">
+      <h1 class="logo">AddisGo</h1>
 
-    <nav class="nav">
-      <RouterLink class="link" to="/">Home</RouterLink>
-      <RouterLink class="link" to="/services">Services</RouterLink>
-      <RouterLink class="link" to="/contact">Contact</RouterLink>
-    </nav>
-  </header>
+      <ul class="nav-links">
+        <li><RouterLink to="/">Home</RouterLink></li>
+        <li><RouterLink to="/services">Services</RouterLink></li>
+        <li><RouterLink to="/contact">Contact</RouterLink></li>
+      </ul>
+    </div>
+  </nav>
 </template>
 
 <script setup>
@@ -15,39 +17,39 @@ import { RouterLink } from "vue-router"
 </script>
 
 <style scoped>
-.topbar {
-  background: #0a56c2;
-  color: white;
-  padding: 16px 24px;
+.navbar {
+  background: #1e5bd7;
+  padding: 15px 0;
+}
+
+.container {
+  max-width: 1100px;
+  margin: 0 auto;
+  padding: 0 20px;
+
   display: flex;
-  align-items: center;
   justify-content: space-between;
+  align-items: center;
 }
 
-.brand {
-  font-weight: 700;
-  letter-spacing: 0.3px;
+.logo {
+  color: white;
+  font-size: 22px;
 }
 
-.nav {
+.nav-links {
   display: flex;
-  gap: 18px;
+  gap: 20px;
+  list-style: none;
 }
 
-.link {
+.nav-links a {
   color: white;
   text-decoration: none;
-  font-weight: 600;
-  opacity: 0.9;
+  font-weight: 500;
 }
 
-.link:hover {
-  opacity: 1;
+.nav-links a.router-link-active {
   text-decoration: underline;
-}
-
-.router-link-active {
-  text-decoration: underline;
-  opacity: 1;
 }
 </style>

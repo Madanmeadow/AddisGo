@@ -1,19 +1,14 @@
 <template>
   <footer class="footer">
-    <div class="container">
-      © {{ new Date().getFullYear() }} AddisGo
-    </div>
+    © 2026 AddisGo
   </footer>
 </template>
 
 <style scoped>
 .footer {
-  padding: 24px 20px;
-  background: #0f2f7a;
+  background: #1e5bd7;
   color: white;
-}
-.container {
-  max-width: 900px;
-  margin: 0 auto;
+  text-align: center;
+  padding: 15px 0;
 }
 </style>

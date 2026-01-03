@@ -6,10 +6,19 @@ yarn-debug.log*
 yarn-error.log*
 pnpm-debug.log*
 lerna-debug.log*
+
+# Environment
 .env
+.env.*
+
+# Dependencies
 node_modules
+
+# Build output
 dist
 dist-ssr
+
+# Local
 *.local
 
 # Editor directories and files
@@ -20,5 +29,3 @@ dist-ssr
 *.suo
 *.ntvs*
 *.njsproj
-*.sln
-*.sw?

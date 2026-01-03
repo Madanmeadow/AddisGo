@@ -1,21 +1,19 @@
 <template>
-  <section id="services" class="section">
-    <div class="container">
-      <h2>Services</h2>
-      <p>Your services cards go here...</p>
-    </div>
-  </section>
+  <div class="page">
+    <h2>Services</h2>
+    <p>Your services cards go here...</p>
+  </div>
 </template>
 
 <style scoped>
-.section {
-  padding: 60px 20px;
-  background: #f6f7fb;
-}
-.container {
+.page {
   max-width: 900px;
   margin: 0 auto;
+  background: white;
+  padding: 40px;
+  border-radius: 8px;
 }
 </style>
+
 
 
