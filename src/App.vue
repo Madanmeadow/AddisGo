@@ -1,16 +1,15 @@
 <template>
-  <div class="layout">
-    <header class="topbar">
-      <div class="brand">AddisGo</div>
-
-      <nav class="nav">
-        <RouterLink class="nav-link" to="/">Home</RouterLink>
-        <RouterLink class="nav-link" to="/services">Services</RouterLink>
-        <RouterLink class="nav-link" to="/contact">Contact</RouterLink>
+  <div id="app">
+    <header class="navbar">
+      <h1 class="logo">AddisGo</h1>
+      <nav>
+        <RouterLink to="/">Home</RouterLink>
+        <RouterLink to="/services">Services</RouterLink>
+        <RouterLink to="/contact">Contact</RouterLink>
       </nav>
     </header>
 
-    <main class="main">
+    <main class="page">
       <RouterView />
     </main>
 
@@ -19,7 +18,3 @@
     </footer>
   </div>
 </template>
-
-<script setup>
-import { RouterLink, RouterView } from "vue-router"
-</script>
