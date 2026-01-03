@@ -1,93 +1,64 @@
-* {
-  box-sizing: border-box;
-  margin: 0;
-  padding: 0;
-}
-
+/* Basic reset */
+* { box-sizing: border-box; }
+html, body { height: 100%; }
 body {
-  font-family: system-ui, -apple-system, BlinkMacSystemFont, sans-serif;
-  background: #f7f9fc;
-  color: #222;
+  margin: 0;
+  font-family: system-ui, -apple-system, Segoe UI, Roboto, Arial, sans-serif;
+  background: #f5f7fb;
+  color: #111;
 }
 
-/* NAVBAR */
-.navbar {
+/* Layout */
+.layout { min-height: 100vh; display: flex; flex-direction: column; }
+
+.topbar {
+  background: #1f5bd8;
+  color: #fff;
+  padding: 18px 22px;
   display: flex;
-  justify-content: space-between;
   align-items: center;
-  background: #1e5bd8;
-  padding: 1rem;
+  justify-content: space-between;
+  gap: 16px;
 }
 
-.navbar .logo {
-  color: white;
-  font-size: 1.4rem;
-  font-weight: bold;
+.brand {
+  font-size: 28px;
+  font-weight: 700;
+  letter-spacing: 0.3px;
 }
 
-.navbar nav {
-  display: flex;
-  gap: 1rem;
-}
+.nav { display: flex; gap: 18px; }
 
-.navbar a {
-  color: white;
+.nav-link {
+  color: #fff;
   text-decoration: none;
-  font-weight: 500;
+  font-size: 18px;
+  padding: 6px 10px;
+  border-radius: 8px;
 }
 
-.navbar a.router-link-active {
+.nav-link.router-link-active {
   text-decoration: underline;
+  text-underline-offset: 4px;
 }
 
-/* PAGE LAYOUT */
-.page {
-  max-width: 900px;
-  margin: 2rem auto;
-  padding: 1rem;
-}
-
-/* FOOTER */
-.footer {
-  margin-top: 3rem;
-  padding: 1rem;
-  background: #1e5bd8;
-  color: white;
-  text-align: center;
-}
-
-/* CONTACT FORM */
-form {
-  display: flex;
-  flex-direction: column;
-  gap: 1rem;
-}
-
-input,
-textarea {
-  padding: 0.75rem;
+.main {
+  flex: 1;
   width: 100%;
-  font-size: 1rem;
+  max-width: 980px;
+  margin: 30px auto;
+  padding: 0 16px;
 }
 
-button {
-  padding: 0.75rem;
-  background: #1e5bd8;
-  color: white;
-  border: none;
-  border-radius: 6px;
-  font-size: 1rem;
+.footer {
+  background: #1f5bd8;
+  color: #fff;
+  text-align: center;
+  padding: 16px;
 }
 
-/* MOBILE FIX */
+/* Mobile */
 @media (max-width: 600px) {
-  .navbar {
-    flex-direction: column;
-    gap: 0.5rem;
-  }
-
-  .navbar nav {
-    flex-direction: column;
-    align-items: center;
-  }
+  .topbar { flex-direction: column; align-items: flex-start; }
+  .nav { width: 100%; justify-content: flex-start; flex-wrap: wrap; }
 }

@@ -1,19 +1,25 @@
-<!-- App.vue -->
 <template>
-  <header class="navbar">
-    <div class="logo">AddisGo</div>
-    <nav>
-      <RouterLink to="/">Home</RouterLink>
-      <RouterLink to="/services">Services</RouterLink>
-      <RouterLink to="/contact">Contact</RouterLink>
-    </nav>
-  </header>
+  <div class="layout">
+    <header class="topbar">
+      <div class="brand">AddisGo</div>
 
-  <main class="page">
-    <RouterView />
-  </main>
+      <nav class="nav">
+        <RouterLink class="nav-link" to="/">Home</RouterLink>
+        <RouterLink class="nav-link" to="/services">Services</RouterLink>
+        <RouterLink class="nav-link" to="/contact">Contact</RouterLink>
+      </nav>
+    </header>
 
-  <footer class="footer">
-    © 2026 AddisGo
-  </footer>
+    <main class="main">
+      <RouterView />
+    </main>
+
+    <footer class="footer">
+      © 2026 AddisGo
+    </footer>
+  </div>
 </template>
+
+<script setup>
+import { RouterLink, RouterView } from "vue-router"
+</script>
