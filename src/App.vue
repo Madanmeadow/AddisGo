@@ -1,30 +1,27 @@
 <template>
-  <div id="app">
-    <SiteNavbar />
+  <header class="site-header">
+    <div class="container nav-inner">
+      <RouterLink class="brand" to="/">AddisGo</RouterLink>
 
-    <main class="main">
-      <router-view />
-    </main>
+      <nav class="nav-links">
+        <RouterLink to="/">Home</RouterLink>
+        <RouterLink to="/services">Services</RouterLink>
+        <RouterLink to="/contact">Contact</RouterLink>
+      </nav>
+    </div>
+  </header>
 
-    <SiteFooter />
-  </div>
+  <main class="page">
+    <div class="container">
+      <RouterView />
+    </div>
+  </main>
+
+  <footer class="site-footer">
+    <div class="container">© 2026 AddisGo</div>
+  </footer>
 </template>
 
 <script setup>
-import SiteNavbar from "./components/SiteNavbar.vue"
-import SiteFooter from "./components/SiteFooter.vue"
+import { RouterLink, RouterView } from "vue-router"
 </script>
-
-<style>
-#app {
-  min-height: 100vh;
-  display: flex;
-  flex-direction: column;
-}
-
-.main {
-  flex: 1;
-  padding: 60px 20px;
-  background: #f8f9fb;
-}
-</style>

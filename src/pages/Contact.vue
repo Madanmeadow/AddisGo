@@ -1,50 +1,66 @@
 <template>
-  <div class="page">
-    <h2>Contact</h2>
+  <div class="card">
+    <h1 style="margin-top:0;">Contact</h1>
 
-    <form class="form">
+    <form @submit.prevent="submit">
       <label>Name</label>
-      <input required />
+      <input v-model.trim="name" required />
 
       <label>Email</label>
-      <input type="email" required />
+      <input v-model.trim="email" type="email" required />
 
       <label>Message</label>
-      <textarea required></textarea>
+      <textarea v-model.trim="message" required></textarea>
 
-      <button>Send Message</button>
+      <button class="primary" type="submit" :disabled="loading">
+        {{ loading ? "Sending..." : "Send Message" }}
+      </button>
+
+      <div v-if="success" class="success">Message sent successfully ✅</div>
+      <div v-if="error" style="margin-top:10px; color:#b91c1c; font-weight:700;">
+        {{ error }}
+      </div>
     </form>
   </div>
 </template>
 
-<style scoped>
-.page {
-  max-width: 700px;
-  margin: 0 auto;
-  background: white;
-  padding: 40px;
-  border-radius: 8px;
-}
+<script setup>
+import { ref } from "vue"
 
-.form {
-  display: flex;
-  flex-direction: column;
-  gap: 12px;
-}
+const name = ref("")
+const email = ref("")
+const message = ref("")
+const loading = ref(false)
+const success = ref(false)
+const error = ref("")
 
-input,
-textarea {
-  padding: 10px;
-  border: 1px solid #ccc;
-  border-radius: 4px;
-}
+async function submit() {
+  success.value = false
+  error.value = ""
+  loading.value = true
 
-button {
-  background: #1e5bd7;
-  color: white;
-  padding: 10px;
-  border: none;
-  border-radius: 4px;
-}
-</style>
+  try {
+    // If your API endpoint is different, tell me what it is and I’ll match it.
+    const res = await fetch("/api/contact", {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({
+        name: name.value,
+        email: email.value,
+        message: message.value,
+      }),
+    })
 
+    if (!res.ok) throw new Error("Failed to send message")
+
+    success.value = true
+    name.value = ""
+    email.value = ""
+    message.value = ""
+  } catch (e) {
+    error.value = e?.message || "Something went wrong"
+  } finally {
+    loading.value = false
+  }
+}
+</script>
