@@ -1,66 +1,160 @@
-<script setup>
-import { siteConfig } from "../config/site"
-</script>
-
 <template>
-  <section class="services">
-    <RouterLink
-      v-for="s in siteConfig.services"
-      :key="s.id"
-      to="/contact"
-      class="card"
-    >
-      <div class="icon" aria-hidden="true">{{ s.icon }}</div>
-      <h2>{{ s.title }}</h2>
-      <p>{{ s.description }}</p>
+  <section class="page">
+    <div class="card">
+      <h1>Services</h1>
+      <p class="subtitle">Choose a service — fast, reliable, and handled with care.</p>
 
-      <div class="price">
-        <span class="label">{{ s.priceLabel }}</span>
-        <span class="amount">{{ s.price }}</span>
+      <div class="grid">
+        <!-- Delivery -->
+        <article class="service" @click="goToContact('Delivery')" role="button" tabindex="0">
+          <div class="icon" aria-hidden="true">🚚</div>
+          <h2>Delivery</h2>
+          <p>Fast and reliable delivery to get your items where they need to go.</p>
+
+          <p class="price">
+            Starting at <strong>$19.99</strong>
+          </p>
+
+          <button class="btn" type="button" @click.stop="goToContact('Delivery')">
+            Request Delivery →
+          </button>
+        </article>
+
+        <!-- Pickup -->
+        <article class="service" @click="goToContact('Pickup')" role="button" tabindex="0">
+          <div class="icon" aria-hidden="true">📦</div>
+          <h2>Pickup</h2>
+          <p>We pick up items from homes or stores and bring them to you safely.</p>
+
+          <p class="price">
+            Starting at <strong>$14.99</strong>
+          </p>
+
+          <button class="btn" type="button" @click.stop="goToContact('Pickup')">
+            Request Pickup →
+          </button>
+        </article>
+
+        <!-- Support -->
+        <article class="service" @click="goToContact('Support')" role="button" tabindex="0">
+          <div class="icon" aria-hidden="true">🛟</div>
+          <h2>Support</h2>
+          <p>Quick help, updates, and customer support when you need it.</p>
+
+          <p class="price">
+            Starting at <strong>$9.99</strong>
+          </p>
+
+          <button class="btn" type="button" @click.stop="goToContact('Support')">
+            Contact Support →
+          </button>
+        </article>
       </div>
-
-      <div class="cta">{{ s.cta }} →</div>
-    </RouterLink>
+    </div>
   </section>
 </template>
 
+<script setup>
+import { useRouter } from "vue-router"
+
+const router = useRouter()
+
+function goToContact(serviceName) {
+  // Sends the service name as a query param
+  // Example: /contact?service=Delivery
+  router.push({ path: "/contact", query: { service: serviceName } })
+}
+</script>
+
 <style scoped>
-.services {
-  max-width: 1050px;
-  margin: 44px auto;
-  padding: 0 16px;
-  display: grid;
-  grid-template-columns: repeat(auto-fit, minmax(260px, 1fr));
-  gap: 22px;
+.page {
+  display: flex;
+  justify-content: center;
 }
+
 .card {
-  background: #fff;
+  width: 100%;
+  background: #ffffff;
   border-radius: 14px;
-  padding: 26px 22px;
-  box-shadow: 0 8px 22px rgba(0, 0, 0, 0.08);
-  text-align: center;
-  text-decoration: none;
-  color: inherit;
-  transition: transform 0.2s ease, box-shadow 0.2s ease;
+  padding: 34px;
+  box-shadow: 0 10px 30px rgba(0, 0, 0, 0.06);
+}
+
+h1 {
+  margin: 0 0 10px;
+  font-size: 40px;
+}
+
+.subtitle {
+  margin: 0 0 26px;
+  font-size: 18px;
+  color: #444;
+}
+
+.grid {
+  display: grid;
+  gap: 18px;
+  grid-template-columns: repeat(3, minmax(0, 1fr));
+}
+
+.service {
+  background: #f8fafc;
+  border-radius: 14px;
+  padding: 22px;
   border: 1px solid rgba(0, 0, 0, 0.06);
+  cursor: pointer;
+  transition: transform 150ms ease, box-shadow 150ms ease, background 150ms ease;
 }
-.card:hover {
-  transform: translateY(-6px);
-  box-shadow: 0 14px 30px rgba(0, 0, 0, 0.14);
+
+.service:hover {
+  transform: translateY(-4px);
+  box-shadow: 0 14px 28px rgba(0, 0, 0, 0.08);
+  background: #ffffff;
 }
-.icon { font-size: 46px; margin-bottom: 10px; }
-h2 { margin: 6px 0 10px; font-size: 26px; }
-p { margin: 0 0 18px; font-size: 16px; line-height: 1.6; color: #333; }
+
+.icon {
+  font-size: 44px;
+  margin-bottom: 10px;
+}
+
+.service h2 {
+  margin: 0 0 8px;
+  font-size: 26px;
+}
+
+.service p {
+  margin: 0 0 12px;
+  color: #333;
+  line-height: 1.45;
+}
+
 .price {
-  display: inline-flex;
-  align-items: baseline;
-  gap: 8px;
+  margin: 0 0 14px;
+  color: #222;
+}
+
+.btn {
+  border: none;
+  background: #1f5fe0;
+  color: #fff;
   padding: 10px 14px;
   border-radius: 999px;
-  background: rgba(37, 99, 235, 0.08);
-  margin-bottom: 14px;
+  font-size: 15px;
+  cursor: pointer;
 }
-.label { font-size: 13px; color: #444; }
-.amount { font-size: 20px; font-weight: 800; }
-.cta { font-weight: 700; color: #2563eb; }
+
+.btn:hover {
+  filter: brightness(0.95);
+}
+
+/* Mobile */
+@media (max-width: 900px) {
+  .grid {
+    grid-template-columns: 1fr;
+  }
+
+  h1 {
+    font-size: 34px;
+  }
+}
 </style>
