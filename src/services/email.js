@@ -5,7 +5,7 @@ export async function sendContactEmail({ name, email, message }) {
   const serviceId = import.meta.env.VITE_EMAILJS_SERVICE_ID
   const templateId = import.meta.env.VITE_EMAILJS_TEMPLATE_ID
   const publicKey = import.meta.env.VITE_EMAILJS_PUBLIC_KEY
-  Check:", {serviceId, templateId, publicKey})
+  console.log("Check:", {serviceId, templateId, publicKey})
 
   if (!serviceId || !templateId || !publicKey) {
     throw new Error("Missing EmailJS env vars. Check your .env file.")
