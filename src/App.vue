@@ -1,57 +1,47 @@
 <template>
   <div class="app-shell">
-    <!-- NAVBAR -->
-    <header class="site-header">
-      <div class="nav-wrap">
-        <RouterLink class="brand" to="/">AddisGo</RouterLink>
+    <header class="topbar">
+      <div class="topbar-inner">
+        <RouterLink class="brand" to="/">MeDan</RouterLink>
 
-        <nav class="nav-links" aria-label="Main Navigation">
-          <RouterLink to="/" class="nav-link">Home</RouterLink>
-          <RouterLink to="/services" class="nav-link">Services</RouterLink>
-          <RouterLink to="/contact" class="nav-link">Contact</RouterLink>
+        <nav class="nav">
+          <RouterLink class="nav-link" to="/" exact-active-class="active">Home</RouterLink>
+          <RouterLink class="nav-link" to="/services" exact-active-class="active">Services</RouterLink>
+          <RouterLink class="nav-link" to="/contact" exact-active-class="active">Contact</RouterLink>
         </nav>
       </div>
     </header>
 
-    <!-- PAGE CONTENT -->
-    <main class="site-main">
+    <main class="page">
       <RouterView />
     </main>
 
-    <!-- FOOTER -->
-    <footer class="site-footer">
-      <p>© {{ new Date().getFullYear() }} AddisGo</p>
+    <footer class="footer">
+      <p>© {{ new Date().getFullYear() }} MeDan</p>
     </footer>
   </div>
 </template>
 
 <script setup>
-/*
-  IMPORTANT:
-  - App.vue should ONLY contain shared layout:
-    navbar + RouterView + footer
-  - Do NOT put Home/Services/Contact content here.
-*/
+import { RouterLink, RouterView } from "vue-router"
 </script>
 
-<style>
-/* Global layout */
+<style scoped>
 .app-shell {
   min-height: 100vh;
   display: flex;
   flex-direction: column;
-  background: #f4f6f9;
 }
 
-/* Header / Navbar */
-.site-header {
-  background: #1f5fe0;
+.topbar {
+  background: #1f5fd6;
+  color: white;
 }
 
-.nav-wrap {
+.topbar-inner {
   max-width: 1100px;
   margin: 0 auto;
-  padding: 18px 20px;
+  padding: 16px 18px;
   display: flex;
   align-items: center;
   justify-content: space-between;
@@ -59,65 +49,49 @@
 }
 
 .brand {
-  font-size: 34px;
-  font-weight: 800;
-  color: #fff;
+  color: white;
   text-decoration: none;
-  letter-spacing: 0.3px;
+  font-weight: 800;
+  font-size: 34px;
+  letter-spacing: 0.5px;
 }
 
-/* Nav links */
-.nav-links {
+.nav {
   display: flex;
-  gap: 22px;
+  gap: 18px;
+  align-items: center;
+  flex-wrap: wrap;
 }
 
 .nav-link {
   color: rgba(255, 255, 255, 0.95);
   text-decoration: none;
   font-size: 18px;
-  padding: 6px 2px;
-  border-bottom: 2px solid transparent;
+  padding: 6px 10px;
+  border-radius: 10px;
 }
 
 .nav-link:hover {
-  border-bottom-color: rgba(255, 255, 255, 0.8);
+  background: rgba(255, 255, 255, 0.12);
 }
 
-.router-link-active.nav-link {
-  border-bottom-color: rgba(255, 255, 255, 0.95);
+.active {
+  text-decoration: underline;
+  text-underline-offset: 8px;
 }
 
-/* Main content area */
-.site-main {
+.page {
   flex: 1;
   max-width: 1100px;
-  width: 100%;
   margin: 0 auto;
-  padding: 48px 20px;
+  width: 100%;
+  padding: 28px 18px 60px;
 }
 
-/* Footer */
-.site-footer {
-  background: #1f5fe0;
-  color: #fff;
+.footer {
+  background: #1f5fd6;
+  color: white;
+  padding: 14px 18px;
   text-align: center;
-  padding: 18px 10px;
-}
-
-/* Mobile */
-@media (max-width: 520px) {
-  .nav-wrap {
-    align-items: flex-start;
-    flex-direction: column;
-  }
-
-  .brand {
-    font-size: 30px;
-  }
-
-  .nav-links {
-    gap: 18px;
-  }
 }
 </style>
