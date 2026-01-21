@@ -53,7 +53,7 @@
 
 <script setup>
 import { ref } from 'vue'
-import { sendContactEmail } from '@/services/email'
+import { sendContactEmail } from '../services/email'
 
 const name = ref('')
 const email = ref('')
