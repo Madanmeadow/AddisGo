@@ -1,148 +1,88 @@
 <template>
-  <div class="contact-container">
-    <h1>Contact MeDan</h1>
-    <p class="subtitle">
-      Fast response. Send a message and we’ll get back to you soon.
-    </p>
+  <section class="contact">
+    <h2>Contact MeDan</h2>
 
-    <form @submit.prevent="handleSubmit">
-      <div class="form-row">
+    <form>
+      <!-- Name -->
+      <div>
         <label>Name</label>
         <input
           type="text"
           v-model="name"
-          required
           placeholder="Your name"
+          required
         />
       </div>
 
-      <div class="form-row">
+      <!-- Email -->
+      <div>
         <label>Email</label>
         <input
           type="email"
           v-model="email"
+          placeholder="you@email.com"
           required
-          placeholder="your@email.com"
         />
       </div>
 
-      <div class="form-row">
+      <!-- Message -->
+      <div>
         <label>Message</label>
         <textarea
           v-model="message"
-          required
           placeholder="Write your message..."
+          required
         ></textarea>
       </div>
 
-      <button type="submit" :disabled="loading">
-        {{ loading ? "Sending..." : "Send Message" }}
+      <!-- ✅ BUTTON GOES HERE -->
+      <button
+        type="submit"
+        @click.prevent="handleSubmit"
+        :disabled="loading"
+      >
+        {{ loading ? 'Sending...' : 'Send Message' }}
       </button>
 
-      <p v-if="success" class="success">
-        ✅ Message sent successfully!
-      </p>
-
-      <p v-if="error" class="error">
-        ❌ Something went wrong. Try again.
-      </p>
+      <!-- Success / Error -->
+      <p v-if="success" style="color: green;">{{ success }}</p>
+      <p v-if="error" style="color: red;">{{ error }}</p>
     </form>
-  </div>
+  </section>
 </template>
 
 <script setup>
-import { ref } from "vue";
-import { sendContactEmail } from "../services/email";
+import { ref } from 'vue'
+import { sendContactEmail } from '@/services/email'
 
-const name = ref("");
-const email = ref("");
-const message = ref("");
-
-const loading = ref(false);
-const success = ref(false);
-const error = ref(false);
+const name = ref('')
+const email = ref('')
+const message = ref('')
+const loading = ref(false)
+const error = ref('')
+const success = ref('')
 
 const handleSubmit = async () => {
-  loading.value = true;
-  success.value = false;
-  error.value = false;
+  error.value = ''
+  success.value = ''
+  loading.value = true
 
   try {
-    await sendContactEmail(
-      name.value,
-      email.value,
-      message.value
-    );
+    await sendContactEmail({
+      name: name.value,
+      email: email.value,
+      message: message.value,
+    })
 
-    success.value = true;
-    name.value = "";
-    email.value = "";
-    message.value = "";
+    success.value = 'Message sent successfully!'
+    name.value = ''
+    email.value = ''
+    message.value = ''
   } catch (err) {
-    console.error("EmailJS error:", err);
-    error.value = true;
+    console.error('EmailJS error:', err)
+    error.value = 'Something went wrong. Try again.'
   } finally {
-    loading.value = false;
+    loading.value = false
   }
-};
+}
 </script>
-
-<style scoped>
-.contact-container {
-  max-width: 520px;
-  margin: 0 auto;
-  padding: 2rem;
-}
-
-.subtitle {
-  margin-bottom: 1.5rem;
-  color: #666;
-}
-
-.form-row {
-  display: flex;
-  flex-direction: column;
-  margin-bottom: 1rem;
-}
-
-label {
-  font-weight: 600;
-  margin-bottom: 0.3rem;
-}
-
-input,
-textarea {
-  padding: 0.6rem;
-  font-size: 1rem;
-}
-
-textarea {
-  min-height: 120px;
-}
-
-button {
-  padding: 0.7rem;
-  font-size: 1rem;
-  background: #2563eb;
-  color: white;
-  border: none;
-  cursor: pointer;
-}
-
-button:disabled {
-  opacity: 0.6;
-  cursor: not-allowed;
-}
-
-.success {
-  margin-top: 1rem;
-  color: green;
-}
-
-.error {
-  margin-top: 1rem;
-  color: red;
-}
-</style>
-
-
