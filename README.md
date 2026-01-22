@@ -6,3 +6,4 @@ Learn more about IDE Support for Vue in the [Vue Docs Scaling up Guide](https://
 //redeploy trigger
 #redeploy
 redeploy
+redeploy
