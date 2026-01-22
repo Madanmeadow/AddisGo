@@ -1,6 +1,6 @@
 import emailjs from '@emailjs/browser';
 
-export function sendContactEmail(formData) {
+export function sendContactEmail({ name, email, message}) {
   return emailjs.send(
     'service_wn78sgc',        // ✅ your Service ID
     'template_gxz5kzl',       // ✅ your Template ID
