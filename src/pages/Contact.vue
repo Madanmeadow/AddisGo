@@ -1,48 +1,52 @@
-<script setup>
-import { ref } from 'vue'
-import { sendContactEmail } from '../services/email'
-
-const name = ref('')
-const email = ref('')
-const message = ref('')
-const error = ref('')
-const success = ref(false)
-
-const handleSubmit = async () => {
-  error.value = ''
-  success.value = false
-
-  try {
-    await sendContactEmail({
-      name: name.value,
-      email: email.value,
-      message: message.value,
-    })
-
-    success.value = true
-    name.value = ''
-    email.value = ''
-    message.value = ''
-  } catch (err) {
-    console.error('EmailJS error:', err)
-    error.value = 'Something went wrong. Try again.'
-  }
-}
-</script>
-
 <template>
-  <div class="contact">
+  <div>
     <h2>Contact MeDan</h2>
 
-    <form @submit.prevent="handleSubmit">
-      <input v-model="name" placeholder="Name" required />
-      <input v-model="email" type="email" placeholder="Email" required />
-      <textarea v-model="message" placeholder="Message" required />
+    <input v-model="name" placeholder="Your name" />
+    <input v-model="email" placeholder="Your email" />
+    <textarea v-model="message" placeholder="Your message"></textarea>
 
-      <button type="submit">Send Message</button>
-    </form>
+    <button @click.prevent="handleSubmit">Send Message</button>
 
-    <p v-if="error" class="error">{{ error }}</p>
-    <p v-if="success" class="success">Message sent successfully!</p>
+    <p v-if="success" style="color: green;">Message sent successfully!</p>
+    <p v-if="error" style="color: red;">Something went wrong. Try again.</p>
   </div>
 </template>
+
+<script>
+import { sendContactEmail } from '@/services/email';
+
+export default {
+  data() {
+    return {
+      name: '',
+      email: '',
+      message: '',
+      success: false,
+      error: false,
+    };
+  },
+  methods: {
+    async handleSubmit() {
+      this.success = false;
+      this.error = false;
+
+      try {
+        await sendContactEmail({
+          name: this.name,
+          email: this.email,
+          message: this.message,
+        });
+
+        this.success = true;
+        this.name = '';
+        this.email = '';
+        this.message = '';
+      } catch (err) {
+        console.error(err);
+        this.error = true;
+      }
+    },
+  },
+};
+</script>
