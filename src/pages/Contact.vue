@@ -14,7 +14,7 @@
 </template>
 
 <script>
-import { sendContactEmail } from '@/services/email';
+import { sendContactEmail } from '../services/email';
 
 export default {
   data() {
