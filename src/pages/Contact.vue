@@ -1,52 +1,90 @@
+<script setup>
+import { ref } from 'vue'
+import emailjs from '@emailjs/browser'
+
+const name = ref('')
+const email = ref('')
+const message = ref('')
+const status = ref('')
+const loading = ref(false)
+
+// IMPORTANT: initialize EmailJS ONCE
+emailjs.init('tDY5BR8IN9QpXqeBM') // your PUBLIC KEY
+
+const handleSubmit = async () => {
+  status.value = ''
+  loading.value = true
+
+  try {
+    await emailjs.send(
+      'service_wn78sgc',      // ✅ service ID
+      'template_gxz5kzl',     // ✅ template ID
+      {
+        name: name.value,
+        email: email.value,
+        message: message.value,
+      }
+    )
+
+    status.value = '✅ Message sent successfully!'
+    name.value = ''
+    email.value = ''
+    message.value = ''
+  } catch (error) {
+    console.error('EmailJS error:', error)
+    status.value = '❌ Failed to send message. Check console.'
+  } finally {
+    loading.value = false
+  }
+}
+</script>
+
 <template>
-  <div>
+  <section class="contact">
     <h2>Contact MeDan</h2>
 
-    <input v-model="name" placeholder="Your name" />
-    <input v-model="email" placeholder="Your email" />
-    <textarea v-model="message" placeholder="Your message"></textarea>
+    <form @submit.prevent="handleSubmit">
+      <input
+        v-model="name"
+        type="text"
+        placeholder="Your name"
+        required
+      />
 
-    <button @click.prevent="handleSubmit">Send Message</button>
+      <input
+        v-model="email"
+        type="email"
+        placeholder="Your email"
+        required
+      />
 
-    <p v-if="success" style="color: green;">Message sent successfully!</p>
-    <p v-if="error" style="color: red;">Something went wrong. Try again.</p>
-  </div>
+      <textarea
+        v-model="message"
+        placeholder="Your message"
+        required
+      ></textarea>
+
+      <button type="submit" :disabled="loading">
+        {{ loading ? 'Sending…' : 'Send Message' }}
+      </button>
+    </form>
+
+    <p v-if="status">{{ status }}</p>
+  </section>
 </template>
 
-<script>
-import { sendContactEmail } from '../services/email';
-
-export default {
-  data() {
-    return {
-      name: '',
-      email: '',
-      message: '',
-      success: false,
-      error: false,
-    };
-  },
-  methods: {
-    async handleSubmit() {
-      this.success = false;
-      this.error = false;
-
-      try {
-        await sendContactEmail({
-          name: this.name,
-          email: this.email,
-          message: this.message,
-        });
-
-        this.success = true;
-        this.name = '';
-        this.email = '';
-        this.message = '';
-      } catch (err) {
-        console.error(err);
-        this.error = true;
-      }
-    },
-  },
-};
-</script>
+<style scoped>
+.contact {
+  max-width: 500px;
+  margin: 2rem auto;
+}
+input,
+textarea {
+  width: 100%;
+  margin-bottom: 1rem;
+  padding: 0.6rem;
+}
+button {
+  padding: 0.6rem 1.2rem;
+}
+</style>
