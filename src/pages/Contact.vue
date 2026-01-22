@@ -1,49 +1,8 @@
-<script setup>
-import { ref } from 'vue'
-import emailjs from '@emailjs/browser'
-
-const name = ref('')
-const email = ref('')
-const message = ref('')
-const status = ref('')
-const loading = ref(false)
-
-// IMPORTANT: initialize EmailJS ONCE
-emailjs.init('tDY5BR8IN9QpXqeBM') // your PUBLIC KEY
-
-const handleSubmit = async () => {
-  status.value = ''
-  loading.value = true
-
-  try {
-    await emailjs.send(
-      'service_wn78sgc',      // ✅ service ID
-      'template_gxz5kzl',     // ✅ template ID
-      {
-        name: name.value,
-        email: email.value,
-        message: message.value,
-      }
-    )
-
-    status.value = '✅ Message sent successfully!'
-    name.value = ''
-    email.value = ''
-    message.value = ''
-  } catch (error) {
-    console.error('EmailJS error:', error)
-    status.value = '❌ Failed to send message. Check console.'
-  } finally {
-    loading.value = false
-  }
-}
-</script>
-
 <template>
   <section class="contact">
     <h2>Contact MeDan</h2>
 
-    <form @submit.prevent="handleSubmit">
+    <form @submit.prevent="sendMessage">
       <input
         v-model="name"
         type="text"
@@ -65,26 +24,78 @@ const handleSubmit = async () => {
       ></textarea>
 
       <button type="submit" :disabled="loading">
-        {{ loading ? 'Sending…' : 'Send Message' }}
+        {{ loading ? 'Sending...' : 'Send Message' }}
       </button>
     </form>
 
-    <p v-if="status">{{ status }}</p>
+    <p v-if="success" class="success">✅ Message sent successfully!</p>
+    <p v-if="error" class="error">❌ Failed to send message. Check console.</p>
   </section>
 </template>
+
+<script setup>
+import { ref } from 'vue'
+import emailjs from '@emailjs/browser'
+
+const name = ref('')
+const email = ref('')
+const message = ref('')
+const loading = ref(false)
+const success = ref(false)
+const error = ref(false)
+
+const sendMessage = async () => {
+  loading.value = true
+  success.value = false
+  error.value = false
+
+  try {
+    await emailjs.send(
+      'service_wn78sgc',          // ✅ Service ID
+      'template_gxz5kzl',         // ✅ Template ID
+      {
+        from_name: name.value,   // MUST match template
+        reply_to: email.value,   // MUST match template
+        message: message.value   // MUST match template
+      },
+      'tDY5BR8IN9QpXqeBM'          // ✅ Public key
+    )
+
+    success.value = true
+    name.value = ''
+    email.value = ''
+    message.value = ''
+  } catch (err) {
+    console.error('EmailJS error:', err)
+    error.value = true
+  } finally {
+    loading.value = false
+  }
+}
+</script>
 
 <style scoped>
 .contact {
   max-width: 500px;
-  margin: 2rem auto;
+  margin: auto;
 }
+
 input,
 textarea {
   width: 100%;
-  margin-bottom: 1rem;
-  padding: 0.6rem;
+  margin-bottom: 10px;
+  padding: 10px;
 }
+
 button {
-  padding: 0.6rem 1.2rem;
+  padding: 10px 20px;
+}
+
+.success {
+  color: green;
+}
+
+.error {
+  color: red;
 }
 </style>
