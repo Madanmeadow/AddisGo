@@ -1,14 +1,14 @@
-import emailjs from '@emailjs/browser'
+import emailjs from '@emailjs/browser';
 
-export async function sendContactEmail({ name, email, message }) {
+export function sendContactEmail(formData) {
   return emailjs.send(
-    import.meta.env.VITE_EMAILJS_SERVICE_ID,
-    import.meta.env.VITE_EMAILJS_TEMPLATE_ID,
+    'service_wn78sgc',        // your service ID
+    'template_gxz5kzl',       // your template ID
     {
-      from_name: name,
-      reply_to: email,
-      message: message,
+      from_name: formData.name,
+      reply_to: formData.email,
+      message: formData.message,
     },
-    import.meta.env.VITE_EMAILJS_PUBLIC_KEY
-  )
+    'tDY5BR8lN9QpXqeBM'     // 👈 THIS MUST MATCH DASHBOARD
+  );
 }
