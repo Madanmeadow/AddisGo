@@ -1,37 +1,33 @@
-import { createRouter, createWebHistory } from 'vue-router'
-import Login from '../app/Login.vue'
-import Register from '../app/Register.vue'
-import Feed from '../app/Feed.vue'
-import { supabase } from '../lib/supabase'
+import { createRouter, createWebHistory } from "vue-router"
+import Home from "../pages/Home.vue"
+import About from "../pages/About.vue"
+import Contact from "../pages/Contact.vue"
+// import Login from "../pages/Login.vue" // coming next
 
 const routes = [
-  { path: '/', redirect: '/app' },
+    { path: "/", component: Home },
+    { path: "/about", component: About },
+    { path: "/contact", component: Contact },
 
-  { path: '/login', component: Login },
-  { path: '/register', component: Register },
-
-  {
-    path: '/app',
-    component: Feed,
-    meta: { requiresAuth: true }
-  }
+    // STEP 1D – Login Page (future)
+    // { path: "/login", component: Login },
 ]
 
 const router = createRouter({
-  history: createWebHistory(),
-  routes
+    history: createWebHistory(),
+    routes,
 })
 
-router.beforeEach(async (to, _, next) => {
-  const { data } = await supabase.auth.getSession()
-  const user = data.session?.user
+// Auth guard (future – Supabase)
+router.beforeEach(async (to, from, next) => {
+  const user = null // placeholder for auth user
 
   if (to.meta.requiresAuth && !user) {
-    next('/login')
-  } else {
-    next()
-  }
+next("/login")
+} else {
+   next()
+}
 })
 
 export default router
-🚪 STEP 1D — Login Page
+
