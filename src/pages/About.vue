@@ -1,15 +1,9 @@
 <template>
-  <div class="about-page">
-    <h2>About MeDan</h2>
-
+  <div class="page">
+    <h1>About MeDan</h1>
     <p>
-      MeDan is a modern digital platform focused on transportation,
-      services, and technology solutions.
-    </p>
-
-    <p>
-      We help connect people with reliable services while building
-      scalable digital products.
+      MeDan is a modern platform built to connect services, drivers,
+      hotels, and customers with simplicity and speed.
     </p>
   </div>
 </template>
@@ -18,9 +12,8 @@
 </script>
 
 <style scoped>
-.about-page {
-  max-width: 800px;
+.page {
+  max-width: 700px;
   margin: 40px auto;
-  text-align: center;
 }
 </style>

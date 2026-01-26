@@ -1,6 +1,6 @@
 <template>
-  <div class="contact">
-    <h2>Contact MeDan</h2>
+  <div class="page">
+    <h1>Contact MeDan</h1>
 
     <form @submit.prevent="handleSubmit">
       <input
@@ -28,18 +28,24 @@
       </button>
     </form>
 
-    <p v-if="success" class="success">✅ Message sent successfully!</p>
-    <p v-if="error" class="error">❌ Failed to send message. Check console.</p>
+    <p v-if="success" class="success">
+      ✅ Message sent successfully!
+    </p>
+
+    <p v-if="error" class="error">
+      ❌ Failed to send message. Check console.
+    </p>
   </div>
 </template>
 
 <script setup>
 import { ref } from 'vue';
-import { sendContactEmail } from '../services/email';
+import { sendContactEmail } from '@/services/email';
 
 const name = ref('');
 const email = ref('');
 const message = ref('');
+
 const loading = ref(false);
 const success = ref(false);
 const error = ref(false);
@@ -57,6 +63,8 @@ const handleSubmit = async () => {
     });
 
     success.value = true;
+
+    // Clear form
     name.value = '';
     email.value = '';
     message.value = '';
@@ -70,19 +78,29 @@ const handleSubmit = async () => {
 </script>
 
 <style scoped>
-.contact {
+.page {
   max-width: 500px;
-  margin: auto;
+  margin: 40px auto;
 }
+
 input,
 textarea {
   width: 100%;
-  margin-bottom: 10px;
+  margin-bottom: 12px;
+  padding: 10px;
 }
+
+button {
+  padding: 10px 16px;
+}
+
 .success {
   color: green;
+  margin-top: 10px;
 }
+
 .error {
   color: red;
+  margin-top: 10px;
 }
 </style>
