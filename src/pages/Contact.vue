@@ -1,106 +1,80 @@
 <template>
-  <div class="page">
+  <div class="contact">
     <h1>Contact MeDan</h1>
 
-    <form @submit.prevent="handleSubmit">
-      <input
-        v-model="name"
-        type="text"
-        placeholder="Your name"
-        required
-      />
-
-      <input
-        v-model="email"
-        type="email"
-        placeholder="Your email"
-        required
-      />
-
-      <textarea
-        v-model="message"
-        placeholder="Your message"
-        required
-      ></textarea>
+    <form @submit.prevent="submitForm">
+      <input v-model="name" placeholder="Your Name" required />
+      <input v-model="email" type="email" placeholder="Your Email" required />
+      <textarea v-model="message" placeholder="Message" required></textarea>
 
       <button type="submit" :disabled="loading">
         {{ loading ? 'Sending...' : 'Send Message' }}
       </button>
     </form>
 
-    <p v-if="success" class="success">
-      ✅ Message sent successfully!
-    </p>
-
-    <p v-if="error" class="error">
-      ❌ Failed to send message. Check console.
-    </p>
+    <p v-if="success" class="success">✅ Message sent successfully!</p>
+    <p v-if="error" class="error">❌ Failed to send message.</p>
   </div>
 </template>
 
-<script setup>
-import { ref } from 'vue';
-import { sendContactEmail } from '@/services/email';
+<script>
+import { sendContactEmail } from '../services/email';
 
-const name = ref('');
-const email = ref('');
-const message = ref('');
+export default {
+  name: 'Contact',
+  data() {
+    return {
+      name: '',
+      email: '',
+      message: '',
+      loading: false,
+      success: false,
+      error: false,
+    };
+  },
+  methods: {
+    async submitForm() {
+      this.loading = true;
+      this.success = false;
+      this.error = false;
 
-const loading = ref(false);
-const success = ref(false);
-const error = ref(false);
+      try {
+        await sendContactEmail({
+          name: this.name,
+          email: this.email,
+          message: this.message,
+        });
 
-const handleSubmit = async () => {
-  loading.value = true;
-  success.value = false;
-  error.value = false;
-
-  try {
-    await sendContactEmail({
-      name: name.value,
-      email: email.value,
-      message: message.value,
-    });
-
-    success.value = true;
-
-    // Clear form
-    name.value = '';
-    email.value = '';
-    message.value = '';
-  } catch (err) {
-    console.error('EmailJS error:', err);
-    error.value = true;
-  } finally {
-    loading.value = false;
-  }
+        this.success = true;
+        this.name = '';
+        this.email = '';
+        this.message = '';
+      } catch (err) {
+        console.error('EmailJS error:', err);
+        this.error = true;
+      } finally {
+        this.loading = false;
+      }
+    },
+  },
 };
 </script>
 
 <style scoped>
-.page {
+.contact {
   max-width: 500px;
-  margin: 40px auto;
+  margin: auto;
 }
-
 input,
 textarea {
   width: 100%;
-  margin-bottom: 12px;
+  margin: 8px 0;
   padding: 10px;
 }
-
-button {
-  padding: 10px 16px;
-}
-
 .success {
   color: green;
-  margin-top: 10px;
 }
-
 .error {
   color: red;
-  margin-top: 10px;
 }
 </style>

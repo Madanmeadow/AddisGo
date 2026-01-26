@@ -1,19 +1,14 @@
 <template>
-  <div class="page">
+  <div class="about">
     <h1>About MeDan</h1>
     <p>
-      MeDan is a modern platform built to connect services, drivers,
-      hotels, and customers with simplicity and speed.
+      MeDan is a modern platform focused on technology, services, and innovation.
     </p>
   </div>
 </template>
 
-<script setup>
+<script>
+export default {
+  name: 'About',
+};
 </script>
-
-<style scoped>
-.page {
-  max-width: 700px;
-  margin: 40px auto;
-}
-</style>
