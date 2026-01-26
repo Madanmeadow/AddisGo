@@ -1,8 +1,12 @@
-import { createApp } from "vue"
-import App from "./App.vue"
-import router from "./router"
+import { createApp } from 'vue';
+import App from './App.vue';
+import router from './router';
 
-// IMPORTANT: this makes your CSS load in dev AND Azure build
-import "./style.css"
+// ✅ Create app
+const app = createApp(App);
 
-createApp(App).use(router).mount("#app")
+// ✅ Use router
+app.use(router);
+
+// ✅ Mount app
+app.mount('#app');
