@@ -1,18 +1,37 @@
-import { createRouter, createWebHistory } from 'vue-router';
-
-import Home from '../pages/Home.vue';
-import About from '../pages/About.vue';
-import Contact from '../pages/Contact.vue';
+import { createRouter, createWebHistory } from 'vue-router'
+import Login from '../app/Login.vue'
+import Register from '../app/Register.vue'
+import Feed from '../app/Feed.vue'
+import { supabase } from '../lib/supabase'
 
 const routes = [
-  { path: '/', component: Home },
-  { path: '/about', component: About },
-  { path: '/contact', component: Contact },
-];
+  { path: '/', redirect: '/app' },
+
+  { path: '/login', component: Login },
+  { path: '/register', component: Register },
+
+  {
+    path: '/app',
+    component: Feed,
+    meta: { requiresAuth: true }
+  }
+]
 
 const router = createRouter({
   history: createWebHistory(),
-  routes,
-});
+  routes
+})
 
-export default router;
+router.beforeEach(async (to, _, next) => {
+  const { data } = await supabase.auth.getSession()
+  const user = data.session?.user
+
+  if (to.meta.requiresAuth && !user) {
+    next('/login')
+  } else {
+    next()
+  }
+})
+
+export default router
+🚪 STEP 1D — Login Page
