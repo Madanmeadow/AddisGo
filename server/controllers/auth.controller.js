@@ -1,102 +1,49 @@
-import { pool } from '../db.js';
-import crypto from 'crypto';
-import jwt from 'jsonwebtoken';
-import { v4 as uuid } from 'uuid';
+const db = require("../db");
+const bcrypt = require("bcryptjs");
+const jwt = require("jsonwebtoken");
 
-/* helpers */
-const hash = (t) =>
-  crypto.createHash('sha256').update(t).digest('hex');
+exports.register = (req, res) => {
+  const { name, email, password } = req.body;
 
-/* REQUEST MAGIC LINK */
-export async function requestLink(req, res) {
-  const { email, inviteCode } = req.body;
+  if (!name || !email || !password)
+    return res.status(400).json({ message: "Missing fields" });
 
-  if (!email || !inviteCode) {
-    return res.status(400).json({ error: 'Missing fields' });
-  }
+  const hashedPassword = bcrypt.hashSync(password, 10);
 
-  // 1️⃣ check invite
-  const invite = await pool.query(
-    'SELECT * FROM invites WHERE code=$1 AND used=false',
-    [inviteCode]
-  );
+  const sql =
+    "INSERT INTO users (name, email, password) VALUES (?, ?, ?)";
 
-  if (!invite.rowCount) {
-    return res.status(403).json({ error: 'Invalid invite code' });
-  }
-
-  // 2️⃣ create token
-  const rawToken = crypto.randomBytes(32).toString('hex');
-  const hashed = hash(rawToken);
-
-  await pool.query(
-    `INSERT INTO magic_links (email, token, expires_at)
-     VALUES ($1, $2, NOW() + INTERVAL '15 minutes')`,
-    [email, hashed]
-  );
-
-  const magicLink =
-    `${process.env.FRONTEND_URL}/auth/verify?token=${rawToken}`;
-
-  console.log('\n🔗 MAGIC LOGIN LINK\n', magicLink, '\n');
-
-  res.json({ message: 'Login link sent if invite is valid' });
-}
-
-/* VERIFY MAGIC LINK */
-export async function verifyLink(req, res) {
-  const { token } = req.body;
-  if (!token) return res.sendStatus(400);
-
-  const hashed = hash(token);
-
-  const link = await pool.query(
-    `SELECT email FROM magic_links
-     WHERE token=$1 AND expires_at > NOW()`,
-    [hashed]
-  );
-
-  if (!link.rowCount) {
-    return res.status(401).json({ error: 'Invalid or expired link' });
-  }
-
-  const email = link.rows[0].email;
-
-  let user = await pool.query(
-    'SELECT id, onboarding_complete FROM users WHERE email=$1',
-    [email]
-  );
-
-  let userId;
-  let onboarded = false;
-
-  if (!user.rowCount) {
-    userId = uuid();
-    await pool.query(
-      'INSERT INTO users (id, email) VALUES ($1, $2)',
-      [userId, email]
-    );
-  } else {
-    userId = user.rows[0].id;
-    onboarded = user.rows[0].onboarding_complete;
-  }
-
-  const session = jwt.sign(
-    { id: userId },
-    process.env.JWT_SECRET,
-    { expiresIn: '7d' }
-  );
-
-  res.cookie('medan_session', session, {
-    httpOnly: true,
-    secure: true,
-    sameSite: 'strict'
+  db.query(sql, [name, email, hashedPassword], (err) => {
+    if (err) {
+      if (err.code === "ER_DUP_ENTRY") {
+        return res.status(400).json({ message: "Email already exists" });
+      }
+      return res.status(500).json(err);
+    }
+    res.json({ message: "User registered ✅" });
   });
+};
 
-  await pool.query(
-    'DELETE FROM magic_links WHERE token=$1',
-    [hashed]
-  );
+exports.login = (req, res) => {
+  const { email, password } = req.body;
 
-  res.json({ onboarding_required: !onboarded });
-}
+  const sql = "SELECT * FROM users WHERE email = ?";
+  db.query(sql, [email], (err, result) => {
+    if (err || result.length === 0)
+      return res.status(401).json({ message: "Invalid credentials" });
+
+    const user = result[0];
+    const isMatch = bcrypt.compareSync(password, user.password);
+
+    if (!isMatch)
+      return res.status(401).json({ message: "Invalid credentials" });
+
+    const token = jwt.sign(
+      { id: user.id },
+      process.env.JWT_SECRET,
+      { expiresIn: "1d" }
+    );
+
+    res.json({ token });
+  });
+};

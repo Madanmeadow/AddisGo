@@ -1,15 +1,23 @@
-import express from 'express';
-import cookieParser from 'cookie-parser';
-import authRoutes from './routes/auth.routes.js';
-const waitlistRoutes = require('./routes/waitlist.routes');
+require("dotenv").config();
 
-app.use('/api/waitlist', waitlistRoutes);
+const express = require("express");
+const cors = require("cors");
 
 const app = express();
 
+// Middleware
+app.use(cors());
 app.use(express.json());
-app.use(cookieParser());
 
-app.use('/api/v1/auth', authRoutes);
+// Test route
+app.get("/", (req, res) => {
+  res.json({ message: "API running 🚀" });
+});
 
-export default app;
+// Routes
+app.use("/api/auth", require("./routes/auth.routes"));
+
+const PORT = process.env.PORT || 5000;
+app.listen(PORT, () => {
+  console.log(`🔥 Server running on http://localhost:${PORT}`);
+});
