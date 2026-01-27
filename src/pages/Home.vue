@@ -1,25 +1,28 @@
 <template>
-  <section class="hero">
-    <h1>Fast delivery & reliable service</h1>
+  <section class="home">
+    <!-- Hero -->
+    <div class="hero">
+      <h1 class="brand">
+        Me<span>Dan</span>
+      </h1>
 
-    <p class="lead">
-      MeDan provides dependable local delivery, pickup, and support services for
-      individuals and small businesses. Simple pricing, quick response, and care
-      you can trust.
-    </p>
+      <p class="tagline">
+        MeDan is not a clone.<br />
+        <strong>MeDan is a voice.</strong>
+      </p>
 
-    <p class="sub">
-      Serving our local community with speed, safety, and professionalism.
-    </p>
+      <p class="subtext">
+        A modern social space built for clarity, presence, and real human expression.
+      </p>
 
-    <div class="actions">
-      <RouterLink to="/services" class="btn primary">
-        View Services
-      </RouterLink>
-
-      <RouterLink to="/contact" class="btn outline">
-        Get in Touch
-      </RouterLink>
+      <div class="actions">
+        <RouterLink to="/services" class="btn primary">
+          Explore Services
+        </RouterLink>
+        <RouterLink to="/about" class="btn outline">
+          Our Story
+        </RouterLink>
+      </div>
     </div>
   </section>
 </template>
@@ -29,67 +32,73 @@ import { RouterLink } from "vue-router"
 </script>
 
 <style scoped>
+.home {
+  min-height: 100vh;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  background: radial-gradient(circle at top, #111827, #020617);
+  color: #f9fafb;
+  padding: 2rem;
+}
+
 .hero {
-  padding-top: 24px;
   max-width: 720px;
+  text-align: center;
 }
 
-h1 {
-  font-size: 46px;
-  margin-bottom: 14px;
-  letter-spacing: 0.3px;
+.brand {
+  font-size: 4rem;
+  font-weight: 800;
+  letter-spacing: -1px;
 }
 
-.lead {
-  font-size: 18px;
-  line-height: 1.6;
-  color: #333;
-  margin-bottom: 10px;
+.brand span {
+  color: #38bdf8;
 }
 
-.sub {
-  font-size: 16px;
-  color: #555;
-  margin-bottom: 26px;
+.tagline {
+  font-size: 1.6rem;
+  margin-top: 1rem;
+  line-height: 1.4;
+}
+
+.subtext {
+  margin-top: 1rem;
+  color: #9ca3af;
 }
 
 .actions {
+  margin-top: 2rem;
   display: flex;
-  gap: 14px;
+  gap: 1rem;
+  justify-content: center;
   flex-wrap: wrap;
 }
 
 .btn {
-  padding: 12px 22px;
-  border-radius: 12px;
-  font-size: 16px;
+  padding: 0.75rem 1.5rem;
+  border-radius: 999px;
   font-weight: 600;
+  transition: all 0.25s ease;
   text-decoration: none;
-  transition: all 160ms ease;
 }
 
-.primary {
-  background: #1f5fd6;
-  color: white;
+.btn.primary {
+  background: #38bdf8;
+  color: #020617;
 }
 
-.primary:hover {
-  background: #174bb0;
+.btn.primary:hover {
+  transform: scale(1.05);
 }
 
-.outline {
-  border: 2px solid #1f5fd6;
-  color: #1f5fd6;
+.btn.outline {
+  border: 1px solid #38bdf8;
+  color: #38bdf8;
 }
 
-.outline:hover {
-  background: rgba(31, 95, 214, 0.08);
-}
-
-/* Mobile */
-@media (max-width: 600px) {
-  h1 {
-    font-size: 38px;
-  }
+.btn.outline:hover {
+  background: rgba(56, 189, 248, 0.1);
 }
 </style>
