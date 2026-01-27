@@ -1,33 +1,40 @@
-import { createRouter, createWebHistory } from "vue-router"
-import Home from "../pages/Home.vue"
-import About from "../pages/About.vue"
-import Contact from "../pages/Contact.vue"
-// import Login from "../pages/Login.vue" // coming next
+import { createRouter, createWebHistory } from 'vue-router';
+import { useUserStore } from '../stores/userStore';
+
+import Login from '../views/Login.vue';
+import Onboarding from '../views/Onboarding.vue';
+import Profile from '../views/Profile.vue';
+import WriteVoice from '../views/WriteVoice.vue';
+import Inbox from '../views/Inbox.vue';
 
 const routes = [
-    { path: "/", component: Home },
-    { path: "/about", component: About },
-    { path: "/contact", component: Contact },
-
-    // STEP 1D – Login Page (future)
-    // { path: "/login", component: Login },
-]
+  { path: '/', redirect: '/profile' },
+  { path: '/login', component: Login },
+  { path: '/onboarding', component: Onboarding },
+  { path: '/profile', component: Profile },
+  { path: '/write', component: WriteVoice },
+  { path: '/inbox', component: Inbox }
+];
 
 const router = createRouter({
-    history: createWebHistory(),
-    routes,
-})
+  history: createWebHistory(),
+  routes
+});
 
-// Auth guard (future – Supabase)
-router.beforeEach(async (to, from, next) => {
-  const user = null // placeholder for auth user
+router.beforeEach(async (to) => {
+  const store = useUserStore();
 
-  if (to.meta.requiresAuth && !user) {
-next("/login")
-} else {
-   next()
-}
-})
+  if (store.loading) {
+    await store.fetchMe();
+  }
 
-export default router
+  if (!store.user && to.path !== '/login') {
+    return '/login';
+  }
 
+  if (store.user && !store.onboardingComplete && to.path !== '/onboarding') {
+    return '/onboarding';
+  }
+});
+
+export default router;
