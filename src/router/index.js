@@ -1,19 +1,17 @@
-import { createRouter, createWebHistory } from 'vue-router';
-import { useUserStore } from '../stores/userStore';
-
-import Login from '../views/Login.vue';
-import Onboarding from '../views/Onboarding.vue';
-import Profile from '../views/Profile.vue';
-import WriteVoice from '../views/WriteVoice.vue';
-import Inbox from '../views/Inbox.vue';
+import { createRouter, createWebHistory } from "vue-router";
+import Login from "@/views/Login.vue";
+import Register from "@/views/Register.vue";
+import Dashboard from "@/views/Dashboard.vue";
+import { isLoggedIn } from "@/services/auth";
 
 const routes = [
-  { path: '/', redirect: '/profile' },
-  { path: '/login', component: Login },
-  { path: '/onboarding', component: Onboarding },
-  { path: '/profile', component: Profile },
-  { path: '/write', component: WriteVoice },
-  { path: '/inbox', component: Inbox }
+  { path: "/login", component: Login },
+  { path: "/register", component: Register },
+  {
+    path: "/dashboard",
+    component: Dashboard,
+    meta: { requiresAuth: true }
+  }
 ];
 
 const router = createRouter({
@@ -21,19 +19,11 @@ const router = createRouter({
   routes
 });
 
-router.beforeEach(async (to) => {
-  const store = useUserStore();
-
-  if (store.loading) {
-    await store.fetchMe();
-  }
-
-  if (!store.user && to.path !== '/login') {
-    return '/login';
-  }
-
-  if (store.user && !store.onboardingComplete && to.path !== '/onboarding') {
-    return '/onboarding';
+router.beforeEach((to, from, next) => {
+  if (to.meta.requiresAuth && !isLoggedIn()) {
+    next("/login");
+  } else {
+    next();
   }
 });
 

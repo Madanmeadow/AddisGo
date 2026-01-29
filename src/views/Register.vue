@@ -1,14 +1,14 @@
 <template>
   <div>
-    <h2>Login</h2>
+    <h2>Register</h2>
     <input v-model="email" placeholder="Email" />
     <input v-model="password" type="password" placeholder="Password" />
-    <button @click="handleLogin">Login</button>
+    <button @click="handleRegister">Register</button>
   </div>
 </template>
 
 <script>
-import { login } from "@/services/auth";
+import { register } from "@/services/auth";
 
 export default {
   data() {
@@ -18,15 +18,16 @@ export default {
     };
   },
   methods: {
-    async handleLogin() {
+    async handleRegister() {
       try {
-        await login({
+        await register({
           email: this.email,
           password: this.password
         });
-        this.$router.push("/dashboard");
+        alert("Registered successfully");
+        this.$router.push("/login");
       } catch (err) {
-        alert(err.response?.data?.message || "Login failed");
+        alert(err.response?.data?.message || "Register failed");
       }
     }
   }
