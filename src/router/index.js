@@ -1,30 +1,17 @@
 import { createRouter, createWebHistory } from "vue-router";
 import Login from "@/views/Login.vue";
-import Register from "@/views/Register.vue";
-import Dashboard from "@/views/Dashboard.vue";
-import { isLoggedIn } from "@/services/auth";
 
 const routes = [
-  { path: "/login", component: Login },
-  { path: "/register", component: Register },
   {
-    path: "/dashboard",
-    component: Dashboard,
-    meta: { requiresAuth: true }
-  }
+    path: "/login",
+    name: "Login",
+    component: Login,
+  },
 ];
 
 const router = createRouter({
   history: createWebHistory(),
-  routes
-});
-
-router.beforeEach((to, from, next) => {
-  if (to.meta.requiresAuth && !isLoggedIn()) {
-    next("/login");
-  } else {
-    next();
-  }
+  routes,
 });
 
 export default router;

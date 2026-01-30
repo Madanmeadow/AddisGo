@@ -1,34 +1,38 @@
 <template>
   <div>
     <h2>Login</h2>
+
     <input v-model="email" placeholder="Email" />
     <input v-model="password" type="password" placeholder="Password" />
-    <button @click="handleLogin">Login</button>
+
+    <button @click="login">Login</button>
   </div>
 </template>
 
 <script>
-import { login } from "@/services/auth";
+import api from "@/services/api";
 
 export default {
   data() {
     return {
       email: "",
-      password: ""
+      password: "",
     };
   },
   methods: {
-    async handleLogin() {
+    async login() {
       try {
-        await login({
+        const res = await api.post("/api/auth/login", {
           email: this.email,
-          password: this.password
+          password: this.password,
         });
-        this.$router.push("/dashboard");
+
+        localStorage.setItem("token", res.data.token);
+        alert("Login success 🔥");
       } catch (err) {
-        alert(err.response?.data?.message || "Login failed");
+        alert("Login failed ❌");
       }
-    }
-  }
+    },
+  },
 };
 </script>
