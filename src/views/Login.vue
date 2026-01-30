@@ -1,31 +1,14 @@
 <template>
-  <div class="min-h-screen flex items-center justify-center bg-gray-100">
-    <div class="w-full max-w-md bg-white rounded-xl shadow-lg p-8">
-      <h1 class="text-2xl font-bold text-center mb-6">Login</h1>
+  <div class="page">
+    <div class="card">
+      <h1>Login</h1>
 
-      <input
-        v-model="email"
-        type="email"
-        placeholder="Email"
-        class="w-full px-4 py-2 border rounded-lg mb-4 focus:outline-none focus:ring-2 focus:ring-blue-500"
-      />
+      <input v-model="email" placeholder="Email" />
+      <input v-model="password" type="password" placeholder="Password" />
 
-      <input
-        v-model="password"
-        type="password"
-        placeholder="Password"
-        class="w-full px-4 py-2 border rounded-lg mb-4 focus:outline-none focus:ring-2 focus:ring-blue-500"
-      />
+      <p v-if="error" class="error">{{ error }}</p>
 
-      <p v-if="error" class="text-red-500 text-sm mb-4 text-center">
-        {{ error }}
-      </p>
-
-      <button
-        @click="login"
-        :disabled="loading"
-        class="w-full bg-blue-600 text-white py-2 rounded-lg hover:bg-blue-700 transition disabled:opacity-50"
-      >
+      <button @click="login">
         {{ loading ? "Logging in..." : "Login" }}
       </button>
     </div>
@@ -36,14 +19,8 @@
 import api from "@/services/api";
 
 export default {
-  name: "Login",
   data() {
-    return {
-      email: "",
-      password: "",
-      loading: false,
-      error: null
-    };
+    return { email: "", password: "", loading: false, error: null };
   },
   methods: {
     async login() {
@@ -56,10 +33,8 @@ export default {
         });
         localStorage.setItem("token", res.data.token);
         this.$router.push("/");
-      } catch (err) {
-        this.error =
-          err.response?.data?.message ||
-          "Invalid email or password";
+      } catch {
+        this.error = "Invalid credentials";
       } finally {
         this.loading = false;
       }
@@ -67,3 +42,37 @@ export default {
   }
 };
 </script>
+
+<style scoped>
+.page {
+  height: 100vh;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  background: #f3f4f6;
+}
+.card {
+  background: white;
+  padding: 30px;
+  width: 350px;
+  border-radius: 10px;
+  box-shadow: 0 10px 30px rgba(0,0,0,.1);
+}
+input {
+  width: 100%;
+  padding: 10px;
+  margin-bottom: 12px;
+}
+button {
+  width: 100%;
+  padding: 10px;
+  background: #2563eb;
+  color: white;
+  border: none;
+  cursor: pointer;
+}
+.error {
+  color: red;
+  margin-bottom: 10px;
+}
+</style>
