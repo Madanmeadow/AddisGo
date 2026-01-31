@@ -1,26 +1,13 @@
 <template>
-  <div class="login-page">
-    <div class="login-card">
-      <h2>Login</h2>
+  <div class="auth-card">
+    <h2>Login</h2>
 
-      <input
-        v-model="email"
-        type="email"
-        placeholder="Email"
-      />
+    <input v-model="email" type="email" placeholder="Email" />
+    <input v-model="password" type="password" placeholder="Password" />
 
-      <input
-        v-model="password"
-        type="password"
-        placeholder="Password"
-      />
+    <p v-if="error" class="error">{{ error }}</p>
 
-      <p v-if="error" class="error">{{ error }}</p>
-
-      <button :disabled="loading" @click="login">
-        {{ loading ? "Logging in..." : "Login" }}
-      </button>
-    </div>
+    <button @click="login">Login</button>
   </div>
 </template>
 
@@ -33,15 +20,12 @@ export default {
     return {
       email: "",
       password: "",
-      error: "",
-      loading: false
+      error: null
     };
   },
   methods: {
     async login() {
-      this.error = "";
-      this.loading = true;
-
+      this.error = null;
       try {
         const res = await api.post("/api/auth/login", {
           email: this.email,
@@ -53,11 +37,9 @@ export default {
 
         // ✅ REDIRECT
         this.$router.push("/dashboard");
+
       } catch (err) {
-        this.error =
-          err.response?.data?.message || "Login failed";
-      } finally {
-        this.loading = false;
+        this.error = "Login failed";
       }
     }
   }
@@ -65,28 +47,19 @@ export default {
 </script>
 
 <style scoped>
-.login-page {
-  min-height: 100vh;
-  display: flex;
-  justify-content: center;
-  align-items: center;
-  background: #f5f7fa;
+.auth-card {
+  max-width: 350px;
+  margin: 80px auto;
+  padding: 25px;
+  border-radius: 8px;
+  background: #fff;
+  box-shadow: 0 10px 30px rgba(0,0,0,.1);
 }
-
-.login-card {
-  background: white;
-  padding: 2rem;
-  width: 320px;
-  border-radius: 10px;
-  box-shadow: 0 10px 25px rgba(0,0,0,0.1);
-}
-
 input {
   width: 100%;
   padding: 10px;
   margin: 10px 0;
 }
-
 button {
   width: 100%;
   padding: 10px;
@@ -95,13 +68,7 @@ button {
   border: none;
   cursor: pointer;
 }
-
-button:disabled {
-  opacity: 0.6;
-}
-
 .error {
   color: red;
-  margin-top: 8px;
 }
 </style>
