@@ -4,49 +4,48 @@ const jwt = require("jsonwebtoken");
 
 const router = express.Router();
 
-// TEST ROUTE
+// TEMP in-memory user store (replace with DB later)
+const users = [];
+
+/**
+ * TEST
+ */
 router.get("/test", (req, res) => {
   res.json({ message: "Auth route working ✅" });
 });
 
-// REGISTER
+/**
+ * REGISTER
+ */
 router.post("/register", async (req, res) => {
   const { email, password } = req.body;
 
-  if (!email || !password) {
+  if (!email || !password)
     return res.status(400).json({ message: "Missing fields" });
-  }
+
+  const exists = users.find(u => u.email === email);
+  if (exists)
+    return res.status(400).json({ message: "User already exists" });
 
   const hashed = await bcrypt.hash(password, 10);
-
-  // TEMP: pretend DB save
-  global.users = global.users || [];
-  global.users.push({ email, password: hashed });
+  users.push({ email, password: hashed });
 
   res.json({ message: "User registered ✅" });
 });
 
-// LOGIN
+/**
+ * LOGIN
+ */
 router.post("/login", async (req, res) => {
   const { email, password } = req.body;
 
-  const user = (global.users || []).find(u => u.email === email);
-  if (!user) {
+  const user = users.find(u => u.email === email);
+  if (!user)
     return res.status(401).json({ message: "Invalid credentials" });
-  }
 
-  const match = await bcrypt.compare(password, user.password);
-  if (!match) {
+  const valid = await bcrypt.compare(password, user.password);
+  if (!valid)
     return res.status(401).json({ message: "Invalid credentials" });
-  }
-const authMiddleware = require("../middleware/auth.middleware");
-
-router.get("/profile", authMiddleware, (req, res) => {
-  res.json({
-    id: req.user.id,
-    email: req.user.email
-  });
-});
 
   const token = jwt.sign(
     { email },

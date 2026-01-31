@@ -1,5 +1,5 @@
 <template>
-  <div class="dashboard">
+  <div class="card">
     <h1>Dashboard</h1>
     <p>You are logged in 🎉</p>
     <button @click="logout">Logout</button>
