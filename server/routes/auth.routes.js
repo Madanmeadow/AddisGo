@@ -39,6 +39,14 @@ router.post("/login", async (req, res) => {
   if (!match) {
     return res.status(401).json({ message: "Invalid credentials" });
   }
+const authMiddleware = require("../middleware/auth.middleware");
+
+router.get("/profile", authMiddleware, (req, res) => {
+  res.json({
+    id: req.user.id,
+    email: req.user.email
+  });
+});
 
   const token = jwt.sign(
     { email },

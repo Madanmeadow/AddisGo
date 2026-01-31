@@ -1,29 +1,65 @@
 <template>
-  <div class="page" v-if="profile">
-    <h2>{{ profile.name }}</h2>
-    <p>{{ profile.voice_tag }}</p>
+  <div class="profile">
+    <h1>My Profile</h1>
 
-    <section>
-      <article v-for="v in voices" :key="v.id">
-        <p>{{ v.body }}</p>
-        <small>{{ new Date(v.created_at).toLocaleString() }}</small>
-      </article>
-    </section>
+    <p><strong>Email:</strong> {{ user.email }}</p>
+    <p><strong>User ID:</strong> {{ user.id }}</p>
+
+    <button @click="logout">Logout</button>
   </div>
 </template>
 
-<script setup>
-import { ref, onMounted } from 'vue';
-import { api } from '../api';
-import { useUserStore } from '../stores/userStore';
+<script>
+import api from "@/services/api";
 
-const store = useUserStore();
-const profile = ref(null);
-const voices = ref([]);
+export default {
+  data() {
+    return {
+      user: {}
+    };
+  },
 
-onMounted(async () => {
-  const res = await api.getProfile(store.user.id);
-  profile.value = res.user;
-  voices.value = res.voices;
-});
+  async mounted() {
+    const token = localStorage.getItem("token");
+
+    if (!token) {
+      this.$router.push("/login");
+      return;
+    }
+
+    try {
+      const res = await api.get("/api/auth/profile", {
+        headers: {
+          Authorization: `Bearer ${token}`
+        }
+      });
+
+      this.user = res.data;
+    } catch (err) {
+      localStorage.removeItem("token");
+      this.$router.push("/login");
+    }
+  },
+
+  methods: {
+    logout() {
+      localStorage.removeItem("token");
+      this.$router.push("/login");
+    }
+  }
+};
 </script>
+
+<style scoped>
+.profile {
+  max-width: 400px;
+  margin: 80px auto;
+  padding: 30px;
+  background: white;
+  border-radius: 10px;
+  text-align: center;
+}
+button {
+  margin-top: 20px;
+}
+</style>
