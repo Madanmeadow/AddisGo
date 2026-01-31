@@ -42,33 +42,24 @@ export default {
     };
   },
   methods: {
-    async login() {
-      this.error = "";
-      this.success = false;
-      this.loading = true;
+  async login() {
+    this.error = "";
 
-      try {
-        const res = await api.post("/api/auth/login", {
-          email: this.email,
-          password: this.password,
-        });
+    try {
+      const res = await api.post("/api/auth/login", {
+        email: this.email,
+        password: this.password
+      });
 
-        // 🔐 Save JWT
-        localStorage.setItem("token", res.data.token);
+      localStorage.setItem("token", res.data.token);
+      this.$router.push("/dashboard");
 
-        this.success = true;
-        console.log("TOKEN:", res.data.token);
+    } catch (err) {
+      this.error = "Invalid email or password";
+    }
+  }
+}
 
-        // optional redirect
-        this.$router.push("/");
-      } catch (err) {
-        this.error =
-          err.response?.data?.message || "Login failed";
-      } finally {
-        this.loading = false;
-      }
-    },
-  },
 };
 </script>
 
