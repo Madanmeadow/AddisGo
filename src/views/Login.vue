@@ -1,8 +1,8 @@
 <template>
-  <div class="card">
+  <div class="auth-box">
     <h2>Login</h2>
 
-    <input v-model="email" placeholder="Email" />
+    <input v-model="email" type="email" placeholder="Email" />
     <input v-model="password" type="password" placeholder="Password" />
 
     <p v-if="error" class="error">{{ error }}</p>
@@ -24,38 +24,48 @@ export default {
     return {
       email: "",
       password: "",
-      error: ""
+      error: "",
     };
   },
   methods: {
     async login() {
+      this.error = "";
       try {
-        const res = await api.post("/api/auth/login", {
+        const res = await api.post("/auth/login", {
           email: this.email,
-          password: this.password
+          password: this.password,
         });
 
         localStorage.setItem("token", res.data.token);
         this.$router.push("/dashboard");
-      } catch {
-        this.error = "Login failed";
+      } catch (err) {
+        this.error =
+          err.response?.data?.message || "Login failed";
       }
-    }
-  }
+    },
+  },
 };
 </script>
 
 <style scoped>
-.card {
-  max-width: 350px;
+.auth-box {
+  max-width: 360px;
   margin: 100px auto;
   padding: 30px;
-  background: #fff;
-  border-radius: 10px;
+  background: white;
+  border-radius: 8px;
 }
-input, button {
+input {
   width: 100%;
-  margin-top: 10px;
+  margin: 10px 0;
+  padding: 10px;
+}
+button {
+  width: 100%;
+  padding: 10px;
+  background: #2563eb;
+  color: white;
+  border: none;
 }
 .error {
   color: red;
