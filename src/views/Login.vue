@@ -1,13 +1,15 @@
 <template>
-  <div class="auth-card">
-    <h2>Login</h2>
+  <div class="auth-container">
+    <div class="card">
+      <h2>Login</h2>
 
-    <input v-model="email" type="email" placeholder="Email" />
-    <input v-model="password" type="password" placeholder="Password" />
+      <input v-model="email" type="email" placeholder="Email" />
+      <input v-model="password" type="password" placeholder="Password" />
 
-    <p v-if="error" class="error">{{ error }}</p>
+      <p v-if="error" class="error">{{ error }}</p>
 
-    <button @click="login">Login</button>
+      <button @click="login">Login</button>
+    </div>
   </div>
 </template>
 
@@ -20,26 +22,26 @@ export default {
     return {
       email: "",
       password: "",
-      error: null
+      error: ""
     };
   },
   methods: {
     async login() {
-      this.error = null;
+      this.error = "";
+
       try {
         const res = await api.post("/api/auth/login", {
           email: this.email,
           password: this.password
         });
 
-        // ✅ SAVE TOKEN
+        // ✅ SUCCESS PATH
         localStorage.setItem("token", res.data.token);
-
-        // ✅ REDIRECT
         this.$router.push("/dashboard");
 
       } catch (err) {
-        this.error = "Login failed";
+        this.error =
+          err.response?.data?.message || "Login failed";
       }
     }
   }
@@ -47,28 +49,33 @@ export default {
 </script>
 
 <style scoped>
-.auth-card {
-  max-width: 350px;
-  margin: 80px auto;
-  padding: 25px;
+.auth-container {
+  min-height: 100vh;
+  display: flex;
+  justify-content: center;
+  align-items: center;
+  background: #f5f6fa;
+}
+.card {
+  background: white;
+  padding: 30px;
   border-radius: 8px;
-  background: #fff;
-  box-shadow: 0 10px 30px rgba(0,0,0,.1);
+  width: 320px;
 }
 input {
   width: 100%;
   padding: 10px;
-  margin: 10px 0;
+  margin-bottom: 12px;
 }
 button {
   width: 100%;
   padding: 10px;
-  background: #1e88e5;
+  background: #2563eb;
   color: white;
   border: none;
-  cursor: pointer;
 }
 .error {
   color: red;
+  margin-bottom: 10px;
 }
 </style>
