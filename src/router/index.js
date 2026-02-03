@@ -1,44 +1,62 @@
-import { createRouter, createWebHistory } from 'vue-router'
+import { createRouter, createWebHistory } from "vue-router";
 
-import Login from '../views/Login.vue'
-import Register from '../views/Register.vue'
-import Dashboard from '../views/Dashboard.vue'
+// Views
+import Login from "../views/Login.vue";
+import Register from "../views/Register.vue";
+import Dashboard from "../views/Dashboard.vue";
 
 const routes = [
-  { path: '/', redirect: '/login' },
-
-  { path: '/login', component: Login },
-  { path: '/register', component: Register },
-
   {
-    path: '/dashboard',
-    component: Dashboard,
-    meta: { requiresAuth: true }
+    path: "/",
+    redirect: "/login",
   },
 
-  // fallback (VERY important)
-  { path: '/:pathMatch(.*)*', redirect: '/login' }
-]
+  {
+    path: "/login",
+    name: "Login",
+    component: Login,
+    meta: { guest: true },
+  },
+
+  {
+    path: "/register",
+    name: "Register",
+    component: Register,
+    meta: { guest: true },
+  },
+
+  {
+    path: "/dashboard",
+    name: "Dashboard",
+    component: Dashboard,
+    meta: { requiresAuth: true },
+  },
+];
 
 const router = createRouter({
   history: createWebHistory(),
-  routes
-})
+  routes,
+});
 
+/**
+ * 🔐 GLOBAL AUTH GUARD
+ */
 router.beforeEach((to, from, next) => {
-  const token = localStorage.getItem('token')
+  const token = localStorage.getItem("token");
+  const isAuthenticated = !!token;
 
-  // Not logged in → protect dashboard
-  if (to.meta.requiresAuth && !token) {
-    return next('/login')
+  // If route requires auth and user is NOT logged in
+  if (to.meta.requiresAuth && !isAuthenticated) {
+    return next("/login");
   }
 
-  // Logged in → block login/register
-  if ((to.path === '/login' || to.path === '/register') && token) {
-    return next('/dashboard')
+  // If route is guest-only and user IS logged in
+  if (to.meta.guest && isAuthenticated) {
+    return next("/dashboard");
   }
 
-  next()
-})
+  next();
+});
 
-export default router
+export default router;
+
