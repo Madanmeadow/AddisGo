@@ -1,92 +1,75 @@
-/* =========================
-   Global reset
-========================= */
+/* ===== Global reset ===== */
 * {
   box-sizing: border-box;
 }
 
-/* =========================
-   Page background (mid gray)
-========================= */
-body {
+html, body {
   margin: 0;
-  min-height: 100vh;
-  background: #e5e7eb; /* mid-tone gray */
-  font-family: system-ui, -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif;
-  color: #111827;
+  padding: 0;
+  height: 100%;
+  font-family: system-ui, -apple-system, BlinkMacSystemFont, sans-serif;
 }
 
-/* =========================
-   Center page content
-========================= */
-.page-wrapper {
+/* ===== Background ===== */
+body {
+  background-color: #9ca3af; /* mid-tone gray */
+}
+
+/* ===== Centering wrapper ===== */
+.auth-page {
   min-height: 100vh;
   display: flex;
   align-items: center;
   justify-content: center;
 }
 
-/* =========================
-   Auth card (login/register/dashboard)
-========================= */
+/* ===== Auth card ===== */
 .auth-card {
-  background: #ffffff;
+  background: #f9fafb;
+  padding: 32px 36px;
+  border-radius: 12px;
   width: 100%;
   max-width: 420px;
-  padding: 32px;
-  border-radius: 12px;
-  box-shadow: 0 20px 35px rgba(0, 0, 0, 0.15);
+  box-shadow: 0 20px 40px rgba(0, 0, 0, 0.15);
+}
+
+/* ===== Titles ===== */
+.auth-card h1 {
+  margin-bottom: 20px;
   text-align: center;
 }
 
-/* =========================
-   Headings
-========================= */
-.auth-card h1 {
-  margin-bottom: 20px;
-  font-size: 28px;
-}
-
-/* =========================
-   Inputs
-========================= */
+/* ===== Inputs ===== */
 .auth-card input {
   width: 100%;
   padding: 12px;
-  margin-bottom: 14px;
-  border: 1px solid #d1d5db;
+  margin-bottom: 12px;
   border-radius: 6px;
+  border: 1px solid #d1d5db;
   font-size: 15px;
 }
 
-.auth-card input:focus {
-  outline: none;
-  border-color: #2563eb;
-}
-
-/* =========================
-   Buttons
-========================= */
+/* ===== Buttons ===== */
 .auth-card button {
   width: 100%;
   padding: 12px;
-  background: #2563eb;
+  margin-top: 8px;
+  background-color: #2563eb;
   color: white;
   border: none;
   border-radius: 6px;
-  font-size: 16px;
+  font-size: 15px;
   cursor: pointer;
 }
 
 .auth-card button:hover {
-  background: #1d4ed8;
+  background-color: #1e40af;
 }
 
-/* =========================
-   Text + links
-========================= */
+/* ===== Links ===== */
 .auth-card p {
-  margin-top: 14px;
+  text-align: center;
+  margin-top: 16px;
 }
 
 .auth-card a {
@@ -99,11 +82,9 @@ body {
   text-decoration: underline;
 }
 
-/* =========================
-   Error message
-========================= */
+/* ===== Errors ===== */
 .error {
   color: #dc2626;
+  text-align: center;
   margin-top: 10px;
 }
-
