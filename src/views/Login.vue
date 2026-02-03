@@ -1,13 +1,22 @@
 <template>
-  <div class="auth-box">
-    <h2>Login</h2>
+  <div class="page">
+    <h1>Login</h1>
 
-    <input v-model="email" type="email" placeholder="Email" />
-    <input v-model="password" type="password" placeholder="Password" />
+    <input
+      type="email"
+      v-model="email"
+      placeholder="Email"
+    />
 
-    <p v-if="error" class="error">{{ error }}</p>
+    <input
+      type="password"
+      v-model="password"
+      placeholder="Password"
+    />
 
     <button @click="login">Login</button>
+
+    <p v-if="error" style="color:red">{{ error }}</p>
 
     <p>
       No account?
@@ -17,9 +26,10 @@
 </template>
 
 <script>
-import api from "../services/api";
+import api from "@/services/api";
 
 export default {
+  name: "Login",
   data() {
     return {
       email: "",
@@ -29,7 +39,6 @@ export default {
   },
   methods: {
     async login() {
-      this.error = "";
       try {
         const res = await api.post("/auth/login", {
           email: this.email,
@@ -38,9 +47,8 @@ export default {
 
         localStorage.setItem("token", res.data.token);
         this.$router.push("/dashboard");
-      } catch (err) {
-        this.error =
-          err.response?.data?.message || "Login failed";
+      } catch (e) {
+        this.error = "Login failed";
       }
     },
   },
@@ -48,26 +56,18 @@ export default {
 </script>
 
 <style scoped>
-.auth-box {
-  max-width: 360px;
+.page {
+  max-width: 400px;
   margin: 100px auto;
-  padding: 30px;
-  background: white;
-  border-radius: 8px;
+  text-align: center;
 }
 input {
+  display: block;
   width: 100%;
-  margin: 10px 0;
-  padding: 10px;
+  margin-bottom: 10px;
+  padding: 8px;
 }
 button {
-  width: 100%;
-  padding: 10px;
-  background: #2563eb;
-  color: white;
-  border: none;
-}
-.error {
-  color: red;
+  padding: 8px 16px;
 }
 </style>

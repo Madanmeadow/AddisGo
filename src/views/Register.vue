@@ -1,13 +1,22 @@
 <template>
-  <div class="auth-box">
-    <h2>Create Account</h2>
+  <div class="page">
+    <h1>Create Account</h1>
 
-    <input v-model="email" type="email" placeholder="Email" />
-    <input v-model="password" type="password" placeholder="Password" />
+    <input
+      type="email"
+      v-model="email"
+      placeholder="Email"
+    />
 
-    <p v-if="error" class="error">{{ error }}</p>
+    <input
+      type="password"
+      v-model="password"
+      placeholder="Password"
+    />
 
     <button @click="register">Register</button>
+
+    <p v-if="error" class="error">{{ error }}</p>
 
     <p>
       Already have an account?
@@ -17,9 +26,10 @@
 </template>
 
 <script>
-import api from "../services/api";
+import api from "@/services/api";
 
 export default {
+  name: "Register",
   data() {
     return {
       email: "",
@@ -29,17 +39,16 @@ export default {
   },
   methods: {
     async register() {
-      this.error = "";
       try {
         await api.post("/auth/register", {
           email: this.email,
           password: this.password,
         });
 
+        // After successful register → go login
         this.$router.push("/login");
       } catch (err) {
-        this.error =
-          err.response?.data?.message || "Registration failed";
+        this.error = "Registration failed";
       }
     },
   },
@@ -47,26 +56,35 @@ export default {
 </script>
 
 <style scoped>
-.auth-box {
-  max-width: 360px;
+.page {
+  max-width: 400px;
   margin: 100px auto;
-  padding: 30px;
-  background: white;
-  border-radius: 8px;
+  text-align: center;
 }
+
 input {
+  display: block;
   width: 100%;
-  margin: 10px 0;
+  margin-bottom: 12px;
   padding: 10px;
 }
+
 button {
   width: 100%;
   padding: 10px;
   background: #2563eb;
   color: white;
   border: none;
+  border-radius: 4px;
+  cursor: pointer;
 }
+
+button:hover {
+  background: #1d4ed8;
+}
+
 .error {
-  color: red;
+  color: #dc2626;
+  margin-top: 10px;
 }
 </style>
