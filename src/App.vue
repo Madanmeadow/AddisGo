@@ -2,10 +2,10 @@
   <div id="app">
     <!-- Top Navbar -->
     <header class="navbar">
-      <h1 class="logo">AddisGo</h1>
+      <div class="brand" @click="goHome">AddisGo</div>
 
       <button
-        v-if="isAuthenticated"
+        v-if="isLoggedIn"
         class="logout-btn"
         @click="logout"
       >
@@ -13,16 +13,9 @@
       </button>
     </header>
 
-    <!-- Page Content -->
-    <main class="page">
-      <!-- Auth pages -->
-      <router-view v-if="!isAuthenticated" />
-
-      <!-- Dashboard -->
-      <div v-else class="dashboard">
-        <h2>Dashboard</h2>
-        <p>You are logged in 🎉</p>
-      </div>
+    <!-- Main content (THIS IS CRITICAL) -->
+    <main class="page-container">
+      <router-view />
     </main>
   </div>
 </template>
@@ -31,70 +24,68 @@
 export default {
   name: "App",
 
-  data() {
-    return {
-      isAuthenticated: false,
-    };
-  },
-
-  mounted() {
-    this.syncAuth();
-  },
-
-  watch: {
-    $route() {
-      this.syncAuth();
-    },
+  computed: {
+    isLoggedIn() {
+      return !!localStorage.getItem("token");
+    }
   },
 
   methods: {
-    syncAuth() {
-      const token = localStorage.getItem("token");
-      this.isAuthenticated = !!token;
-
-      // redirect logic
-      if (this.isAuthenticated && this.$route.path === "/login") {
-        this.$router.push("/dashboard");
-      }
-
-      if (!this.isAuthenticated && this.$route.path === "/dashboard") {
-        this.$router.push("/login");
-      }
-    },
-
     logout() {
       localStorage.removeItem("token");
-      this.isAuthenticated = false;
       this.$router.push("/login");
     },
-  },
+
+    goHome() {
+      if (this.isLoggedIn) {
+        this.$router.push("/dashboard");
+      } else {
+        this.$router.push("/login");
+      }
+    }
+  }
 };
 </script>
 
 <style>
-/* Layout */
-#app {
-  min-height: 100vh;
-  background: linear-gradient(135deg, #6b7c93, #889db8);
+/* ===== GLOBAL RESET ===== */
+* {
+  box-sizing: border-box;
 }
 
-/* Navbar */
+html, body {
+  margin: 0;
+  padding: 0;
+  height: 100%;
+  font-family: system-ui, -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif;
+  background: #6f7f95;
+}
+
+/* ===== APP WRAPPER ===== */
+#app {
+  min-height: 100vh;
+  display: flex;
+  flex-direction: column;
+}
+
+/* ===== NAVBAR ===== */
 .navbar {
   height: 60px;
-  background: linear-gradient(90deg, #1e88e5, #26c6da);
+  background: linear-gradient(90deg, #1e90ff, #23c6b8);
+  color: white;
   display: flex;
   align-items: center;
   justify-content: space-between;
   padding: 0 20px;
-  color: white;
 }
 
-.logo {
+.brand {
   font-size: 20px;
   font-weight: bold;
+  cursor: pointer;
 }
 
-/* Logout button */
+/* ===== LOGOUT BUTTON ===== */
 .logout-btn {
   background: rgba(255, 255, 255, 0.2);
   border: none;
@@ -108,20 +99,13 @@ export default {
   background: rgba(255, 255, 255, 0.35);
 }
 
-/* Page content */
-.page {
+/* ===== PAGE CONTENT ===== */
+.page-container {
+  flex: 1;
   display: flex;
   justify-content: center;
   align-items: flex-start;
-  padding-top: 80px;
-}
-
-/* Dashboard */
-.dashboard {
-  background: white;
-  padding: 30px 40px;
-  border-radius: 14px;
-  box-shadow: 0 20px 40px rgba(0, 0, 0, 0.15);
-  text-align: center;
+  padding-top: 60px;
 }
 </style>
+

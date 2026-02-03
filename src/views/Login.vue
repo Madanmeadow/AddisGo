@@ -3,21 +3,25 @@
     <div class="auth-card">
       <h2>Login</h2>
 
-      <input
-        v-model="email"
-        type="email"
-        placeholder="Email"
-      />
+      <form @submit.prevent="login">
+        <input
+          type="email"
+          placeholder="Email"
+          v-model="email"
+          required
+        />
 
-      <input
-        v-model="password"
-        type="password"
-        placeholder="Password"
-      />
+        <input
+          type="password"
+          placeholder="Password"
+          v-model="password"
+          required
+        />
 
-      <button @click="login">Login</button>
+        <button type="submit">Login</button>
+      </form>
 
-      <p>
+      <p class="link">
         No account?
         <router-link to="/register">Register</router-link>
       </p>
@@ -26,80 +30,72 @@
 </template>
 
 <script>
-import api from "../services/api";
-import { useRouter } from "vue-router";
+import api from "@/services/api";
 
 export default {
   name: "Login",
-  setup() {
-    const router = useRouter();
-
-    const email = ref("");
-    const password = ref("");
-
-    const login = async () => {
+  data() {
+    return {
+      email: "",
+      password: ""
+    };
+  },
+  methods: {
+    async login() {
       try {
         const res = await api.post("/auth/login", {
-          email: email.value,
-          password: password.value,
+          email: this.email,
+          password: this.password
         });
 
         localStorage.setItem("token", res.data.token);
-        router.push("/dashboard");
+        this.$router.push("/dashboard");
       } catch (err) {
         alert("Login failed");
+        console.error(err);
       }
-    };
-
-    return {
-      email,
-      password,
-      login,
-    };
-  },
+    }
+  }
 };
 </script>
 
 <style scoped>
 .auth-page {
-  margin-top: 64px; /* 👈 NAVBAR SPACE */
-  min-height: calc(100vh - 64px);
+  min-height: calc(100vh - 60px);
   display: flex;
-  align-items: center;
   justify-content: center;
-
-  background: linear-gradient(135deg, #64748b, #334155);
+  align-items: flex-start;
+  margin-top: 60px;
 }
 
 .auth-card {
   background: #ffffff;
-  padding: 32px;
-  width: 360px;
+  padding: 24px;
+  width: 320px;
   border-radius: 12px;
-  box-shadow: 0 20px 40px rgba(0, 0, 0, 0.25);
-  text-align: center;
+  box-shadow: 0 10px 30px rgba(0, 0, 0, 0.15);
 }
 
 .auth-card h2 {
-  margin-bottom: 20px;
+  text-align: center;
+  margin-bottom: 16px;
 }
 
 .auth-card input {
   width: 100%;
-  padding: 12px;
-  margin-bottom: 14px;
+  padding: 10px;
+  margin-bottom: 12px;
   border-radius: 6px;
   border: 1px solid #ccc;
 }
 
 .auth-card button {
   width: 100%;
-  padding: 12px;
-  border: none;
+  padding: 10px;
   background: #2563eb;
   color: white;
+  border: none;
   border-radius: 6px;
-  font-weight: 600;
   cursor: pointer;
 }
 
@@ -107,7 +103,8 @@ export default {
   background: #1d4ed8;
 }
 
-.auth-card p {
-  margin-top: 14px;
+.link {
+  margin-top: 12px;
+  text-align: center;
 }
 </style>
