@@ -1,4 +1,14 @@
-/* ===== Global reset ===== */
+/* ===== Brand Variables ===== */
+:root {
+  --brand-primary: #2563eb;   /* Addis Blue */
+  --brand-accent: #14b8a6;    /* Teal */
+  --bg-main: #94a3b8;         /* Slate gray */
+  --card-bg: #f8fafc;
+  --text-main: #1f2933;
+  --error: #dc2626;
+}
+
+/* ===== Reset ===== */
 * {
   box-sizing: border-box;
 }
@@ -8,14 +18,19 @@ html, body {
   padding: 0;
   height: 100%;
   font-family: system-ui, -apple-system, BlinkMacSystemFont, sans-serif;
+  color: var(--text-main);
 }
 
 /* ===== Background ===== */
 body {
-  background-color: #9ca3af; /* mid-tone gray */
+  background: linear-gradient(
+    135deg,
+    #94a3b8,
+    #64748b
+  );
 }
 
-/* ===== Centering wrapper ===== */
+/* ===== Center layout ===== */
 .auth-page {
   min-height: 100vh;
   display: flex;
@@ -23,59 +38,72 @@ body {
   justify-content: center;
 }
 
-/* ===== Auth card ===== */
+/* ===== Card ===== */
 .auth-card {
-  background: #f9fafb;
-  padding: 32px 36px;
-  border-radius: 12px;
+  background: var(--card-bg);
+  padding: 36px;
+  border-radius: 14px;
   width: 100%;
   max-width: 420px;
-  box-shadow: 0 20px 40px rgba(0, 0, 0, 0.15);
+  box-shadow: 0 25px 50px rgba(0, 0, 0, 0.2);
+  animation: fadeIn 0.4s ease;
 }
 
 /* ===== Titles ===== */
 .auth-card h1 {
-  margin-bottom: 20px;
   text-align: center;
+  margin-bottom: 24px;
+  font-size: 28px;
 }
 
 /* ===== Inputs ===== */
 .auth-card input {
   width: 100%;
-  padding: 12px;
-  margin-bottom: 12px;
-  border-radius: 6px;
-  border: 1px solid #d1d5db;
+  padding: 14px;
+  margin-bottom: 14px;
+  border-radius: 8px;
+  border: 1px solid #cbd5e1;
   font-size: 15px;
+}
+
+.auth-card input:focus {
+  outline: none;
+  border-color: var(--brand-primary);
 }
 
 /* ===== Buttons ===== */
 .auth-card button {
   width: 100%;
-  padding: 12px;
-  margin-top: 8px;
-  background-color: #2563eb;
+  padding: 14px;
+  background: linear-gradient(
+    135deg,
+    var(--brand-primary),
+    var(--brand-accent)
+  );
   color: white;
   border: none;
-  border-radius: 6px;
-  font-size: 15px;
+  border-radius: 8px;
+  font-size: 16px;
+  font-weight: 600;
   cursor: pointer;
+  transition: transform 0.15s ease, box-shadow 0.15s ease;
 }
 
 .auth-card button:hover {
-  background-color: #1e40af;
+  transform: translateY(-1px);
+  box-shadow: 0 10px 20px rgba(0,0,0,0.15);
 }
 
 /* ===== Links ===== */
 .auth-card p {
   text-align: center;
-  margin-top: 16px;
+  margin-top: 18px;
 }
 
 .auth-card a {
-  color: #2563eb;
+  color: var(--brand-primary);
+  font-weight: 600;
   text-decoration: none;
-  font-weight: 500;
 }
 
 .auth-card a:hover {
@@ -84,7 +112,20 @@ body {
 
 /* ===== Errors ===== */
 .error {
-  color: #dc2626;
+  margin-top: 12px;
+  color: var(--error);
   text-align: center;
-  margin-top: 10px;
+  font-weight: 500;
+}
+
+/* ===== Animation ===== */
+@keyframes fadeIn {
+  from {
+    opacity: 0;
+    transform: translateY(6px);
+  }
+  to {
+    opacity: 1;
+    transform: translateY(0);
+  }
 }
