@@ -1,46 +1,82 @@
 <template>
-  <div class="dashboard">
-    <h1>Dashboard</h1>
-    <p>You are logged in 🎉</p>
+  <nav class="navbar">
+    <div class="nav-left">
+      <span class="logo">Addis<span>Go</span></span>
+    </div>
 
-    <button @click="logout" class="logout-btn">
-      Logout
-    </button>
-  </div>
+    <div class="nav-right">
+      <button v-if="isLoggedIn" @click="logout" class="logout-btn">
+        Logout
+      </button>
+    </div>
+  </nav>
 </template>
 
 <script>
-export default {
-  name: 'Dashboard',
-  methods: {
-    logout() {
-      // 1. Remove token
-      localStorage.removeItem('token')
+import { useRouter } from "vue-router";
 
-      // 2. Redirect to login
-      this.$router.push('/login')
-    }
-  }
-}
+export default {
+  name: "Navbar",
+  setup() {
+    const router = useRouter();
+
+    const isLoggedIn = () => {
+      return !!localStorage.getItem("token");
+    };
+
+    const logout = () => {
+      localStorage.removeItem("token");
+      router.push("/login");
+    };
+
+    return {
+      isLoggedIn,
+      logout,
+    };
+  },
+};
 </script>
 
 <style scoped>
-.dashboard {
-  text-align: center;
-  margin-top: 60px;
+.navbar {
+  height: 64px;
+  padding: 0 32px;
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+
+  background: linear-gradient(
+    135deg,
+    #2563eb,
+    #14b8a6
+  );
+
+  color: white;
+  box-shadow: 0 6px 20px rgba(0,0,0,0.25);
+}
+
+.logo {
+  font-size: 22px;
+  font-weight: 800;
+  letter-spacing: 0.5px;
+}
+
+.logo span {
+  color: #e0f2fe;
 }
 
 .logout-btn {
-  margin-top: 20px;
-  padding: 10px 20px;
-  background: #e74c3c;
-  color: white;
+  background: rgba(255,255,255,0.15);
   border: none;
-  border-radius: 5px;
+  color: white;
+  padding: 10px 18px;
+  border-radius: 8px;
   cursor: pointer;
+  font-weight: 600;
+  transition: background 0.2s ease;
 }
 
 .logout-btn:hover {
-  background: #c0392b;
+  background: rgba(255,255,255,0.25);
 }
 </style>
