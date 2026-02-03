@@ -1,8 +1,11 @@
-require('dotenv').config();
-const app = require('./src/app');
+import cors from "cors";
 
-const PORT = process.env.PORT || 5000;
-
-app.listen(PORT, () => {
-  console.log(`🚀 Server running on http://localhost:${PORT}`);
-});
+app.use(
+  cors({
+    origin: [
+      "http://localhost:5173",
+      "https://ethioaddisgo.com",
+    ],
+    credentials: true,
+  })
+);
