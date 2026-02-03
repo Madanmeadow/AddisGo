@@ -1,38 +1,51 @@
 <template>
   <div class="page">
-    <h1>Write Your Voice ✍️</h1>
-    <p>Your words can move people.</p>
+    <h1>✍️ Write Your Voice</h1>
+    <p>Say what needs to be said.</p>
 
     <textarea
-      placeholder="Write what you want the world to hear…"
-      rows="6"
-    />
+      v-model="text"
+      placeholder="Start writing your voice here…"
+    ></textarea>
 
-    <div class="actions">
-      <button class="primary">Publish</button>
-      <button class="secondary" @click="$router.push('/dashboard')">
-        Cancel
-      </button>
-    </div>
+    <button @click="submit">Save Voice</button>
   </div>
 </template>
 
+<script setup>
+import { ref } from "vue";
+
+const text = ref("");
+
+const submit = () => {
+  if (!text.value.trim()) {
+    alert("Your voice can’t be empty 💙");
+    return;
+  }
+
+  alert("Voice saved (next step: backend 🔥)");
+  text.value = "";
+};
+</script>
+
 <style scoped>
 .page {
+  padding: 40px;
   max-width: 700px;
   margin: auto;
-  padding: 40px;
 }
+
 textarea {
   width: 100%;
-  border-radius: 10px;
-  padding: 15px;
-  border: none;
+  height: 200px;
+  padding: 16px;
   font-size: 16px;
+  border-radius: 10px;
+  margin: 20px 0;
 }
-.actions {
-  margin-top: 20px;
-  display: flex;
-  gap: 10px;
+
+button {
+  padding: 12px 24px;
+  font-size: 16px;
 }
 </style>
