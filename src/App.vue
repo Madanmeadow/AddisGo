@@ -2,7 +2,7 @@
   <div id="app">
     <!-- Top Navbar -->
     <header class="navbar">
-      <div class="brand" @click="goHome">AddisGo</div>
+      <div class="brand" @click="goHome">MeDan</div>
 
       <button
         v-if="isLoggedIn"
@@ -108,4 +108,3 @@ html, body {
   padding-top: 60px;
 }
 </style>
-

@@ -1,17 +1,24 @@
-const express = require("express");
-const cors = require("cors");
+import express from "express";
+import cors from "cors";
+import dotenv from "dotenv";
 
-const authRoutes = require("./routes/auth.routes");
+import usersRoutes from "./routes/users.routes.js";
+
+dotenv.config();
 
 const app = express();
 
-app.use(cors());
+app.use(cors({
+  origin: true,
+  credentials: true
+}));
+
 app.use(express.json());
 
+app.use("/api/users", usersRoutes);
+
 app.get("/", (req, res) => {
-  res.json({ message: "API running 🚀" });
+  res.send("API running");
 });
 
-app.use("/api/auth", authRoutes);
-
-module.exports = app;
+export default app;
