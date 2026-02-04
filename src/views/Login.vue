@@ -1,27 +1,34 @@
 <template>
   <div class="auth">
-    <div class="card">
-      <h2>Login</h2>
+    <h1>Welcome back</h1>
+    <p class="subtitle">Log in to MeDan</p>
 
+    <form @submit.prevent="login">
       <input
-        v-model="email"
         type="email"
+        v-model="email"
         placeholder="Email"
+        required
       />
 
       <input
-        v-model="password"
         type="password"
+        v-model="password"
         placeholder="Password"
+        required
       />
 
-      <button @click="login">Login</button>
+      <button type="submit" :disabled="loading">
+        {{ loading ? "Logging in..." : "Login" }}
+      </button>
+    </form>
 
-      <p class="link">
-        No account?
-        <router-link to="/register">Register</router-link>
-      </p>
-    </div>
+    <p class="switch">
+      No account?
+      <router-link to="/register">Register</router-link>
+    </p>
+
+    <p v-if="error" class="error">{{ error }}</p>
   </div>
 </template>
 
@@ -30,11 +37,17 @@ import { ref } from "vue";
 import { useRouter } from "vue-router";
 import api from "@/services/api";
 
-const email = ref("");
-const password = ref("");
 const router = useRouter();
 
+const email = ref("");
+const password = ref("");
+const loading = ref(false);
+const error = ref("");
+
 const login = async () => {
+  error.value = "";
+  loading.value = true;
+
   try {
     const res = await api.post("/auth/login", {
       email: email.value,
@@ -44,24 +57,21 @@ const login = async () => {
     localStorage.setItem("token", res.data.token);
     router.push("/dashboard");
   } catch (err) {
-    alert("Login failed");
+    error.value =
+      err.response?.data?.message || "Login failed";
+  } finally {
+    loading.value = false;
   }
 };
 </script>
 
 <style scoped>
 .auth {
-  min-height: 100vh;
-  display: flex;
-  justify-content: center;
-  align-items: center;
-}
-
-.card {
-  background: white;
+  max-width: 380px;
+  margin: 120px auto;
   padding: 30px;
+  background: #fff;
   border-radius: 14px;
-  width: 320px;
   text-align: center;
 }
 
@@ -76,7 +86,6 @@ input {
 button {
   width: 100%;
   padding: 12px;
-  margin-top: 10px;
   background: #3aaed8;
   color: white;
   border: none;
@@ -84,7 +93,16 @@ button {
   cursor: pointer;
 }
 
-.link {
+.error {
+  margin-top: 10px;
+  color: red;
+}
+
+.switch {
   margin-top: 15px;
+}
+
+.subtitle {
+  color: #666;
 }
 </style>
