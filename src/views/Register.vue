@@ -1,6 +1,6 @@
 <template>
-  <div class="auth-page">
-    <div class="auth-card">
+  <div class="auth">
+    <div class="card">
       <h2>Create Account</h2>
 
       <input
@@ -17,7 +17,7 @@
 
       <button @click="register">Register</button>
 
-      <p>
+      <p class="link">
         Already have an account?
         <router-link to="/login">Login</router-link>
       </p>
@@ -25,90 +25,67 @@
   </div>
 </template>
 
-<script>
-import api from "../services/api";
-import { useRouter } from "vue-router";
+<script setup>
 import { ref } from "vue";
+import { useRouter } from "vue-router";
+import api from "@/services/api";
 
-export default {
-  name: "Register",
-  setup() {
-    const router = useRouter();
+const email = ref("");
+const password = ref("");
+const router = useRouter();
 
-    const email = ref("");
-    const password = ref("");
+const register = async () => {
+  try {
+    const res = await api.post("/auth/register", {
+      email: email.value,
+      password: password.value,
+    });
 
-    const register = async () => {
-      try {
-        await api.post("/auth/register", {
-          email: email.value,
-          password: password.value,
-        });
-
-        router.push("/login");
-      } catch (err) {
-        alert("Registration failed");
-      }
-    };
-
-    return {
-      email,
-      password,
-      register,
-    };
-  },
+    localStorage.setItem("token", res.data.token);
+    router.push("/dashboard");
+  } catch (err) {
+    alert("Registration failed");
+  }
 };
 </script>
 
 <style scoped>
-.auth-page {
-  margin-top: 64px; /* 👈 NAVBAR SPACE */
-  min-height: calc(100vh - 64px);
+.auth {
+  min-height: 100vh;
   display: flex;
-  align-items: center;
   justify-content: center;
-
-  background: linear-gradient(135deg, #64748b, #334155);
+  align-items: center;
 }
 
-.auth-card {
-  background: #ffffff;
-  padding: 32px;
-  width: 360px;
-  border-radius: 12px;
-  box-shadow: 0 20px 40px rgba(0, 0, 0, 0.25);
+.card {
+  background: white;
+  padding: 30px;
+  border-radius: 14px;
+  width: 320px;
   text-align: center;
 }
 
-.auth-card h2 {
-  margin-bottom: 20px;
-}
-
-.auth-card input {
+input {
   width: 100%;
   padding: 12px;
-  margin-bottom: 14px;
-  border-radius: 6px;
+  margin: 10px 0;
+  border-radius: 8px;
   border: 1px solid #ccc;
 }
 
-.auth-card button {
+button {
   width: 100%;
   padding: 12px;
-  border: none;
-  background: #14b8a6;
+  margin-top: 10px;
+  background: #6c5ce7;
   color: white;
-  border-radius: 6px;
-  font-weight: 600;
+  border: none;
+  border-radius: 8px;
   cursor: pointer;
 }
 
-.auth-card button:hover {
-  background: #0d9488;
-}
-
-.auth-card p {
-  margin-top: 14px;
+.link {
+  margin-top: 15px;
 }
 </style>
 

@@ -10,17 +10,9 @@
 
     <!-- Actions -->
     <div class="actions">
-      <button class="primary" @click="goSpeak">
-        🎤 Speak now
-      </button>
-
-      <button class="secondary" @click="goWrite">
-        ✍️ Write your voice
-      </button>
-
-      <button class="video" @click="goVideo">
-        🎥 Record video
-      </button>
+      <button class="primary" @click="goSpeak">🎤 Speak now</button>
+      <button class="secondary" @click="goWrite">✍️ Write your voice</button>
+      <button class="video" @click="goVideo">🎥 Record video</button>
     </div>
 
     <!-- Community -->
@@ -52,17 +44,9 @@ import { useRouter } from "vue-router";
 
 const router = useRouter();
 
-const goSpeak = () => {
-  router.push("/speak");
-};
-
-const goWrite = () => {
-  router.push("/write");
-};
-
-const goVideo = () => {
-  router.push("/video");
-};
+const goSpeak = () => router.push("/speak");
+const goWrite = () => router.push("/write");
+const goVideo = () => router.push("/video");
 </script>
 
 <style scoped>
