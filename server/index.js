@@ -3,28 +3,30 @@ import cors from "cors";
 import path from "path";
 import { fileURLToPath } from "url";
 
-// ROUTES
 import videosRoutes from "./routes/videos.routes.js";
 import authRoutes from "./routes/auth.routes.js";
+import commentsRoutes from "./routes/comments.routes.js";
 
 const app = express();
+const PORT = process.env.PORT || 10000;
 
 // Needed for __dirname in ES modules
 const __filename = fileURLToPath(import.meta.url);
 const __dirname = path.dirname(__filename);
 
-// MIDDLEWARE
+// Middleware
 app.use(cors());
 app.use(express.json());
 
-// SERVE UPLOADED VIDEOS
+// Static uploads
 app.use("/uploads", express.static(path.join(__dirname, "uploads")));
 
-// API ROUTES
+// Routes
 app.use("/api/videos", videosRoutes);
 app.use("/api/auth", authRoutes);
+app.use("/api/comments", commentsRoutes);
 
-// HEALTH CHECK
+// Health check
 app.get("/", (req, res) => {
   res.json({
     status: "OK",
@@ -32,9 +34,7 @@ app.get("/", (req, res) => {
   });
 });
 
-// PORT (Render compatible)
-const PORT = process.env.PORT || 10000;
-
+// Start server
 app.listen(PORT, () => {
   console.log(`Server running on port ${PORT}`);
 });
