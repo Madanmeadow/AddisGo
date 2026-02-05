@@ -1,15 +1,15 @@
 const express = require("express");
 const router = express.Router();
-const db = require("../db"); // make sure this path is correct
+const db = require("../db");
 
 /**
  * GET /api/videos
- * Get all videos (basic list)
+ * Latest videos
  */
 router.get("/", async (req, res) => {
   try {
-    const result = await db.query(`
-      SELECT 
+    const [rows] = await db.query(`
+      SELECT
         id,
         title,
         thumbnail_url,
@@ -20,21 +20,20 @@ router.get("/", async (req, res) => {
       ORDER BY created_at DESC
     `);
 
-    res.json(result.rows);
+    res.json(rows);
   } catch (err) {
-    console.error("Get videos error:", err);
+    console.error("GET /videos error:", err);
     res.status(500).json({ message: "Failed to fetch videos" });
   }
 });
 
 /**
  * GET /api/videos/trending
- * Get top videos by views
  */
 router.get("/trending", async (req, res) => {
   try {
-    const result = await db.query(`
-      SELECT 
+    const [rows] = await db.query(`
+      SELECT
         id,
         title,
         thumbnail_url,
@@ -45,38 +44,42 @@ router.get("/trending", async (req, res) => {
       LIMIT 6
     `);
 
-    res.json(result.rows);
+    res.json(rows);
   } catch (err) {
-    console.error("Trending videos error:", err);
+    console.error("Trending error:", err);
     res.status(500).json({ message: "Failed to load trending videos" });
   }
 });
 
 /**
- * GET /api/videos/:id
- * Get single video by ID
+ * GET /api/videos/explore?page=1&limit=6
+ * Infinite scroll feed
  */
-router.get("/:id", async (req, res) => {
-  const { id } = req.params;
+router.get("/explore", async (req, res) => {
+  const page = parseInt(req.query.page) || 1;
+  const limit = parseInt(req.query.limit) || 6;
+  const offset = (page - 1) * limit;
 
   try {
-    const result = await db.query(
+    const [rows] = await db.query(
       `
-      SELECT *
+      SELECT
+        id,
+        title,
+        thumbnail_url,
+        username,
+        views
       FROM videos
-      WHERE id = $1
+      ORDER BY created_at DESC
+      LIMIT ? OFFSET ?
       `,
-      [id]
+      [limit, offset]
     );
 
-    if (result.rows.length === 0) {
-      return res.status(404).json({ message: "Video not found" });
-    }
-
-    res.json(result.rows[0]);
+    res.json(rows);
   } catch (err) {
-    console.error("Get video error:", err);
-    res.status(500).json({ message: "Failed to fetch video" });
+    console.error("Explore error:", err);
+    res.status(500).json({ message: "Failed to load explore feed" });
   }
 });
 
