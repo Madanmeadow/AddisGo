@@ -1,50 +1,29 @@
 import { createRouter, createWebHistory } from "vue-router";
 
-// Views
 import Login from "@/views/Login.vue";
 import Register from "@/views/Register.vue";
 import Dashboard from "@/views/Dashboard.vue";
-
-const routes = [
-  {
-    path: "/",
-    redirect: "/login"
-  },
-
-  {
-    path: "/login",
-    name: "Login",
-    component: Login
-  },
-
-  {
-    path: "/register",
-    name: "Register",
-    component: Register
-  },
-
-  {
-    path: "/dashboard",
-    name: "Dashboard",
-    component: Dashboard,
-    meta: { requiresAuth: true }
-  }
-];
+import VideoView from "@/views/VideoView.vue";
+import SpeakView from "@/views/SpeakView.vue";
+import WriteView from "@/views/WriteView.vue";
 
 const router = createRouter({
   history: createWebHistory(),
-  routes
+  routes: [
+    { path: "/login", component: Login },
+    { path: "/register", component: Register },
+    { path: "/dashboard", component: Dashboard, meta: { requiresAuth: true } },
+    { path: "/speak", component: SpeakView, meta: { requiresAuth: true } },
+    { path: "/write", component: WriteView, meta: { requiresAuth: true } },
+    { path: "/video", component: VideoView, meta: { requiresAuth: true } },
+    { path: "/", redirect: "/login" }
+  ]
 });
 
-/* 🔐 AUTH GUARD */
-router.beforeEach((to, from, next) => {
+router.beforeEach((to, _, next) => {
   const token = localStorage.getItem("token");
-
-  if (to.meta.requiresAuth && !token) {
-    next("/login");
-  } else {
-    next();
-  }
+  if (to.meta.requiresAuth && !token) next("/login");
+  else next();
 });
 
 export default router;
