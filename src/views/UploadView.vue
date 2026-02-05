@@ -1,88 +1,63 @@
 <template>
-  <div class="upload-page">
+  <div class="upload">
     <h1>Upload Video</h1>
 
-    <form @submit.prevent="submit">
-      <input v-model="title" placeholder="Video title" required />
-      <input v-model="username" placeholder="Username" required />
-      <input type="file" @change="onFile" accept="video/*" required />
-
-      <button :disabled="loading">
-        {{ loading ? "Uploading..." : "Upload" }}
-      </button>
+    <form @submit.prevent="handleUpload">
+      <input type="file" accept="video/*" @change="onFileChange" required />
+      <button type="submit">Upload</button>
     </form>
 
-    <p v-if="success" class="success">Uploaded successfully 🎉</p>
+    <p v-if="loading">Uploading...</p>
+    <p v-if="error" class="error">{{ error }}</p>
+    <p v-if="success" class="success">Upload successful 🎉</p>
   </div>
 </template>
 
-<script>
+<script setup>
 import { ref } from "vue";
 import { uploadVideo } from "@/services/videoService";
 
-export default {
-  name: "UploadView",
-  setup() {
-    const title = ref("");
-    const username = ref("");
-    const file = ref(null);
-    const loading = ref(false);
-    const success = ref(false);
+const file = ref(null);
+const loading = ref(false);
+const error = ref("");
+const success = ref(false);
 
-    const onFile = (e) => {
-      file.value = e.target.files[0];
-    };
+function onFileChange(e) {
+  file.value = e.target.files[0];
+}
 
-    const submit = async () => {
-      loading.value = true;
-      success.value = false;
+async function handleUpload() {
+  if (!file.value) return;
 
-      const formData = new FormData();
-      formData.append("title", title.value);
-      formData.append("username", username.value);
-      formData.append("video", file.value);
+  loading.value = true;
+  error.value = "";
+  success.value = false;
 
-      await uploadVideo(formData);
+  try {
+    const formData = new FormData();
+    formData.append("video", file.value);
 
-      // 🔥 notify Explore to refresh
-      window.dispatchEvent(new Event("video-uploaded"));
-
-      loading.value = false;
-      success.value = true;
-    };
-
-    return {
-      title,
-      username,
-      file,
-      loading,
-      success,
-      onFile,
-      submit
-    };
+    await uploadVideo(formData);
+    success.value = true;
+  } catch (err) {
+    error.value = "Upload failed";
+  } finally {
+    loading.value = false;
   }
-};
+}
 </script>
 
 <style scoped>
-.upload-page {
-  max-width: 500px;
+.upload {
+  max-width: 400px;
   margin: 60px auto;
+  text-align: center;
 }
-
-input {
-  display: block;
-  width: 100%;
-  margin-bottom: 12px;
-  padding: 10px;
+.error {
+  color: red;
 }
-
-button {
-  padding: 10px 18px;
-}
-
 .success {
   color: green;
-  margin-top: 12px;
 }
 </style>
+

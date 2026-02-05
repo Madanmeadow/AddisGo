@@ -1,15 +1,23 @@
-const API_URL = import.meta.env.VITE_API_URL || "";
+// src/services/videoService.js
+import axios from "axios";
 
-export async function getTrendingVideos() {
-  const res = await fetch(`${API_URL}/api/videos/trending`);
-  if (!res.ok) throw new Error("Trending fetch failed");
-  return res.json();
+const API_URL = import.meta.env.VITE_API_URL || "http://localhost:5000/api";
+
+export async function uploadVideo(formData) {
+  const res = await axios.post(`${API_URL}/videos/upload`, formData, {
+    headers: {
+      "Content-Type": "multipart/form-data",
+    },
+  });
+  return res.data;
 }
 
-export async function getExploreVideos(page = 1, limit = 6) {
-  const res = await fetch(
-    `${API_URL}/api/videos/explore?page=${page}&limit=${limit}`
-  );
-  if (!res.ok) throw new Error("Explore fetch failed");
-  return res.json();
+export async function getTrendingVideos() {
+  const res = await axios.get(`${API_URL}/videos/trending`);
+  return res.data;
+}
+
+export async function getExploreVideos(page = 1) {
+  const res = await axios.get(`${API_URL}/videos/explore?page=${page}`);
+  return res.data;
 }
