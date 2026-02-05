@@ -1,45 +1,27 @@
 import { createRouter, createWebHistory } from "vue-router";
 
-// Views (make sure these files EXIST with exact names)
-import HomeView from "@/views/HomeView.vue";
-import ExploreView from "@/views/ExploreView.vue";
-import UploadView from "@/views/UploadView.vue";
-import DashboardView from "@/views/DashboardView.vue";
-
 const routes = [
   {
     path: "/",
     name: "Home",
-    component: HomeView
-  },
-  {
-    path: "/explore",
-    name: "Explore",
-    component: ExploreView
+    component: () => import("@/views/HomeView.vue")
   },
   {
     path: "/upload",
     name: "Upload",
-    component: UploadView
+    component: () => import("@/views/UploadView.vue")
   },
   {
-    path: "/dashboard",
-    name: "Dashboard",
-    component: DashboardView
-  },
-  // fallback
-  {
-    path: "/:pathMatch(.*)*",
-    redirect: "/"
+    path: "/explore",
+    name: "Explore",
+    component: () => import("@/views/ExploreView.vue")
   }
 ];
 
 const router = createRouter({
   history: createWebHistory(),
-  routes,
-  scrollBehavior() {
-    return { top: 0 };
-  }
+  routes
 });
 
 export default router;
+

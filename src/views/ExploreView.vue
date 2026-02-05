@@ -1,39 +1,56 @@
 <template>
-  <div class="feed">
-    <video
-      v-for="video in videos"
-      :key="video"
-      :src="video"
-      autoplay
-      muted
-      loop
-      playsinline
-      class="video"
-    />
+  <div class="explore">
+    <div
+      v-for="(video, index) in videos"
+      :key="index"
+      class="video-card"
+    >
+      <video
+        :src="video.url"
+        controls
+        autoplay
+        muted
+        loop
+        playsinline
+      ></video>
+    </div>
   </div>
 </template>
 
-<script setup>
-import { ref, onMounted } from "vue";
-
-const videos = ref([]);
-
-onMounted(() => {
-  videos.value = [
-    "http://localhost:5000/uploads/YOUR_VIDEO_NAME.mp4",
-  ];
-});
+<script>
+export default {
+  name: "ExploreView",
+  data() {
+    return {
+      videos: []
+    };
+  },
+  async mounted() {
+    const res = await fetch("http://localhost:5000/api/videos");
+    this.videos = await res.json();
+  }
+};
 </script>
 
 <style scoped>
-.feed {
-  height: 100vh;
-  overflow-y: scroll;
+.explore {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 30px;
+  padding: 20px;
 }
-.video {
+
+.video-card {
+  width: 360px;
+  max-width: 100%;
+}
+
+video {
   width: 100%;
-  height: 100vh;
-  object-fit: cover;
+  border-radius: 14px;
+  background: black;
 }
 </style>
+
 
