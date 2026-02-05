@@ -4,54 +4,83 @@
 
     <input type="file" accept="video/*" @change="handleFile" />
 
-    <button @click="uploadVideo" :disabled="!file || loading">
-      {{ loading ? "Uploading..." : "Upload" }}
+    <button
+      :disabled="uploading"
+      @click="uploadVideo"
+    >
+      {{ uploading ? "Uploading..." : "Upload" }}
     </button>
 
-    <p v-if="videoUrl">
-      Uploaded 🎉
-      <br />
-      <a :href="videoUrl" target="_blank">{{ videoUrl }}</a>
-    </p>
+    <p v-if="success" class="success">✅ Upload complete!</p>
+    <p v-if="error" class="error">{{ error }}</p>
   </div>
 </template>
 
-<script setup>
-import { ref } from "vue";
+<script>
+export default {
+  data() {
+    return {
+      file: null,
+      uploading: false,
+      success: false,
+      error: ""
+    };
+  },
+  methods: {
+    handleFile(e) {
+      this.file = e.target.files[0];
+    },
+    async uploadVideo() {
+      if (!this.file) {
+        this.error = "Please select a video";
+        return;
+      }
 
-const file = ref(null);
-const loading = ref(false);
-const videoUrl = ref("");
+      this.uploading = true;
+      this.error = "";
+      this.success = false;
 
-const handleFile = (e) => {
-  file.value = e.target.files[0];
-};
+      const formData = new FormData();
+      formData.append("video", this.file);
 
-const uploadVideo = async () => {
-  if (!file.value) return;
+      try {
+        const res = await fetch("http://localhost:5000/api/upload", {
+          method: "POST",
+          body: formData
+        });
 
-  loading.value = true;
+        const data = await res.json();
 
-  const formData = new FormData();
-  formData.append("video", file.value);
+        if (!res.ok) throw new Error(data.error || "Upload failed");
 
-  const res = await fetch("http://localhost:5000/api/upload", {
-    method: "POST",
-    body: formData,
-  });
-
-  const data = await res.json();
-  videoUrl.value = "http://localhost:5000" + data.videoUrl;
-
-  loading.value = false;
+        this.success = true;
+        console.log("Uploaded video URL:", data.url);
+      } catch (err) {
+        this.error = err.message;
+      } finally {
+        this.uploading = false;
+      }
+    }
+  }
 };
 </script>
 
 <style scoped>
 .upload-page {
-  padding: 40px;
+  max-width: 400px;
+  margin: 50px auto;
+  text-align: center;
 }
+
 button {
-  margin-top: 12px;
+  margin-top: 15px;
+  padding: 10px 20px;
+}
+
+.success {
+  color: green;
+}
+.error {
+  color: red;
 }
 </style>

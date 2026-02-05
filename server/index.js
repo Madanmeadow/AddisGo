@@ -1,56 +1,62 @@
 const express = require("express");
 const cors = require("cors");
+const multer = require("multer");
 const path = require("path");
+const fs = require("fs");
 
 const app = express();
 const PORT = process.env.PORT || 5000;
 
-/* =======================
-   MIDDLEWARE
-======================= */
 app.use(cors());
 app.use(express.json());
-app.use(express.urlencoded({ extended: true }));
 
-/* =======================
-   STATIC FILES
-   (uploaded videos)
-======================= */
-app.use("/uploads", express.static(path.join(__dirname, "uploads")));
+// ensure upload folder exists
+const uploadDir = path.join(__dirname, "../public/uploads");
+if (!fs.existsSync(uploadDir)) {
+  fs.mkdirSync(uploadDir, { recursive: true });
+}
 
-/* =======================
-   ROOT CHECK (IMPORTANT)
-======================= */
+// multer config
+const storage = multer.diskStorage({
+  destination: (req, file, cb) => {
+    cb(null, uploadDir);
+  },
+  filename: (req, file, cb) => {
+    const uniqueName = `${Date.now()}-${file.originalname}`;
+    cb(null, uniqueName);
+  }
+});
+
+const upload = multer({
+  storage,
+  limits: { fileSize: 1024 * 1024 * 500 } // 500MB
+});
+
+// serve uploaded videos
+app.use("/uploads", express.static(uploadDir));
+
+// health check
 app.get("/", (req, res) => {
   res.json({
     status: "OK",
-    message: "MeDan API is running 🚀",
-    time: new Date().toISOString()
+    message: "MeDan API running 🚀"
   });
 });
 
-/* =======================
-   API ROUTES (example)
-======================= */
-// Example videos route (you can replace later)
-app.get("/api/videos", (req, res) => {
-  res.json([
-    {
-      id: 1,
-      creator: "@creator1",
-      videoUrl: "http://localhost:5000/uploads/sample1.mp4"
-    },
-    {
-      id: 2,
-      creator: "@creator2",
-      videoUrl: "http://localhost:5000/uploads/sample2.mp4"
-    }
-  ]);
+// ✅ REAL upload route
+app.post("/api/upload", upload.single("video"), (req, res) => {
+  if (!req.file) {
+    return res.status(400).json({ error: "No file uploaded" });
+  }
+
+  res.json({
+    success: true,
+    filename: req.file.filename,
+    url: `/uploads/${req.file.filename}`
+  });
 });
 
-/* =======================
-   START SERVER
-======================= */
 app.listen(PORT, () => {
-  console.log(`✅ MeDan API running on http://localhost:${PORT}`);
+  console.log(`✅ Server running on http://localhost:${PORT}`);
 });
+
