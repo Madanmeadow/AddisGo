@@ -1,63 +1,83 @@
 <template>
   <div class="upload">
-    <h1>Upload Video</h1>
+    <h2>Upload a Video</h2>
 
-    <form @submit.prevent="handleUpload">
-      <input type="file" accept="video/*" @change="onFileChange" required />
-      <button type="submit">Upload</button>
-    </form>
+    <input type="file" accept="video/*" @change="handleFile" />
+    <input
+      v-model="caption"
+      placeholder="Write a caption..."
+      class="caption-input"
+    />
 
-    <p v-if="loading">Uploading...</p>
-    <p v-if="error" class="error">{{ error }}</p>
-    <p v-if="success" class="success">Upload successful 🎉</p>
+    <button @click="upload" :disabled="!file">
+      Upload
+    </button>
   </div>
 </template>
 
-<script setup>
-import { ref } from "vue";
-import { uploadVideo } from "@/services/videoService";
+<script>
+export default {
+  name: "UploadView",
+  data() {
+    return {
+      file: null,
+      caption: ""
+    };
+  },
+  methods: {
+    handleFile(e) {
+      this.file = e.target.files[0];
+    },
+    upload() {
+      const reader = new FileReader();
 
-const file = ref(null);
-const loading = ref(false);
-const error = ref("");
-const success = ref(false);
+      reader.onload = () => {
+        const videos = JSON.parse(localStorage.getItem("videos")) || [];
 
-function onFileChange(e) {
-  file.value = e.target.files[0];
-}
+        videos.unshift({
+          id: Date.now(),
+          src: reader.result,
+          creator: "you",
+          caption: this.caption || "New video 🎬",
+          likes: 0,
+          comments: 0
+        });
 
-async function handleUpload() {
-  if (!file.value) return;
+        localStorage.setItem("videos", JSON.stringify(videos));
 
-  loading.value = true;
-  error.value = "";
-  success.value = false;
+        window.dispatchEvent(new Event("videos-updated"));
 
-  try {
-    const formData = new FormData();
-    formData.append("video", file.value);
+        this.$router.push("/explore");
+      };
 
-    await uploadVideo(formData);
-    success.value = true;
-  } catch (err) {
-    error.value = "Upload failed";
-  } finally {
-    loading.value = false;
+      reader.readAsDataURL(this.file);
+    }
   }
-}
+};
 </script>
 
 <style scoped>
 .upload {
   max-width: 400px;
-  margin: 60px auto;
+  margin: 80px auto;
   text-align: center;
 }
-.error {
-  color: red;
+
+input {
+  width: 100%;
+  margin-bottom: 12px;
 }
-.success {
-  color: green;
+
+.caption-input {
+  padding: 10px;
+}
+
+button {
+  background: #6c6cff;
+  color: white;
+  border: none;
+  padding: 12px;
+  border-radius: 8px;
+  width: 100%;
 }
 </style>
-
