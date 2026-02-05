@@ -1,8 +1,30 @@
+/* GLOBAL SCROLL + VIDEO FEED STYLES */
+
+/* Smooth scrolling everywhere */
 html {
   scroll-behavior: smooth;
+  scroll-snap-type: y proximity;
 }
 
-/* prevents “sticky header” from covering section titles */
-#home, #services, #contact {
-  scroll-margin-top: 80px;
+/* Body reset */
+body {
+  margin: 0;
+  padding: 0;
+  background: #f5f5f5;
+  font-family: system-ui, -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, Arial, sans-serif;
+}
+
+/* TikTok-style video snapping */
+.video-card {
+  scroll-snap-align: start;
+  margin-bottom: 32px;
+}
+
+/* Video styling */
+.video {
+  width: 100%;
+  max-height: 80vh;
+  object-fit: cover;
+  border-radius: 14px;
+  background: black;
 }

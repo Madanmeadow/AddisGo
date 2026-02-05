@@ -2,23 +2,20 @@
   <div>
     <UploadVideo @uploaded="fetchVideos" />
 
-    <div v-for="v in videos" :key="v.url" class="video-wrapper">
-      <video
-        :src="api + v.url"
-        muted
-        playsinline
-        loop
-        controls
-      ></video>
-    </div>
+    <VideoCard
+      v-for="v in videos"
+      :key="v.url"
+      :videoUrl="api + v.url"
+    />
   </div>
 </template>
 
 <script>
 import UploadVideo from "@/components/UploadVideo.vue";
+import VideoCard from "@/components/VideoCard.vue";
 
 export default {
-  components: { UploadVideo },
+  components: { UploadVideo, VideoCard },
   data() {
     return {
       videos: [],
@@ -36,14 +33,4 @@ export default {
   }
 };
 </script>
-
-<style>
-.video-wrapper {
-  margin: 20px 0;
-}
-video {
-  width: 100%;
-  border-radius: 12px;
-}
-</style>
 
