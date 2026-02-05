@@ -2,17 +2,16 @@
   <div class="upload-page">
     <h1>Upload Video</h1>
 
-    <input type="file" accept="video/*" @change="handleFile" />
+    <input type="file" accept="video/*" @change="onFileChange" />
 
-    <button
-      :disabled="uploading"
-      @click="uploadVideo"
-    >
+    <button :disabled="uploading" @click="uploadVideo">
       {{ uploading ? "Uploading..." : "Upload" }}
     </button>
 
-    <p v-if="success" class="success">✅ Upload complete!</p>
-    <p v-if="error" class="error">{{ error }}</p>
+    <p v-if="videoUrl">
+      ✅ Uploaded:
+      <a :href="videoUrl" target="_blank">{{ videoUrl }}</a>
+    </p>
   </div>
 </template>
 
@@ -22,23 +21,17 @@ export default {
     return {
       file: null,
       uploading: false,
-      success: false,
-      error: ""
+      videoUrl: null,
     };
   },
   methods: {
-    handleFile(e) {
+    onFileChange(e) {
       this.file = e.target.files[0];
     },
     async uploadVideo() {
-      if (!this.file) {
-        this.error = "Please select a video";
-        return;
-      }
+      if (!this.file) return alert("Select a video first");
 
       this.uploading = true;
-      this.error = "";
-      this.success = false;
 
       const formData = new FormData();
       formData.append("video", this.file);
@@ -46,41 +39,28 @@ export default {
       try {
         const res = await fetch("http://localhost:5000/api/upload", {
           method: "POST",
-          body: formData
+          body: formData,
         });
 
         const data = await res.json();
-
-        if (!res.ok) throw new Error(data.error || "Upload failed");
-
-        this.success = true;
-        console.log("Uploaded video URL:", data.url);
+        this.videoUrl = `http://localhost:5000${data.url}`;
       } catch (err) {
-        this.error = err.message;
+        alert("Upload failed");
+        console.error(err);
       } finally {
         this.uploading = false;
       }
-    }
-  }
+    },
+  },
 };
 </script>
 
 <style scoped>
 .upload-page {
   max-width: 400px;
-  margin: 50px auto;
-  text-align: center;
+  margin: 60px auto;
 }
-
 button {
-  margin-top: 15px;
-  padding: 10px 20px;
-}
-
-.success {
-  color: green;
-}
-.error {
-  color: red;
+  margin-top: 10px;
 }
 </style>
