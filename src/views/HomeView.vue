@@ -1,43 +1,31 @@
 <template>
-  <div class="home">
+  <section class="home">
     <!-- HERO -->
-    <section class="hero">
-      <div class="hero-content">
-        <h1>MeDan</h1>
+    <div class="hero">
+      <h1 class="title">MeDan</h1>
+      <p class="subtitle">
+        Where short videos meet real stories.
+      </p>
 
-        <p class="subtitle">
-          Where short videos meet real stories.
-        </p>
+      <div class="hero-actions">
+        <router-link to="/explore" class="btn primary">
+          Explore Videos
+        </router-link>
 
-        <div class="hero-actions">
-          <router-link to="/register" class="btn primary">
-            Get Started
-          </router-link>
-
-          <router-link to="/explore" class="btn outline">
-            Explore Videos
-          </router-link>
-
-          <!-- PWA INSTALL BUTTON -->
-          <button
-            v-if="canInstall"
-            class="btn install"
-            @click="installApp"
-          >
-            Install MeDan
-          </button>
-        </div>
+        <router-link to="/dashboard" class="btn outline">
+          Dashboard
+        </router-link>
       </div>
-    </section>
+    </div>
 
     <!-- TRENDING -->
     <section class="trending">
       <h2>Trending on MeDan</h2>
 
-      <div class="trending-grid">
-        <div class="video-card" v-for="n in 3" :key="n">
-          <div class="video-placeholder">🎥</div>
-          <p>@creator{{ n }}</p>
+      <div class="cards">
+        <div class="card" v-for="creator in creators" :key="creator">
+          <div class="icon">🎥</div>
+          <p>@{{ creator }}</p>
         </div>
       </div>
     </section>
@@ -45,158 +33,161 @@
     <!-- CTA -->
     <section class="cta">
       <h2>Ready to share your voice?</h2>
-
-      <router-link to="/register" class="btn primary">
+      <router-link to="/upload" class="btn primary">
         Join MeDan
       </router-link>
     </section>
-  </div>
+  </section>
 </template>
 
 <script>
-import { usePwaInstall } from "@/composables/usePwaInstall";
-
 export default {
   name: "HomeView",
-  setup() {
-    const { canInstall, installApp } = usePwaInstall();
+  data() {
     return {
-      canInstall,
-      installApp
+      creators: ["creator1", "creator2", "creator3"]
     };
   }
 };
 </script>
 
 <style scoped>
+/* =====================
+   LAYOUT
+===================== */
 .home {
   width: 100%;
+  background: linear-gradient(135deg, #f5f7ff, #ffffff);
 }
 
-/* HERO */
+/* =====================
+   HERO
+===================== */
 .hero {
   min-height: 70vh;
   display: flex;
+  flex-direction: column;
   align-items: center;
   justify-content: center;
-  background: linear-gradient(
-    135deg,
-    #f5f3ff,
-    #eef2ff,
-    #ffffff
-  );
   text-align: center;
-  padding: 60px 20px;
+  padding: 40px 16px;
 }
 
-.hero-content {
-  max-width: 720px;
-}
-
-.hero h1 {
-  font-size: 64px;
+.title {
+  font-size: clamp(3rem, 6vw, 4.5rem);
   font-weight: 800;
-  letter-spacing: -1px;
   color: #1f2937;
-  margin-bottom: 12px;
 }
 
 .subtitle {
-  font-size: 20px;
-  color: #4b5563;
-  margin-bottom: 32px;
+  margin-top: 12px;
+  font-size: 1.1rem;
+  color: #6b7280;
+  max-width: 480px;
 }
 
+/* =====================
+   HERO BUTTONS
+===================== */
 .hero-actions {
   display: flex;
-  justify-content: center;
   gap: 16px;
+  margin-top: 28px;
   flex-wrap: wrap;
+  justify-content: center;
 }
 
-/* BUTTONS */
 .btn {
-  padding: 14px 28px;
+  padding: 12px 26px;
   border-radius: 999px;
   font-weight: 600;
   text-decoration: none;
   transition: all 0.2s ease;
-  cursor: pointer;
 }
 
-.primary {
+.btn.primary {
   background: #6366f1;
   color: white;
 }
 
-.primary:hover {
+.btn.primary:hover {
   background: #4f46e5;
-  transform: translateY(-2px);
 }
 
-.outline {
+.btn.outline {
+  background: transparent;
   border: 2px solid #6366f1;
   color: #6366f1;
-  background: transparent;
 }
 
-.outline:hover {
-  background: #eef2ff;
-}
-
-/* INSTALL BUTTON */
-.install {
-  background: #10b981;
+.btn.outline:hover {
+  background: #6366f1;
   color: white;
 }
 
-.install:hover {
-  background: #059669;
-  transform: translateY(-2px);
-}
-
-/* TRENDING */
+/* =====================
+   TRENDING
+===================== */
 .trending {
-  padding: 60px 40px;
+  padding: 60px 16px;
+  max-width: 1100px;
+  margin: auto;
 }
 
 .trending h2 {
-  font-size: 28px;
-  margin-bottom: 24px;
-}
-
-.trending-grid {
-  display: grid;
-  grid-template-columns: repeat(auto-fit, minmax(220px, 1fr));
-  gap: 20px;
-}
-
-.video-card {
-  background: #fafafa;
-  border-radius: 16px;
-  padding: 20px;
+  font-size: 2rem;
+  margin-bottom: 32px;
   text-align: center;
-  transition: transform 0.2s ease;
 }
 
-.video-card:hover {
-  transform: translateY(-4px);
+.cards {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(240px, 1fr));
+  gap: 24px;
 }
 
-.video-placeholder {
-  font-size: 48px;
+.card {
+  background: white;
+  border-radius: 18px;
+  padding: 40px 20px;
+  text-align: center;
+  box-shadow: 0 10px 30px rgba(0,0,0,0.05);
+}
+
+.icon {
+  font-size: 2.5rem;
   margin-bottom: 12px;
 }
 
-/* CTA */
+.card p {
+  font-weight: 600;
+  color: #374151;
+}
+
+/* =====================
+   CTA
+===================== */
 .cta {
-  padding: 80px 20px;
+  padding: 80px 16px;
   text-align: center;
-  background: #fafafa;
 }
 
 .cta h2 {
-  font-size: 32px;
-  margin-bottom: 20px;
+  font-size: 2.2rem;
+  margin-bottom: 24px;
+}
+
+/* =====================
+   MOBILE TWEAKS
+===================== */
+@media (max-width: 480px) {
+  .title {
+    font-size: 3rem;
+  }
+
+  .subtitle {
+    font-size: 1rem;
+  }
 }
 </style>
+
