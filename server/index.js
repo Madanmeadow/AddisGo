@@ -1,44 +1,28 @@
-const express = require("express");
-const cors = require("cors");
-const multer = require("multer");
-const path = require("path");
-const fs = require("fs");
+import express from "express";
+import cors from "cors";
+import fs from "fs";
+import path from "path";
+import { fileURLToPath } from "url";
 
 const app = express();
 const PORT = process.env.PORT || 5000;
 
-/* =======================
-   MIDDLEWARE
-======================= */
-app.use(cors());
+// Needed for ES modules
+const __filename = fileURLToPath(import.meta.url);
+const __dirname = path.dirname(__filename);
+
+// ✅ CORS (important for video streaming)
+app.use(cors({
+  origin: "*",
+  methods: ["GET"]
+}));
+
 app.use(express.json());
 
-// serve uploaded videos publicly
+// ✅ Serve uploaded videos
 app.use("/uploads", express.static(path.join(__dirname, "uploads")));
 
-/* =======================
-   MULTER CONFIG
-======================= */
-const storage = multer.diskStorage({
-  destination: (req, file, cb) => {
-    cb(null, "uploads/");
-  },
-  filename: (req, file, cb) => {
-    const uniqueName = `${Date.now()}-${file.originalname}`;
-    cb(null, uniqueName);
-  }
-});
-
-const upload = multer({
-  storage,
-  limits: { fileSize: 500 * 1024 * 1024 }, // 500MB
-});
-
-/* =======================
-   ROUTES
-======================= */
-
-// health check
+// ✅ Health check
 app.get("/", (req, res) => {
   res.json({
     status: "OK",
@@ -46,44 +30,25 @@ app.get("/", (req, res) => {
   });
 });
 
-// upload video
-app.post("/api/upload", upload.single("video"), (req, res) => {
-  if (!req.file) {
-    return res.status(400).json({ error: "No file uploaded" });
-  }
-
-  res.json({
-    success: true,
-    filename: req.file.filename,
-    url: `/uploads/${req.file.filename}`
-  });
-});
-
-// 🔥🔥🔥 THIS IS THE FIX 🔥🔥🔥
+// ✅ Return all uploaded videos
 app.get("/api/videos", (req, res) => {
   const uploadsDir = path.join(__dirname, "uploads");
 
   fs.readdir(uploadsDir, (err, files) => {
-    if (err) {
-      return res.status(500).json({ error: "Failed to read uploads folder" });
-    }
+    if (err) return res.status(500).json([]);
 
     const videos = files
       .filter(file => file.endsWith(".mp4") || file.endsWith(".webm"))
       .map(file => ({
         filename: file,
-        url: `http://localhost:${PORT}/uploads/${file}`
-      }))
-      .reverse(); // newest first
+        url: `${req.protocol}://${req.get("host")}/uploads/${file}`
+      }));
 
     res.json(videos);
   });
 });
 
-/* =======================
-   START SERVER
-======================= */
+// ✅ Start server
 app.listen(PORT, () => {
-  console.log(`✅ Server running on http://localhost:${PORT}`);
+  console.log(`🔥 Server running on port ${PORT}`);
 });
-
