@@ -1,21 +1,24 @@
-const express = require("express");
-const router = express.Router();
+const users = [];
+
+router.post("/register", (req, res) => {
+  const { email, password } = req.body;
+  users.push({ email, password });
+  res.json({ success: true });
+});
 
 router.post("/login", (req, res) => {
   const { email, password } = req.body;
 
-  if (email === "intalhaye@gmail.com" && password === "123456") {
-    return res.json({
-      token: "mock-jwt-token",
-      user: { email }
-    });
+  const user = users.find(
+    u => u.email === email && u.password === password
+  );
+
+  if (!user) {
+    return res.status(401).json({ message: "Invalid credentials" });
   }
 
-  res.status(401).json({ message: "Invalid credentials" });
+  res.json({
+    token: "mock-jwt-token",
+    user: { email }
+  });
 });
-
-router.post("/register", (req, res) => {
-  res.json({ success: true });
-});
-
-module.exports = router;

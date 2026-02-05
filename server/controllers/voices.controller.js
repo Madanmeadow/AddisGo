@@ -1,42 +1,67 @@
-import { pool } from '../db.js';
-import { v4 as uuid } from 'uuid';
+// server/controllers/voices.controller.js
 
-const ALLOWED_PRESENCE = ['reflecting', 'writing', 'listening', 'away'];
+let voices = []; // in-memory store (temporary MVP)
 
-export async function createVoice(req, res) {
-  const userId = req.userId;
-  const { title, body, presence, allow_public_responses } = req.body;
+exports.createVoice = (req, res) => {
+  const { type, content } = req.body;
 
-  // Quiet validation
-  if (!body || body.trim().length < 20) {
-    return res.status(400).json({ error: 'Voice too short' });
+  if (!type || !content) {
+    return res.status(400).json({
+      message: "Type and content are required"
+    });
   }
 
-  if (presence && !ALLOWED_PRESENCE.includes(presence)) {
-    return res.status(400).json({ error: 'Invalid presence' });
+  if (!["text", "video"].includes(type)) {
+    return res.status(400).json({
+      message: "Type must be 'text' or 'video'"
+    });
   }
 
-  const voiceId = uuid();
+  const voice = {
+    id: Date.now(),
+    userId: req.user?.id || req.user?.email, // works with mock JWT
+    type,                 // "text" | "video"
+    content,              // text OR video URL
+    createdAt: new Date()
+  };
 
-  await pool.query(
-    `INSERT INTO voices (
-       id,
-       author_id,
-       title,
-       body,
-       presence,
-       allow_public_responses
-     )
-     VALUES ($1, $2, $3, $4, $5, $6)`,
-    [
-      voiceId,
-      userId,
-      title || null,
-      body.trim(),
-      presence || null,
-      allow_public_responses || false
-    ]
+  voices.unshift(voice); // newest first
+
+  res.status(201).json({
+    success: true,
+    voice
+  });
+};
+
+exports.getMyVoices = (req, res) => {
+  const userId = req.user?.id || req.user?.email;
+
+  const myVoices = voices.filter(
+    v => v.userId === userId
   );
 
-  res.status(201).json({ id: voiceId });
-}
+  res.json(myVoices);
+};
+
+exports.getAllVoices = (req, res) => {
+  res.json(voices);
+};
+
+exports.deleteVoice = (req, res) => {
+  const { id } = req.params;
+  const userId = req.user?.id || req.user?.email;
+
+  const index = voices.findIndex(
+    v => v.id == id && v.userId === userId
+  );
+
+  if (index === -1) {
+    return res.status(404).json({
+      message: "Voice not found or unauthorized"
+    });
+  }
+
+  voices.splice(index, 1);
+
+  res.json({ success: true });
+};

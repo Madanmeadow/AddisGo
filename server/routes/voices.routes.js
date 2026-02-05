@@ -1,11 +1,16 @@
-
-import express from 'express';
-import { createVoice } from '../controllers/voices.controller.js';
-import { requireAuth } from '../middleware/auth.middleware.js';
-import { requireOnboarding } from '../middleware/onboarding.middleware.js';
-
+const express = require("express");
 const router = express.Router();
+const auth = require("../middleware/auth.middleware");
+const {
+  createVoice,
+  getMyVoices,
+  getAllVoices,
+  deleteVoice
+} = require("../controllers/voices.controller");
 
-router.post('/', requireAuth, requireOnboarding, createVoice);
+router.post("/", auth, createVoice);
+router.get("/me", auth, getMyVoices);
+router.get("/", getAllVoices);
+router.delete("/:id", auth, deleteVoice);
 
-export default router;
+module.exports = router;
