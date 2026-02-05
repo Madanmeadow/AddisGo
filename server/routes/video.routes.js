@@ -1,86 +1,29 @@
-const express = require("express");
+import express from "express";
+import fs from "fs";
+import path from "path";
+import { fileURLToPath } from "url";
+
 const router = express.Router();
-const db = require("../db");
 
-/**
- * GET /api/videos
- * Latest videos
- */
-router.get("/", async (req, res) => {
-  try {
-    const [rows] = await db.query(`
-      SELECT
-        id,
-        title,
-        thumbnail_url,
-        username,
-        views,
-        created_at
-      FROM videos
-      ORDER BY created_at DESC
-    `);
+const __filename = fileURLToPath(import.meta.url);
+const __dirname = path.dirname(__filename);
 
-    res.json(rows);
-  } catch (err) {
-    console.error("GET /videos error:", err);
-    res.status(500).json({ message: "Failed to fetch videos" });
+const uploadsDir = path.join(__dirname, "../uploads");
+
+// GET VIDEOS
+router.get("/", (req, res) => {
+  if (!fs.existsSync(uploadsDir)) {
+    return res.json([]);
   }
+
+  const files = fs.readdirSync(uploadsDir);
+
+  const videos = files.map(file => ({
+    filename: file,
+    url: `${req.protocol}://${req.get("host")}/uploads/${file}`
+  }));
+
+  res.json(videos.reverse());
 });
 
-/**
- * GET /api/videos/trending
- */
-router.get("/trending", async (req, res) => {
-  try {
-    const [rows] = await db.query(`
-      SELECT
-        id,
-        title,
-        thumbnail_url,
-        username,
-        views
-      FROM videos
-      ORDER BY views DESC
-      LIMIT 6
-    `);
-
-    res.json(rows);
-  } catch (err) {
-    console.error("Trending error:", err);
-    res.status(500).json({ message: "Failed to load trending videos" });
-  }
-});
-
-/**
- * GET /api/videos/explore?page=1&limit=6
- * Infinite scroll feed
- */
-router.get("/explore", async (req, res) => {
-  const page = parseInt(req.query.page) || 1;
-  const limit = parseInt(req.query.limit) || 6;
-  const offset = (page - 1) * limit;
-
-  try {
-    const [rows] = await db.query(
-      `
-      SELECT
-        id,
-        title,
-        thumbnail_url,
-        username,
-        views
-      FROM videos
-      ORDER BY created_at DESC
-      LIMIT ? OFFSET ?
-      `,
-      [limit, offset]
-    );
-
-    res.json(rows);
-  } catch (err) {
-    console.error("Explore error:", err);
-    res.status(500).json({ message: "Failed to load explore feed" });
-  }
-});
-
-module.exports = router;
+export default router;

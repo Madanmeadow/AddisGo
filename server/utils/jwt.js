@@ -1,13 +1,12 @@
-import jwt from 'jsonwebtoken';
+import jwt from "jsonwebtoken";
 
-export function signSession(user) {
-  return jwt.sign(
-    { id: user.id },
-    process.env.JWT_SECRET,
-    { expiresIn: '7d' }
-  );
-}
+const JWT_SECRET = process.env.JWT_SECRET || "supersecretkey";
 
-export function verifySession(token) {
-  return jwt.verify(token, process.env.JWT_SECRET);
-}
+export const signToken = (payload) => {
+  return jwt.sign(payload, JWT_SECRET, { expiresIn: "7d" });
+};
+
+export const verifyToken = (token) => {
+  return jwt.verify(token, JWT_SECRET);
+};
+
