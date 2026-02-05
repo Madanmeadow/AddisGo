@@ -1,16 +1,11 @@
 import express from "express";
-import fs from "fs";
 import path from "path";
-import { fileURLToPath } from "url";
+import fs from "fs";
 
 const router = express.Router();
 
-const __filename = fileURLToPath(import.meta.url);
-const __dirname = path.dirname(__filename);
+const uploadsDir = path.join(process.cwd(), "server/uploads");
 
-const uploadsDir = path.join(__dirname, "../uploads");
-
-// GET VIDEOS
 router.get("/", (req, res) => {
   if (!fs.existsSync(uploadsDir)) {
     return res.json([]);
@@ -20,10 +15,10 @@ router.get("/", (req, res) => {
 
   const videos = files.map(file => ({
     filename: file,
-    url: `${req.protocol}://${req.get("host")}/uploads/${file}`
+    url: `/uploads/${file}`
   }));
 
-  res.json(videos.reverse());
+  res.json(videos);
 });
 
 export default router;
