@@ -1,9 +1,10 @@
 import { createRouter, createWebHistory } from "vue-router";
 
-// Views
+// Core views
 import HomeView from "@/views/HomeView.vue";
 import ExploreView from "@/views/ExploreView.vue";
 import UploadView from "@/views/UploadView.vue";
+import DashboardView from "@/views/DashboardView.vue";
 
 const routes = [
   {
@@ -20,6 +21,11 @@ const routes = [
     path: "/upload",
     name: "Upload",
     component: UploadView
+  },
+  {
+    path: "/dashboard",
+    name: "Dashboard",
+    component: DashboardView
   },
   {
     path: "/:pathMatch(.*)*",
