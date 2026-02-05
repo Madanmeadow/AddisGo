@@ -1,7 +1,7 @@
 <template>
   <nav class="navbar">
     <div class="container">
-      <h1 class="logo">AddisGo</h1>
+      <h1 class="logo">MeDan</h1>
 
       <ul class="nav-links">
         <li><RouterLink to="/">Home</RouterLink></li>

@@ -17,6 +17,15 @@
           <router-link to="/explore" class="btn outline">
             Explore Videos
           </router-link>
+
+          <!-- PWA INSTALL BUTTON -->
+          <button
+            v-if="canInstall"
+            class="btn install"
+            @click="installApp"
+          >
+            Install MeDan
+          </button>
         </div>
       </div>
     </section>
@@ -45,8 +54,17 @@
 </template>
 
 <script>
+import { usePwaInstall } from "@/composables/usePwaInstall";
+
 export default {
-  name: "HomeView"
+  name: "HomeView",
+  setup() {
+    const { canInstall, installApp } = usePwaInstall();
+    return {
+      canInstall,
+      installApp
+    };
+  }
 };
 </script>
 
@@ -103,6 +121,7 @@ export default {
   font-weight: 600;
   text-decoration: none;
   transition: all 0.2s ease;
+  cursor: pointer;
 }
 
 .primary {
@@ -123,6 +142,17 @@ export default {
 
 .outline:hover {
   background: #eef2ff;
+}
+
+/* INSTALL BUTTON */
+.install {
+  background: #10b981;
+  color: white;
+}
+
+.install:hover {
+  background: #059669;
+  transform: translateY(-2px);
 }
 
 /* TRENDING */
