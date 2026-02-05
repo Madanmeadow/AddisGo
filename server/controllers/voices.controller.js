@@ -64,4 +64,4 @@ exports.deleteVoice = (req, res) => {
   voices.splice(index, 1);
 
   res.json({ success: true });
-};
+}

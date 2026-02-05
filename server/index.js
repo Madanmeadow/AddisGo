@@ -1,21 +1,18 @@
-require("dotenv").config();
-const express = require("express");
-const cors = require("cors");
+const express = require('express');
+const cors = require('cors');
+const morgan = require('morgan');
 
 const app = express();
-const videoRoutes = require("./routes/video.routes");
-
-app.use("/uploads", express.static("uploads"));
-app.use("/api/videos", videoRoutes);
 
 app.use(cors());
 app.use(express.json());
+app.use(morgan('dev'));
 
-app.get("/api/auth", (req, res) => {
-  res.json({ message: "Auth API running ✅" });
+app.get('/', (req, res) => {
+  res.send('API is running 🚀');
 });
 
-const PORT = process.env.PORT || 5000;
+const PORT = process.env.PORT || 10000;
 app.listen(PORT, () => {
-  console.log(`Backend running on http://localhost:${PORT}`);
+  console.log(`Server running on port ${PORT}`);
 });
