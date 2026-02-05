@@ -1,83 +1,57 @@
 <template>
-  <div class="upload">
-    <h2>Upload a Video</h2>
+  <div class="upload-page">
+    <h1>Upload Video</h1>
 
     <input type="file" accept="video/*" @change="handleFile" />
-    <input
-      v-model="caption"
-      placeholder="Write a caption..."
-      class="caption-input"
-    />
 
-    <button @click="upload" :disabled="!file">
-      Upload
+    <button @click="uploadVideo" :disabled="!file || loading">
+      {{ loading ? "Uploading..." : "Upload" }}
     </button>
+
+    <p v-if="videoUrl">
+      Uploaded 🎉
+      <br />
+      <a :href="videoUrl" target="_blank">{{ videoUrl }}</a>
+    </p>
   </div>
 </template>
 
-<script>
-export default {
-  name: "UploadView",
-  data() {
-    return {
-      file: null,
-      caption: ""
-    };
-  },
-  methods: {
-    handleFile(e) {
-      this.file = e.target.files[0];
-    },
-    upload() {
-      const reader = new FileReader();
+<script setup>
+import { ref } from "vue";
 
-      reader.onload = () => {
-        const videos = JSON.parse(localStorage.getItem("videos")) || [];
+const file = ref(null);
+const loading = ref(false);
+const videoUrl = ref("");
 
-        videos.unshift({
-          id: Date.now(),
-          src: reader.result,
-          creator: "you",
-          caption: this.caption || "New video 🎬",
-          likes: 0,
-          comments: 0
-        });
+const handleFile = (e) => {
+  file.value = e.target.files[0];
+};
 
-        localStorage.setItem("videos", JSON.stringify(videos));
+const uploadVideo = async () => {
+  if (!file.value) return;
 
-        window.dispatchEvent(new Event("videos-updated"));
+  loading.value = true;
 
-        this.$router.push("/explore");
-      };
+  const formData = new FormData();
+  formData.append("video", file.value);
 
-      reader.readAsDataURL(this.file);
-    }
-  }
+  const res = await fetch("http://localhost:5000/api/upload", {
+    method: "POST",
+    body: formData,
+  });
+
+  const data = await res.json();
+  videoUrl.value = "http://localhost:5000" + data.videoUrl;
+
+  loading.value = false;
 };
 </script>
 
 <style scoped>
-.upload {
-  max-width: 400px;
-  margin: 80px auto;
-  text-align: center;
+.upload-page {
+  padding: 40px;
 }
-
-input {
-  width: 100%;
-  margin-bottom: 12px;
-}
-
-.caption-input {
-  padding: 10px;
-}
-
 button {
-  background: #6c6cff;
-  color: white;
-  border: none;
-  padding: 12px;
-  border-radius: 8px;
-  width: 100%;
+  margin-top: 12px;
 }
 </style>

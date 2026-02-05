@@ -1,16 +1,20 @@
 const express = require("express");
 const cors = require("cors");
+const path = require("path");
 
-const videoRoutes = require("./routes/video.routes");
+const uploadRoutes = require("./routes/upload.routes");
 
 const app = express();
 
 app.use(cors());
 app.use(express.json());
 
-app.use("/api/videos", videoRoutes);
+// serve uploaded videos
+app.use("/uploads", express.static(path.join(__dirname, "uploads")));
+
+app.use("/api/upload", uploadRoutes);
 
 const PORT = process.env.PORT || 5000;
 app.listen(PORT, () => {
-  console.log(`Backend running on port ${PORT}`);
+  console.log("Server running on port", PORT);
 });
