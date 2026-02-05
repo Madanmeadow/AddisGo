@@ -1,30 +1,12 @@
-VitePWA({
-  registerType: "autoUpdate",
+import { defineConfig } from "vite";
+import vue from "@vitejs/plugin-vue";
+import path from "path";
 
-  // 🔥 THIS FIXES THE ERROR
-  devOptions: {
-    enabled: false,
+export default defineConfig({
+  plugins: [vue()],
+  resolve: {
+    alias: {
+      "@": path.resolve(__dirname, "src"),
+    },
   },
-
-  workbox: {
-    swDest: "sw.js",
-  },
-
-  manifest: {
-    name: "MeDan",
-    short_name: "MeDan",
-    description: "Where short videos meet real stories",
-    theme_color: "#6366f1",
-    background_color: "#ffffff",
-    display: "standalone",
-    start_url: "/",
-    icons: [
-      {
-        src: "/icons/icon-512.png",
-        sizes: "512x512",
-        type: "image/png",
-      },
-    ],
-  },
-})
-
+});
