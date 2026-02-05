@@ -1,23 +1,27 @@
 <template>
   <div class="explore">
-    <div
-      v-for="(video, index) in videos"
-      :key="index"
-      class="video-card"
-    >
+    <h2>Explore Videos</h2>
+
+    <p v-if="videos.length === 0">No videos yet 👀</p>
+
+    <div class="feed">
       <video
+        v-for="video in videos"
+        :key="video.url"
         :src="video.url"
         controls
         autoplay
         muted
         loop
-        playsinline
+        class="video"
       ></video>
     </div>
   </div>
 </template>
 
 <script>
+import axios from "axios";
+
 export default {
   name: "ExploreView",
   data() {
@@ -26,29 +30,31 @@ export default {
     };
   },
   async mounted() {
-    const res = await fetch("http://localhost:5000/api/videos");
-    this.videos = await res.json();
+    try {
+      const res = await axios.get("http://localhost:5000/api/videos");
+      this.videos = res.data;
+    } catch (err) {
+      console.error("Failed to load videos", err);
+    }
   }
 };
 </script>
 
 <style scoped>
 .explore {
-  display: flex;
-  flex-direction: column;
-  align-items: center;
-  gap: 30px;
   padding: 20px;
 }
 
-.video-card {
-  width: 360px;
-  max-width: 100%;
+.feed {
+  display: flex;
+  flex-direction: column;
+  gap: 24px;
 }
 
-video {
+.video {
   width: 100%;
-  border-radius: 14px;
+  max-height: 80vh;
+  border-radius: 12px;
   background: black;
 }
 </style>
