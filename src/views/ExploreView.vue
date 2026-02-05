@@ -1,28 +1,24 @@
 <template>
-  <div class="explore">
-    <div v-if="videos.length === 0" class="empty">
-      No videos yet 👀
-    </div>
-
+  <div class="feed">
     <div
       v-for="(video, index) in videos"
       :key="index"
-      class="video-card"
+      class="video-container"
     >
-      <!-- ✅ FIXED VIDEO TAG -->
+      <!-- ✅ VIDEO GOES HERE -->
       <video
+        ref="video"
         :src="video.url"
-        controls
-        preload="metadata"
-        playsinline
         muted
-        crossorigin="anonymous"
-        class="video-player"
+        playsinline
+        loop
+        preload="metadata"
+        class="video"
+        @click="togglePlay"
       ></video>
 
-      <div class="actions">
-        ❤️ Like
-      </div>
+      <!-- Example like button -->
+      <button class="like-btn">❤️</button>
     </div>
   </div>
 </template>
@@ -32,50 +28,62 @@ import axios from "axios";
 
 export default {
   name: "ExploreView",
+
   data() {
     return {
       videos: []
     };
   },
+
   async mounted() {
-    try {
-      const res = await axios.get(
-        "https://addisgo-1.onrender.com/api/videos"
-      );
-      this.videos = res.data;
-    } catch (err) {
-      console.error("Failed to load videos", err);
+    const res = await axios.get(
+      "https://addisgo-1.onrender.com/api/videos"
+    );
+    this.videos = res.data;
+  },
+
+  methods: {
+    togglePlay(event) {
+      const video = event.target;
+      if (video.paused) {
+        video.play();
+      } else {
+        video.pause();
+      }
     }
   }
 };
 </script>
 
 <style scoped>
-.explore {
-  max-width: 600px;
-  margin: auto;
-  padding: 20px;
+.feed {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
 }
 
-.video-card {
+.video-container {
+  position: relative;
+  width: 360px;
+  height: 640px;
   margin-bottom: 24px;
 }
 
-.video-player {
+.video {
   width: 100%;
+  height: 100%;
+  object-fit: cover;
   background: black;
-  border-radius: 12px;
+  border-radius: 14px;
 }
 
-.actions {
-  margin-top: 8px;
-  font-size: 16px;
-}
-
-.empty {
-  text-align: center;
-  margin-top: 50px;
-  font-size: 18px;
+.like-btn {
+  position: absolute;
+  bottom: 20px;
+  right: 16px;
+  font-size: 22px;
+  background: transparent;
+  border: none;
+  cursor: pointer;
 }
 </style>
-
