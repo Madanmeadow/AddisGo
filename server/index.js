@@ -1,22 +1,12 @@
-import express from "express";
-import cors from "cors";
-import fs from "fs";
-import path from "path";
-import { fileURLToPath } from "url";
+const express = require("express");
+const cors = require("cors");
+const path = require("path");
+const fs = require("fs");
 
 const app = express();
-const PORT = process.env.PORT || 5000;
+const PORT = process.env.PORT || 10000;
 
-// Needed for ES modules
-const __filename = fileURLToPath(import.meta.url);
-const __dirname = path.dirname(__filename);
-
-// ✅ CORS (important for video streaming)
-app.use(cors({
-  origin: "*",
-  methods: ["GET"]
-}));
-
+app.use(cors());
 app.use(express.json());
 
 // ✅ Serve uploaded videos
@@ -30,25 +20,28 @@ app.get("/", (req, res) => {
   });
 });
 
-// ✅ Return all uploaded videos
+// ✅ List videos with PRODUCTION-SAFE URLs
 app.get("/api/videos", (req, res) => {
   const uploadsDir = path.join(__dirname, "uploads");
 
-  fs.readdir(uploadsDir, (err, files) => {
-    if (err) return res.status(500).json([]);
+  if (!fs.existsSync(uploadsDir)) {
+    return res.json([]);
+  }
 
-    const videos = files
-      .filter(file => file.endsWith(".mp4") || file.endsWith(".webm"))
-      .map(file => ({
-        filename: file,
-        url: `${req.protocol}://${req.get("host")}/uploads/${file}`
-      }));
+  const files = fs.readdirSync(uploadsDir);
 
-    res.json(videos);
-  });
+  const baseUrl = `${req.protocol}://${req.get("host")}`;
+
+  const videos = files
+    .filter(file => file.endsWith(".mp4") || file.endsWith(".webm"))
+    .map(file => ({
+      filename: file,
+      url: `${baseUrl}/uploads/${file}`
+    }));
+
+  res.json(videos);
 });
 
-// ✅ Start server
-app.listen(PORT, () => {
-  console.log(`🔥 Server running on port ${PORT}`);
+app.listen(PORT, "0.0.0.0", () => {
+  console.log(`✅ Server running on port ${PORT}`);
 });
