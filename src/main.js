@@ -1,5 +1,5 @@
 import { createApp } from "vue";
 import App from "./App.vue";
-import "./assets/main.css"; // 👈 THIS LINE MUST EXIST
+import "./style.css";
 
 createApp(App).mount("#app");
