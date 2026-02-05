@@ -1,82 +1,111 @@
 <template>
   <nav class="navbar">
-    <div class="nav-left">
-      <span class="logo">Addis<span>Go</span></span>
+    <!-- Logo -->
+    <div class="logo">
+      <router-link to="/">MeDan</router-link>
     </div>
 
-    <div class="nav-right">
-      <button v-if="isLoggedIn" @click="logout" class="logout-btn">
-        Logout
-      </button>
+    <!-- Links -->
+    <ul class="nav-links">
+      <li>
+        <router-link to="/">Home</router-link>
+      </li>
+
+      <li v-if="isAuthenticated">
+        <router-link to="/dashboard">Dashboard</router-link>
+      </li>
+
+      <li>
+        <router-link to="/explore">Explore</router-link>
+      </li>
+    </ul>
+
+    <!-- Auth buttons -->
+    <div class="auth-actions">
+      <template v-if="!isAuthenticated">
+        <router-link to="/login" class="btn outline">Login</router-link>
+        <router-link to="/register" class="btn primary">Sign Up</router-link>
+      </template>
+
+      <template v-else>
+        <button class="btn outline" @click="logout">Logout</button>
+      </template>
     </div>
   </nav>
 </template>
 
 <script>
-import { useRouter } from "vue-router";
-
 export default {
-  name: "Navbar",
-  setup() {
-    const router = useRouter();
-
-    const isLoggedIn = () => {
+  name: "NavBar",
+  computed: {
+    isAuthenticated() {
       return !!localStorage.getItem("token");
-    };
-
-    const logout = () => {
-      localStorage.removeItem("token");
-      router.push("/login");
-    };
-
-    return {
-      isLoggedIn,
-      logout,
-    };
+    }
   },
+  methods: {
+    logout() {
+      localStorage.removeItem("token");
+      this.$router.push("/login");
+    }
+  }
 };
 </script>
 
 <style scoped>
 .navbar {
-  height: 64px;
-  padding: 0 32px;
   display: flex;
   align-items: center;
   justify-content: space-between;
-
-  background: linear-gradient(
-    135deg,
-    #2563eb,
-    #14b8a6
-  );
-
-  color: white;
-  box-shadow: 0 6px 20px rgba(0,0,0,0.25);
+  padding: 14px 32px;
+  border-bottom: 1px solid #eee;
+  background: #ffffff;
 }
 
-.logo {
+.logo a {
   font-size: 22px;
-  font-weight: 800;
-  letter-spacing: 0.5px;
+  font-weight: bold;
+  color: #7c3aed;
+  text-decoration: none;
 }
 
-.logo span {
-  color: #e0f2fe;
+.nav-links {
+  display: flex;
+  list-style: none;
+  gap: 20px;
 }
 
-.logout-btn {
-  background: rgba(255,255,255,0.15);
-  border: none;
-  color: white;
-  padding: 10px 18px;
+.nav-links a {
+  text-decoration: none;
+  color: #333;
+  font-weight: 500;
+}
+
+.nav-links a.router-link-active {
+  color: #7c3aed;
+}
+
+.auth-actions {
+  display: flex;
+  gap: 12px;
+}
+
+.btn {
+  padding: 8px 18px;
   border-radius: 8px;
+  font-weight: 500;
   cursor: pointer;
-  font-weight: 600;
-  transition: background 0.2s ease;
+  text-decoration: none;
 }
 
-.logout-btn:hover {
-  background: rgba(255,255,255,0.25);
+.primary {
+  background: #7c3aed;
+  color: white;
+  border: none;
+}
+
+.outline {
+  border: 2px solid #7c3aed;
+  color: #7c3aed;
+  background: transparent;
 }
 </style>
