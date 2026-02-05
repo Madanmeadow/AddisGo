@@ -1,55 +1,39 @@
-const express = require("express");
-const cors = require("cors");
-const multer = require("multer");
-const path = require("path");
-const fs = require("fs");
+import express from "express";
+import cors from "cors";
+import path from "path";
+import { fileURLToPath } from "url";
+
+import videosRoutes from "./routes/videos.routes.js";
+import commentsRoutes from "./routes/comments.routes.js";
 
 const app = express();
+
+// Needed for ES modules (__dirname fix)
+const __filename = fileURLToPath(import.meta.url);
+const __dirname = path.dirname(__filename);
+
+// ✅ Middleware
 app.use(cors());
 app.use(express.json());
 
-// make uploads public
+// ✅ Serve uploaded videos
 app.use("/uploads", express.static(path.join(__dirname, "uploads")));
 
-// ensure uploads folder exists
-const uploadDir = path.join(__dirname, "uploads");
-if (!fs.existsSync(uploadDir)) {
-  fs.mkdirSync(uploadDir);
-}
+// ✅ API Routes
+app.use("/api/videos", videosRoutes);
+app.use("/api/comments", commentsRoutes);
 
-// multer config (MOBILE SAFE)
-const storage = multer.diskStorage({
-  destination: (req, file, cb) => cb(null, "uploads"),
-  filename: (req, file, cb) => {
-    const ext = path.extname(file.originalname);
-    cb(null, Date.now() + "-medan-video" + ext);
-  }
-});
-
-const upload = multer({
-  storage,
-  limits: { fileSize: 200 * 1024 * 1024 }, // 200MB
-});
-
-// 📤 UPLOAD ROUTE
-app.post("/api/upload", upload.single("video"), (req, res) => {
+// ✅ Health check
+app.get("/", (req, res) => {
   res.json({
-    success: true,
-    filename: req.file.filename,
-    url: `/uploads/${req.file.filename}`
+    status: "OK",
+    message: "MeDan API is running 🚀"
   });
 });
 
-// 📼 LIST VIDEOS
-app.get("/api/videos", (req, res) => {
-  const files = fs.readdirSync(uploadDir).reverse();
-  res.json(
-    files.map(f => ({
-      filename: f,
-      url: `/uploads/${f}`
-    }))
-  );
-});
+// ✅ Render / Production Port
+const PORT = process.env.PORT || 5000;
 
-const PORT = process.env.PORT || 10000;
-app.listen(PORT, () => console.log("Server running on port", PORT));
+app.listen(PORT, () => {
+  console.log(`🔥 Server running on port ${PORT}`);
+});
