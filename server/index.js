@@ -1,19 +1,35 @@
-import express from 'express';
+import express from 'express'
+import cors from 'cors'
+import dotenv from 'dotenv'
 
-const app = express();
-const PORT = process.env.PORT || 5000;
+import authRoutes from './routes/auth.routes.js'
 
-app.use(express.json());
+dotenv.config()
 
-// health check
+const app = express()
+const PORT = process.env.PORT || 5000
+
+// ===== MIDDLEWARE =====
+app.use(cors({
+  origin: 'http://localhost:5173',
+  credentials: true
+}))
+
+app.use(express.json())
+
+// ===== HEALTH CHECK =====
 app.get('/api/health', (req, res) => {
   res.json({
     status: 'ok',
     service: 'AddisGo API',
     time: new Date().toISOString()
-  });
-});
+  })
+})
 
+// ===== ROUTES =====
+app.use('/api/auth', authRoutes)
+
+// ===== START SERVER =====
 app.listen(PORT, () => {
-  console.log(`Server running on port ${PORT}`);
-});
+  console.log(`🚀 Server running on port ${PORT}`)
+})

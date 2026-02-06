@@ -1,11 +1,7 @@
-import axios from "axios";
+const API_BASE = import.meta.env.VITE_API_BASE_URL;
 
-const api = axios.create({
-  baseURL: import.meta.env.PROD
-    ? "https://addisgo-2.onrender.com/api"
-    : "http://localhost:5000/api",
-});
-
-export default api;
-
-;
+export async function healthCheck() {
+  const res = await fetch(`${API_BASE}/api/health`);
+  if (!res.ok) throw new Error('Backend not reachable');
+  return res.json();
+}

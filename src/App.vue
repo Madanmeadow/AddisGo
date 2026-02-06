@@ -1,17 +1,23 @@
 <script setup>
-import { onMounted, ref } from 'vue'
+import { ref, onMounted } from 'vue'
+import { healthCheck } from './services/api'
 
-const health = ref(null)
+const status = ref(null)
+const error = ref(null)
 
 onMounted(async () => {
-  const res = await fetch('/api/health')
-  health.value = await res.json()
+  try {
+    status.value = await healthCheck()
+  } catch (e) {
+    error.value = e.message
+  }
 })
 </script>
 
 <template>
-  <div style="padding: 40px">
-    <h1>AddisGo Frontend</h1>
-    <pre>{{ health }}</pre>
-  </div>
+  <h1>AddisGo Frontend</h1>
+
+  <pre v-if="status">{{ status }}</pre>
+  <p v-if="error" style="color:red">{{ error }}</p>
 </template>
+
