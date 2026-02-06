@@ -1,48 +1,29 @@
-<script setup>
-import { ref } from "vue";
-import { login } from "@/services/auth.service";
-import { useRouter } from "vue-router";
-
-const email = ref("");
-const password = ref("");
-const error = ref("");
-const router = useRouter();
-
-async function handleLogin() {
-  error.value = "";
-  try {
-    const data = await login(email.value, password.value);
-
-    localStorage.setItem("token", data.token);
-    localStorage.setItem("user", JSON.stringify(data.user));
-
-    router.push("/dashboard");
-  } catch (err) {
-    error.value = err.message;
-  }
-}
-</script>
-
 <template>
-  <div class="auth">
+  <div>
     <h2>Login</h2>
-
     <input v-model="email" placeholder="Email" />
     <input v-model="password" type="password" placeholder="Password" />
-
-    <button @click="handleLogin">Login</button>
-
-    <p v-if="error" class="error">{{ error }}</p>
+    <button @click="submit">Login</button>
   </div>
 </template>
 
-<style scoped>
-.auth {
-  max-width: 300px;
-  margin: auto;
-}
-.error {
-  color: red;
-}
-</style>
+<script setup>
+import { ref } from "vue";
+import { useRouter } from "vue-router";
+import { login } from "../services/api";
+
+const email = ref("");
+const password = ref("");
+const router = useRouter();
+
+const submit = async () => {
+  const res = await login({
+    email: email.value,
+    password: password.value
+  });
+
+  localStorage.setItem("token", res.data.token);
+  router.push("/dashboard");
+};
+</script>
 

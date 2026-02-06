@@ -1,11 +1,18 @@
-<script setup>
-const user = JSON.parse(localStorage.getItem("user"));
-</script>
-
 <template>
   <div>
     <h1>Dashboard</h1>
-    <p v-if="user">Welcome, {{ user.email }}</p>
+    <button @click="logout">Logout</button>
   </div>
 </template>
+
+<script setup>
+import { useRouter } from "vue-router";
+
+const router = useRouter();
+
+const logout = () => {
+  localStorage.removeItem("token");
+  router.push("/login");
+};
+</script>
 
