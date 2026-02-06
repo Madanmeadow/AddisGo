@@ -1,34 +1,27 @@
 import express from "express";
+import auth from "../middleware/auth.js";
 
 const router = express.Router();
-
-// temp in-memory store (later DB)
 const messages = [];
 
-// GET all messages
-router.get("/", (req, res) => {
-  res.json({ messages });
+router.get("/:conversationId", auth, (req, res) => {
+  res.json({
+    messages: messages.filter(
+      m => m.conversationId === req.params.conversationId
+    )
+  });
 });
 
-// POST new message
-router.post("/", (req, res) => {
-  const { text, senderId, receiverId } = req.body;
-
-  if (!text || !senderId || !receiverId) {
-    return res.status(400).json({ error: "Missing fields" });
-  }
-
+router.post("/", auth, (req, res) => {
   const message = {
-    id: messages.length + 1,
-    text,
-    senderId,
-    receiverId,
+    id: Date.now().toString(),
+    conversationId: req.body.conversationId,
+    senderId: req.user.id,
+    text: req.body.text,
     createdAt: new Date()
   };
-
   messages.push(message);
-
-  res.status(201).json(message);
+  res.json(message);
 });
 
 export default router;

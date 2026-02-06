@@ -1,7 +1,3 @@
-// src/services/socket.js
+import { io } from "socket.io-client";
 
-export default {
-  on() {},
-  emit() {},
-  disconnect() {}
-};
+export default io("http://localhost:5000");

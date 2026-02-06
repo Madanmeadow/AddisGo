@@ -1,32 +1,48 @@
 <script setup>
 import { ref, onMounted } from "vue";
 import socket from "@/services/socket";
+import { getMessages, sendMessage } from "@/services/messages";
 
+const conversationId = "123";
 const messages = ref([]);
-const text = ref("");
+const newMessage = ref("");
+const typingUser = ref(null);
+let timeout = null;
 
-onMounted(() => {
-  socket.on("message", msg => {
-    messages.value.push(msg);
-  });
+onMounted(async () => {
+  const res = await getMessages(conversationId);
+  messages.value = res.data.messages;
+
+  socket.emit("join-conversation", conversationId);
+
+  socket.on("new-message", msg => messages.value.push(msg));
+  socket.on("user-typing", user => typingUser.value = user);
+  socket.on("user-stop-typing", () => typingUser.value = null);
 });
 
-function sendMessage() {
-  if (!text.value) return;
-  socket.emit("message", text.value);
-  text.value = "";
-}
+const send = async () => {
+  const res = await sendMessage(conversationId, newMessage.value);
+  socket.emit("send-message", res.data);
+  newMessage.value = "";
+};
+
+const typing = () => {
+  socket.emit("typing", { conversationId, userId: "user123" });
+  clearTimeout(timeout);
+  timeout = setTimeout(() =>
+    socket.emit("stop-typing", { conversationId }), 800);
+};
 </script>
 
 <template>
-  <div>
-    <h1>Chat</h1>
+  <h2>Chat</h2>
 
-    <div v-for="(m, i) in messages" :key="i">
-      {{ m }}
-    </div>
-
-    <input v-model="text" placeholder="Type..." />
-    <button @click="sendMessage">Send</button>
+  <div v-for="m in messages" :key="m.id">
+    <b>{{ m.senderId }}:</b> {{ m.text }}
   </div>
+
+  <p v-if="typingUser">{{ typingUser }} is typing...</p>
+
+  <input v-model="newMessage" @input="typing" @keyup.enter="send" />
+  <button @click="send">Send</button>
 </template>
