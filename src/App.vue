@@ -1,26 +1,22 @@
 <template>
-  <component :is="navbarComponent" />
-  <router-view />
+  <div class="app">
+    <h1>🔥 AddisGo is LIVE 🔥</h1>
+    <p>If you see this, Vue is working.</p>
+  </div>
 </template>
 
-<script>
-import SiteNavbar from "@/components/SiteNavbar.vue";
-import AppNavbar from "@/components/AppNavbar.vue";
-
-export default {
-  components: {
-    SiteNavbar,
-    AppNavbar
-  },
-  computed: {
-    navbarComponent() {
-      const authPages = ["/login", "/register"];
-      if (authPages.includes(this.$route.path)) return null;
-
-      return localStorage.getItem("token")
-        ? "AppNavbar"
-        : "SiteNavbar";
-    }
-  }
-};
+<script setup>
 </script>
+
+<style>
+.app {
+  min-height: 100vh;
+  display: flex;
+  flex-direction: column;
+  justify-content: center;
+  align-items: center;
+  background: linear-gradient(135deg, #5f7cff, #8faaff);
+  color: white;
+  font-family: system-ui, sans-serif;
+}
+</style>

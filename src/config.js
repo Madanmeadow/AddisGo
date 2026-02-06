@@ -1,13 +1,4 @@
-export const CONTACTS = {
-  ethiopia: {
-    phone: "+251912345678",
-    label: "Ethiopia 🇪🇹"
-  },
-  usa: {
-    phone: "+15551234567",
-    label: "USA 🇺🇸"
-  }
-}
-
-// 🔁 CHANGE THIS LINE ONLY
-export const ACTIVE_CONTACT = CONTACTS.ethiopia
+export const API_BASE =
+  import.meta.env.PROD
+    ? "https://addisgo-1.onrender.com"
+    : "http://localhost:5000";
