@@ -1,11 +1,7 @@
 import express from "express";
 import cors from "cors";
-import dotenv from "dotenv";
 
-import authRoutes from "./routes/auth.routes.js";
-// import messagesRoutes from "./routes/messages.routes.js"; ❌ not yet
-
-dotenv.config();
+import messageRoutes from "./routes/message.routes.js";
 
 const app = express();
 const PORT = process.env.PORT || 5000;
@@ -13,13 +9,14 @@ const PORT = process.env.PORT || 5000;
 app.use(cors());
 app.use(express.json());
 
+// test route
 app.get("/", (req, res) => {
   res.json({ message: "API running" });
 });
 
-app.use("/api/auth", authRoutes);
-// app.use("/api/messages", messagesRoutes); ❌ not yet
+// messaging API
+app.use("/api/messages", messageRoutes);
 
 app.listen(PORT, () => {
-  console.log(`🚀 Server running on http://localhost:${PORT}`);
+  console.log(`🔥 Server running on port ${PORT}`);
 });
