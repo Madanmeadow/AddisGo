@@ -1,7 +1,13 @@
-const API_BASE = import.meta.env.VITE_API_BASE_URL;
+export async function apiFetch(url, options = {}) {
+  const token = localStorage.getItem("token");
 
-export async function healthCheck() {
-  const res = await fetch(`${API_BASE}/api/health`);
-  if (!res.ok) throw new Error('Backend not reachable');
-  return res.json();
+  return fetch(`http://localhost:5000${url}`, {
+    ...options,
+    headers: {
+      "Content-Type": "application/json",
+      Authorization: `Bearer ${token}`,
+      ...(options.headers || {}),
+    },
+  });
 }
+

@@ -1,23 +1,36 @@
-const API = import.meta.env.VITE_API_BASE_URL
+const API_URL = "http://localhost:5000/api/auth";
 
 export async function login(email, password) {
-  const res = await fetch(`${API}/api/auth/login`, {
-    method: 'POST',
-    headers: { 'Content-Type': 'application/json' },
-    body: JSON.stringify({ email, password })
-  })
+  const res = await fetch(`${API_URL}/login`, {
+    method: "POST",
+    headers: {
+      "Content-Type": "application/json",
+    },
+    body: JSON.stringify({ email, password }),
+  });
 
-  if (!res.ok) throw new Error('Login failed')
-  return res.json()
+  if (!res.ok) {
+    const err = await res.json();
+    throw new Error(err.message || "Login failed");
+  }
+
+  return res.json(); // { token, user }
 }
 
-export async function register(email, password) {
-  const res = await fetch(`${API}/api/auth/register`, {
-    method: 'POST',
-    headers: { 'Content-Type': 'application/json' },
-    body: JSON.stringify({ email, password })
-  })
+export async function register(name, email, password) {
+  const res = await fetch(`${API_URL}/register`, {
+    method: "POST",
+    headers: {
+      "Content-Type": "application/json",
+    },
+    body: JSON.stringify({ name, email, password }),
+  });
 
-  if (!res.ok) throw new Error('Register failed')
-  return res.json()
+  if (!res.ok) {
+    const err = await res.json();
+    throw new Error(err.message || "Register failed");
+  }
+
+  return res.json();
 }
+

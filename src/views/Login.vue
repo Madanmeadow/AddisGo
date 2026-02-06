@@ -1,29 +1,48 @@
 <script setup>
-import { ref } from 'vue'
-import { login } from '../services/auth'
+import { ref } from "vue";
+import { login } from "@/services/auth.service";
+import { useRouter } from "vue-router";
 
-const email = ref('')
-const password = ref('')
-const error = ref('')
+const email = ref("");
+const password = ref("");
+const error = ref("");
+const router = useRouter();
 
-async function submit() {
+async function handleLogin() {
+  error.value = "";
   try {
-    const res = await login(email.value, password.value)
-    localStorage.setItem('token', res.token)
-    alert('Logged in!')
-  } catch (e) {
-    error.value = e.message
+    const data = await login(email.value, password.value);
+
+    localStorage.setItem("token", data.token);
+    localStorage.setItem("user", JSON.stringify(data.user));
+
+    router.push("/dashboard");
+  } catch (err) {
+    error.value = err.message;
   }
 }
 </script>
 
 <template>
-  <h2>Login</h2>
+  <div class="auth">
+    <h2>Login</h2>
 
-  <input v-model="email" placeholder="Email" />
-  <input v-model="password" type="password" placeholder="Password" />
-  <button @click="submit">Login</button>
+    <input v-model="email" placeholder="Email" />
+    <input v-model="password" type="password" placeholder="Password" />
 
-  <p v-if="error" style="color:red">{{ error }}</p>
+    <button @click="handleLogin">Login</button>
+
+    <p v-if="error" class="error">{{ error }}</p>
+  </div>
 </template>
+
+<style scoped>
+.auth {
+  max-width: 300px;
+  margin: auto;
+}
+.error {
+  color: red;
+}
+</style>
 
