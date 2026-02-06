@@ -1,35 +1,38 @@
-import express from 'express'
-import cors from 'cors'
-import dotenv from 'dotenv'
+import express from "express";
+import cors from "cors";
+import dotenv from "dotenv";
 
-import authRoutes from './routes/auth.routes.js'
+// Load env variables
+dotenv.config();
 
-dotenv.config()
+const app = express();
+const PORT = process.env.PORT || 5000;
 
-const app = express()
-const PORT = process.env.PORT || 5000
+// Middleware
+app.use(cors());
+app.use(express.json());
 
-// ===== MIDDLEWARE =====
-app.use(cors({
-  origin: 'http://localhost:5173',
-  credentials: true
-}))
+// Routes
+import authRoutes from "./routes/auth.routes.js";
 
-app.use(express.json())
-
-// ===== HEALTH CHECK =====
-app.get('/api/health', (req, res) => {
+// Health check
+app.get("/api/health", (req, res) => {
   res.json({
-    status: 'ok',
-    service: 'AddisGo API',
+    status: "ok",
+    service: "AddisGo API",
     time: new Date().toISOString()
-  })
-})
+  });
+});
 
-// ===== ROUTES =====
-app.use('/api/auth', authRoutes)
+// Mount routes
+app.use("/api/auth", authRoutes);
 
-// ===== START SERVER =====
+// 404 handler
+app.use((req, res) => {
+  res.status(404).json({ message: "Route not found" });
+});
+
+// Start server
 app.listen(PORT, () => {
-  console.log(`🚀 Server running on port ${PORT}`)
-})
+  console.log(`✅ Server running on http://localhost:${PORT}`);
+});

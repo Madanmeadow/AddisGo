@@ -1,48 +1,34 @@
-import express from 'express'
-import bcrypt from 'bcryptjs'
-import jwt from 'jsonwebtoken'
+import express from "express";
 
-const router = express.Router()
+const router = express.Router();
 
-// TEMP in-memory users (we’ll replace with DB next)
-const users = []
+/**
+ * POST /api/auth/register
+ */
+router.post("/register", (req, res) => {
+  res.json({
+    message: "Register endpoint is alive",
+    body: req.body
+  });
+});
 
-// REGISTER
-router.post('/register', async (req, res) => {
-  const { email, password } = req.body
+/**
+ * POST /api/auth/login
+ */
+router.post("/login", (req, res) => {
+  res.json({
+    message: "Login endpoint is alive",
+    body: req.body
+  });
+});
 
-  if (!email || !password)
-    return res.status(400).json({ message: 'Missing fields' })
+/**
+ * GET /api/auth
+ * (optional sanity check)
+ */
+router.get("/", (req, res) => {
+  res.json({ message: "Auth routes working" });
+});
 
-  const exists = users.find(u => u.email === email)
-  if (exists)
-    return res.status(400).json({ message: 'User already exists' })
+export default router;
 
-  const hashed = await bcrypt.hash(password, 10)
-  users.push({ email, password: hashed })
-
-  res.json({ message: 'User registered' })
-})
-
-// LOGIN
-router.post('/login', async (req, res) => {
-  const { email, password } = req.body
-
-  const user = users.find(u => u.email === email)
-  if (!user)
-    return res.status(401).json({ message: 'Invalid credentials' })
-
-  const match = await bcrypt.compare(password, user.password)
-  if (!match)
-    return res.status(401).json({ message: 'Invalid credentials' })
-
-  const token = jwt.sign(
-    { email },
-    process.env.JWT_SECRET,
-    { expiresIn: '1d' }
-  )
-
-  res.json({ token, user: { email } })
-})
-
-export default router
