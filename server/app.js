@@ -1,15 +1,16 @@
-import axios from "axios";
+import express from "express";
+import cors from "cors";
+import authRoutes from "./routes/auth.routes.js";
+import messageRoutes from "./routes/message.routes.js";
 
-const api = axios.create({
-  baseURL: "http://localhost:5000/api",
-});
+const app = express();
 
-api.interceptors.request.use((config) => {
-  const token = localStorage.getItem("token");
-  if (token) config.headers.Authorization = `Bearer ${token}`;
-  return config;
-});
+app.use(cors());
+app.use(express.json());
 
-export default api;
+app.use("/api/auth", authRoutes);
+app.use("/api/messages", messageRoutes);
+
+export default app;
 
 

@@ -1,41 +1,43 @@
 import express from "express";
-import bcrypt from "bcryptjs";
 import jwt from "jsonwebtoken";
-import User from "../models/User.js";
+import bcrypt from "bcryptjs";
 
 const router = express.Router();
 
+// TEMP IN-MEMORY USER (replace with DB later)
+const users = [];
+
+// REGISTER
 router.post("/register", async (req, res) => {
   const { email, password } = req.body;
 
-  const exists = await User.findOne({ email });
-  if (exists) return res.status(400).json({ message: "User already exists" });
-
   const hashed = await bcrypt.hash(password, 10);
-  const user = await User.create({ email, password: hashed });
+  users.push({ email, password: hashed });
 
   res.json({ message: "Registered successfully" });
 });
 
+// LOGIN
 router.post("/login", async (req, res) => {
   const { email, password } = req.body;
 
-  const user = await User.findOne({ email });
-  if (!user) return res.status(401).json({ message: "Invalid credentials" });
+  const user = users.find(u => u.email === email);
+  if (!user) return res.status(401).json({ message: "Login failed" });
 
-  const ok = await bcrypt.compare(password, user.password);
-  if (!ok) return res.status(401).json({ message: "Invalid credentials" });
+  const match = await bcrypt.compare(password, user.password);
+  if (!match) return res.status(401).json({ message: "Login failed" });
 
   const token = jwt.sign(
-    { id: user._id },
-    process.env.JWT_SECRET || "secret123",
+    { email },
+    process.env.JWT_SECRET,
     { expiresIn: "7d" }
   );
 
-  res.json({ token, user: { id: user._id, email: user.email } });
+  res.json({ token });
 });
 
 export default router;
+
 
 
 
