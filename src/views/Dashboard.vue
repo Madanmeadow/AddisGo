@@ -1,39 +1,23 @@
 <template>
   <div class="dashboard">
-    <header class="top">
+    <div class="top-bar">
       <h1>Dashboard</h1>
-      <button @click="logout">Logout</button>
-    </header>
+      <button class="btn" @click="logout">Logout</button>
+    </div>
 
-    <!-- CREATE VOICE -->
     <section class="create">
       <h2>Create Voice</h2>
 
-      <select v-model="type">
-        <option value="text">Text</option>
-        <option value="video">Video</option>
-      </select>
-
       <textarea
-        v-if="type === 'text'"
-        v-model="text"
+        v-model="content"
         placeholder="Say something..."
       ></textarea>
 
-      <input
-        v-if="type === 'video'"
-        type="file"
-        accept="video/*"
-        capture="environment"
-        @change="uploadVideo"
-      />
-
-      <button @click="postText" v-if="type === 'text'">
+      <button class="btn primary" @click="postVoice">
         Post
       </button>
     </section>
 
-    <!-- VOICES -->
     <section class="voices">
       <h2>Your Voices</h2>
 
@@ -42,18 +26,11 @@
       <div
         v-for="voice in voices"
         :key="voice.id"
-        class="voice"
+        class="voice-card"
       >
-        <p v-if="voice.type === 'text'">{{ voice.content }}</p>
+        <p>{{ voice.content }}</p>
 
-        <video
-          v-if="voice.type === 'video'"
-          :src="api + voice.content"
-          controls
-          playsinline
-        ></video>
-
-        <button @click="deleteVoice(voice.id)">
+        <button class="btn danger" @click="deleteVoice(voice.id)">
           Delete
         </button>
       </div>
@@ -62,137 +39,93 @@
 </template>
 
 <script>
+import api from "../services/api";
+
 export default {
   data() {
     return {
+      content: "",
       voices: [],
-      text: "",
-      type: "text",
-      api: "https://addisgo-1.onrender.com"
     };
   },
 
-  mounted() {
-    this.fetchVoices();
+  async mounted() {
+    await this.loadVoices();
   },
 
   methods: {
-    authHeader() {
-      return {
-        Authorization: "Bearer " + localStorage.getItem("token")
-      };
+    async loadVoices() {
+      const res = await api.get("/voices");
+      this.voices = res.data;
     },
 
-    async fetchVoices() {
-      const res = await fetch(this.api + "/api/voices", {
-        headers: this.authHeader()
-      });
-      this.voices = await res.json();
-    },
+    async postVoice() {
+      if (!this.content.trim()) return;
 
-    async postText() {
-      if (!this.text.trim()) return;
-
-      await fetch(this.api + "/api/voices", {
-        method: "POST",
-        headers: {
-          "Content-Type": "application/json",
-          ...this.authHeader()
-        },
-        body: JSON.stringify({
-          type: "text",
-          content: this.text
-        })
+      const res = await api.post("/voices", {
+        content: this.content,
+        type: "text",
       });
 
-      this.text = "";
-      this.fetchVoices();
-    },
-
-    async uploadVideo(e) {
-      const file = e.target.files[0];
-      if (!file) return;
-
-      const form = new FormData();
-      form.append("video", file);
-
-      const upload = await fetch(this.api + "/api/video", {
-        method: "POST",
-        headers: this.authHeader(),
-        body: form
-      });
-
-      const { videoUrl } = await upload.json();
-
-      await fetch(this.api + "/api/voices", {
-        method: "POST",
-        headers: {
-          "Content-Type": "application/json",
-          ...this.authHeader()
-        },
-        body: JSON.stringify({
-          type: "video",
-          content: videoUrl
-        })
-      });
-
-      this.fetchVoices();
+      // 👇 THIS is what was missing
+      this.voices.unshift(res.data);
+      this.content = "";
     },
 
     async deleteVoice(id) {
-      await fetch(this.api + `/api/voices/${id}`, {
-        method: "DELETE",
-        headers: this.authHeader()
-      });
-
-      this.fetchVoices();
+      await api.delete(`/voices/${id}`);
+      this.voices = this.voices.filter(v => v.id !== id);
     },
 
     logout() {
       localStorage.removeItem("token");
       this.$router.push("/login");
-    }
-  }
+    },
+  },
 };
 </script>
 
 <style scoped>
 .dashboard {
-  max-width: 700px;
+  max-width: 600px;
   margin: auto;
-  padding: 16px;
+  padding: 24px;
 }
 
-.top {
+.top-bar {
   display: flex;
   justify-content: space-between;
   align-items: center;
 }
 
-.create,
-.voices {
-  margin-top: 24px;
-}
-
 textarea {
   width: 100%;
-  height: 80px;
-  margin: 8px 0;
+  min-height: 100px;
+  margin: 12px 0;
+  padding: 12px;
+  font-size: 16px;
 }
 
-.voice {
-  border-top: 1px solid #ddd;
+.voice-card {
+  border-top: 1px solid #eee;
   padding: 12px 0;
 }
 
-video {
-  width: 100%;
-  max-height: 400px;
-  object-fit: cover;
+.btn {
+  padding: 6px 14px;
+  border-radius: 999px;
+  border: none;
+  cursor: pointer;
 }
 
-button {
-  margin-top: 8px;
+.primary {
+  background: #007aff;
+  color: white;
+}
+
+.danger {
+  background: #ff3b30;
+  color: white;
 }
 </style>
 
