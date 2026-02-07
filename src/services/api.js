@@ -1,6 +1,19 @@
 import axios from "axios";
 
-export const api = axios.create({
-  baseURL: "https://addisgo.onrender.com",
+const api = axios.create({
+  baseURL: "https://addisgo.onrender.com/api",
+  headers: {
+    "Content-Type": "application/json",
+  },
 });
 
+// Attach token automatically
+api.interceptors.request.use((config) => {
+  const token = localStorage.getItem("token");
+  if (token) {
+    config.headers.Authorization = `Bearer ${token}`;
+  }
+  return config;
+});
+
+export default api;
