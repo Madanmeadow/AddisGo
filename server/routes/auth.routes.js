@@ -1,17 +1,16 @@
-const express = require("express");
+import express from "express";
+import {
+  register,
+  login,
+} from "../controllers/auth.controller.js";
+
 const router = express.Router();
-const auth = require("../middleware/auth.middleware");
-const voicesController = require("../controllers/voices.controller");
 
-// PUBLIC (no auth)
-router.get("/public", voicesController.getPublicVoices);
+router.post("/register", register);
+router.post("/login", login);
 
-// PRIVATE (auth)
-router.get("/", auth, voicesController.getVoices);
-router.post("/", auth, voicesController.createVoice);
-router.delete("/:id", auth, voicesController.deleteVoice);
+export default router;
 
-module.exports = router;
 
 
 
