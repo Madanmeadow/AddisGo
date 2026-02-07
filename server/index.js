@@ -1,64 +1,44 @@
 import express from "express";
 import cors from "cors";
 import bcrypt from "bcryptjs";
+import jwt from "jsonwebtoken";
 
 const app = express();
 app.use(cors());
 app.use(express.json());
 
-// 🔐 In-memory user store (temporary)
 const users = [];
+const JWT_SECRET = "supersecret123";
 
-/* =========================
-   REGISTER
-========================= */
-app.post("/api/register", async (req, res) => {
+app.post("/api/auth/register", async (req, res) => {
   const { email, password } = req.body;
 
-  if (!email || !password) {
-    return res.status(400).json({ success: false });
-  }
-
-  const exists = users.find(u => u.email === email);
-  if (exists) {
-    return res.status(400).json({ success: false, message: "User exists" });
+  if (users.find((u) => u.email === email)) {
+    return res.status(400).json({ message: "User exists" });
   }
 
   const hashed = await bcrypt.hash(password, 10);
   users.push({ email, password: hashed });
 
-  res.json({ success: true });
+  res.json({ message: "Registered" });
 });
 
-/* =========================
-   LOGIN
-========================= */
-app.post("/api/login", async (req, res) => {
+app.post("/api/auth/login", async (req, res) => {
   const { email, password } = req.body;
 
-  const user = users.find(u => u.email === email);
-  if (!user) {
-    return res.status(401).json({ success: false });
-  }
+  const user = users.find((u) => u.email === email);
+  if (!user) return res.status(401).json({ message: "Invalid" });
 
-  const match = await bcrypt.compare(password, user.password);
-  if (!match) {
-    return res.status(401).json({ success: false });
-  }
+  const ok = await bcrypt.compare(password, user.password);
+  if (!ok) return res.status(401).json({ message: "Invalid" });
 
-  res.show = true;
-  res.json({ success: true });
+  const token = jwt.sign({ email }, JWT_SECRET);
+  res.json({ token });
 });
 
-/* =========================
-   HEALTH CHECK
-========================= */
-app.get("/", (_, res) => {
-  res.send("AddisGo API running");
+app.get("/api/health", (req, res) => {
+  res.json({ message: "API running" });
 });
 
-app.listen(5000, () => {
-  console.log("✅ Server running on port 5000");
-});
-
+app.listen(5000, () => console.log("API running"));
 
