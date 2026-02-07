@@ -3,7 +3,7 @@ import Login from "@/views/Login.vue";
 import Register from "@/views/Register.vue";
 import Dashboard from "@/views/Dashboard.vue";
 
-export default createRouter({
+const router = createRouter({
   history: createWebHistory(),
   routes: [
     { path: "/", redirect: "/login" },
@@ -12,6 +12,8 @@ export default createRouter({
     { path: "/dashboard", component: Dashboard },
   ],
 });
+
+export default router;
 
 
 
