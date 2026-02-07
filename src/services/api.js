@@ -1,13 +1,14 @@
+// src/services/api.js
 import axios from "axios";
 
 const api = axios.create({
-  baseURL: "https://addisgo.onrender.com/api",
+  baseURL: "https://addisgo.onrender.com/api", // ✅ RENDER API ONLY
   headers: {
     "Content-Type": "application/json",
   },
 });
 
-// Attach token automatically
+// Automatically attach JWT token
 api.interceptors.request.use((config) => {
   const token = localStorage.getItem("token");
   if (token) {
@@ -16,4 +17,4 @@ api.interceptors.request.use((config) => {
   return config;
 });
 
-export default api;
+export default api; // ✅ DEFAULT EXPORT (CRITICAL)

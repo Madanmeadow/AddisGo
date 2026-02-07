@@ -1,30 +1,28 @@
-<template>
-  <div class="video-card">
-    <video controls autoplay muted loop :src="video.url"></video>
-
-    <div class="actions">
-      ❤️ {{ video.likes }}
-      💬 {{ video.comments.length }}
-    </div>
-
-    <button @click="like">Like</button>
-  </div>
-</template>
-
 <script setup>
-import { api } from "@/services/api";
+import api from "@/services/api";
+import { ref } from "vue";
 
-const props = defineProps({ video: Object });
+const props = defineProps({
+  video: Object,
+});
+
+const likes = ref(props.video.likes || 0);
 
 const like = async () => {
-  await api.post(`/api/like/${props.video.id}`);
+  await api.post(`/videos/${props.video.id}/like`);
+  likes.value++;
 };
 </script>
 
-<style>
-.video-card video {
-  height: 100vh;
-  width: 100%;
-  object-fit: cover;
-}
-</style>
+<template>
+  <div class="video-card">
+    <video controls autoplay muted loop>
+      <source :src="video.url" type="video/mp4" />
+    </video>
+
+    <div class="actions">
+      ❤️ {{ likes }}
+      <button @click="like">Like</button>
+    </div>
+  </div>
+</template>

@@ -1,51 +1,22 @@
-<template>
-  <div class="upload-box">
-    <input
-      type="file"
-      accept="video/*"
-      capture
-      @change="uploadVideo"
-    />
-    <p v-if="loading">Uploading… ⏳</p>
-  </div>
-</template>
+<script setup>
+import { ref } from "vue";
+import api from "@/services/api";
 
-<script>
-export default {
-  data() {
-    return {
-      loading: false
-    };
-  },
-  methods: {
-    async uploadVideo(e) {
-      const file = e.target.files[0];
-      if (!file) return;
+const file = ref(null);
 
-      this.loading = true;
+const upload = async () => {
+  const formData = new FormData();
+  formData.append("video", file.value);
 
-      const formData = new FormData();
-      formData.append("video", file);
+  await api.post("/videos/upload", formData, {
+    headers: { "Content-Type": "multipart/form-data" },
+  });
 
-      await fetch("https://addisgo-1.onrender.com/api/upload", {
-        method: "POST",
-        body: formData
-      });
-
-      this.loading = false;
-
-      // refresh feed
-      this.$emit("uploaded");
-    }
-  }
+  alert("Uploaded!");
 };
 </script>
 
-<style scoped>
-.upload-box {
-  padding: 20px;
-}
-input {
-  font-size: 18px;
-}
-</style>
+<template>
+  <input type="file" @change="e => file.value = e.target.files[0]" />
+  <button @click="upload">Upload</button>
+</template>

@@ -1,123 +1,52 @@
 import express from "express";
 import cors from "cors";
 import multer from "multer";
+import jwt from "jsonwebtoken";
 
 const app = express();
-const upload = multer();
-const PORT = process.env.PORT || 5000;
+const upload = multer({ dest: "uploads/" });
 
 app.use(cors());
-app.use(express.json({ limit: "50mb" }));
-app.use(express.urlencoded({ extended: true }));
+app.use(express.json());
 
-/* ================================
-   IN-MEMORY FEED (NO DATABASE)
-================================ */
-let feed = [
-  {
-    id: 1,
-    url: "https://www.w3schools.com/html/mov_bbb.mp4",
-    reactions: {
-      like: 0,
-      fire: 0,
-      laugh: 0,
-      wow: 0,
-    },
-    comments: [],
-    shares: 0,
-    createdAt: Date.now(),
-  },
-];
+const videos = [];
 
-/* ================================
-   HEALTH CHECK
-================================ */
-app.get("/", (req, res) => {
+// HEALTH CHECK
+app.get("/", (_, res) => {
   res.json({ message: "API running" });
 });
 
-/* ================================
-   FEED
-================================ */
-app.get("/api/feed", (req, res) => {
-  res.json(feed);
+// AUTH
+app.post("/api/auth/login", (req, res) => {
+  const token = jwt.sign({ userId: 1 }, "secret", { expiresIn: "7d" });
+  res.json({ token });
 });
 
-/* ================================
-   UPLOAD VIDEO
-================================ */
-app.post("/api/upload", upload.single("video"), (req, res) => {
-  if (!req.file) {
-    return res.status(400).json({ message: "No video uploaded" });
-  }
+app.post("/api/auth/register", (_, res) => {
+  res.json({ message: "Registered" });
+});
 
-  const video = {
+// FEED
+app.get("/api/feed", (_, res) => {
+  res.json(videos);
+});
+
+// UPLOAD
+app.post("/api/videos/upload", upload.single("video"), (req, res) => {
+  videos.unshift({
     id: Date.now(),
-    url: `data:video/mp4;base64,${req.file.buffer.toString("base64")}`,
-    reactions: {
-      like: 0,
-      fire: 0,
-      laugh: 0,
-      wow: 0,
-    },
-    comments: [],
-    shares: 0,
-    createdAt: Date.now(),
-  };
-
-  feed.unshift(video);
-  res.json(video);
+    url: `https://addisgo.onrender.com/${req.file.path}`,
+    likes: 0,
+  });
+  res.json({ success: true });
 });
 
-/* ================================
-   REACTIONS
-================================ */
-app.post("/api/react/:id", (req, res) => {
-  const { type } = req.body;
-  const video = feed.find(v => v.id == req.params.id);
-
-  if (!video) {
-    return res.status(404).json({ message: "Video not found" });
-  }
-
-  if (video.reactions[type] === undefined) {
-    return res.status(400).json({ message: "Invalid reaction type" });
-  }
-
-  video.reactions[type]++;
-  res.json(video);
+// LIKE
+app.post("/api/videos/:id/like", (req, res) => {
+  const video = videos.find(v => v.id == req.params.id);
+  if (video) video.likes++;
+  res.json({ success: true });
 });
 
-/* ================================
-   SHARES
-================================ */
-app.post("/api/share/:id", (req, res) => {
-  const video = feed.find(v => v.id == req.params.id);
-
-  if (!video) {
-    return res.status(404).json({ message: "Video not found" });
-  }
-
-  video.shares++;
-  res.json(video);
-});
-
-/* ================================
-   SINGLE VIDEO (FOR SHARING)
-================================ */
-app.get("/api/video/:id", (req, res) => {
-  const video = feed.find(v => v.id == req.params.id);
-
-  if (!video) {
-    return res.status(404).json({ message: "Video not found" });
-  }
-
-  res.json(video);
-});
-
-/* ================================
-   START SERVER
-================================ */
-app.listen(PORT, () => {
-  console.log(`🚀 AddisGo API running on port ${PORT}`);
-});
+const PORT = process.env.PORT || 5000;
+app.listen(PORT, () => console.log("Server running on", PORT));
