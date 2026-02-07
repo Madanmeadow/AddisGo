@@ -1,23 +1,19 @@
 <script setup>
 import { ref } from "vue";
 import { useRouter } from "vue-router";
-import axios from "axios";
+import api from "../services/api";
 
-const router = useRouter();
 const email = ref("");
 const password = ref("");
+const router = useRouter();
 
 const register = async () => {
   try {
-    await axios.post(
-      "https://addisgo.onrender.com/api/auth/register",
-      {
-        email: email.value,
-        password: password.value,
-      }
-    );
+    await api.post("/api/auth/register", {
+      email: email.value,
+      password: password.value,
+    });
 
-    alert("Registered! Now login.");
     router.push("/login");
   } catch (err) {
     alert("Register failed");
@@ -27,8 +23,11 @@ const register = async () => {
 
 <template>
   <div class="auth">
+    <h2>Register</h2>
+
     <input v-model="email" placeholder="Email" />
-    <input v-model="password" type="password" />
+    <input v-model="password" type="password" placeholder="Password" />
+
     <button @click="register">Register</button>
   </div>
 </template>

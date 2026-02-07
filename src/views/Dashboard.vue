@@ -1,32 +1,31 @@
 <script setup>
-const videos = [
-  "https://www.w3schools.com/html/mov_bbb.mp4",
-  "https://www.w3schools.com/html/movie.mp4",
-];
+import Sidebar from "../components/dashboard/Sidebar.vue";
+import TopBar from "../components/dashboard/TopBar.vue";
+import DashboardFeed from "../components/dashboard/DashboardFeed.vue";
 </script>
 
 <template>
-  <div class="feed">
-    <video
-      v-for="(v, i) in videos"
-      :key="i"
-      :src="v"
-      controls
-      autoplay
-      loop
-    />
+  <div class="dashboard-layout">
+    <Sidebar />
+    <div class="dashboard-main">
+      <TopBar />
+      <DashboardFeed />
+    </div>
   </div>
 </template>
 
-<style>
-.feed {
+<style scoped>
+.dashboard-layout {
+  display: flex;
   height: 100vh;
-  overflow-y: scroll;
+  background: #000;
+  color: white;
 }
-video {
-  width: 100%;
-  height: 100vh;
-  object-fit: cover;
+
+.dashboard-main {
+  flex: 1;
+  overflow-y: auto;
 }
 </style>
+
 
