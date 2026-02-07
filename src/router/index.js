@@ -1,14 +1,21 @@
 import { createRouter, createWebHistory } from "vue-router";
+import Login from "@/views/Login.vue";
+import Register from "@/views/Register.vue";
+import Dashboard from "@/views/Dashboard.vue";
 
-export default createRouter({
+const routes = [
+  { path: "/", redirect: "/login" },
+  { path: "/login", component: Login },
+  { path: "/register", component: Register },
+  { path: "/dashboard", component: Dashboard },
+];
+
+const router = createRouter({
   history: createWebHistory(),
-  routes: [
-    { path: "/", redirect: "/login" },
-    { path: "/login", component: () => import("../views/Login.vue") },
-    { path: "/dashboard", component: () => import("../views/Dashboard.vue") },
-    { path: "/chat", component: () => import("../views/Chat.vue") }
-  ]
+  routes,
 });
+
+export default router;
 
 
 
