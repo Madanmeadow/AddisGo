@@ -1,16 +1,13 @@
+// server/routes/voices.routes.js
+
 const express = require("express");
 const router = express.Router();
 const auth = require("../middleware/auth.middleware");
-const {
-  createVoice,
-  getMyVoices,
-  getAllVoices,
-  deleteVoice
-} = require("../controllers/voices.controller");
+const voicesController = require("../controllers/voices.controller");
 
-router.post("/", auth, createVoice);
-router.get("/me", auth, getMyVoices);
-router.get("/", getAllVoices);
-router.delete("/:id", auth, deleteVoice);
+router.get("/", auth, voicesController.getVoices);
+router.post("/", auth, voicesController.createVoice);
+router.delete("/:id", auth, voicesController.deleteVoice);
 
 module.exports = router;
+

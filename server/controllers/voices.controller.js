@@ -1,67 +1,65 @@
 // server/controllers/voices.controller.js
 
-let voices = []; // in-memory store (temporary MVP)
+// TEMP in-memory store (replace with DB later)
+let voices = [];
+let idCounter = 1;
 
+/**
+ * GET /api/voices
+ * Get all voices for logged-in user
+ */
+exports.getVoices = (req, res) => {
+  const userId = req.user.id;
+
+  const userVoices = voices.filter(v => v.userId === userId);
+  res.json(userVoices);
+};
+
+/**
+ * POST /api/voices
+ * Create a new voice (text or video)
+ */
 exports.createVoice = (req, res) => {
+  const userId = req.user.id;
   const { type, content } = req.body;
 
   if (!type || !content) {
-    return res.status(400).json({
-      message: "Type and content are required"
-    });
+    return res.status(400).json({ message: "Type and content are required" });
   }
 
   if (!["text", "video"].includes(type)) {
-    return res.status(400).json({
-      message: "Type must be 'text' or 'video'"
-    });
+    return res.status(400).json({ message: "Invalid voice type" });
   }
 
-  const voice = {
-    id: Date.now(),
-    userId: req.user?.id || req.user?.email, // works with mock JWT
-    type,                 // "text" | "video"
-    content,              // text OR video URL
-    createdAt: new Date()
+  const newVoice = {
+    id: idCounter++,
+    userId,
+    type,              // "text" | "video"
+    content,           // text OR video URL
+    createdAt: new Date().toISOString()
   };
 
-  voices.unshift(voice); // newest first
+  voices.push(newVoice);
 
-  res.status(201).json({
-    success: true,
-    voice
-  });
+  res.status(201).json(newVoice);
 };
 
-exports.getMyVoices = (req, res) => {
-  const userId = req.user?.id || req.user?.email;
-
-  const myVoices = voices.filter(
-    v => v.userId === userId
-  );
-
-  res.json(myVoices);
-};
-
-exports.getAllVoices = (req, res) => {
-  res.json(voices);
-};
-
+/**
+ * DELETE /api/voices/:id
+ * Delete a voice owned by the user
+ */
 exports.deleteVoice = (req, res) => {
-  const { id } = req.params;
-  const userId = req.user?.id || req.user?.email;
+  const userId = req.user.id;
+  const voiceId = Number(req.params.id);
 
   const index = voices.findIndex(
-    v => v.id == id && v.userId === userId
+    v => v.id === voiceId && v.userId === userId
   );
 
   if (index === -1) {
-    return res.status(404).json({
-      message: "Voice not found or unauthorized"
-    });
+    return res.status(404).json({ message: "Voice not found" });
   }
 
   voices.splice(index, 1);
-
   res.json({ success: true });
-}
+};
