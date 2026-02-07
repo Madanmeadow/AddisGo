@@ -1,20 +1,22 @@
 import express from "express";
-import auth from "../middleware/auth.js";
+import auth from "../middleware/auth.middleware.js";
 
 const router = express.Router();
-const conversations = [];
 
-router.get("/", auth, (req, res) => {
-  res.json({ conversations });
-});
-
-router.post("/", auth, (req, res) => {
-  const convo = {
-    id: Date.now().toString(),
-    participants: [req.user.id, req.body.participantId]
-  };
-  conversations.push(convo);
-  res.json(convo);
+/**
+ * GET /api/conversations
+ * Protected
+ */
+router.get("/", auth, async (req, res) => {
+  try {
+    // temporary demo response (can replace with DB later)
+    res.json({
+      conversations: []
+    });
+  } catch (err) {
+    console.error(err);
+    res.status(500).json({ message: "Failed to fetch conversations" });
+  }
 });
 
 export default router;

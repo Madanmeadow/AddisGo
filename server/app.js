@@ -1,24 +1,15 @@
-import express from "express";
-import cors from "cors";
-import dotenv from "dotenv";
+import axios from "axios";
 
-import usersRoutes from "./routes/users.routes.js";
-
-dotenv.config();
-
-const app = express();
-
-app.use(cors({
-  origin: true,
-  credentials: true
-}));
-
-app.use(express.json());
-
-app.use("/api/users", usersRoutes);
-
-app.get("/", (req, res) => {
-  res.send("API running");
+const api = axios.create({
+  baseURL: "http://localhost:5000/api",
 });
 
-export default app;
+api.interceptors.request.use((config) => {
+  const token = localStorage.getItem("token");
+  if (token) config.headers.Authorization = `Bearer ${token}`;
+  return config;
+});
+
+export default api;
+
+
