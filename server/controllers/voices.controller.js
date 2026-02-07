@@ -1,60 +1,39 @@
-// In-memory store (temporary, replace with DB later)
 let voices = [];
 let nextId = 1;
 
-/**
- * GET /api/voices
- * Get voices for logged-in user
- */
-exports.getVoices = (req, res) => {
+export function getVoices(req, res) {
   const userId = req.user.id;
-  const userVoices = voices.filter(v => v.userId === userId);
-  res.json(userVoices);
-};
+  res.json(voices.filter(v => v.userId === userId));
+}
 
-/**
- * GET /api/voices/public
- * Public feed (everyone)
- */
-exports.getPublicVoices = (req, res) => {
-  // newest first
+export function getPublicVoices(req, res) {
   res.json([...voices].reverse());
-};
+}
 
-/**
- * POST /api/voices
- * Create text or video voice
- */
-exports.createVoice = (req, res) => {
+export function createVoice(req, res) {
   const { type, content } = req.body;
 
   if (!type || !content) {
     return res.status(400).json({ message: "Missing type or content" });
   }
 
-  const newVoice = {
+  const voice = {
     id: nextId++,
     userId: req.user.id,
-    username: req.user.email, // simple for now
-    type, // "text" | "video"
+    username: req.user.email,
+    type, // text | video
     content,
     createdAt: new Date().toISOString()
   };
 
-  voices.push(newVoice);
-  res.status(201).json(newVoice);
-};
+  voices.push(voice);
+  res.status(201).json(voice);
+}
 
-/**
- * DELETE /api/voices/:id
- * Delete voice owned by user
- */
-exports.deleteVoice = (req, res) => {
-  const userId = req.user.id;
-  const voiceId = Number(req.params.id);
-
+export function deleteVoice(req, res) {
+  const id = Number(req.params.id);
   const index = voices.findIndex(
-    v => v.id === voiceId && v.userId === userId
+    v => v.id === id && v.userId === req.user.id
   );
 
   if (index === -1) {
@@ -63,5 +42,4 @@ exports.deleteVoice = (req, res) => {
 
   voices.splice(index, 1);
   res.json({ success: true });
-};
-
+}
