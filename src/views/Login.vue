@@ -1,7 +1,7 @@
 <script setup>
 import { ref } from "vue";
 import { useRouter } from "vue-router";
-import api from "@/services/api"; // ✅ DEFAULT IMPORT
+import api from "@/services/api";
 
 const email = ref("");
 const password = ref("");
@@ -23,25 +23,34 @@ const login = async () => {
 </script>
 
 <template>
-  <div class="auth">
+  <div class="auth-page">
     <h2>Login</h2>
-    <input v-model="email" placeholder="Email" />
-    <input v-model="password" type="password" placeholder="Password" />
+
+    <input
+      v-model="email"
+      type="email"
+      placeholder="Email"
+    />
+
+    <input
+      v-model="password"
+      type="password"
+      placeholder="Password"
+    />
+
     <button @click="login">Login</button>
   </div>
 </template>
 
-
-<template>
-  <div class="auth">
-    <h2>Login</h2>
-
-    <input v-model="email" placeholder="Email" />
-    <input v-model="password" type="password" placeholder="Password" />
-
-    <button @click="login">Login</button>
-  </div>
-</template>
+<style scoped>
+.auth-page {
+  max-width: 400px;
+  margin: 80px auto;
+  display: flex;
+  flex-direction: column;
+  gap: 12px;
+}
+</style>
 
 
 
