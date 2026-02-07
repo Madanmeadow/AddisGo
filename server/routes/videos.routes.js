@@ -1,24 +1,21 @@
-import express from "express";
-import path from "path";
-import fs from "fs";
+const express = require("express");
+const multer = require("multer");
+const auth = require("../middleware/auth.middleware");
 
 const router = express.Router();
 
-const uploadsDir = path.join(process.cwd(), "server/uploads");
-
-router.get("/", (req, res) => {
-  if (!fs.existsSync(uploadsDir)) {
-    return res.json([]);
+const storage = multer.diskStorage({
+  destination: "uploads/",
+  filename: (req, file, cb) => {
+    cb(null, Date.now() + "-" + file.originalname);
   }
-
-  const files = fs.readdirSync(uploadsDir);
-
-  const videos = files.map(file => ({
-    filename: file,
-    url: `/uploads/${file}`
-  }));
-
-  res.json(videos);
 });
 
-export default router;
+const upload = multer({ storage });
+
+router.post("/", auth, upload.single("video"), (req, res) => {
+  const videoUrl = `/uploads/${req.file.filename}`;
+  res.json({ videoUrl });
+});
+
+module.exports = router;

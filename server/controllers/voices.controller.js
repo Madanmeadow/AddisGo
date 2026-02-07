@@ -1,46 +1,55 @@
+// In-memory store (temporary, replace with DB later)
 let voices = [];
 let nextId = 1;
 
 /**
  * GET /api/voices
+ * Get voices for logged-in user
  */
-export const getVoices = (req, res) => {
+exports.getVoices = (req, res) => {
   const userId = req.user.id;
   const userVoices = voices.filter(v => v.userId === userId);
   res.json(userVoices);
 };
 
 /**
- * POST /api/voices
+ * GET /api/voices/public
+ * Public feed (everyone)
  */
-export const createVoice = (req, res) => {
-  const userId = req.user.id;
+exports.getPublicVoices = (req, res) => {
+  // newest first
+  res.json([...voices].reverse());
+};
+
+/**
+ * POST /api/voices
+ * Create text or video voice
+ */
+exports.createVoice = (req, res) => {
   const { type, content } = req.body;
 
   if (!type || !content) {
-    return res.status(400).json({ message: "Type and content required" });
-  }
-
-  if (!["text", "video"].includes(type)) {
-    return res.status(400).json({ message: "Invalid voice type" });
+    return res.status(400).json({ message: "Missing type or content" });
   }
 
   const newVoice = {
     id: nextId++,
-    userId,
-    type,
+    userId: req.user.id,
+    username: req.user.email, // simple for now
+    type, // "text" | "video"
     content,
-    createdAt: new Date()
+    createdAt: new Date().toISOString()
   };
 
-  voices.unshift(newVoice);
+  voices.push(newVoice);
   res.status(201).json(newVoice);
 };
 
 /**
  * DELETE /api/voices/:id
+ * Delete voice owned by user
  */
-export const deleteVoice = (req, res) => {
+exports.deleteVoice = (req, res) => {
   const userId = req.user.id;
   const voiceId = Number(req.params.id);
 
@@ -55,3 +64,4 @@ export const deleteVoice = (req, res) => {
   voices.splice(index, 1);
   res.json({ success: true });
 };
+
