@@ -1,24 +1,23 @@
 let voices = [];
-let nextId = 1;
 
-exports.getVoices = (req, res) => {
+export const getVoices = (req, res) => {
   const userId = req.user.id;
   const userVoices = voices.filter(v => v.userId === userId);
   res.json(userVoices);
 };
 
-exports.createVoice = (req, res) => {
+export const createVoice = (req, res) => {
   const userId = req.user.id;
   const { type, content } = req.body;
 
   if (!type || !content) {
-    return res.status(400).json({ message: "Missing data" });
+    return res.status(400).json({ message: "Type and content required" });
   }
 
   const newVoice = {
-    id: nextId++,
+    id: voices.length + 1,
     userId,
-    type, // "text" or "video"
+    type,
     content,
     createdAt: new Date()
   };
@@ -27,7 +26,7 @@ exports.createVoice = (req, res) => {
   res.status(201).json(newVoice);
 };
 
-exports.deleteVoice = (req, res) => {
+export const deleteVoice = (req, res) => {
   const userId = req.user.id;
   const voiceId = Number(req.params.id);
 

@@ -11,12 +11,8 @@ app.use(express.json());
 app.use("/api/auth", authRoutes);
 app.use("/api/voices", voicesRoutes);
 
-app.get("/", (req, res) => {
-  res.send("API running");
-});
+app.get("/", (_, res) => res.send("API running"));
 
 const PORT = process.env.PORT || 5000;
-app.listen(PORT, () => {
-  console.log(`Server running on port ${PORT}`);
-});
+app.listen(PORT, () => console.log("Server running on", PORT));
 
