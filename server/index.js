@@ -2,9 +2,6 @@ import express from "express";
 import cors from "cors";
 import bcrypt from "bcryptjs";
 import jwt from "jsonwebtoken";
-const voicesRoutes = require("./routes/voices.routes");
-
-app.use("/api/voices", voicesRoutes);
 
 const app = express();
 app.use(cors());
