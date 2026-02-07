@@ -1,44 +1,22 @@
 import express from "express";
 import cors from "cors";
-import bcrypt from "bcryptjs";
-import jwt from "jsonwebtoken";
+import authRoutes from "./routes/auth.routes.js";
+import voicesRoutes from "./routes/voices.routes.js";
 
 const app = express();
+
 app.use(cors());
 app.use(express.json());
 
-const users = [];
-const JWT_SECRET = "supersecret123";
+app.use("/api/auth", authRoutes);
+app.use("/api/voices", voicesRoutes);
 
-app.post("/api/auth/register", async (req, res) => {
-  const { email, password } = req.body;
-
-  if (users.find((u) => u.email === email)) {
-    return res.status(400).json({ message: "User exists" });
-  }
-
-  const hashed = await bcrypt.hash(password, 10);
-  users.push({ email, password: hashed });
-
-  res.json({ message: "Registered" });
+app.get("/", (req, res) => {
+  res.send("API running");
 });
 
-app.post("/api/auth/login", async (req, res) => {
-  const { email, password } = req.body;
-
-  const user = users.find((u) => u.email === email);
-  if (!user) return res.status(401).json({ message: "Invalid" });
-
-  const ok = await bcrypt.compare(password, user.password);
-  if (!ok) return res.status(401).json({ message: "Invalid" });
-
-  const token = jwt.sign({ email }, JWT_SECRET);
-  res.json({ token });
+const PORT = process.env.PORT || 5000;
+app.listen(PORT, () => {
+  console.log(`Server running on port ${PORT}`);
 });
-
-app.get("/api/health", (req, res) => {
-  res.json({ message: "API running" });
-});
-
-app.listen(5000, () => console.log("API running"));
 
