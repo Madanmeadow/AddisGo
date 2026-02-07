@@ -1,7 +1,7 @@
 import express from "express";
 import cors from "cors";
-import authRoutes from "./routes/auth.routes.js";
 import voicesRoutes from "./routes/voices.routes.js";
+import authRoutes from "./routes/auth.routes.js";
 
 const app = express();
 
@@ -11,8 +11,11 @@ app.use(express.json());
 app.use("/api/auth", authRoutes);
 app.use("/api/voices", voicesRoutes);
 
-app.get("/", (_, res) => res.send("API running"));
+app.get("/", (req, res) => {
+  res.send("AddisGo API running 🚀");
+});
 
 const PORT = process.env.PORT || 5000;
 app.listen(PORT, () => console.log("Server running on", PORT));
+
 
