@@ -10,7 +10,7 @@ const router = useRouter();
 const register = async () => {
   await api.post("/auth/register", {
     email: email.value,
-    password: password.value
+    password: password.value,
   });
   router.push("/login");
 };
@@ -23,5 +23,7 @@ const register = async () => {
     <button @click="register">Register</button>
   </div>
 </template>
+
+
 
 

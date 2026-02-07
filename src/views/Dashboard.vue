@@ -1,8 +1,7 @@
 <script setup>
 const videos = [
-  "/videos/1.mp4",
-  "/videos/2.mp4",
-  "/videos/3.mp4"
+  "https://www.w3schools.com/html/mov_bbb.mp4",
+  "https://www.w3schools.com/html/movie.mp4",
 ];
 </script>
 
@@ -12,11 +11,9 @@ const videos = [
       v-for="(v, i) in videos"
       :key="i"
       :src="v"
-      autoplay
-      muted
-      loop
       controls
-      class="video"
+      autoplay
+      loop
     />
   </div>
 </template>
@@ -26,7 +23,7 @@ const videos = [
   height: 100vh;
   overflow-y: scroll;
 }
-.video {
+video {
   width: 100%;
   height: 100vh;
   object-fit: cover;
