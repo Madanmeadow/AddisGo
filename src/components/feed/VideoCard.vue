@@ -1,28 +1,27 @@
 <script setup>
 import api from "@/services/api";
-import { ref } from "vue";
+import ReactionsBar from "./ReactionsBar.vue";
+import ShareButton from "./ShareButton.vue";
 
-const props = defineProps({
-  video: Object,
-});
-
-const likes = ref(props.video.likes || 0);
+const props = defineProps({ video: Object });
 
 const like = async () => {
-  await api.post(`/videos/${props.video.id}/like`);
-  likes.value++;
+  await api.post(`/api/like/${props.video.id}`);
 };
 </script>
 
 <template>
-  <div class="video-card">
-    <video controls autoplay muted loop>
-      <source :src="video.url" type="video/mp4" />
-    </video>
-
-    <div class="actions">
-      ❤️ {{ likes }}
-      <button @click="like">Like</button>
-    </div>
-  </div>
+  <video :src="video.url" controls autoplay muted loop></video>
+  ❤️ {{ video.likes }}
+  <button @click="like">Like</button>
+  <ReactionsBar :video="video" />
+  <ShareButton :video="video" />
 </template>
+
+<style>
+video {
+  height: 100vh;
+  width: 100%;
+  object-fit: cover;
+}
+</style>

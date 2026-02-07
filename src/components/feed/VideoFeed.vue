@@ -3,17 +3,15 @@ import { ref, onMounted } from "vue";
 import api from "@/services/api";
 import VideoCard from "./VideoCard.vue";
 
-const videos = ref([]);
+const feed = ref([]);
 
 onMounted(async () => {
-  const res = await api.get("/feed");
-  videos.value = res.data;
+  feed.value = (await api.get("/api/feed")).data;
 });
 </script>
 
 <template>
-  <div class="feed">
-    <VideoCard v-for="v in videos" :key="v.id" :video="v" />
-  </div>
+  <VideoCard v-for="v in feed" :key="v.id" :video="v" />
 </template>
+
 

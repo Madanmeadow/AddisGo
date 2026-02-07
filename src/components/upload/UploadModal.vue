@@ -1,12 +1,7 @@
-<template>
-  <div class="modal">
-    <input type="file" accept="video/*" @change="pick" />
-    <button @click="upload">Upload</button>
-  </div>
-</template>
-
 <script setup>
-import { api } from "@/services/api";
+import { ref } from "vue";
+import api from "@/services/api";
+
 const file = ref(null);
 
 const pick = e => file.value = e.target.files[0];
@@ -18,3 +13,8 @@ const upload = async () => {
   location.reload();
 };
 </script>
+
+<template>
+  <input type="file" accept="video/*" @change="pick" />
+  <button @click="upload">Upload</button>
+</template>
