@@ -1,31 +1,19 @@
-<script setup>
-import Sidebar from "../components/dashboard/Sidebar.vue";
-import TopBar from "../components/dashboard/TopBar.vue";
-import DashboardFeed from "../components/dashboard/DashboardFeed.vue";
-</script>
-
 <template>
-  <div class="dashboard-layout">
-    <Sidebar />
-    <div class="dashboard-main">
-      <TopBar />
-      <DashboardFeed />
-    </div>
-  </div>
+  <Topbar />
+  <Sidebar />
+  <VideoFeed />
+  <MobileBottomNav @upload="showUpload=true" />
+  <UploadModal v-if="showUpload" />
 </template>
 
-<style scoped>
-.dashboard-layout {
-  display: flex;
-  height: 100vh;
-  background: #000;
-  color: white;
-}
+<script setup>
+import { ref } from "vue";
+import VideoFeed from "@/components/feed/VideoFeed.vue";
+import UploadModal from "@/components/upload/UploadModal.vue";
+import MobileBottomNav from "@/components/layout/MobileBottomNav.vue";
 
-.dashboard-main {
-  flex: 1;
-  overflow-y: auto;
-}
-</style>
+const showUpload = ref(false);
+</script>
+
 
 
