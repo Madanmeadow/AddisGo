@@ -1,11 +1,18 @@
-import axios from "axios";
+import express from "express";
+import cors from "cors";
 
-const api = axios.create({
-  baseURL: "https://addisgo-1.onrender.com/api", // 👈 NODE BACKEND
-  headers: {
-    "Content-Type": "application/json",
-  },
+import authRoutes from "./routes/auth.routes.js";
+
+const app = express();
+
+app.use(cors());
+app.use(express.json());
+
+app.use("/api/auth", authRoutes);
+
+app.get("/", (req, res) => {
+  res.send("AddisGo API running 🚀");
 });
 
-export default api;
+export default app;
 
