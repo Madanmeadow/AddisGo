@@ -1,52 +1,58 @@
-import { v4 as uuid } from "uuid";
+let voices = [];
+let idCounter = 1;
 
-const voices = [];
+/**
+ * PUBLIC FEED – anyone can see
+ * GET /api/voices/public
+ */
+export const getPublicVoices = (req, res) => {
+  const sorted = [...voices].sort((a, b) => b.createdAt - a.createdAt);
+  res.json(sorted);
+};
 
-// GET current user's voices
+/**
+ * USER VOICES – private
+ * GET /api/voices
+ */
 export const getVoices = (req, res) => {
-  const userId = req.headers["x-user-id"];
+  const userId = req.user.id;
   res.json(voices.filter(v => v.userId === userId));
 };
 
-// PUBLIC FEED
-export const getPublicVoices = (req, res) => {
-  res.json(voices);
-};
-
-// CREATE VOICE
+/**
+ * CREATE VOICE – text or video
+ * POST /api/voices
+ */
 export const createVoice = (req, res) => {
-  const userId = req.headers["x-user-id"];
-  const { type, content } = req.body;
+  const userId = req.user.id;
+  const { text, type } = req.body;
 
-  if (!content) {
-    return res.status(400).json({ message: "Content required" });
+  let videoUrl = null;
+  if (req.file) {
+    videoUrl = `/uploads/${req.file.filename}`;
   }
 
   const newVoice = {
-    id: uuid(),
+    id: idCounter++,
     userId,
-    type,
-    content,
-    createdAt: new Date()
+    text: text || "",
+    type: type || "text",
+    videoUrl,
+    createdAt: Date.now()
   };
 
-  voices.unshift(newVoice);
+  voices.push(newVoice);
   res.status(201).json(newVoice);
 };
 
-// DELETE VOICE
+/**
+ * DELETE VOICE
+ */
 export const deleteVoice = (req, res) => {
-  const userId = req.headers["x-user-id"];
-  const { id } = req.params;
+  const userId = req.user.id;
+  const voiceId = Number(req.params.id);
 
-  const index = voices.findIndex(
-    v => v.id === id && v.userId === userId
-  );
-
-  if (index === -1) {
-    return res.status(404).json({ message: "Voice not found" });
-  }
-
-  voices.splice(index, 1);
+  voices = voices.filter(v => !(v.id === voiceId && v.userId === userId));
   res.json({ success: true });
 };
+

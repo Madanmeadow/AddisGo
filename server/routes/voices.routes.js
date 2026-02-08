@@ -1,17 +1,24 @@
 import express from "express";
+import multer from "multer";
+import auth from "../middleware/auth.middleware.js";
 import {
   getVoices,
-  getPublicVoices,
   createVoice,
-  deleteVoice
+  deleteVoice,
+  getPublicVoices
 } from "../controllers/voices.controller.js";
 
 const router = express.Router();
 
-router.get("/", getVoices);
+const upload = multer({ dest: "uploads/" });
+
+// 🌍 Public feed
 router.get("/public", getPublicVoices);
-router.post("/", createVoice);
-router.delete("/:id", deleteVoice);
+
+// 🔐 Private (auth)
+router.get("/", auth, getVoices);
+router.post("/", auth, upload.single("video"), createVoice);
+router.delete("/:id", auth, deleteVoice);
 
 export default router;
 
