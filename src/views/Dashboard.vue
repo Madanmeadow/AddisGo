@@ -1,13 +1,35 @@
 <template>
-  <div class="page">
-    <h1>Dashboard</h1>
-
-    <button class="logout" @click="logout">Logout</button>
+  <div class="container">
+    <div class="top">
+      <h1>Dashboard</h1>
+      <button class="logout" @click="logout">Logout</button>
+    </div>
 
     <h2>Create Voice</h2>
-    <textarea v-model="content" placeholder="Say something..."></textarea>
 
-    <button class="post" @click="postVoice">Post</button>
+    <!-- TEXT INPUT -->
+    <textarea
+      v-model="content"
+      placeholder="Say something..."
+    ></textarea>
+
+    <!-- VIDEO INPUT (mobile camera) -->
+    <input
+      v-if="mode === 'video'"
+      type="file"
+      accept="video/*"
+      capture="environment"
+      @change="handleVideo"
+    />
+
+    <div class="actions">
+      <select v-model="mode">
+        <option value="text">Text</option>
+        <option value="video">Video</option>
+      </select>
+
+      <button class="post" @click="postVoice">Post</button>
+    </div>
 
     <h2>Your Voices</h2>
 
@@ -15,13 +37,13 @@
 
     <div v-for="v in voices" :key="v.id" class="voice">
       <p v-if="v.type === 'text'">{{ v.content }}</p>
-      <video
-        v-else
-        controls
-        :src="v.content"
-      ></video>
 
-      <button @click="deleteVoice(v.id)">Delete</button>
+      <video
+        v-if="v.type === 'video'"
+        controls
+        playsinline
+        :src="v.videoUrl"
+      ></video>
     </div>
   </div>
 </template>
@@ -33,8 +55,9 @@ export default {
   data() {
     return {
       content: "",
-      voices: [],
-      userId: localStorage.getItem("userId")
+      mode: "text",
+      videoFile: null,
+      voices: []
     };
   },
 
@@ -43,61 +66,121 @@ export default {
   },
 
   methods: {
-    async loadVoices() {
-      const res = await api.get("/voices", {
-        headers: { "x-user-id": this.userId }
-      });
-      this.voices = res.data;
-    },
-
-    async postVoice() {
-      if (!this.content.trim()) return;
-
-      const res = await api.post(
-        "/voices",
-        { type: "text", content: this.content },
-        { headers: { "x-user-id": this.userId } }
-      );
-
-      this.voices.unshift(res.data);
-      this.content = "";
-    },
-
-    async deleteVoice(id) {
-      await api.delete(`/voices/${id}`, {
-        headers: { "x-user-id": this.userId }
-      });
-      this.voices = this.voices.filter(v => v.id !== id);
-    },
-
     logout() {
       localStorage.clear();
       this.$router.push("/login");
+    },
+
+    handleVideo(e) {
+      this.videoFile = e.target.files[0];
+    },
+
+    async postVoice() {
+      const userId = localStorage.getItem("userId");
+      if (!userId) return alert("Not logged in");
+
+      try {
+        let res;
+
+        if (this.mode === "text") {
+          if (!this.content.trim()) return;
+
+          res = await api.post(
+            "/voices",
+            {
+              type: "text",
+              content: this.content
+            },
+            {
+              headers: { "x-user-id": userId }
+            }
+          );
+        }
+
+        if (this.mode === "video") {
+          if (!this.videoFile) return;
+
+          const formData = new FormData();
+          formData.append("video", this.videoFile);
+          formData.append("type", "video");
+
+          res = await api.post("/voices", formData, {
+            headers: {
+              "x-user-id": userId,
+              "Content-Type": "multipart/form-data"
+            }
+          });
+        }
+
+        // 🔥 SHOW POST INSTANTLY
+        this.voices.unshift(res.data);
+
+        this.content = "";
+        this.videoFile = null;
+        this.mode = "text";
+      } catch (err) {
+        console.error(err);
+        alert("Post failed");
+      }
+    },
+
+    async loadVoices() {
+      const userId = localStorage.getItem("userId");
+
+      const res = await api.get("/voices", {
+        headers: { "x-user-id": userId }
+      });
+
+      this.voices = res.data;
     }
   }
 };
 </script>
 
 <style scoped>
-.page {
+.container {
   max-width: 600px;
   margin: auto;
-  padding: 20px;
+  padding: 16px;
 }
+
+.top {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+}
+
 textarea {
   width: 100%;
   height: 120px;
+  padding: 10px;
+  margin-top: 8px;
+  font-size: 16px;
 }
-.post {
+
+.actions {
+  display: flex;
+  gap: 10px;
   margin-top: 10px;
 }
+
+.post {
+  background: #007bff;
+  color: white;
+  padding: 8px 16px;
+  border-radius: 20px;
+}
+
 .voice {
   border-top: 1px solid #ddd;
   padding: 10px 0;
 }
-.logout {
-  float: right;
+
+video {
+  width: 100%;
+  border-radius: 12px;
 }
 </style>
+
 
 

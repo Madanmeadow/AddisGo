@@ -1,15 +1,11 @@
 import axios from "axios";
 
 const api = axios.create({
-  baseURL: "https://addisgo.onrender.com", // ✅ Render API ONLY
-});
-
-api.interceptors.request.use((config) => {
-  const token = localStorage.getItem("token");
-  if (token) {
-    config.headers.Authorization = `Bearer ${token}`;
+  baseURL: "https://addisgo-1.onrender.com/api", // 🔥 NODE BACKEND ONLY
+  headers: {
+    "Content-Type": "application/json"
   }
-  return config;
 });
 
 export default api;
+
