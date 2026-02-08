@@ -1,63 +1,41 @@
 <template>
   <div class="container">
-    <div class="top">
+    <div class="header">
       <h1>Dashboard</h1>
       <button class="logout" @click="logout">Logout</button>
     </div>
 
     <h2>Create Voice</h2>
 
-    <!-- TEXT INPUT -->
     <textarea
-      v-model="content"
+      v-model="text"
       placeholder="Say something..."
-    ></textarea>
-
-    <!-- VIDEO INPUT (mobile camera) -->
-    <input
-      v-if="mode === 'video'"
-      type="file"
-      accept="video/*"
-      capture="environment"
-      @change="handleVideo"
+      rows="4"
     />
 
-    <div class="actions">
-      <select v-model="mode">
-        <option value="text">Text</option>
-        <option value="video">Video</option>
-      </select>
-
-      <button class="post" @click="postVoice">Post</button>
-    </div>
+    <button class="post" @click="postVoice">Post</button>
 
     <h2>Your Voices</h2>
 
     <p v-if="voices.length === 0">No voices yet</p>
 
     <div v-for="v in voices" :key="v.id" class="voice">
-      <p v-if="v.type === 'text'">{{ v.content }}</p>
-
-      <video
-        v-if="v.type === 'video'"
-        controls
-        playsinline
-        :src="v.videoUrl"
-      ></video>
+      <p>{{ v.content }}</p>
+      <small>{{ new Date(v.createdAt).toLocaleString() }}</small>
+      <button class="delete" @click="deleteVoice(v.id)">Delete</button>
     </div>
   </div>
 </template>
 
 <script>
 import api from "../services/api";
+import { authHeader, logout } from "../services/auth.service";
 
 export default {
   data() {
     return {
-      content: "",
-      mode: "text",
-      videoFile: null,
-      voices: []
+      text: "",
+      voices: [],
     };
   },
 
@@ -66,74 +44,41 @@ export default {
   },
 
   methods: {
-    logout() {
-      localStorage.clear();
-      this.$router.push("/login");
-    },
-
-    handleVideo(e) {
-      this.videoFile = e.target.files[0];
+    async loadVoices() {
+      const res = await api.get("/voices", {
+        headers: authHeader(),
+      });
+      this.voices = res.data;
     },
 
     async postVoice() {
-      const userId = localStorage.getItem("userId");
-      if (!userId) return alert("Not logged in");
+      if (!this.text.trim()) return;
 
-      try {
-        let res;
+      await api.post(
+        "/voices",
+        {
+          type: "text",
+          content: this.text,
+        },
+        { headers: authHeader() }
+      );
 
-        if (this.mode === "text") {
-          if (!this.content.trim()) return;
-
-          res = await api.post(
-            "/voices",
-            {
-              type: "text",
-              content: this.content
-            },
-            {
-              headers: { "x-user-id": userId }
-            }
-          );
-        }
-
-        if (this.mode === "video") {
-          if (!this.videoFile) return;
-
-          const formData = new FormData();
-          formData.append("video", this.videoFile);
-          formData.append("type", "video");
-
-          res = await api.post("/voices", formData, {
-            headers: {
-              "x-user-id": userId,
-              "Content-Type": "multipart/form-data"
-            }
-          });
-        }
-
-        // 🔥 SHOW POST INSTANTLY
-        this.voices.unshift(res.data);
-
-        this.content = "";
-        this.videoFile = null;
-        this.mode = "text";
-      } catch (err) {
-        console.error(err);
-        alert("Post failed");
-      }
+      this.text = "";
+      await this.loadVoices();
     },
 
-    async loadVoices() {
-      const userId = localStorage.getItem("userId");
-
-      const res = await api.get("/voices", {
-        headers: { "x-user-id": userId }
+    async deleteVoice(id) {
+      await api.delete(`/voices/${id}`, {
+        headers: authHeader(),
       });
+      await this.loadVoices();
+    },
 
-      this.voices = res.data;
-    }
-  }
+    logout() {
+      logout();
+      this.$router.push("/login");
+    },
+  },
 };
 </script>
 
@@ -141,44 +86,41 @@ export default {
 .container {
   max-width: 600px;
   margin: auto;
-  padding: 16px;
+  padding: 20px;
 }
 
-.top {
+.header {
   display: flex;
   justify-content: space-between;
-  align-items: center;
 }
 
 textarea {
   width: 100%;
-  height: 120px;
   padding: 10px;
-  margin-top: 8px;
   font-size: 16px;
 }
 
-.actions {
-  display: flex;
-  gap: 10px;
-  margin-top: 10px;
-}
-
 .post {
-  background: #007bff;
-  color: white;
-  padding: 8px 16px;
+  margin-top: 10px;
+  padding: 10px 16px;
   border-radius: 20px;
+  border: none;
+  background: #007aff;
+  color: white;
 }
 
 .voice {
-  border-top: 1px solid #ddd;
-  padding: 10px 0;
+  margin-top: 12px;
+  padding: 10px;
+  border-bottom: 1px solid #eee;
 }
 
-video {
-  width: 100%;
-  border-radius: 12px;
+.delete {
+  margin-top: 6px;
+  background: #eee;
+  border: none;
+  padding: 6px 10px;
+  border-radius: 14px;
 }
 </style>
 

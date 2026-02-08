@@ -1,36 +1,25 @@
-const API_URL = "http://localhost:5000/api/auth";
+import api from "./api";
 
-export async function login(email, password) {
-  const res = await fetch(`${API_URL}/login`, {
-    method: "POST",
-    headers: {
-      "Content-Type": "application/json",
-    },
-    body: JSON.stringify({ email, password }),
-  });
+export const register = async (email, password) => {
+  const res = await api.post("/auth/register", { email, password });
+  return res.data;
+};
 
-  if (!res.ok) {
-    const err = await res.json();
-    throw new Error(err.message || "Login failed");
+export const login = async (email, password) => {
+  const res = await api.post("/auth/login", { email, password });
+
+  if (res.data.token) {
+    localStorage.setItem("token", res.data.token);
   }
 
-  return res.json(); // { token, user }
-}
+  return res.data;
+};
 
-export async function register(name, email, password) {
-  const res = await fetch(`${API_URL}/register`, {
-    method: "POST",
-    headers: {
-      "Content-Type": "application/json",
-    },
-    body: JSON.stringify({ name, email, password }),
-  });
+export const logout = () => {
+  localStorage.removeItem("token");
+};
 
-  if (!res.ok) {
-    const err = await res.json();
-    throw new Error(err.message || "Register failed");
-  }
-
-  return res.json();
-}
-
+export const authHeader = () => {
+  const token = localStorage.getItem("token");
+  return token ? { Authorization: `Bearer ${token}` } : {};
+};
