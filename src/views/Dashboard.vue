@@ -1,40 +1,28 @@
 <template>
-  <div class="dashboard">
-    <div class="top-bar">
-      <h1>Dashboard</h1>
-      <button class="btn" @click="logout">Logout</button>
+  <div class="page">
+    <h1>Dashboard</h1>
+
+    <button class="logout" @click="logout">Logout</button>
+
+    <h2>Create Voice</h2>
+    <textarea v-model="content" placeholder="Say something..."></textarea>
+
+    <button class="post" @click="postVoice">Post</button>
+
+    <h2>Your Voices</h2>
+
+    <p v-if="voices.length === 0">No voices yet</p>
+
+    <div v-for="v in voices" :key="v.id" class="voice">
+      <p v-if="v.type === 'text'">{{ v.content }}</p>
+      <video
+        v-else
+        controls
+        :src="v.content"
+      ></video>
+
+      <button @click="deleteVoice(v.id)">Delete</button>
     </div>
-
-    <section class="create">
-      <h2>Create Voice</h2>
-
-      <textarea
-        v-model="content"
-        placeholder="Say something..."
-      ></textarea>
-
-      <button class="btn primary" @click="postVoice">
-        Post
-      </button>
-    </section>
-
-    <section class="voices">
-      <h2>Your Voices</h2>
-
-      <p v-if="voices.length === 0">No voices yet</p>
-
-      <div
-        v-for="voice in voices"
-        :key="voice.id"
-        class="voice-card"
-      >
-        <p>{{ voice.content }}</p>
-
-        <button class="btn danger" @click="deleteVoice(voice.id)">
-          Delete
-        </button>
-      </div>
-    </section>
   </div>
 </template>
 
@@ -46,6 +34,7 @@ export default {
     return {
       content: "",
       voices: [],
+      userId: localStorage.getItem("userId")
     };
   },
 
@@ -55,77 +44,60 @@ export default {
 
   methods: {
     async loadVoices() {
-      const res = await api.get("/voices");
+      const res = await api.get("/voices", {
+        headers: { "x-user-id": this.userId }
+      });
       this.voices = res.data;
     },
 
     async postVoice() {
       if (!this.content.trim()) return;
 
-      const res = await api.post("/voices", {
-        content: this.content,
-        type: "text",
-      });
+      const res = await api.post(
+        "/voices",
+        { type: "text", content: this.content },
+        { headers: { "x-user-id": this.userId } }
+      );
 
-      // 👇 THIS is what was missing
       this.voices.unshift(res.data);
       this.content = "";
     },
 
     async deleteVoice(id) {
-      await api.delete(`/voices/${id}`);
+      await api.delete(`/voices/${id}`, {
+        headers: { "x-user-id": this.userId }
+      });
       this.voices = this.voices.filter(v => v.id !== id);
     },
 
     logout() {
-      localStorage.removeItem("token");
+      localStorage.clear();
       this.$router.push("/login");
-    },
-  },
+    }
+  }
 };
 </script>
 
 <style scoped>
-.dashboard {
+.page {
   max-width: 600px;
   margin: auto;
-  padding: 24px;
+  padding: 20px;
 }
-
-.top-bar {
-  display: flex;
-  justify-content: space-between;
-  align-items: center;
-}
-
 textarea {
   width: 100%;
-  min-height: 100px;
-  margin: 12px 0;
-  padding: 12px;
-  font-size: 16px;
+  height: 120px;
 }
-
-.voice-card {
-  border-top: 1px solid #eee;
-  padding: 12px 0;
+.post {
+  margin-top: 10px;
 }
-
-.btn {
-  padding: 6px 14px;
-  border-radius: 999px;
-  border: none;
-  cursor: pointer;
+.voice {
+  border-top: 1px solid #ddd;
+  padding: 10px 0;
 }
-
-.primary {
-  background: #007aff;
-  color: white;
-}
-
-.danger {
-  background: #ff3b30;
-  color: white;
+.logout {
+  float: right;
 }
 </style>
+
 

@@ -1,50 +1,28 @@
-import bcrypt from "bcryptjs";
-import jwt from "jsonwebtoken";
+const users = [];
 
-const users = []; // 👈 in-memory storage
-
-export const register = async (req, res) => {
+export const register = (req, res) => {
   const { email, password } = req.body;
 
-  if (!email || !password) {
-    return res.status(400).json({ message: "Missing fields" });
-  }
+  users.push({ id: Date.now(), email, password });
 
-  const exists = users.find(u => u.email === email);
-  if (exists) {
-    return res.status(400).json({ message: "User already exists" });
-  }
-
-  const hashed = await bcrypt.hash(password, 10);
-
-  users.push({
-    id: users.length + 1,
-    email,
-    password: hashed
-  });
-
-  res.json({ message: "Registered successfully" });
+  res.json({ success: true });
 };
 
-export const login = async (req, res) => {
+export const login = (req, res) => {
   const { email, password } = req.body;
 
-  const user = users.find(u => u.email === email);
-  if (!user) {
-    return res.status(401).json({ message: "Invalid credentials" });
-  }
-
-  const match = await bcrypt.compare(password, user.password);
-  if (!match) {
-    return res.status(401).json({ message: "Invalid credentials" });
-  }
-
-  const token = jwt.sign(
-    { id: user.id },
-    process.env.JWT_SECRET || "dev_secret",
-    { expiresIn: "7d" }
+  const user = users.find(
+    (u) => u.email === email && u.password === password
   );
 
-  res.json({ token });
+  if (!user) {
+    return res.status(401).json({ message: "Invalid email or password" });
+  }
+
+  res.json({
+    token: "mock-token",
+    user: { id: user.id, email }
+  });
 };
+
 

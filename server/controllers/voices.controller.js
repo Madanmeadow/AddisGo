@@ -1,39 +1,46 @@
-let voices = [];
-let nextId = 1;
+import { v4 as uuid } from "uuid";
 
-export function getVoices(req, res) {
-  const userId = req.user.id;
+const voices = [];
+
+// GET current user's voices
+export const getVoices = (req, res) => {
+  const userId = req.headers["x-user-id"];
   res.json(voices.filter(v => v.userId === userId));
-}
+};
 
-export function getPublicVoices(req, res) {
-  res.json([...voices].reverse());
-}
+// PUBLIC FEED
+export const getPublicVoices = (req, res) => {
+  res.json(voices);
+};
 
-export function createVoice(req, res) {
+// CREATE VOICE
+export const createVoice = (req, res) => {
+  const userId = req.headers["x-user-id"];
   const { type, content } = req.body;
 
-  if (!type || !content) {
-    return res.status(400).json({ message: "Missing type or content" });
+  if (!content) {
+    return res.status(400).json({ message: "Content required" });
   }
 
-  const voice = {
-    id: nextId++,
-    userId: req.user.id,
-    username: req.user.email,
-    type, // text | video
+  const newVoice = {
+    id: uuid(),
+    userId,
+    type,
     content,
-    createdAt: new Date().toISOString()
+    createdAt: new Date()
   };
 
-  voices.push(voice);
-  res.status(201).json(voice);
-}
+  voices.unshift(newVoice);
+  res.status(201).json(newVoice);
+};
 
-export function deleteVoice(req, res) {
-  const id = Number(req.params.id);
+// DELETE VOICE
+export const deleteVoice = (req, res) => {
+  const userId = req.headers["x-user-id"];
+  const { id } = req.params;
+
   const index = voices.findIndex(
-    v => v.id === id && v.userId === req.user.id
+    v => v.id === id && v.userId === userId
   );
 
   if (index === -1) {
@@ -42,4 +49,4 @@ export function deleteVoice(req, res) {
 
   voices.splice(index, 1);
   res.json({ success: true });
-}
+};
