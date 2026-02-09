@@ -1,42 +1,32 @@
-const express = require("express");
-const multer = require("multer");
-const path = require("path");
-const fs = require("fs");
+import express from "express";
+import multer from "multer";
 
 const router = express.Router();
 
-const uploadDir = path.join(__dirname, "..", "uploads");
-if (!fs.existsSync(uploadDir)) {
-  fs.mkdirSync(uploadDir);
-}
-
-// Multer config
+// Storage config
 const storage = multer.diskStorage({
-  destination: (req, file, cb) => {
-    cb(null, uploadDir);
-  },
+  destination: "uploads/",
   filename: (req, file, cb) => {
-    const uniqueName =
-      Date.now() + "-" + Math.round(Math.random() * 1e9);
-    cb(null, uniqueName + path.extname(file.originalname));
+    const uniqueName = `${Date.now()}-${file.originalname}`;
+    cb(null, uniqueName);
   },
 });
 
-const upload = multer({
-  storage,
-  limits: { fileSize: 200 * 1024 * 1024 }, // 200MB
-});
+const upload = multer({ storage });
 
-// POST /api/upload
-router.post("/", upload.single("video"), (req, res) => {
+// POST /upload
+router.post("/", upload.single("media"), (req, res) => {
   if (!req.file) {
     return res.status(400).json({ error: "No file uploaded" });
   }
 
   res.json({
     success: true,
-    videoUrl: `/uploads/${req.file.filename}`,
+    file: req.file.filename,
+    url: `/uploads/${req.file.filename}`,
   });
 });
 
-module.exports = router;
+export default router;
+
+
