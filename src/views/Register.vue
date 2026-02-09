@@ -1,86 +1,41 @@
-<script setup>
-import { ref } from "vue";
-import { useRouter } from "vue-router";
-import { useAuthStore } from "../stores/auth.store";
-
-const router = useRouter();
-const auth = useAuthStore();
-
-const name = ref("");
-const email = ref("");
-const password = ref("");
-const loading = ref(false);
-const error = ref("");
-  
-const register = async () => {
-  error.value = "";
-  loading.value = true;
-
-  try {
-    const res = await fetch("http://localhost:5000/api/auth/register", {
-      method: "POST",
-      headers: {
-        "Content-Type": "application/json",
-      },
-      body: JSON.stringify({
-        name: name.value,
-        email: email.value,
-        password: password.value,
-      }),
-    });
-
-    const data = await res.json();
-
-    if (!res.ok) {
-      throw new Error(data.message || "Registration failed");
-    }
-
-    // save token + user
-    auth.setAuth(data.token, data.user);
-
-    // go to dashboard
-    router.push("/dashboard");
-  } catch (err) {
-    error.value = err.message;
-  } finally {
-    loading.value = false;
-  }
-};
-</script>
-
 <template>
   <div>
     <h1>Create Account</h1>
 
-    <form @submit.prevent="register">
-      <input
-        v-model="name"
-        placeholder="Name"
-        required
-      />
+    <input v-model="name" placeholder="Name" />
+    <input v-model="email" placeholder="Email" />
+    <input v-model="password" type="password" placeholder="Password" />
 
-      <input
-        v-model="email"
-        type="email"
-        placeholder="Email"
-        required
-      />
-
-      <input
-        v-model="password"
-        type="password"
-        placeholder="Password"
-        required
-      />
-
-      <button type="submit" :disabled="loading">
-        {{ loading ? "Registering..." : "Register" }}
-      </button>
-    </form>
+    <button @click="register">Register</button>
 
     <p v-if="error" style="color:red">{{ error }}</p>
   </div>
 </template>
+
+<script setup>
+import { ref } from "vue";
+import api from "@/services/api";
+import { useRouter } from "vue-router";
+
+const router = useRouter();
+const name = ref("");
+const email = ref("");
+const password = ref("");
+const error = ref("");
+
+const register = async () => {
+  try {
+    await api.post("/auth/register", {
+      name: name.value,
+      email: email.value,
+      password: password.value
+    });
+    router.push("/login");
+  } catch (err) {
+    error.value = err.response?.data?.message || "Register failed";
+  }
+};
+</script>
 
 
 
