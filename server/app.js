@@ -7,7 +7,7 @@ app.use(cors());
 app.use(express.json());
 
 app.get("/", (req, res) => {
-  res.json({ status: "AddisGo API running" });
+  res.json({ status: "AddisGo API running ✅" });
 });
 
 export default app;
