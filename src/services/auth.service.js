@@ -1,25 +1,5 @@
 import api from "./api";
 
-export const register = async (email, password) => {
-  const res = await api.post("/auth/register", { email, password });
-  return res.data;
-};
-
-export const login = async (email, password) => {
-  const res = await api.post("/auth/login", { email, password });
-
-  if (res.data.token) {
-    localStorage.setItem("token", res.data.token);
-  }
-
-  return res.data;
-};
-
-export const logout = () => {
-  localStorage.removeItem("token");
-};
-
-export const authHeader = () => {
-  const token = localStorage.getItem("token");
-  return token ? { Authorization: `Bearer ${token}` } : {};
-};
+export const register = (data) => api.post("/api/auth/register", data);
+export const login = (data) => api.post("/api/auth/login", data);
+export const getProfile = () => api.get("/api/users/me");
