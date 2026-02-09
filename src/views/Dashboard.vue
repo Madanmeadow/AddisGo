@@ -1,9 +1,9 @@
 <template>
-  <div>
+  <div class="dashboard">
     <h1>Dashboard</h1>
 
     <p v-if="user">
-      Welcome, <strong>{{ user.name }}</strong> 👋
+      Welcome, <strong>{{ user.email }}</strong> 👋
     </p>
 
     <p v-else>Loading user...</p>
@@ -13,20 +13,25 @@
 </template>
 
 <script setup>
-import { computed } from "vue";
-import { useRouter } from "vue-router";
-import { useAuthStore } from "@/stores/auth.store";
+import { useRouter } from 'vue-router'
+import { useAuthStore } from '@/stores/auth.store'
 
-const auth = useAuthStore();
-const router = useRouter();
+const router = useRouter()
+const auth = useAuthStore()
 
-const user = computed(() => auth.user);
+const user = auth.user
 
-const logout = () => {
-  auth.logout();
-  router.push("/login");
-};
+function logout() {
+  auth.logout()
+  router.push('/login')
+}
 </script>
+
+<style scoped>
+.dashboard {
+  padding: 2rem;
+}
+</style>
 
 
 
