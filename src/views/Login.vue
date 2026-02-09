@@ -1,31 +1,31 @@
 <template>
   <div>
-    <h1>Login</h1>
+    <h2>Login</h2>
 
     <input v-model="email" placeholder="Email" />
     <input v-model="password" type="password" placeholder="Password" />
 
-    <button @click="login">Login</button>
+    <button @click="handleLogin">Login</button>
 
-    <p v-if="error" style="color:red">{{ error }}</p>
+    <p v-if="error">{{ error }}</p>
   </div>
 </template>
 
 <script setup>
 import { ref } from "vue";
-import api from "@/services/api";
+import { login } from "../services/auth.service";
 import { useRouter } from "vue-router";
 
-const router = useRouter();
 const email = ref("");
 const password = ref("");
 const error = ref("");
+const router = useRouter();
 
-const login = async () => {
+const handleLogin = async () => {
   try {
-    const res = await api.post("/auth/login", {
+    const res = await login({
       email: email.value,
-      password: password.value
+      password: password.value,
     });
 
     localStorage.setItem("token", res.data.token);
