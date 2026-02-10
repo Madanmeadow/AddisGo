@@ -1,5 +1,13 @@
 import api from "./api";
 
-export const register = (data) => api.post("/api/auth/register", data);
-export const login = (data) => api.post("/api/auth/login", data);
-export const getProfile = () => api.get("/api/users/me");
+export const register = (data) => {
+  return api.post("/api/auth/register", data);
+};
+
+export const login = (data) => {
+  return api.post("/api/auth/login", data);
+};
+
+export const getProfile = () => {
+  return api.get("/api/users/me");
+};
