@@ -1,15 +1,15 @@
-// server/db.js
-import pkg from "pg";
-const { Pool } = pkg;
+import dotenv from "dotenv";
+dotenv.config();
 
-const connectionString = process.env.DATABASE_URL || "postgresql://username:password@127.0.0.1:5432/addisgo_db";
+import pg from "pg";
 
-const pool = new Pool({
-  connectionString,
-  ssl: process.env.NODE_ENV === "production" ? { rejectUnauthorized: false } : false,
+const { Pool } = pg;
+
+export const pool = new Pool({
+  connectionString: process.env.DATABASE_URL,
+  ssl: {
+    rejectUnauthorized: false,
+  },
 });
-
-export default pool;
-
 
 
