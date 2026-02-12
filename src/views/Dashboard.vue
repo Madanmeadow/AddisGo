@@ -42,14 +42,14 @@ export default {
         {
           user: "AddisGo",
           caption: "Welcome to AddisGo 🚀",
-          video: "https://www.w3schools.com/html/mov_bbb.mp4",
+          video: "myvideo2.mp4",
           likes: 120,
           comments: 30
         },
         {
           user: "Minneapolis",
           caption: "Streets of Minneapolis 🌆",
-          video: "https://www.w3schools.com/html/movie.mp4",
+          video: "myvideo1.mp4",
           likes: 210,
           comments: 50
         }
