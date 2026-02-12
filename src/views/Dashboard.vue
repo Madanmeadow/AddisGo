@@ -1,114 +1,85 @@
 <template>
-  <div class="tiktok-container">
+  <div class="feed">
 
-    <div
-      v-for="(post, index) in posts"
-      :key="index"
-      class="video-wrapper"
+    <div class="upload-box">
+      <input type="text" v-model="title" placeholder="Video title" />
+      <input type="file" @change="handleFile" />
+      <button @click="uploadVideo">Upload</button>
+    </div>
+
+    <div 
+      v-for="video in videos" 
+      :key="video.id"
+      class="video-container"
     >
-      <video
-        :src="post.video"
+      <video 
+        :src="`http://localhost:5000${video.url}`"
+        controls
         autoplay
-        muted
         loop
-        playsinline
-        class="video"
       ></video>
-
-      <!-- Overlay Info -->
-      <div class="overlay">
-        <div class="left-info">
-          <h3>@{{ post.user }}</h3>
-          <p>{{ post.caption }}</p>
-        </div>
-
-        <div class="right-actions">
-          <button>❤️ {{ post.likes }}</button>
-          <button>💬 {{ post.comments }}</button>
-          <button>🔗 Share</button>
-        </div>
-      </div>
-
+      <h3>{{ video.title }}</h3>
     </div>
 
   </div>
 </template>
 
 <script>
+import axios from "axios"
+
 export default {
   data() {
     return {
-      posts: [
-        {
-          user: "AddisGo",
-          caption: "Welcome to AddisGo 🚀",
-          video: "myvideo2.mp4",
-          likes: 120,
-          comments: 30
-        },
-        {
-          user: "Minneapolis",
-          caption: "Streets of Minneapolis 🌆",
-          video: "myvideo1.mp4",
-          likes: 210,
-          comments: 50
-        }
-      ]
+      title: "",
+      file: null,
+      videos: []
+    }
+  },
+  mounted() {
+    this.fetchVideos()
+  },
+  methods: {
+    handleFile(e) {
+      this.file = e.target.files[0]
+    },
+    async uploadVideo() {
+      const formData = new FormData()
+      formData.append("title", this.title)
+      formData.append("video", this.file)
+
+      await axios.post(
+        "http://localhost:5000/api/videos/upload",
+        formData
+      )
+
+      this.fetchVideos()
+    },
+    async fetchVideos() {
+      const res = await axios.get(
+        "http://localhost:5000/api/videos"
+      )
+      this.videos = res.data
     }
   }
 }
 </script>
 
-<style scoped>
-
-.tiktok-container {
+<style>
+.feed {
   height: 100vh;
   overflow-y: scroll;
-  scroll-snap-type: y mandatory;
 }
 
-.video-wrapper {
-  position: relative;
+.video-container {
   height: 100vh;
   scroll-snap-align: start;
 }
 
-.video {
+video {
   width: 100%;
-  height: 100%;
+  height: 90%;
   object-fit: cover;
 }
-
-.overlay {
-  position: absolute;
-  bottom: 20px;
-  left: 20px;
-  right: 20px;
-  display: flex;
-  justify-content: space-between;
-  align-items: flex-end;
-  color: white;
-}
-
-.left-info {
-  max-width: 60%;
-}
-
-.right-actions {
-  display: flex;
-  flex-direction: column;
-  gap: 15px;
-}
-
-.right-actions button {
-  background: rgba(0,0,0,0.5);
-  border: none;
-  color: white;
-  padding: 10px;
-  border-radius: 50px;
-  cursor: pointer;
-}
-
 </style>
 
 

@@ -1,21 +1,54 @@
-const express = require("express");
-const multer = require("multer");
-const auth = require("../middleware/auth.middleware");
+import express from "express"
+import multer from "multer"
+import path from "path"
+import { pool } from "../db.js"
 
-const router = express.Router();
+const router = express.Router()
 
+// Storage config
 const storage = multer.diskStorage({
-  destination: "uploads/",
+  destination: (req, file, cb) => {
+    cb(null, "uploads/")
+  },
   filename: (req, file, cb) => {
-    cb(null, Date.now() + "-" + file.originalname);
+    cb(null, Date.now() + path.extname(file.originalname))
   }
-});
+})
 
-const upload = multer({ storage });
+const upload = multer({ storage })
 
-router.post("/", auth, upload.single("video"), (req, res) => {
-  const videoUrl = `/uploads/${req.file.filename}`;
-  res.json({ videoUrl });
-});
+// Upload video
+router.post("/upload", upload.single("video"), async (req, res) => {
+  try {
+    const { title } = req.body
 
-module.exports = router;
+    const videoUrl = `/uploads/${req.file.filename}`
+
+    await pool.query(
+      "INSERT INTO videos (title, url) VALUES ($1, $2)",
+      [title, videoUrl]
+    )
+
+    res.json({ message: "Video uploaded successfully" })
+
+  } catch (err) {
+    console.log("UPLOAD ERROR:", err)
+    res.status(500).json({ message: "Upload failed" })
+  }
+})
+
+// Get all videos
+router.get("/", async (req, res) => {
+  try {
+    const videos = await pool.query(
+      "SELECT * FROM videos ORDER BY id DESC"
+    )
+    res.json(videos.rows)
+  } catch (err) {
+    console.log(err)
+    res.status(500).json({ message: "Error fetching videos" })
+  }
+})
+
+export default router
+

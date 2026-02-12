@@ -1,24 +1,29 @@
-import dotenv from "dotenv";
-dotenv.config(); // ✅ ONLY ONCE
+import express from "express"
+import cors from "cors"
+import dotenv from "dotenv"
 
-import express from "express";
-import cors from "cors";
-import authRoutes from "./routes/auth.routes.js";
+import authRoutes from "./routes/auth.routes.js"
+import videoRoutes from "./routes/videos.routes.js"
 
-const app = express();
+dotenv.config()
 
-app.use(cors());
-app.use(express.json());
+const app = express()
 
-app.use("/api/auth", authRoutes);
+app.use(cors())
+app.use(express.json())
 
-app.get("/", (req, res) => {
-  res.json({ message: "AddisGo API running" });
-});
+// Serve uploaded videos
+app.use("/uploads", express.static("uploads"))
 
-const PORT = process.env.PORT || 5000;
+// Routes
+app.use("/api/auth", authRoutes)
+app.use("/api/videos", videoRoutes)
+
+const PORT = process.env.PORT || 5000
+
 app.listen(PORT, () => {
-  console.log(`🚀 Server running on port ${PORT}`);
-});
+  console.log("Server running on port", PORT)
+})
+
 
 
