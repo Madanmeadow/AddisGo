@@ -1,42 +1,56 @@
 <template>
   <div>
-    <h2>Register</h2>
+    <h1>Register</h1>
 
     <input v-model="name" placeholder="Name" />
     <input v-model="email" placeholder="Email" />
     <input v-model="password" type="password" placeholder="Password" />
 
-    <button @click="handleRegister">Register</button>
+    <button @click="register">Register</button>
 
     <p v-if="error">{{ error }}</p>
   </div>
 </template>
 
-<script setup>
-import { ref } from "vue";
-import { register } from "../services/auth.service";
-import { useRouter } from "vue-router";
+<script>
+import axios from "axios";
 
-const name = ref("");
-const email = ref("");
-const password = ref("");
-const error = ref("");
-const router = useRouter();
+export default {
+  data() {
+    return {
+      name: "",
+      email: "",
+      password: "",
+      error: ""
+    };
+  },
 
-const handleRegister = async () => {
-  try {
-    await register({
-      name: name.value,
-      email: email.value,
-      password: password.value,
-    });
+  methods: {
+    async register() {
+      try {
+        const response = await axios.post(
+          "http://localhost:5000/api/auth/register",
+          {
+            name: this.name,
+            email: this.email,
+            password: this.password,
+          }
+        );
 
-    router.push("/login");
-  } catch (err) {
-    error.value = err.response?.data?.message || "Register failed";
-  }
+        console.log("SUCCESS 🔥", response.data);
+
+        // optional redirect
+        this.$router.push("/login");
+
+      } catch (err) {
+        console.log("ERROR ❌", err);
+        this.error = "Server error";
+      }
+    },
+  },
 };
 </script>
+
 
 
 
