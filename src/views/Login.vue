@@ -22,45 +22,37 @@
   </div>
 </template>
 
-<script>
+<script setup>
+import { ref } from "vue"
 import axios from "axios"
+import { useRouter } from "vue-router"
 
-export default {
-  data() {
-    return {
-      email: "",
-      password: "",
-      error: ""
-    }
-  },
+const router = useRouter()
 
-  methods: {
-    async login() {
-      this.error = ""
+const email = ref("")
+const password = ref("")
+const error = ref("")
 
-      try {
-        const res = await axios.post(
-          "http://addisgo-1.onrender.com/api/auth/login",
-          {
-            email: this.email,
-            password: this.password
-          }
-        )
-
-        // Save token
-        localStorage.setItem("token", res.data.token)
-
-        // Go to dashboard
-        this.$router.push("/dashboard")
-
-      } catch (err) {
-        this.error = "Login failed. Please try again."
-        console.log(err)
+const login = async () => {
+  try {
+    const res = await axios.post(
+      "https://addisgo-1.onrender.com/api/auth/login",
+      {
+        email: email.value,
+        password: password.value,
       }
-    }
+    )
+
+    localStorage.setItem("token", res.data.token)
+
+    router.push("/dashboard")
+
+  } catch (err) {
+    error.value = "Login failed. Please try again."
   }
 }
 </script>
+
 
 <style scoped>
 .login {
