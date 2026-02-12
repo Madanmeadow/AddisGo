@@ -40,7 +40,7 @@ export default {
 
       try {
         const res = await axios.post(
-          "http://localhost:5000/api/auth/login",
+          "http://addisgo-1.onrender.com/api/auth/login",
           {
             email: this.email,
             password: this.password
