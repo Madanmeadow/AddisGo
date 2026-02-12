@@ -1,66 +1,84 @@
 <template>
-  <div class="login">
-    <h1>Login</h1>
+  <div class="auth-container">
+    <h2>Login</h2>
 
-    <input
-      v-model="email"
-      type="email"
-      placeholder="Email"
-    />
+    <form @submit.prevent="handleLogin">
+      <input
+        v-model="email"
+        type="email"
+        placeholder="Email"
+        required
+      />
 
-    <input
-      v-model="password"
-      type="password"
-      placeholder="Password"
-    />
+      <input
+        v-model="password"
+        type="password"
+        placeholder="Password"
+        required
+      />
 
-    <button @click="login">Login</button>
+      <button type="submit">Login</button>
 
-    <p v-if="error" style="color: red;">
-      {{ error }}
-    </p>
+      <p v-if="error" class="error">{{ error }}</p>
+    </form>
   </div>
 </template>
 
-<script setup>
-import { ref } from "vue"
+<script>
 import axios from "axios"
-import { useRouter } from "vue-router"
 
-const router = useRouter()
+export default {
+  data() {
+    return {
+      email: "",
+      password: "",
+      error: ""
+    }
+  },
+  methods: {
+    async handleLogin() {
+      try {
+        const res = await axios.post(
+          "https://addisgo-1.onrender.com/api/auth/login",
+          {
+            email: this.email,
+            password: this.password
+          }
+        )
 
-const email = ref("")
-const password = ref("")
-const error = ref("")
+        localStorage.setItem("token", res.data.token)
 
-const login = async () => {
-  try {
-    const res = await axios.post(
-      "https://addisgo-1.onrender.com/api/auth/login",
-      {
-        email: email.value,
-        password: password.value,
+        this.$router.push("/dashboard")
+
+      } catch (err) {
+        this.error =
+          err.response?.data?.message || "Login failed"
       }
-    )
-
-    localStorage.setItem("token", res.data.token)
-
-    router.push("/dashboard")
-
-  } catch (err) {
-    error.value = "Login failed. Please try again."
+    }
   }
 }
 </script>
 
-
-<style scoped>
-.login {
-  display: flex;
-  flex-direction: column;
-  width: 300px;
+<style>
+.auth-container {
+  max-width: 400px;
   margin: 100px auto;
-  gap: 10px;
+  text-align: center;
+}
+
+input {
+  width: 100%;
+  margin: 10px 0;
+  padding: 10px;
+}
+
+button {
+  padding: 10px 20px;
+  cursor: pointer;
+}
+
+.error {
+  color: red;
 }
 </style>
 

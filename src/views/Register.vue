@@ -1,55 +1,92 @@
 <template>
-  <div>
-    <h1>Register</h1>
+  <div class="auth-container">
+    <h2>Register</h2>
 
-    <input v-model="name" placeholder="Name" />
-    <input v-model="email" placeholder="Email" />
-    <input v-model="password" type="password" placeholder="Password" />
+    <form @submit.prevent="handleRegister">
+      <input
+        v-model="email"
+        type="email"
+        placeholder="Email"
+        required
+      />
 
-    <button @click="register">Register</button>
+      <input
+        v-model="password"
+        type="password"
+        placeholder="Password"
+        required
+      />
 
-    <p v-if="error">{{ error }}</p>
+      <button type="submit">Register</button>
+
+      <p v-if="message" class="success">{{ message }}</p>
+      <p v-if="error" class="error">{{ error }}</p>
+    </form>
   </div>
 </template>
 
 <script>
-import axios from "axios";
+import axios from "axios"
 
 export default {
   data() {
     return {
-      name: "",
       email: "",
       password: "",
+      message: "",
       error: ""
-    };
+    }
   },
-
   methods: {
-    async register() {
+    async handleRegister() {
       try {
-        const response = await axios.post(
-          "http://localhost:5000/api/auth/register",
+        await axios.post(
+          "https://addisgo-1.onrender.com/api/auth/register",
           {
-            name: this.name,
             email: this.email,
-            password: this.password,
+            password: this.password
           }
-        );
+        )
 
-        console.log("SUCCESS 🔥", response.data);
-
-        // optional redirect
-        this.$router.push("/login");
+        this.message = "Registration successful! You can now login."
+        this.error = ""
 
       } catch (err) {
-        console.log("ERROR ❌", err);
-        this.error = "Server error";
+        this.error =
+          err.response?.data?.message || "Registration failed"
       }
-    },
-  },
-};
+    }
+  }
+}
 </script>
+
+<style>
+.auth-container {
+  max-width: 400px;
+  margin: 100px auto;
+  text-align: center;
+}
+
+input {
+  width: 100%;
+  margin: 10px 0;
+  padding: 10px;
+}
+
+button {
+  padding: 10px 20px;
+  cursor: pointer;
+}
+
+.error {
+  color: red;
+}
+
+.success {
+  color: green;
+}
+</style>
+
 
 
 
