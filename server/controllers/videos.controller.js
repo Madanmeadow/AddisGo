@@ -1,7 +1,7 @@
 import pool from "../db.js";
 
 /* =========================
-   CREATE VIDEO POST
+   POST /api/videos
 ========================= */
 export const createVideo = async (req, res) => {
   try {
@@ -13,6 +13,19 @@ export const createVideo = async (req, res) => {
 
     const videoUrl = `/uploads/videos/${req.file.filename}`;
 
+    // If NOT production → skip database (local dev mode)
+    if (process.env.NODE_ENV !== "production") {
+      return res.status(201).json({
+        message: "Video uploaded locally (DB skipped)",
+        video: {
+          user_id,
+          caption,
+          video_url: videoUrl,
+        },
+      });
+    }
+
+    // Production → insert into Postgres
     const result = await pool.query(
       `INSERT INTO posts (user_id, video_url, caption)
        VALUES ($1, $2, $3)
@@ -20,19 +33,24 @@ export const createVideo = async (req, res) => {
       [user_id, videoUrl, caption]
     );
 
-    res.status(201).json(result.rows[0]);
+    res.status(201).json({
+      message: "Video uploaded successfully",
+      video: result.rows[0],
+    });
+
   } catch (error) {
     console.error("Create video error:", error.message);
     res.status(500).json({ message: "Failed to upload video" });
   }
 };
 
+
 /* =========================
-   GET VIDEO FEED
+   GET /api/videos
 ========================= */
 export const getVideos = async (req, res) => {
   try {
-    // Only query DB in production
+    // Local mode → no DB
     if (process.env.NODE_ENV !== "production") {
       return res.json([]);
     }
