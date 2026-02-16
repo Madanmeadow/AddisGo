@@ -1,23 +1,22 @@
 // src/services/videoService.js
+
 import axios from "axios";
+import API_URL from "../config";
 
-const API_URL = import.meta.env.VITE_API_URL || "http://localhost:5000/api";
+const api = axios.create({
+  baseURL: API_URL,
+  withCredentials: true,
+});
 
-export async function uploadVideo(formData) {
-  const res = await axios.post(`${API_URL}/videos/upload`, formData, {
+export const uploadVideo = async (formData) => {
+  return await api.post("/api/posts/upload", formData, {
     headers: {
       "Content-Type": "multipart/form-data",
     },
   });
-  return res.data;
-}
+};
 
-export async function getTrendingVideos() {
-  const res = await axios.get(`${API_URL}/videos/trending`);
-  return res.data;
-}
+export const getVideos = async () => {
+  return await api.get("/api/posts");
+};
 
-export async function getExploreVideos(page = 1) {
-  const res = await axios.get(`${API_URL}/videos/explore?page=${page}`);
-  return res.data;
-}

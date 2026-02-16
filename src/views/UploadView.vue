@@ -1,71 +1,111 @@
-<script setup>
-import { ref } from "vue";
-import { useRouter } from "vue-router";
-
-const router = useRouter();
-const file = ref(null);
-const loading = ref(false);
-const success = ref(false);
-
-const uploadVideo = async () => {
-  if (!file.value) return;
-
-  loading.value = true;
-
-  const formData = new FormData();
-  formData.append("video", file.value);
-
-  try {
-    const res = await fetch("http://localhost:5000/api/upload", {
-      method: "POST",
-      body: formData
-    });
-
-    const data = await res.json();
-
-    if (data.success) {
-      success.value = true;
-
-      // 🔥 AUTO REDIRECT AFTER UPLOAD
-      setTimeout(() => {
-        router.push("/explore");
-      }, 1200);
-    }
-  } catch (err) {
-    console.error(err);
-  } finally {
-    loading.value = false;
-  }
-};
-</script>
-
 <template>
-  <div class="upload-page">
-    <h1>Upload Video</h1>
+  <div class="upload-container">
+    <h2>Upload a Video</h2>
 
-    <input type="file" accept="video/*" @change="e => file = e.target.files[0]" />
+    <input
+      v-model="title"
+      type="text"
+      placeholder="Enter title"
+      class="input"
+    />
 
-    <button @click="uploadVideo" :disabled="loading">
-      {{ loading ? "Uploading..." : "Upload" }}
+    <input
+      type="file"
+      accept="video/*"
+      @change="handleFileChange"
+      class="input"
+    />
+
+    <button @click="handleUpload" class="btn">
+      Upload
     </button>
 
-    <p v-if="success" class="success">✅ Uploaded! Redirecting…</p>
+    <p v-if="error" class="error">❌ {{ error }}</p>
+    <p v-if="success" class="success">✅ Upload successful!</p>
   </div>
 </template>
 
+<script>
+import { uploadVideo } from "../services/videoService";
+
+export default {
+  name: "UploadView",
+
+  data() {
+    return {
+      title: "",
+      file: null,
+      error: "",
+      success: false,
+    };
+  },
+
+  methods: {
+    handleFileChange(event) {
+      this.file = event.target.files[0];
+    },
+
+    async handleUpload() {
+      this.error = "";
+      this.success = false;
+
+      if (!this.title || !this.file) {
+        this.error = "Please provide title and video file.";
+        return;
+      }
+
+      try {
+        const formData = new FormData();
+        formData.append("title", this.title);
+        formData.append("video", this.file);
+
+        await uploadVideo(formData);
+
+        this.success = true;
+        this.title = "";
+        this.file = null;
+      } catch (err) {
+        console.error(err);
+        this.error =
+          err.response?.data?.message ||
+          "Upload failed. Please try again.";
+      }
+    },
+  },
+};
+</script>
+
 <style scoped>
-.upload-page {
-  text-align: center;
-  padding: 40px;
+.upload-container {
+  max-width: 500px;
+  margin: auto;
+  padding: 20px;
 }
 
-button {
-  margin-top: 12px;
-  padding: 10px 18px;
+.input {
+  display: block;
+  width: 100%;
+  margin-bottom: 15px;
+  padding: 10px;
+}
+
+.btn {
+  width: 100%;
+  padding: 12px;
+  background: black;
+  color: white;
+  border: none;
+  cursor: pointer;
+}
+
+.error {
+  color: red;
+  margin-top: 10px;
 }
 
 .success {
-  margin-top: 12px;
   color: green;
+  margin-top: 10px;
 }
 </style>
+

@@ -1,4 +1,10 @@
-export const API_BASE =
-  import.meta.env.PROD
-    ? "https://addisgo-1.onrender.com"
-    : "http://localhost:5000";
+// src/config.js
+
+const API_URL = import.meta.env.VITE_API_URL;
+
+if (!API_URL) {
+  console.error("VITE_API_URL is not defined");
+}
+
+export default API_URL;
+
