@@ -1,16 +1,20 @@
-// server/routes/videos.routes.js
-
 import express from "express";
 import multer from "multer";
-import {
-  createVideo,
-  getVideos,
-} from "../controllers/videos.controller.js";
+import { CloudinaryStorage } from "multer-storage-cloudinary";
+import cloudinary from "../utils/cloudinary.js";
+import { createVideo, getVideos } from "../controllers/videos.controller.js";
 
 const router = express.Router();
 
-// temp storage before Cloudinary upload
-const upload = multer({ dest: "temp/" });
+const storage = new CloudinaryStorage({
+  cloudinary,
+  params: {
+    folder: "addisgo_videos",
+    resource_type: "video",
+  },
+});
+
+const upload = multer({ storage });
 
 router.post("/", upload.single("video"), createVideo);
 router.get("/", getVideos);
