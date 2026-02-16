@@ -1,8 +1,6 @@
 import pool from "../db.js";
+import cloudinary from "../utils/cloudinary.js";
 
-/* ===============================
-   CREATE VIDEO
-================================= */
 export const createVideo = async (req, res) => {
   try {
     const { caption, user_id } = req.body;
@@ -11,9 +9,14 @@ export const createVideo = async (req, res) => {
       return res.status(400).json({ message: "No video uploaded" });
     }
 
-    const videoUrl = req.file.path; // Cloudinary URL
+    const result = await cloudinary.uploader.upload(req.file.path, {
+      resource_type: "video",
+      folder: "addisgo/videos",
+    });
 
-    const result = await pool.query(
+    const videoUrl = result.secure_url;
+
+    const newVideo = await pool.query(
       `INSERT INTO posts (user_id, video_url, caption)
        VALUES ($1, $2, $3)
        RETURNING *`,
@@ -22,19 +25,16 @@ export const createVideo = async (req, res) => {
 
     res.status(201).json({
       message: "Video uploaded successfully",
-      video: result.rows[0],
+      video: newVideo.rows[0],
     });
 
   } catch (error) {
-    console.error("Create video error:", error);
+    console.error("Upload error:", error.message);
     res.status(500).json({ message: "Failed to upload video" });
   }
 };
 
 
-/* ===============================
-   GET VIDEOS
-================================= */
 export const getVideos = async (req, res) => {
   try {
     const result = await pool.query(`
@@ -51,8 +51,7 @@ export const getVideos = async (req, res) => {
     res.json(result.rows);
 
   } catch (error) {
-    console.error("Fetch videos error:", error);
+    console.error("Fetch videos error:", error.message);
     res.status(500).json({ message: "Failed to fetch videos" });
   }
 };
-
