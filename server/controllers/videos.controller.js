@@ -1,31 +1,18 @@
 import pool from "../db.js";
 
-/* =========================
-   POST /api/videos
-========================= */
+/* ===============================
+   CREATE VIDEO
+================================= */
 export const createVideo = async (req, res) => {
   try {
     const { caption, user_id } = req.body;
 
     if (!req.file) {
-      return res.status(400).json({ message: "Video file is required" });
+      return res.status(400).json({ message: "No video uploaded" });
     }
 
-    const videoUrl = `/uploads/videos/${req.file.filename}`;
+    const videoUrl = req.file.path; // Cloudinary URL
 
-    // If NOT production → skip database (local dev mode)
-    if (process.env.NODE_ENV !== "production") {
-      return res.status(201).json({
-        message: "Video uploaded locally (DB skipped)",
-        video: {
-          user_id,
-          caption,
-          video_url: videoUrl,
-        },
-      });
-    }
-
-    // Production → insert into Postgres
     const result = await pool.query(
       `INSERT INTO posts (user_id, video_url, caption)
        VALUES ($1, $2, $3)
@@ -39,22 +26,17 @@ export const createVideo = async (req, res) => {
     });
 
   } catch (error) {
-    console.error("Create video error:", error.message);
+    console.error("Create video error:", error);
     res.status(500).json({ message: "Failed to upload video" });
   }
 };
 
 
-/* =========================
-   GET /api/videos
-========================= */
+/* ===============================
+   GET VIDEOS
+================================= */
 export const getVideos = async (req, res) => {
   try {
-    // Local mode → no DB
-    if (process.env.NODE_ENV !== "production") {
-      return res.json([]);
-    }
-
     const result = await pool.query(`
       SELECT posts.id,
              posts.video_url,
@@ -69,7 +51,8 @@ export const getVideos = async (req, res) => {
     res.json(result.rows);
 
   } catch (error) {
-    console.error("Fetch videos error:", error.message);
+    console.error("Fetch videos error:", error);
     res.status(500).json({ message: "Failed to fetch videos" });
   }
 };
+
