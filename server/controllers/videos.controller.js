@@ -32,14 +32,24 @@ export const createVideo = async (req, res) => {
 ========================= */
 export const getVideos = async (req, res) => {
   try {
+    // If no database connection locally, return empty array
+    if (!process.env.DATABASE_URL) {
+      return res.json([]);
+    }
+
     const result = await pool.query(`
-      SELECT posts.*, users.name
+      SELECT posts.id,
+             posts.video_url,
+             posts.caption,
+             posts.created_at,
+             users.name
       FROM posts
       JOIN users ON posts.user_id = users.id
       ORDER BY posts.created_at DESC
     `);
 
     res.json(result.rows);
+
   } catch (error) {
     console.error("Fetch videos error:", error.message);
     res.status(500).json({ message: "Failed to fetch videos" });
