@@ -1,29 +1,79 @@
-import express from "express"
-import cors from "cors"
-import dotenv from "dotenv"
+import express from "express";
+import cors from "cors";
+import dotenv from "dotenv";
 
-import authRoutes from "./routes/auth.routes.js"
-import videoRoutes from "./routes/videos.routes.js"
+import pool from "./db.js";
+import authRoutes from "./routes/auth.routes.js";
+import videoRoutes from "./routes/videos.routes.js";
 
-dotenv.config()
+dotenv.config();
 
-const app = express()
+const app = express();
 
-app.use(cors())
-app.use(express.json())
+/* =========================
+   MIDDLEWARE
+========================= */
+app.use(cors());
+app.use(express.json());
 
-// Serve uploaded videos
-app.use("/uploads", express.static("uploads"))
+// Serve uploaded videos (if storing locally)
+app.use("/uploads", express.static("uploads"));
 
-// Routes
-app.use("/api/auth", authRoutes)
-app.use("/api/videos", videoRoutes)
+/* =========================
+   ROUTES
+========================= */
+app.use("/api/auth", authRoutes);
+app.use("/api/videos", videoRoutes);
 
-const PORT = process.env.PORT || 5000
+// Health check
+app.get("/", (req, res) => {
+  res.send("AddisGo API running 🚀");
+});
 
-app.listen(PORT, () => {
-  console.log("Server running on port", PORT)
-})
+/* =========================
+   CREATE TABLES (PRODUCTION ONLY)
+========================= */
+const createTables = async () => {
+  try {
+    await pool.query(`
+      CREATE TABLE IF NOT EXISTS users (
+        id SERIAL PRIMARY KEY,
+        name TEXT NOT NULL,
+        email TEXT UNIQUE NOT NULL,
+        password TEXT NOT NULL,
+        created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
+      );
+    `);
 
+    await pool.query(`
+      CREATE TABLE IF NOT EXISTS posts (
+        id SERIAL PRIMARY KEY,
+        user_id INTEGER REFERENCES users(id) ON DELETE CASCADE,
+        video_url TEXT,
+        caption TEXT,
+        created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
+      );
+    `);
+
+    console.log("Tables ready ✅");
+  } catch (err) {
+    console.error("Error creating tables:", err.message);
+  }
+};
+
+/* =========================
+   START SERVER
+========================= */
+const PORT = process.env.PORT || 5000;
+
+app.listen(PORT, async () => {
+  console.log(`Server running on port ${PORT}`);
+
+  // Only run table creation if DATABASE_URL exists
+ if (process.env.NODE_ENV === "production") {
+  await createTables();
+}
+
+});
 
 
