@@ -1,84 +1,164 @@
 <template>
-  <div class="feed">
+  <div class="dashboard">
 
-    <div class="upload-box">
-      <input type="text" v-model="title" placeholder="Video title" />
-      <input type="file" @change="handleFile" />
-      <button @click="uploadVideo">Upload</button>
+    <!-- HEADER -->
+    <div class="header">
+      <h1>AddisGo 🔥</h1>
     </div>
 
-    <div 
-      v-for="video in videos" 
-      :key="video.id"
-      class="video-container"
-    >
-      <video 
-        :src="`http://localhost:5000${video.url}`"
-        controls
-        autoplay
-        loop
-      ></video>
-      <h3>{{ video.title }}</h3>
+    <!-- UPLOAD CARD -->
+    <div class="card upload-card">
+      <h3>Upload a Video</h3>
+
+      <form @submit.prevent="handleUpload">
+        <input
+          type="text"
+          v-model="caption"
+          placeholder="Write something..."
+          required
+        />
+
+        <input
+          type="file"
+          accept="video/*"
+          @change="handleFileChange"
+          required
+        />
+
+        <button type="submit">Upload</button>
+      </form>
+
+      <p v-if="message" class="message">{{ message }}</p>
+    </div>
+
+    <!-- FEED -->
+    <div class="feed">
+      <div
+        class="card video-card"
+        v-for="video in videos"
+        :key="video.id"
+      >
+        <h4>{{ video.name }}</h4>
+
+        <video
+          controls
+          :src="apiBase + video.video_url"
+        ></video>
+
+        <p class="caption">{{ video.caption }}</p>
+      </div>
     </div>
 
   </div>
 </template>
 
 <script>
-import axios from "axios"
+import axios from "axios";
 
 export default {
   data() {
     return {
-      title: "",
-      file: null,
-      videos: []
-    }
+      caption: "",
+      video: null,
+      message: "",
+      videos: [],
+      apiBase: "https://addisgo-production-6a3e.up.railway.app"
+    };
   },
+
   mounted() {
-    this.fetchVideos()
+    this.fetchVideos();
   },
+
   methods: {
-    handleFile(e) {
-      this.file = e.target.files[0]
+    handleFileChange(e) {
+      this.video = e.target.files[0];
     },
-    async uploadVideo() {
-      const formData = new FormData()
-      formData.append("title", this.title)
-      formData.append("video", this.file)
 
-      await axios.post(
-        "http://localhost:5000/api/videos/upload",
-        formData
-      )
+    async handleUpload() {
+      try {
+        const formData = new FormData();
+        formData.append("video", this.video);
+        formData.append("caption", this.caption);
+        formData.append("user_id", 2);
 
-      this.fetchVideos()
+        await axios.post(
+          this.apiBase + "/api/videos",
+          formData
+        );
+
+        this.message = "🔥 Uploaded!";
+        this.caption = "";
+        this.video = null;
+
+        this.fetchVideos();
+
+      } catch (err) {
+        console.error(err);
+        this.message = "❌ Upload failed";
+      }
     },
+
     async fetchVideos() {
       const res = await axios.get(
-        "http://localhost:5000/api/videos"
-      )
-      this.videos = res.data
+        this.apiBase + "/api/videos"
+      );
+      this.videos = res.data;
     }
   }
-}
+};
 </script>
 
-<style>
-.feed {
-  height: 100vh;
-  overflow-y: scroll;
+<style scoped>
+.dashboard {
+  max-width: 600px;
+  margin: auto;
+  padding: 20px;
+  font-family: Arial, sans-serif;
 }
 
-.video-container {
-  height: 100vh;
-  scroll-snap-align: start;
+.header {
+  text-align: center;
+  margin-bottom: 20px;
 }
 
-video {
+.card {
+  background: white;
+  padding: 15px;
+  border-radius: 12px;
+  margin-bottom: 20px;
+  box-shadow: 0 4px 12px rgba(0,0,0,0.08);
+}
+
+.upload-card input {
   width: 100%;
-  height: 90%;
-  object-fit: cover;
+  margin-bottom: 10px;
+  padding: 8px;
+}
+
+.upload-card button {
+  width: 100%;
+  padding: 10px;
+  background: black;
+  color: white;
+  border: none;
+  border-radius: 6px;
+  cursor: pointer;
+}
+
+.video-card video {
+  width: 100%;
+  border-radius: 10px;
+  margin-top: 10px;
+}
+
+.caption {
+  margin-top: 8px;
+}
+
+.message {
+  margin-top: 10px;
+  font-weight: bold;
 }
 </style>
 
