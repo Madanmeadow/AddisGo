@@ -32,8 +32,8 @@ export const createVideo = async (req, res) => {
 ========================= */
 export const getVideos = async (req, res) => {
   try {
-    // If no database connection locally, return empty array
-    if (!process.env.DATABASE_URL) {
+    // Only query DB in production
+    if (process.env.NODE_ENV !== "production") {
       return res.json([]);
     }
 
