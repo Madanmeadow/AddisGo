@@ -1,56 +1,166 @@
 <template>
   <div class="feed">
-    <div
-      v-for="voice in voices"
-      :key="voice.id"
-      class="post"
-    >
-      <p v-if="voice.type === 'text'">
-        {{ voice.content }}
-      </p>
 
+    <!-- CREATE POST -->
+    <div class="create-post">
+      <textarea
+        v-model="newPostText"
+        placeholder="What's happening?"
+      ></textarea>
+      <button @click="createPost">Post</button>
+    </div>
+
+    <!-- POSTS -->
+    <div
+      v-for="post in posts"
+      :key="post._id"
+      class="post-card"
+    >
+      <h4>{{ post.user?.name }}</h4>
+
+      <!-- TEXT -->
+      <p v-if="post.text">{{ post.text }}</p>
+
+      <!-- VIDEO -->
       <video
-        v-if="voice.type === 'video'"
-        :src="api + voice.content"
+        v-if="post.videoUrl"
+        :src="post.videoUrl"
         controls
+        autoplay
+        muted
         playsinline
         class="video"
       ></video>
+
+      <!-- ACTIONS -->
+      <div class="actions">
+        <button @click="likePost(post)">
+          ❤️ {{ post.likes.length }}
+        </button>
+      </div>
+
+      <!-- COMMENTS -->
+      <div class="comments">
+        <div
+          v-for="c in post.comments"
+          :key="c._id"
+          class="comment"
+        >
+          💬 {{ c.text }}
+        </div>
+
+        <input
+          v-model="post.newComment"
+          placeholder="Write comment..."
+        />
+        <button @click="addComment(post)">
+          Send
+        </button>
+      </div>
+
     </div>
+
   </div>
 </template>
 
 <script>
+import api from "@/services/api";
+
 export default {
   data() {
     return {
-      voices: [],
-      api: "https://addisgo-1.onrender.com"
+      posts: [],
+      newPostText: "",
     };
   },
-  async mounted() {
-    const res = await fetch(this.api + "/api/voices/public");
-    this.voices = await res.json();
-  }
+
+  mounted() {
+    this.fetchPosts();
+  },
+
+  methods: {
+    async fetchPosts() {
+      const res = await api.get("/api/posts");
+      this.posts = res.data;
+    },
+
+    async createPost() {
+      if (!this.newPostText) return;
+
+      await api.post("/api/posts/create", {
+        text: this.newPostText,
+      });
+
+      this.newPostText = "";
+      this.fetchPosts();
+    },
+
+    async likePost(post) {
+      await api.put(`/api/posts/${post._id}/like`);
+      this.fetchPosts();
+    },
+
+    async addComment(post) {
+      if (!post.newComment) return;
+
+      await api.post(`/api/posts/${post._id}/comment`, {
+        text: post.newComment,
+      });
+
+      post.newComment = "";
+      this.fetchPosts();
+    },
+  },
 };
 </script>
 
-<style>
+<style scoped>
 .feed {
-  height: 100vh;
-  overflow-y: scroll;
+  max-width: 600px;
+  margin: auto;
 }
 
-.post {
-  height: 100vh;
-  display: flex;
-  justify-content: center;
-  align-items: center;
+.create-post {
+  background: #111;
+  padding: 15px;
+  border-radius: 10px;
+  margin-bottom: 20px;
+}
+
+textarea {
+  width: 100%;
+  padding: 10px;
+  margin-bottom: 10px;
+}
+
+button {
+  padding: 8px 12px;
+  cursor: pointer;
+}
+
+.post-card {
+  background: #1c1c1c;
+  padding: 15px;
+  border-radius: 10px;
+  margin-bottom: 20px;
 }
 
 .video {
   width: 100%;
-  height: 100%;
-  object-fit: cover;
+  border-radius: 10px;
+  margin-top: 10px;
+}
+
+.actions {
+  margin-top: 10px;
+}
+
+.comments {
+  margin-top: 15px;
+}
+
+.comment {
+  font-size: 14px;
+  margin-bottom: 5px;
 }
 </style>
