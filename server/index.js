@@ -1,72 +1,64 @@
 require("dotenv").config()
-
 const express = require("express")
 const cors = require("cors")
 const path = require("path")
+const fs = require("fs")
 
 const app = express()
 
-// ============================
-// MIDDLEWARE
-// ============================
+// ==============================
+// ✅ Ensure uploads folder exists
+// ==============================
+const uploadPath = path.join(__dirname, "uploads")
+if (!fs.existsSync(uploadPath)) {
+  fs.mkdirSync(uploadPath, { recursive: true })
+}
+
+// ==============================
+// ✅ Middleware
+// ==============================
+app.use(cors({
+  origin: "*",
+  credentials: true
+}))
 
 app.use(express.json())
 app.use(express.urlencoded({ extended: true }))
 
-app.use(
-  cors({
-    origin: [
-      "http://localhost:5173",
-      "https://addis-go.vercel.app"
-    ],
-    credentials: true
-  })
-)
+// ==============================
+// ✅ Static folder for uploaded media
+// ==============================
+app.use("/uploads", express.static(uploadPath))
 
-// ============================
-// STATIC FOLDER FOR UPLOADS
-// ============================
+// ==============================
+// ✅ Routes
+// ==============================
+app.use("/api/auth", require("./routes/auth.routes"))
+app.use("/api/posts", require("./routes/posts.routes"))
 
-app.use("/uploads", express.static(path.join(__dirname, "uploads")))
-
-// ============================
-// ROUTES
-// ============================
-
-const authRoutes = require("./routes/auth.routes")
-const postsRoutes = require("./routes/posts.routes")
-
-app.use("/api/auth", authRoutes)
-app.use("/api/posts", postsRoutes)
-
-// ============================
-// HEALTH CHECK ROUTE
-// ============================
-
-app.get("/", (req, res) => {
-  res.send("🚀 AddisGo API running successfully")
+// ==============================
+// ✅ Health Check
+// ==============================
+app.get("/health", (req, res) => {
+  res.json({ status: "OK", message: "AddisGo API running 🚀" })
 })
 
-// ============================
-// GLOBAL ERROR HANDLER
-// ============================
-
-app.use((err, req, res, next) => {
-  console.error("GLOBAL ERROR:", err)
-  res.status(500).json({
-    error: "Internal server error"
-  })
+// ==============================
+// ❌ 404 Handler
+// ==============================
+app.use((req, res) => {
+  res.status(404).json({ message: "Route not found" })
 })
 
-// ============================
-// START SERVER
-// ============================
-
+// ==============================
+// 🚀 Start Server
+// ==============================
 const PORT = process.env.PORT || 5000
 
 app.listen(PORT, () => {
-  console.log(`🚀 Server running on port ${PORT}`)
+  console.log(`🔥 AddisGo Server running on port ${PORT}`)
 })
+
 
 
 
