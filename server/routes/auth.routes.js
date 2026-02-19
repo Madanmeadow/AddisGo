@@ -1,64 +1,42 @@
-
 const express = require("express");
 const router = express.Router();
-const bcrypt = require("bcrypt");
+const bcrypt = require("bcryptjs");
 const jwt = require("jsonwebtoken");
-const pool = require("../db"); // adjust if needed
+const pool = require("../db");
 
-// =====================
-// REGISTER
-// =====================
+// 🔐 REGISTER
 router.post("/register", async (req, res) => {
   try {
     const { name, email, password } = req.body;
 
-    const userExists = await pool.query(
-      "SELECT * FROM users WHERE email = $1",
-      [email]
-    );
-
-    if (userExists.rows.length > 0) {
-      return res.status(400).json({ message: "User already exists" });
-    }
-
     const hashedPassword = await bcrypt.hash(password, 10);
 
     const newUser = await pool.query(
-      "INSERT INTO users (name, email, password) VALUES ($1, $2, $3) RETURNING id, name, email",
+      `INSERT INTO users (name, email, password)
+       VALUES ($1, $2, $3)
+       RETURNING id, name, email`,
       [name, email, hashedPassword]
     );
 
-    const token = jwt.sign(
-      { id: newUser.rows[0].id },
-      process.env.JWT_SECRET,
-      { expiresIn: "7d" }
-    );
-
-    res.json({
-      token,
-      user: newUser.rows[0]
-    });
-
+    res.json(newUser.rows[0]);
   } catch (err) {
     console.error(err);
-    res.status(500).json({ message: "Server error" });
+    res.status(500).json("Server error");
   }
 });
 
-// =====================
-// LOGIN
-// =====================
+// 🔐 LOGIN
 router.post("/login", async (req, res) => {
   try {
     const { email, password } = req.body;
 
     const user = await pool.query(
-      "SELECT * FROM users WHERE email = $1",
+      `SELECT * FROM users WHERE email = $1`,
       [email]
     );
 
     if (user.rows.length === 0) {
-      return res.status(400).json({ message: "Invalid credentials" });
+      return res.status(400).json("Invalid email or password");
     }
 
     const validPassword = await bcrypt.compare(
@@ -67,7 +45,7 @@ router.post("/login", async (req, res) => {
     );
 
     if (!validPassword) {
-      return res.status(400).json({ message: "Invalid credentials" });
+      return res.status(400).json("Invalid email or password");
     }
 
     const token = jwt.sign(
@@ -81,13 +59,12 @@ router.post("/login", async (req, res) => {
       user: {
         id: user.rows[0].id,
         name: user.rows[0].name,
-        email: user.rows[0].email
-      }
+        email: user.rows[0].email,
+      },
     });
-
   } catch (err) {
     console.error(err);
-    res.status(500).json({ message: "Server error" });
+    res.status(500).json("Server error");
   }
 });
 
