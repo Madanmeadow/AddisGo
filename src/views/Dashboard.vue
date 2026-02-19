@@ -1,165 +1,205 @@
 <template>
   <div class="dashboard">
 
-    <!-- HEADER -->
-    <div class="header">
-      <h1>AddisGo 🔥</h1>
-    </div>
+    <!-- Header -->
+    <header class="header">
+      <h1>🔥 AddisGo</h1>
 
-    <!-- UPLOAD CARD -->
-    <div class="card upload-card">
-      <h3>Upload a Video</h3>
-
-      <form @submit.prevent="handleUpload">
-        <input
-          type="text"
-          v-model="caption"
-          placeholder="Write something..."
-          required
-        />
-
-        <input
-          type="file"
-          accept="video/*"
-          @change="handleFileChange"
-          required
-        />
-
-        <button type="submit">Upload</button>
-      </form>
-
-      <p v-if="message" class="message">{{ message }}</p>
-    </div>
-
-    <!-- FEED -->
-    <div class="feed">
-      <div
-        class="card video-card"
-        v-for="video in videos"
-        :key="video.id"
-      >
-        <h4>{{ video.name }}</h4>
-
-        <video
-          controls
-          :src="apiBase + video.video_url"
-        ></video>
-
-        <p class="caption">{{ video.caption }}</p>
+      <div class="user-section">
+        <span class="welcome">
+          Welcome, {{ user?.name }}
+        </span>
+        <button class="logout-btn" @click="logout">
+          Logout
+        </button>
       </div>
-    </div>
+    </header>
 
+    <!-- Main Content -->
+    <div class="content">
+
+      <!-- Stats Cards -->
+      <div class="cards">
+
+        <div class="card purple">
+          <h3>Total Posts</h3>
+          <p>{{ posts.length }}</p>
+        </div>
+
+        <div class="card blue">
+          <h3>Followers</h3>
+          <p>1,245</p>
+        </div>
+
+        <div class="card orange">
+          <h3>Likes</h3>
+          <p>8,930</p>
+        </div>
+
+      </div>
+
+      <!-- Feed Preview -->
+      <div class="feed">
+        <h2>Latest Posts</h2>
+
+        <div
+          v-for="post in posts"
+          :key="post.id"
+          class="post-card"
+        >
+          <p class="caption">{{ post.caption || post.text }}</p>
+
+          <video
+            v-if="post.video_url"
+            :src="post.video_url"
+            controls
+            class="video"
+          ></video>
+
+          <small class="date">
+            {{ formatDate(post.created_at) }}
+          </small>
+        </div>
+      </div>
+
+    </div>
   </div>
 </template>
 
-<script>
-import axios from "axios";
+<script setup>
+import { ref, onMounted } from "vue";
+import { useRouter } from "vue-router";
 
-export default {
-  data() {
-    return {
-      caption: "",
-      video: null,
-      message: "",
-      videos: [],
-      apiBase: "https://addisgo-production-6a3e.up.railway.app"
-    };
-  },
+const router = useRouter();
 
-  mounted() {
-    this.fetchVideos();
-  },
+const user = ref(JSON.parse(localStorage.getItem("user")));
+const posts = ref([]);
 
-  methods: {
-    handleFileChange(e) {
-      this.video = e.target.files[0];
-    },
+function logout() {
+  localStorage.removeItem("token");
+  localStorage.removeItem("user");
+  router.push("/login");
+}
 
-    async handleUpload() {
-      try {
-        const formData = new FormData();
-        formData.append("video", this.video);
-        formData.append("caption", this.caption);
-        formData.append("user_id", 2);
+function formatDate(date) {
+  return new Date(date).toLocaleString();
+}
 
-        await axios.post(
-          this.apiBase + "/api/videos",
-          formData
-        );
+async function fetchPosts() {
+  try {
+    const response = await fetch(
+      `${import.meta.env.VITE_API_URL}/api/posts`
+    );
 
-        this.message = "🔥 Uploaded!";
-        this.caption = "";
-        this.video = null;
+    const data = await response.json();
+    posts.value = data;
 
-        this.fetchVideos();
-
-      } catch (err) {
-        console.error(err);
-        this.message = "❌ Upload failed";
-      }
-    },
-
-    async fetchVideos() {
-      const res = await axios.get(
-        this.apiBase + "/api/videos"
-      );
-      this.videos = res.data;
-    }
+  } catch (error) {
+    console.error("Failed to fetch posts:", error);
   }
-};
+}
+
+onMounted(fetchPosts);
 </script>
 
 <style scoped>
 .dashboard {
-  max-width: 600px;
-  margin: auto;
-  padding: 20px;
+  min-height: 100vh;
+  background: linear-gradient(135deg, #1e1e2f, #2c2c54);
+  color: white;
   font-family: Arial, sans-serif;
 }
 
 .header {
-  text-align: center;
-  margin-bottom: 20px;
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  padding: 20px 40px;
+  background: rgba(0, 0, 0, 0.4);
+  backdrop-filter: blur(10px);
+}
+
+.header h1 {
+  font-size: 28px;
+}
+
+.user-section {
+  display: flex;
+  align-items: center;
+  gap: 15px;
+}
+
+.logout-btn {
+  padding: 8px 15px;
+  background: crimson;
+  border: none;
+  color: white;
+  cursor: pointer;
+  border-radius: 6px;
+}
+
+.content {
+  padding: 40px;
+}
+
+.cards {
+  display: flex;
+  gap: 20px;
+  margin-bottom: 40px;
 }
 
 .card {
-  background: white;
-  padding: 15px;
+  flex: 1;
+  padding: 25px;
+  border-radius: 15px;
+  text-align: center;
+  font-weight: bold;
+  box-shadow: 0 10px 25px rgba(0, 0, 0, 0.3);
+}
+
+.card p {
+  font-size: 26px;
+  margin-top: 10px;
+}
+
+.purple {
+  background: linear-gradient(135deg, #9b5de5, #5f0f99);
+}
+
+.blue {
+  background: linear-gradient(135deg, #00bbf9, #0077b6);
+}
+
+.orange {
+  background: linear-gradient(135deg, #ff9f1c, #ff5400);
+}
+
+.feed h2 {
+  margin-bottom: 20px;
+}
+
+.post-card {
+  background: rgba(255, 255, 255, 0.08);
+  padding: 20px;
   border-radius: 12px;
   margin-bottom: 20px;
-  box-shadow: 0 4px 12px rgba(0,0,0,0.08);
+  backdrop-filter: blur(8px);
 }
 
-.upload-card input {
-  width: 100%;
+.caption {
   margin-bottom: 10px;
-  padding: 8px;
 }
 
-.upload-card button {
-  width: 100%;
-  padding: 10px;
-  background: black;
-  color: white;
-  border: none;
-  border-radius: 6px;
-  cursor: pointer;
-}
-
-.video-card video {
+.video {
   width: 100%;
   border-radius: 10px;
   margin-top: 10px;
 }
 
-.caption {
-  margin-top: 8px;
-}
-
-.message {
+.date {
+  display: block;
   margin-top: 10px;
-  font-weight: bold;
+  opacity: 0.7;
 }
 </style>
-
 

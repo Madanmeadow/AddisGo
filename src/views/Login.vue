@@ -2,78 +2,95 @@
   <div class="auth-container">
     <h2>Login</h2>
 
-    <form @submit.prevent="handleLogin">
-      <input
-        v-model="email"
-        type="email"
-        placeholder="Email"
-        required
-      />
+    <input
+      v-model="email"
+      type="email"
+      placeholder="Email"
+    />
 
-      <input
-        v-model="password"
-        type="password"
-        placeholder="Password"
-        required
-      />
+    <input
+      v-model="password"
+      type="password"
+      placeholder="Password"
+    />
 
-      <button type="submit">Login</button>
+    <button @click="login">
+      Login
+    </button>
 
-      <p v-if="error" class="error">{{ error }}</p>
-    </form>
+    <p v-if="errorMessage" class="error">
+      {{ errorMessage }}
+    </p>
+
+    <p>
+      Don't have an account?
+      <router-link to="/register">Register</router-link>
+    </p>
   </div>
 </template>
 
-<script>
-import axios from "axios"
+<script setup>
+import { ref } from "vue";
+import { useRouter } from "vue-router";
 
-export default {
-  data() {
-    return {
-      email: "",
-      password: "",
-      error: ""
-    }
-  },
-  methods: {
-    async handleLogin() {
-      try {
-        const res = await axios.post(
-          "https://addisgo-1.onrender.com/api/auth/login",
-          {
-            email: this.email,
-            password: this.password
-          }
-        )
+const email = ref("");
+const password = ref("");
+const errorMessage = ref("");
+const router = useRouter();
 
-        localStorage.setItem("token", res.data.token)
+async function login() {
+  try {
+    errorMessage.value = "";
 
-        this.$router.push("/dashboard")
-
-      } catch (err) {
-        this.error =
-          err.response?.data?.message || "Login failed"
+    const response = await fetch(
+      `${import.meta.env.VITE_API_URL}/api/auth/login`,
+      {
+        method: "POST",
+        headers: {
+          "Content-Type": "application/json"
+        },
+        body: JSON.stringify({
+          email: email.value,
+          password: password.value
+        })
       }
+    );
+
+    const data = await response.json();
+
+    if (!response.ok) {
+      throw new Error(data.message || "Login failed");
     }
+
+    // Save token and user
+    localStorage.setItem("token", data.token);
+    localStorage.setItem("user", JSON.stringify(data.user));
+
+    router.push("/dashboard");
+
+  } catch (error) {
+    errorMessage.value = error.message;
   }
 }
 </script>
 
-<style>
+<style scoped>
 .auth-container {
   max-width: 400px;
   margin: 100px auto;
-  text-align: center;
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
 }
 
 input {
-  width: 100%;
-  margin: 10px 0;
   padding: 10px;
 }
 
 button {
-  padding: 10px 20px;
+  padding: 10px;
+  background: black;
+  color: white;
   cursor: pointer;
 }
 
