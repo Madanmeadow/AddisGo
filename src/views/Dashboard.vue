@@ -2,31 +2,24 @@
   <div class="dashboard">
 
     <!-- HEADER -->
-    <header class="header">
+    <header class="topbar">
       <div class="logo">
         🔥 <span>AddisGo</span>
       </div>
 
-      <div class="user-section">
-        <span>Welcome, {{ user.name }}</span>
-        <button class="logout-btn" @click="logout">Logout</button>
+      <div class="user-area">
+        <span>Welcome, {{ user?.name }}</span>
+        <button @click="logout" class="logout-btn">Logout</button>
       </div>
     </header>
 
     <!-- CREATE POST -->
-    <div class="create-post">
-
+    <section class="create-post">
       <textarea
         v-model="caption"
         placeholder="What's happening?"
         rows="4"
       ></textarea>
-
-      <!-- FILE PREVIEW -->
-      <div v-if="preview" class="preview">
-        <img v-if="isImage" :src="preview" />
-        <video v-if="isVideo" :src="preview" controls />
-      </div>
 
       <div class="actions">
         <input type="file" @change="handleFile" />
@@ -34,155 +27,132 @@
           {{ loading ? "Posting..." : "Post 🚀" }}
         </button>
       </div>
-    </div>
+
+      <p v-if="error" class="error">{{ error }}</p>
+    </section>
 
     <!-- POSTS FEED -->
-    <div class="feed">
+    <section class="feed">
       <div v-for="post in posts" :key="post.id" class="post-card">
 
         <div class="post-header">
-          <strong>User {{ post.user_id }}</strong>
-          <span>{{ formatDate(post.created_at) }}</span>
+          <div class="avatar">{{ post.user_name?.[0] || "U" }}</div>
+          <div>
+            <h4>{{ post.user_name || "User" }}</h4>
+            <small>{{ formatDate(post.created_at) }}</small>
+          </div>
         </div>
 
-        <p v-if="post.caption" class="caption">
-          {{ post.caption }}
-        </p>
+        <p class="caption" v-if="post.caption">{{ post.caption }}</p>
 
+        <!-- IMAGE -->
         <img
           v-if="post.image_url"
-          :src="post.image_url"
-          class="post-media"
+          :src="backendURL + post.image_url"
+          class="media"
         />
 
+        <!-- VIDEO -->
         <video
           v-if="post.video_url"
-          :src="post.video_url"
-          class="post-media"
           controls
-        />
+          class="media"
+        >
+          <source :src="backendURL + post.video_url" />
+        </video>
 
+        <!-- FOOTER -->
         <div class="post-actions">
-          <button @click="likePost(post)">
-            ❤️ {{ post.likes || 0 }}
-          </button>
+          <button @click="likePost(post.id)">❤️ {{ post.likes || 0 }}</button>
           <button>💬 Comment</button>
         </div>
 
       </div>
-    </div>
+    </section>
 
   </div>
 </template>
 
 <script>
-import axios from "axios"
+const API = import.meta.env.VITE_API_URL
 
 export default {
+  name: "Dashboard",
   data() {
     return {
       user: JSON.parse(localStorage.getItem("user")),
+      token: localStorage.getItem("token"),
       caption: "",
       file: null,
-      preview: null,
-      isImage: false,
-      isVideo: false,
       posts: [],
-      loading: false
+      loading: false,
+      error: null,
+      backendURL: API
     }
   },
 
-  async mounted() {
-    await this.fetchPosts()
+  mounted() {
+    this.fetchPosts()
   },
 
   methods: {
 
-    async fetchPosts() {
-      try {
-        const res = await axios.get(
-          `${import.meta.env.VITE_API_URL}/posts`
-        )
-        this.posts = res.data
-      } catch (err) {
-        console.error("Fetch posts error:", err)
-      }
+    logout() {
+      localStorage.clear()
+      this.$router.push("/login")
     },
 
     handleFile(event) {
-      const selected = event.target.files[0]
-      if (!selected) return
-
-      this.file = selected
-      this.preview = URL.createObjectURL(selected)
-
-      this.isImage = selected.type.startsWith("image")
-      this.isVideo = selected.type.startsWith("video")
+      this.file = event.target.files[0]
     },
 
     async createPost() {
       try {
         this.loading = true
+        this.error = null
 
-        let image_url = null
-        let video_url = null
+        const formData = new FormData()
+        formData.append("caption", this.caption)
+        if (this.file) formData.append("file", this.file)
 
-        if (this.file) {
-          const formData = new FormData()
-          formData.append("file", this.file)
+        const res = await fetch(`${API}/api/posts`, {
+          method: "POST",
+          headers: {
+            Authorization: `Bearer ${this.token}`
+          },
+          body: formData
+        })
 
-          const uploadRes = await axios.post(
-            `${import.meta.env.VITE_API_URL}/upload`,
-            formData,
-            {
-              headers: {
-                "Content-Type": "multipart/form-data"
-              }
-            }
-          )
-
-          const uploadedUrl = uploadRes.data.url
-
-          if (this.isImage) image_url = uploadedUrl
-          if (this.isVideo) video_url = uploadedUrl
-        }
-
-        await axios.post(
-          `${import.meta.env.VITE_API_URL}/posts`,
-          {
-            user_id: this.user.id,
-            caption: this.caption,
-            image_url,
-            video_url
-          }
-        )
+        if (!res.ok) throw new Error("Failed to post")
 
         this.caption = ""
         this.file = null
-        this.preview = null
-
-        await this.fetchPosts()
+        this.fetchPosts()
 
       } catch (err) {
-        console.error("Create post error:", err)
-        alert("Post failed.")
+        this.error = err.message
       } finally {
         this.loading = false
       }
     },
 
-    likePost(post) {
-      post.likes = (post.likes || 0) + 1
+    async fetchPosts() {
+      try {
+        const res = await fetch(`${API}/api/posts`)
+        const data = await res.json()
+        this.posts = data.reverse()
+      } catch (err) {
+        console.error(err)
+      }
+    },
+
+    likePost(id) {
+      const post = this.posts.find(p => p.id === id)
+      if (post) post.likes = (post.likes || 0) + 1
     },
 
     formatDate(date) {
       return new Date(date).toLocaleString()
-    },
-
-    logout() {
-      localStorage.removeItem("token")
-      localStorage.removeItem("user")
-      this.$router.push("/login")
     }
 
   }
@@ -193,137 +163,145 @@ export default {
 
 .dashboard {
   min-height: 100vh;
-  background: linear-gradient(135deg, #1e1e3f, #2a2a60);
-  padding-bottom: 50px;
+  background: linear-gradient(135deg, #1e1e3f, #2e2e5e);
   color: white;
+  padding-bottom: 50px;
 }
 
-.header {
+/* HEADER */
+.topbar {
   display: flex;
   justify-content: space-between;
   align-items: center;
   padding: 25px 40px;
-  background: linear-gradient(135deg, #111133, #222266);
+  background: linear-gradient(90deg, #0f0f2e, #1b1b4d);
+  box-shadow: 0 5px 20px rgba(0,0,0,0.4);
 }
 
-.logo span {
+.logo {
   font-size: 26px;
   font-weight: bold;
 }
 
-.user-section {
+.user-area {
   display: flex;
+  gap: 20px;
   align-items: center;
-  gap: 15px;
 }
 
 .logout-btn {
-  background: #ff3366;
+  background: #ff3c5f;
   border: none;
-  padding: 8px 18px;
-  border-radius: 8px;
+  padding: 10px 18px;
+  border-radius: 10px;
   color: white;
   cursor: pointer;
+  font-weight: bold;
 }
 
+/* CREATE POST */
 .create-post {
-  background: rgba(255,255,255,0.05);
-  margin: 30px auto;
+  width: 60%;
+  margin: 40px auto;
+  background: #2c2c5c;
   padding: 25px;
   border-radius: 20px;
-  width: 90%;
-  max-width: 600px;
-  backdrop-filter: blur(10px);
+  box-shadow: 0 15px 40px rgba(0,0,0,0.5);
 }
 
-textarea {
+.create-post textarea {
   width: 100%;
-  border-radius: 15px;
+  border-radius: 12px;
   padding: 15px;
   border: none;
   resize: none;
   font-size: 16px;
 }
 
-.preview {
-  margin-top: 15px;
-}
-
-.preview img,
-.preview video {
-  width: 100%;
-  border-radius: 15px;
-  margin-top: 10px;
-}
-
 .actions {
-  margin-top: 15px;
   display: flex;
   justify-content: space-between;
-  align-items: center;
+  margin-top: 15px;
 }
 
 .actions button {
-  background: linear-gradient(135deg, #ff416c, #ff4b2b);
+  background: linear-gradient(45deg, #ff3c5f, #ff8c42);
   border: none;
-  padding: 10px 20px;
+  padding: 12px 25px;
   border-radius: 12px;
   color: white;
-  cursor: pointer;
   font-weight: bold;
+  cursor: pointer;
 }
 
+/* FEED */
 .feed {
-  width: 90%;
-  max-width: 600px;
+  width: 60%;
   margin: auto;
 }
 
 .post-card {
-  background: rgba(255,255,255,0.07);
+  background: #34346e;
   padding: 20px;
-  border-radius: 20px;
+  border-radius: 18px;
   margin-bottom: 25px;
-  backdrop-filter: blur(10px);
+  box-shadow: 0 10px 30px rgba(0,0,0,0.4);
+  transition: 0.3s;
+}
+
+.post-card:hover {
+  transform: translateY(-5px);
 }
 
 .post-header {
   display: flex;
-  justify-content: space-between;
-  margin-bottom: 10px;
+  gap: 15px;
+  align-items: center;
+  margin-bottom: 15px;
+}
+
+.avatar {
+  width: 45px;
+  height: 45px;
+  border-radius: 50%;
+  background: linear-gradient(45deg, #ff3c5f, #ff8c42);
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  font-weight: bold;
 }
 
 .caption {
-  margin-bottom: 10px;
+  margin-bottom: 15px;
 }
 
-.post-media {
+.media {
   width: 100%;
   border-radius: 15px;
-  margin-top: 10px;
+  margin-bottom: 15px;
 }
 
 .post-actions {
   display: flex;
   gap: 20px;
-  margin-top: 10px;
 }
 
 .post-actions button {
-  background: none;
+  background: transparent;
   border: none;
   color: white;
   cursor: pointer;
 }
 
-@media (max-width: 600px) {
-  .header {
-    padding: 20px;
-  }
+.error {
+  color: #ff4d6d;
+  margin-top: 10px;
+}
 
+@media (max-width: 900px) {
   .create-post,
   .feed {
-    width: 95%;
+    width: 90%;
   }
 }
 
