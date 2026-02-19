@@ -1,48 +1,98 @@
-<script setup>
-import { ref, onMounted } from "vue";
-import socket from "@/services/socket";
-import { getMessages, sendMessage } from "@/services/messages";
+<template>
+  <div class="chat-container">
+    <div class="chat-header">
+      💬 Conversation
+    </div>
 
-const conversationId = "123";
-const messages = ref([]);
-const newMessage = ref("");
-const typingUser = ref(null);
-let timeout = null;
+    <div class="messages">
+      <div
+        v-for="msg in messages"
+        :key="msg.id"
+        :class="msg.sender_id === user.id ? 'my-msg' : 'their-msg'"
+      >
+        {{ msg.content }}
+      </div>
+    </div>
 
-onMounted(async () => {
-  const res = await getMessages(conversationId);
-  messages.value = res.data.messages;
+    <div class="chat-input">
+      <input v-model="message" placeholder="Type message..." />
+      <button @click="sendMessage">Send 🚀</button>
+    </div>
+  </div>
+</template>
 
-  socket.emit("join-conversation", conversationId);
+<script>
+import { io } from "socket.io-client"
 
-  socket.on("new-message", msg => messages.value.push(msg));
-  socket.on("user-typing", user => typingUser.value = user);
-  socket.on("user-stop-typing", () => typingUser.value = null);
-});
+const socket = io(import.meta.env.VITE_API_URL)
 
-const send = async () => {
-  const res = await sendMessage(conversationId, newMessage.value);
-  socket.emit("send-message", res.data);
-  newMessage.value = "";
-};
+export default {
+  data() {
+    return {
+      user: JSON.parse(localStorage.getItem("user")),
+      message: "",
+      messages: [],
+      roomId: "room-1"
+    }
+  },
+  mounted() {
+    socket.emit("join_room", this.roomId)
 
-const typing = () => {
-  socket.emit("typing", { conversationId, userId: "user123" });
-  clearTimeout(timeout);
-  timeout = setTimeout(() =>
-    socket.emit("stop-typing", { conversationId }), 800);
-};
+    socket.on("receive_message", (data) => {
+      this.messages.push(data)
+    })
+  },
+  methods: {
+    sendMessage() {
+      if (!this.message) return
+
+      const msgData = {
+        roomId: this.roomId,
+        sender_id: this.user.id,
+        content: this.message
+      }
+
+      socket.emit("send_message", msgData)
+      this.messages.push(msgData)
+      this.message = ""
+    }
+  }
+}
 </script>
 
-<template>
-  <h2>Chat</h2>
+<style>
+.chat-container {
+  max-width: 600px;
+  margin: auto;
+  background: #1e1e3f;
+  border-radius: 20px;
+  padding: 20px;
+  color: white;
+}
 
-  <div v-for="m in messages" :key="m.id">
-    <b>{{ m.senderId }}:</b> {{ m.text }}
-  </div>
+.messages {
+  height: 400px;
+  overflow-y: auto;
+  margin-bottom: 10px;
+}
 
-  <p v-if="typingUser">{{ typingUser }} is typing...</p>
+.my-msg {
+  background: linear-gradient(45deg, #ff416c, #ff4b2b);
+  padding: 10px;
+  margin: 5px;
+  border-radius: 15px;
+  text-align: right;
+}
 
-  <input v-model="newMessage" @input="typing" @keyup.enter="send" />
-  <button @click="send">Send</button>
-</template>
+.their-msg {
+  background: #444;
+  padding: 10px;
+  margin: 5px;
+  border-radius: 15px;
+}
+
+.chat-input {
+  display: flex;
+  gap: 10px;
+}
+</style>
