@@ -1,37 +1,72 @@
-require("dotenv").config();
+require("dotenv").config()
 
-const express = require("express");
-const cors = require("cors");
+const express = require("express")
+const cors = require("cors")
+const path = require("path")
 
-const routes = require("./routes/routes");
+const app = express()
 
-const app = express();
+// ============================
+// MIDDLEWARE
+// ============================
 
-// ================= CORS =================
-app.use(cors({
-  origin: [
-    "http://localhost:5173",
-    "https://addis-go.vercel.app"
-  ],
-  credentials: true
-}));
+app.use(express.json())
+app.use(express.urlencoded({ extended: true }))
 
-// ================= JSON =================
-app.use(express.json());
+app.use(
+  cors({
+    origin: [
+      "http://localhost:5173",
+      "https://addis-go.vercel.app"
+    ],
+    credentials: true
+  })
+)
 
-// ================= ROUTES =================
-app.use("/api", routes);
+// ============================
+// STATIC FOLDER FOR UPLOADS
+// ============================
 
-// ================= HEALTH CHECK =================
+app.use("/uploads", express.static(path.join(__dirname, "uploads")))
+
+// ============================
+// ROUTES
+// ============================
+
+const authRoutes = require("./routes/auth.routes")
+const postsRoutes = require("./routes/posts.routes")
+
+app.use("/api/auth", authRoutes)
+app.use("/api/posts", postsRoutes)
+
+// ============================
+// HEALTH CHECK ROUTE
+// ============================
+
 app.get("/", (req, res) => {
-  res.send("🚀 AddisGo API running");
-});
+  res.send("🚀 AddisGo API running successfully")
+})
 
-// ================= START =================
-const PORT = process.env.PORT || 5000;
+// ============================
+// GLOBAL ERROR HANDLER
+// ============================
+
+app.use((err, req, res, next) => {
+  console.error("GLOBAL ERROR:", err)
+  res.status(500).json({
+    error: "Internal server error"
+  })
+})
+
+// ============================
+// START SERVER
+// ============================
+
+const PORT = process.env.PORT || 5000
 
 app.listen(PORT, () => {
-  console.log(`✅ Server running on port ${PORT}`);
-});
+  console.log(`🚀 Server running on port ${PORT}`)
+})
+
 
 
