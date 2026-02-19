@@ -1,64 +1,58 @@
-require("dotenv").config()
-const express = require("express")
-const cors = require("cors")
-const path = require("path")
-const fs = require("fs")
+const express = require('express')
+const http = require('http')
+const cors = require('cors')
+const { Server } = require('socket.io')
 
 const app = express()
-
-// ==============================
-// ✅ Ensure uploads folder exists
-// ==============================
-const uploadPath = path.join(__dirname, "uploads")
-if (!fs.existsSync(uploadPath)) {
-  fs.mkdirSync(uploadPath, { recursive: true })
-}
-
-// ==============================
-// ✅ Middleware
-// ==============================
-app.use(cors({
-  origin: "*",
-  credentials: true
-}))
-
+app.use(cors())
 app.use(express.json())
-app.use(express.urlencoded({ extended: true }))
 
-// ==============================
-// ✅ Static folder for uploaded media
-// ==============================
-app.use("/uploads", express.static(uploadPath))
+// Routes
+app.use('/api/auth', require('./routes/auth.routes'))
+app.use('/api/posts', require('./routes/posts.routes'))
 
-// ==============================
-// ✅ Routes
-// ==============================
-app.use("/api/auth", require("./routes/auth.routes"))
-app.use("/api/posts", require("./routes/posts.routes"))
+const server = http.createServer(app)
 
-// ==============================
-// ✅ Health Check
-// ==============================
-app.get("/health", (req, res) => {
-  res.json({ status: "OK", message: "AddisGo API running 🚀" })
+const io = new Server(server, {
+  cors: {
+    origin: '*',
+    methods: ['GET', 'POST']
+  }
 })
 
-// ==============================
-// ❌ 404 Handler
-// ==============================
-app.use((req, res) => {
-  res.status(404).json({ message: "Route not found" })
+io.on('connection', (socket) => {
+  console.log('🔥 User connected:', socket.id)
+
+  socket.on('joinConversation', (conversationId) => {
+    socket.join(`room_${conversationId}`)
+  })
+
+  socket.on('sendMessage', (data) => {
+    io.to(`room_${data.conversationId}`).emit('newMessage', data)
+  })
+
+  // WebRTC Signaling
+  socket.on('offer', (data) => {
+    socket.to(data.room).emit('offer', data.offer)
+  })
+
+  socket.on('answer', (data) => {
+    socket.to(data.room).emit('answer', data.answer)
+  })
+
+  socket.on('ice-candidate', (data) => {
+    socket.to(data.room).emit('ice-candidate', data.candidate)
+  })
+
+  socket.on('disconnect', () => {
+    console.log('User disconnected:', socket.id)
+  })
 })
 
-// ==============================
-// 🚀 Start Server
-// ==============================
 const PORT = process.env.PORT || 5000
-
-app.listen(PORT, () => {
-  console.log(`🔥 AddisGo Server running on port ${PORT}`)
+server.listen(PORT, () => {
+  console.log(`🚀 Server running on port ${PORT}`)
 })
-
 
 
 
