@@ -1,78 +1,75 @@
 <template>
   <div class="dashboard">
 
-    <!-- ================= HEADER ================= -->
+    <!-- HEADER -->
     <header class="header">
-      <div class="logo">🔥 AddisGo</div>
+      <div class="logo">
+        🔥 <span>AddisGo</span>
+      </div>
 
-      <div class="user-area">
-        <span>Welcome, {{ user?.name }}</span>
+      <div class="user-section">
+        <span>Welcome, {{ user.name }}</span>
         <button class="logout-btn" @click="logout">Logout</button>
       </div>
     </header>
 
-    <!-- ================= CREATE POST ================= -->
+    <!-- CREATE POST -->
     <div class="create-post">
+
       <textarea
         v-model="caption"
         placeholder="What's happening?"
+        rows="4"
       ></textarea>
 
-      <div class="upload-row">
+      <!-- FILE PREVIEW -->
+      <div v-if="preview" class="preview">
+        <img v-if="isImage" :src="preview" />
+        <video v-if="isVideo" :src="preview" controls />
+      </div>
+
+      <div class="actions">
         <input type="file" @change="handleFile" />
-        <button class="post-btn" @click="createPost">
-          Post 🚀
+        <button @click="createPost" :disabled="loading">
+          {{ loading ? "Posting..." : "Post 🚀" }}
         </button>
       </div>
     </div>
 
-    <!-- ================= POSTS FEED ================= -->
+    <!-- POSTS FEED -->
     <div class="feed">
+      <div v-for="post in posts" :key="post.id" class="post-card">
 
-      <div
-        v-for="post in posts"
-        :key="post.id"
-        class="post-card"
-      >
-
-        <!-- Post Header -->
         <div class="post-header">
-          <div class="avatar"></div>
-          <div>
-            <h4>User {{ post.user_id }}</h4>
-            <small>{{ formatTime(post.created_at) }}</small>
-          </div>
+          <strong>User {{ post.user_id }}</strong>
+          <span>{{ formatDate(post.created_at) }}</span>
         </div>
 
-        <!-- Caption -->
         <p v-if="post.caption" class="caption">
           {{ post.caption }}
         </p>
 
-        <!-- Image -->
         <img
           v-if="post.image_url"
           :src="post.image_url"
-          class="media"
+          class="post-media"
         />
 
-        <!-- Video -->
         <video
           v-if="post.video_url"
+          :src="post.video_url"
+          class="post-media"
           controls
-          class="media"
-        >
-          <source :src="post.video_url" />
-        </video>
+        />
 
-        <!-- Actions -->
-        <div class="actions">
-          <button @click="likePost(post)">❤️ {{ post.likes || 0 }}</button>
+        <div class="post-actions">
+          <button @click="likePost(post)">
+            ❤️ {{ post.likes || 0 }}
+          </button>
           <button>💬 Comment</button>
         </div>
 
       </div>
-
     </div>
 
   </div>
@@ -82,14 +79,16 @@
 import axios from "axios"
 
 export default {
-  name: "Dashboard",
-
   data() {
     return {
+      user: JSON.parse(localStorage.getItem("user")),
       caption: "",
       file: null,
+      preview: null,
+      isImage: false,
+      isVideo: false,
       posts: [],
-      user: JSON.parse(localStorage.getItem("user"))
+      loading: false
     }
   },
 
@@ -98,6 +97,7 @@ export default {
   },
 
   methods: {
+
     async fetchPosts() {
       try {
         const res = await axios.get(
@@ -105,34 +105,46 @@ export default {
         )
         this.posts = res.data
       } catch (err) {
-        console.error(err)
+        console.error("Fetch posts error:", err)
       }
     },
 
-    handleFile(e) {
-      this.file = e.target.files[0]
+    handleFile(event) {
+      const selected = event.target.files[0]
+      if (!selected) return
+
+      this.file = selected
+      this.preview = URL.createObjectURL(selected)
+
+      this.isImage = selected.type.startsWith("image")
+      this.isVideo = selected.type.startsWith("video")
     },
 
     async createPost() {
       try {
+        this.loading = true
+
         let image_url = null
         let video_url = null
 
-        // If file exists → upload first
         if (this.file) {
           const formData = new FormData()
           formData.append("file", this.file)
 
           const uploadRes = await axios.post(
             `${import.meta.env.VITE_API_URL}/upload`,
-            formData
+            formData,
+            {
+              headers: {
+                "Content-Type": "multipart/form-data"
+              }
+            }
           )
 
-          if (this.file.type.startsWith("image")) {
-            image_url = uploadRes.data.url
-          } else {
-            video_url = uploadRes.data.url
-          }
+          const uploadedUrl = uploadRes.data.url
+
+          if (this.isImage) image_url = uploadedUrl
+          if (this.isVideo) video_url = uploadedUrl
         }
 
         await axios.post(
@@ -147,11 +159,15 @@ export default {
 
         this.caption = ""
         this.file = null
+        this.preview = null
 
         await this.fetchPosts()
 
       } catch (err) {
-        console.error(err)
+        console.error("Create post error:", err)
+        alert("Post failed.")
+      } finally {
+        this.loading = false
       }
     },
 
@@ -159,15 +175,16 @@ export default {
       post.likes = (post.likes || 0) + 1
     },
 
-    formatTime(date) {
+    formatDate(date) {
       return new Date(date).toLocaleString()
     },
 
     logout() {
       localStorage.removeItem("token")
       localStorage.removeItem("user")
-      window.location.href = "/login"
+      this.$router.push("/login")
     }
+
   }
 }
 </script>
@@ -176,148 +193,140 @@ export default {
 
 .dashboard {
   min-height: 100vh;
-  background: linear-gradient(135deg, #1e1e3f, #2d2d60);
-  color: white;
+  background: linear-gradient(135deg, #1e1e3f, #2a2a60);
   padding-bottom: 50px;
+  color: white;
 }
-
-/* ================= HEADER ================= */
 
 .header {
   display: flex;
   justify-content: space-between;
   align-items: center;
   padding: 25px 40px;
-  background: rgba(0,0,0,0.2);
-  backdrop-filter: blur(15px);
+  background: linear-gradient(135deg, #111133, #222266);
 }
 
-.logo {
-  font-size: 32px;
+.logo span {
+  font-size: 26px;
   font-weight: bold;
 }
 
-.user-area {
-  display: flex;
-  gap: 20px;
-  align-items: center;
-}
-
-.logout-btn {
-  background: #ff2f56;
-  border: none;
-  padding: 10px 18px;
-  border-radius: 10px;
-  color: white;
-  cursor: pointer;
-}
-
-/* ================= CREATE POST ================= */
-
-.create-post {
-  max-width: 700px;
-  margin: 40px auto;
-  background: rgba(255,255,255,0.08);
-  backdrop-filter: blur(15px);
-  padding: 25px;
-  border-radius: 20px;
-}
-
-.create-post textarea {
-  width: 100%;
-  height: 120px;
-  border-radius: 15px;
-  border: none;
-  padding: 15px;
-  font-size: 16px;
-}
-
-.upload-row {
-  display: flex;
-  justify-content: space-between;
-  align-items: center;
-  margin-top: 15px;
-}
-
-.post-btn {
-  background: linear-gradient(45deg, #ff6b6b, #ff2f56);
-  border: none;
-  padding: 12px 25px;
-  border-radius: 12px;
-  color: white;
-  font-weight: bold;
-  cursor: pointer;
-  transition: 0.3s;
-}
-
-.post-btn:hover {
-  transform: scale(1.05);
-}
-
-/* ================= FEED ================= */
-
-.feed {
-  max-width: 700px;
-  margin: auto;
-}
-
-.post-card {
-  background: rgba(255,255,255,0.08);
-  backdrop-filter: blur(15px);
-  padding: 20px;
-  border-radius: 20px;
-  margin-bottom: 25px;
-  transition: 0.3s;
-}
-
-.post-card:hover {
-  transform: translateY(-5px);
-}
-
-/* ================= POST HEADER ================= */
-
-.post-header {
+.user-section {
   display: flex;
   align-items: center;
   gap: 15px;
 }
 
-.avatar {
-  width: 45px;
-  height: 45px;
-  border-radius: 50%;
-  background: linear-gradient(45deg, #ff6b6b, #f94d6a);
+.logout-btn {
+  background: #ff3366;
+  border: none;
+  padding: 8px 18px;
+  border-radius: 8px;
+  color: white;
+  cursor: pointer;
 }
 
-.caption {
-  margin: 15px 0;
+.create-post {
+  background: rgba(255,255,255,0.05);
+  margin: 30px auto;
+  padding: 25px;
+  border-radius: 20px;
+  width: 90%;
+  max-width: 600px;
+  backdrop-filter: blur(10px);
+}
+
+textarea {
+  width: 100%;
+  border-radius: 15px;
+  padding: 15px;
+  border: none;
+  resize: none;
   font-size: 16px;
 }
 
-.media {
+.preview {
+  margin-top: 15px;
+}
+
+.preview img,
+.preview video {
   width: 100%;
   border-radius: 15px;
   margin-top: 10px;
 }
 
-/* ================= ACTIONS ================= */
-
 .actions {
-  display: flex;
-  gap: 25px;
   margin-top: 15px;
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
 }
 
 .actions button {
+  background: linear-gradient(135deg, #ff416c, #ff4b2b);
+  border: none;
+  padding: 10px 20px;
+  border-radius: 12px;
+  color: white;
+  cursor: pointer;
+  font-weight: bold;
+}
+
+.feed {
+  width: 90%;
+  max-width: 600px;
+  margin: auto;
+}
+
+.post-card {
+  background: rgba(255,255,255,0.07);
+  padding: 20px;
+  border-radius: 20px;
+  margin-bottom: 25px;
+  backdrop-filter: blur(10px);
+}
+
+.post-header {
+  display: flex;
+  justify-content: space-between;
+  margin-bottom: 10px;
+}
+
+.caption {
+  margin-bottom: 10px;
+}
+
+.post-media {
+  width: 100%;
+  border-radius: 15px;
+  margin-top: 10px;
+}
+
+.post-actions {
+  display: flex;
+  gap: 20px;
+  margin-top: 10px;
+}
+
+.post-actions button {
   background: none;
   border: none;
   color: white;
   cursor: pointer;
 }
 
-.actions button:hover {
-  color: #ff6b6b;
+@media (max-width: 600px) {
+  .header {
+    padding: 20px;
+  }
+
+  .create-post,
+  .feed {
+    width: 95%;
+  }
 }
 
 </style>
+
 

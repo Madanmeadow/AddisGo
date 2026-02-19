@@ -1,32 +1,31 @@
-import express from "express";
-import multer from "multer";
-
-const router = express.Router();
+const express = require("express")
+const multer = require("multer")
+const path = require("path")
+const router = express.Router()
 
 // Storage config
 const storage = multer.diskStorage({
-  destination: "uploads/",
-  filename: (req, file, cb) => {
-    const uniqueName = `${Date.now()}-${file.originalname}`;
-    cb(null, uniqueName);
+  destination: function (req, file, cb) {
+    cb(null, "uploads/")
   },
-});
-
-const upload = multer({ storage });
-
-// POST /upload
-router.post("/", upload.single("media"), (req, res) => {
-  if (!req.file) {
-    return res.status(400).json({ error: "No file uploaded" });
+  filename: function (req, file, cb) {
+    cb(null, Date.now() + "-" + file.originalname)
   }
+})
+
+const upload = multer({ storage })
+
+// POST /api/upload
+router.post("/", upload.single("file"), (req, res) => {
+  const fileUrl = `${req.protocol}://${req.get("host")}/uploads/${req.file.filename}`
 
   res.json({
     success: true,
-    file: req.file.filename,
-    url: `/uploads/${req.file.filename}`,
-  });
-});
+    url: fileUrl
+  })
+})
 
-export default router;
+module.exports = router
+
 
 

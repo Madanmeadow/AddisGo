@@ -1,35 +1,39 @@
-const express = require("express");
-const router = express.Router();
-const pool = require("../db");
+const express = require("express")
+const pool = require("../db")
+const router = express.Router()
 
-// ================= GET POSTS =================
+// GET all posts
 router.get("/", async (req, res) => {
   try {
     const result = await pool.query(
       "SELECT * FROM posts ORDER BY created_at DESC"
-    );
-    res.json(result.rows);
+    )
+    res.json(result.rows)
   } catch (err) {
-    console.error(err);
-    res.status(500).json({ message: "Server error" });
+    console.error(err)
+    res.status(500).json({ error: "Server error" })
   }
-});
+})
 
-// ================= CREATE POST =================
+// CREATE post
 router.post("/", async (req, res) => {
   try {
-    const { user_id, caption, video_url } = req.body;
+    const { user_id, caption, image_url, video_url } = req.body
 
     const result = await pool.query(
-      "INSERT INTO posts (user_id, caption, video_url) VALUES ($1, $2, $3) RETURNING *",
-      [user_id, caption, video_url]
-    );
+      `INSERT INTO posts (user_id, caption, image_url, video_url)
+       VALUES ($1, $2, $3, $4)
+       RETURNING *`,
+      [user_id, caption, image_url, video_url]
+    )
 
-    res.json(result.rows[0]);
+    res.json(result.rows[0])
+
   } catch (err) {
-    console.error(err);
-    res.status(500).json({ message: "Server error" });
+    console.error(err)
+    res.status(500).json({ error: "Server error" })
   }
-});
+})
 
-module.exports = router;
+module.exports = router
+
