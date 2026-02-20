@@ -1,13 +1,19 @@
-<script setup>
-import api from "@/services/api";
-const props = defineProps({ video: Object });
+<template>
+  <button class="share">🔁 Share</button>
+</template>
 
-const share = async () => {
-  await api.post(`/api/share/${props.video.id}`);
-  alert("Shared!");
-};
+<script>
+export default {}
 </script>
 
-<template>
-  <button @click="share">🔗 {{ video.shares }}</button>
-</template>
+<style scoped>
+.share {
+  margin-top: 10px;
+  background: #3b3f88;
+  border: none;
+  padding: 6px 12px;
+  border-radius: 8px;
+  color: white;
+  cursor: pointer;
+}
+</style>

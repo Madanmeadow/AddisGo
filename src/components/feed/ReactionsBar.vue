@@ -1,24 +1,34 @@
-<script setup>
-import api from "@/services/api";
-const props = defineProps({ video: Object });
-
-const react = async (type) => {
-  await api.post(`/api/react/${props.video.id}`, { type });
-};
-</script>
-
 <template>
-  <button @click="react('like')">❤️ {{ video.reactions.like }}</button>
-  <button @click="react('fire')">🔥 {{ video.reactions.fire }}</button>
-  <button @click="react('laugh')">😂 {{ video.reactions.laugh }}</button>
-  <button @click="react('wow')">😮 {{ video.reactions.wow }}</button>
+  <div class="reactions">
+    <button @click="react('like')">❤️</button>
+    <button @click="react('fire')">🔥</button>
+    <button @click="react('laugh')">😂</button>
+    <button @click="react('wow')">😮</button>
+  </div>
 </template>
 
+<script>
+export default {
+  props: ["post"],
 
-<style>
+  methods: {
+    react(type) {
+      console.log(`Reacted with ${type} to post ${this.post.id}`)
+    }
+  }
+}
+</script>
+
+<style scoped>
 .reactions {
   display: flex;
-  gap: 12px;
+  gap: 15px;
+  margin-top: 10px;
+}
+button {
+  background: transparent;
+  border: none;
   font-size: 18px;
+  cursor: pointer;
 }
 </style>

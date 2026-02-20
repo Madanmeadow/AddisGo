@@ -23,16 +23,17 @@
       </div>
     </header>
 
-    <!-- MAIN CONTENT -->
+    <!-- MAIN LAYOUT -->
     <div class="layout">
 
       <!-- LEFT SIDEBAR -->
       <aside class="sidebar">
         <ul>
-          <li>🏠 Home</li>
+          <li class="active">🏠 Home</li>
           <li>🔥 Trending</li>
           <li>👥 Friends</li>
           <li>🎥 Videos</li>
+          <li>🎥 Live Call</li>
           <li>⚙ Settings</li>
         </ul>
       </aside>
@@ -41,7 +42,7 @@
       <main class="feed">
 
         <!-- CREATE POST -->
-        <div class="composer">
+        <div class="composer glass">
           <textarea
             v-model="caption"
             placeholder="What’s happening?"
@@ -62,13 +63,13 @@
 
         <!-- POSTS -->
         <div
-          class="post-card"
+          class="post-card glass"
           v-for="post in posts"
           :key="post.id"
         >
           <div class="post-header">
             <div class="avatar small">
-              {{ post.name?.charAt(0) || 'U' }}
+              {{ post.name?.charAt(0) || "U" }}
             </div>
             <div>
               <h4>{{ post.name || "User" }}</h4>
@@ -80,13 +81,13 @@
 
           <img
             v-if="post.image_url"
-            :src="apiUrl + post.image_url"
+            :src="baseUrl + post.image_url"
             class="media"
           />
 
           <video
             v-if="post.video_url"
-            :src="apiUrl + post.video_url"
+            :src="baseUrl + post.video_url"
             controls
             class="media"
           ></video>
@@ -95,12 +96,8 @@
             <button @click="likePost(post)">
               ❤️ {{ post.likes || 0 }}
             </button>
-            <button>
-              💬 Comment
-            </button>
-            <button>
-              🔁 Share
-            </button>
+            <button>💬 Comment</button>
+            <button>🔁 Share</button>
           </div>
         </div>
 
@@ -108,7 +105,7 @@
 
       <!-- RIGHT SIDE -->
       <aside class="rightbar">
-        <div class="widget">
+        <div class="widget glass">
           <h3>🔥 Trending Now</h3>
           <p>#AddisGo</p>
           <p>#FuturePlatform</p>
@@ -123,12 +120,15 @@
 <script>
 export default {
   data() {
+    const api = import.meta.env.VITE_API_URL
+
     return {
       caption: "",
       file: null,
       posts: [],
       loading: false,
-      apiUrl: import.meta.env.VITE_API_URL,
+      apiUrl: api,
+      baseUrl: api.replace("/api", ""), // for media
       user: JSON.parse(localStorage.getItem("user"))
     }
   },
@@ -145,7 +145,7 @@ export default {
 
   methods: {
     async fetchPosts() {
-      const res = await fetch(`${this.apiUrl}/api/posts`)
+      const res = await fetch(`${this.apiUrl}/posts`)
       this.posts = await res.json()
     },
 
@@ -161,7 +161,7 @@ export default {
         formData.append("caption", this.caption)
         if (this.file) formData.append("media", this.file)
 
-        const res = await fetch(`${this.apiUrl}/api/posts`, {
+        const res = await fetch(`${this.apiUrl}/posts`, {
           method: "POST",
           headers: {
             Authorization: `Bearer ${localStorage.getItem("token")}`
@@ -201,43 +201,53 @@ export default {
 <style scoped>
 .dashboard {
   min-height: 100vh;
-  background: linear-gradient(135deg,#1e1e4f,#2e2e6f);
+  background: linear-gradient(135deg,#161637,#24246b);
   color: white;
+  font-family: 'Segoe UI', sans-serif;
 }
 
-/* TOP BAR */
+/* GLASS EFFECT */
+.glass {
+  background: rgba(255,255,255,0.08);
+  backdrop-filter: blur(12px);
+  border: 1px solid rgba(255,255,255,0.15);
+}
+
+/* TOPBAR */
 .topbar {
-  display: flex;
-  justify-content: space-between;
-  align-items: center;
-  padding: 20px 40px;
-  background: rgba(0,0,0,0.3);
-  backdrop-filter: blur(10px);
+  display:flex;
+  justify-content:space-between;
+  align-items:center;
+  padding:20px 40px;
+  background: rgba(0,0,0,0.4);
+  backdrop-filter: blur(15px);
 }
 
 .logo {
-  font-size: 28px;
-  font-weight: bold;
+  font-size:28px;
+  font-weight:bold;
+  letter-spacing:1px;
 }
 
 .nav-center input {
-  padding: 8px 16px;
-  border-radius: 20px;
-  border: none;
-  width: 250px;
+  padding:10px 18px;
+  border-radius:30px;
+  border:none;
+  width:280px;
+  outline:none;
 }
 
 .nav-right {
-  display: flex;
-  align-items: center;
-  gap: 20px;
+  display:flex;
+  align-items:center;
+  gap:20px;
 }
 
 .avatar {
-  width: 40px;
-  height: 40px;
-  background: linear-gradient(45deg,#ff4b2b,#ff416c);
-  border-radius: 50%;
+  width:42px;
+  height:42px;
+  background: linear-gradient(45deg,#ff416c,#ff4b2b);
+  border-radius:50%;
   display:flex;
   align-items:center;
   justify-content:center;
@@ -245,41 +255,59 @@ export default {
 }
 
 .small {
-  width: 35px;
-  height: 35px;
+  width:36px;
+  height:36px;
 }
 
 .logout-btn {
-  background:#ff416c;
+  background:linear-gradient(45deg,#ff416c,#ff4b2b);
   border:none;
-  padding:8px 14px;
-  border-radius:8px;
+  padding:8px 16px;
+  border-radius:10px;
   color:white;
   cursor:pointer;
+  transition:0.3s;
+}
+
+.logout-btn:hover {
+  opacity:0.8;
 }
 
 /* LAYOUT */
 .layout {
-  display: grid;
-  grid-template-columns: 220px 1fr 250px;
-  gap: 20px;
-  padding: 30px;
+  display:grid;
+  grid-template-columns:220px 1fr 260px;
+  gap:25px;
+  padding:40px;
 }
 
-.sidebar, .rightbar {
-  background: rgba(255,255,255,0.05);
-  padding:20px;
-  border-radius:16px;
+/* SIDEBAR */
+.sidebar ul {
+  list-style:none;
+  padding:0;
 }
 
+.sidebar li {
+  padding:12px;
+  border-radius:10px;
+  margin-bottom:8px;
+  cursor:pointer;
+  transition:0.3s;
+}
+
+.sidebar li:hover,
+.sidebar .active {
+  background: rgba(255,255,255,0.15);
+}
+
+/* FEED */
 .feed {
-  max-width: 700px;
-  margin: auto;
+  max-width:720px;
+  margin:auto;
 }
 
 /* COMPOSER */
 .composer {
-  background: rgba(255,255,255,0.07);
   padding:20px;
   border-radius:20px;
   margin-bottom:30px;
@@ -287,28 +315,38 @@ export default {
 
 textarea {
   width:100%;
-  min-height:100px;
+  min-height:110px;
   border:none;
   border-radius:16px;
   padding:15px;
   resize:none;
+  outline:none;
 }
 
 .post-btn {
-  background: linear-gradient(45deg,#ff416c,#ff4b2b);
+  background:linear-gradient(45deg,#ff416c,#ff4b2b);
   border:none;
   padding:10px 20px;
   border-radius:12px;
   color:white;
   cursor:pointer;
+  transition:0.3s;
+}
+
+.post-btn:hover {
+  opacity:0.8;
 }
 
 /* POST CARD */
 .post-card {
-  background: rgba(255,255,255,0.08);
   padding:20px;
   border-radius:20px;
   margin-bottom:25px;
+  transition:0.3s;
+}
+
+.post-card:hover {
+  transform: translateY(-3px);
 }
 
 .post-header {
@@ -334,14 +372,27 @@ textarea {
   border:none;
   color:white;
   cursor:pointer;
+  font-size:14px;
+  transition:0.3s;
+}
+
+.post-actions button:hover {
+  opacity:0.7;
+}
+
+/* RIGHTBAR */
+.widget {
+  padding:20px;
+  border-radius:20px;
 }
 
 /* MOBILE */
-@media (max-width: 900px) {
+@media (max-width: 950px) {
   .layout {
-    grid-template-columns: 1fr;
+    grid-template-columns:1fr;
   }
-  .sidebar, .rightbar {
+  .sidebar,
+  .rightbar {
     display:none;
   }
 }
