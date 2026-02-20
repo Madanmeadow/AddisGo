@@ -1,88 +1,52 @@
 <template>
   <div class="home">
+    <h1>🔥 Welcome to AddisGo</h1>
+    <p>The future social platform.</p>
 
-    <!-- Upload Section -->
-    <div class="upload-section glass">
-      <UploadVideo @uploaded="fetchPosts" />
+    <div class="actions">
+      <router-link to="/login">
+        <button>Login</button>
+      </router-link>
+
+      <router-link to="/register">
+        <button class="secondary">Register</button>
+      </router-link>
     </div>
-
-    <!-- Feed Section -->
-    <div class="feed">
-      <VideoCard
-        v-for="post in posts"
-        :key="post.id"
-        :post="post"
-        :baseUrl="baseUrl"
-      />
-    </div>
-
   </div>
 </template>
 
 <script>
-import UploadVideo from "@/components/UploadVideo.vue"
-import VideoCard from "@/components/feed/VideoCard.vue"
-
-export default {
-  components: { UploadVideo, VideoCard },
-
-  data() {
-    const api = import.meta.env.VITE_API_URL
-
-    return {
-      posts: [],
-      apiUrl: api,                 // includes /api
-      baseUrl: api.replace("/api", "") // for media files
-    }
-  },
-
-  mounted() {
-    this.fetchPosts()
-  },
-
-  methods: {
-    async fetchPosts() {
-      try {
-        const res = await fetch(`${this.apiUrl}/posts`)
-        this.posts = await res.json()
-      } catch (err) {
-        console.error("Failed to fetch posts", err)
-      }
-    }
-  }
-}
+export default {}
 </script>
 
 <style scoped>
 .home {
-  min-height: 100vh;
-  padding: 40px;
-  background: linear-gradient(135deg,#161637,#24246b);
-  color: white;
+  min-height:100vh;
+  display:flex;
+  flex-direction:column;
+  justify-content:center;
+  align-items:center;
+  background:linear-gradient(135deg,#161637,#24246b);
+  color:white;
+  text-align:center;
 }
 
-/* Glass style */
-.glass {
-  background: rgba(255,255,255,0.08);
-  backdrop-filter: blur(12px);
-  border: 1px solid rgba(255,255,255,0.15);
-  border-radius: 20px;
-  padding: 20px;
-  margin-bottom: 30px;
+.actions {
+  margin-top:30px;
+  display:flex;
+  gap:20px;
 }
 
-.feed {
-  max-width: 750px;
-  margin: auto;
-  display: flex;
-  flex-direction: column;
-  gap: 25px;
+button {
+  padding:12px 24px;
+  border:none;
+  border-radius:12px;
+  background:linear-gradient(45deg,#ff416c,#ff4b2b);
+  color:white;
+  cursor:pointer;
 }
 
-/* Mobile */
-@media (max-width: 900px) {
-  .home {
-    padding: 20px;
-  }
+.secondary {
+  background:#444;
 }
 </style>
