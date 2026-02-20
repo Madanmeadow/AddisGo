@@ -15,10 +15,8 @@ app.use(express.urlencoded({ extended: true }))
 
 app.use(
   cors({
-    origin: [
-      "http://localhost:5173",
-      "https://addis-go.vercel.app"
-    ],
+    origin: true, // Allow all origins (for development)
+      
     credentials: true
   })
 )
