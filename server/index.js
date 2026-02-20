@@ -6,48 +6,53 @@ const path = require("path")
 
 const app = express()
 
-// ============================
+// =============================
 // MIDDLEWARE
-// ============================
+// =============================
 
 app.use(express.json())
 app.use(express.urlencoded({ extended: true }))
 
 app.use(
   cors({
-    origin: true, // Allow all origins (for development)
-      
+    origin: [
+      "http://localhost:5173",
+      "https://addis-go.vercel.app"
+    ],
     credentials: true
   })
 )
 
-// ============================
-// STATIC FOLDER FOR UPLOADS
-// ============================
+// =============================
+// STATIC UPLOADS
+// =============================
 
 app.use("/uploads", express.static(path.join(__dirname, "uploads")))
 
-// ============================
-// ROUTES
-// ============================
+// =============================
+// ROUTES (ONLY ACTIVE ONES)
+// =============================
+
+// IMPORTANT: These files MUST end with:
+// module.exports = router
 
 const authRoutes = require("./routes/auth.routes")
 const postsRoutes = require("./routes/posts.routes")
 
-app.use("/api/auth", authRoutes)
-app.use("/api/posts", postsRoutes)
+app.use("/auth", authRoutes)
+app.use("/posts", postsRoutes)
 
-// ============================
-// HEALTH CHECK ROUTE
-// ============================
+// =============================
+// HEALTH CHECK
+// =============================
 
 app.get("/", (req, res) => {
   res.send("🚀 AddisGo API running successfully")
 })
 
-// ============================
+// =============================
 // GLOBAL ERROR HANDLER
-// ============================
+// =============================
 
 app.use((err, req, res, next) => {
   console.error("GLOBAL ERROR:", err)
@@ -56,9 +61,9 @@ app.use((err, req, res, next) => {
   })
 })
 
-// ============================
+// =============================
 // START SERVER
-// ============================
+// =============================
 
 const PORT = process.env.PORT || 5000
 

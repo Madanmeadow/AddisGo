@@ -1,7 +1,7 @@
 <template>
   <div class="dashboard">
 
-    <!-- TOP NAV -->
+    <!-- HEADER -->
     <header class="topbar">
       <div class="logo">🔥 AddisGo</div>
 
@@ -10,18 +10,11 @@
       </div>
 
       <div class="nav-right">
-        <div class="profile">
-          <div class="avatar">{{ userInitial }}</div>
-          <span>{{ user?.name }}</span>
-        </div>
-
-        <button class="logout-btn" @click="logout">
-          Logout
-        </button>
+        <div class="avatar">{{ userInitial }}</div>
+        <button class="logout-btn" @click="logout">Logout</button>
       </div>
     </header>
 
-    <!-- MAIN LAYOUT -->
     <div class="layout">
 
       <!-- SIDEBAR -->
@@ -31,8 +24,7 @@
           <li>🔥 Trending</li>
           <li>👥 Friends</li>
           <li>🎥 Videos</li>
-          <li @click="$router.push('/inbox')">💬 Inbox</li>
-          <li @click="$router.push('/video-call')">📞 Live Call</li>
+          <li>💬 Inbox</li>
           <li>⚙ Settings</li>
         </ul>
       </aside>
@@ -41,7 +33,7 @@
       <main class="feed">
 
         <!-- CREATE POST -->
-        <div class="composer glass">
+        <div class="composer">
           <textarea
             v-model="caption"
             placeholder="What’s happening?"
@@ -49,7 +41,6 @@
 
           <div class="composer-actions">
             <input type="file" @change="handleFile" />
-
             <button
               class="post-btn"
               :disabled="loading"
@@ -64,7 +55,7 @@
         <div
           v-for="post in filteredPosts"
           :key="post.id"
-          class="post-card glass"
+          class="post-card"
         >
           <div class="post-header">
             <div class="avatar small">
@@ -74,14 +65,6 @@
               <h4>{{ post.name }}</h4>
               <small>{{ formatDate(post.created_at) }}</small>
             </div>
-
-            <button
-              v-if="post.user_id === user?.id"
-              class="delete-btn"
-              @click="deletePost(post.id)"
-            >
-              🗑
-            </button>
           </div>
 
           <p class="caption">{{ post.caption }}</p>
@@ -103,35 +86,14 @@
             <button @click="likePost(post)">
               ❤️ {{ post.likes || 0 }}
             </button>
-
-            <button @click="toggleComments(post)">
-              💬 Comment
-            </button>
-
-            <button @click="sharePost(post)">
-              🔁 Share
-            </button>
-          </div>
-
-          <div v-if="post.showComments" class="comments">
-            <input
-              v-model="post.newComment"
-              placeholder="Write a comment..."
-              @keyup.enter="addComment(post)"
-            />
-            <ul>
-              <li v-for="(c, index) in post.comments" :key="index">
-                {{ c }}
-              </li>
-            </ul>
           </div>
         </div>
 
       </main>
 
-      <!-- RIGHT BAR -->
+      <!-- RIGHT -->
       <aside class="rightbar">
-        <div class="widget glass">
+        <div class="widget">
           <h3>🔥 Trending</h3>
           <p>#AddisGo</p>
           <p>#FuturePlatform</p>
@@ -175,15 +137,20 @@ export default {
   methods: {
 
     async fetchPosts() {
-      const res = await fetch(`${this.apiUrl}/posts`)
-      this.posts = await res.json()
+      try {
+        const res = await fetch(`${this.apiUrl}/posts`)
 
-      // Initialize comment UI
-      this.posts.forEach(p => {
-        p.comments = []
-        p.newComment = ""
-        p.showComments = false
-      })
+        if (!res.ok) {
+          console.error("Fetch posts failed")
+          return
+        }
+
+        const data = await res.json()
+        this.posts = data
+
+      } catch (err) {
+        console.error("Fetch error:", err)
+      }
     },
 
     handleFile(e) {
@@ -194,27 +161,41 @@ export default {
       try {
         this.loading = true
 
+        const token = localStorage.getItem("token")
+        if (!token) {
+          alert("You are not logged in")
+          return
+        }
+
         const formData = new FormData()
         formData.append("caption", this.caption)
-        if (this.file) formData.append("media", this.file)
+
+        if (this.file) {
+          formData.append("media", this.file)
+        }
 
         const res = await fetch(`${this.apiUrl}/posts`, {
           method: "POST",
           headers: {
-            Authorization: `Bearer ${localStorage.getItem("token")}`
+            Authorization: `Bearer ${token}`
           },
           body: formData
         })
 
+        if (!res.ok) {
+          const text = await res.text()
+          console.error("Server response:", text)
+          throw new Error("Post failed")
+        }
+
         const data = await res.json()
-        if (!res.ok) throw new Error(data.message)
 
         this.caption = ""
         this.file = null
         await this.fetchPosts()
 
       } catch (err) {
-        alert(err.message || "Failed to post")
+        alert(err.message)
       } finally {
         this.loading = false
       }
@@ -222,34 +203,6 @@ export default {
 
     likePost(post) {
       post.likes = (post.likes || 0) + 1
-    },
-
-    toggleComments(post) {
-      post.showComments = !post.showComments
-    },
-
-    addComment(post) {
-      if (!post.newComment) return
-      post.comments.push(post.newComment)
-      post.newComment = ""
-    },
-
-    sharePost(post) {
-      navigator.clipboard.writeText(window.location.href)
-      alert("Post link copied!")
-    },
-
-    async deletePost(id) {
-      if (!confirm("Delete this post?")) return
-
-      await fetch(`${this.apiUrl}/posts/${id}`, {
-        method: "DELETE",
-        headers: {
-          Authorization: `Bearer ${localStorage.getItem("token")}`
-        }
-      })
-
-      this.fetchPosts()
     },
 
     logout() {
@@ -267,9 +220,9 @@ export default {
 <style scoped>
 .dashboard {
   min-height:100vh;
-  background:linear-gradient(135deg,#161637,#24246b);
+  background:linear-gradient(135deg,#14143c,#1e1e5c);
   color:white;
-  font-family:'Segoe UI',sans-serif;
+  font-family:Segoe UI;
 }
 
 .topbar {
@@ -280,7 +233,7 @@ export default {
   background:rgba(0,0,0,0.4);
 }
 
-.logo { font-size:26px; font-weight:bold; }
+.logo { font-size:24px;font-weight:bold }
 
 .nav-center input {
   padding:8px 16px;
@@ -291,21 +244,17 @@ export default {
 .nav-right {
   display:flex;
   align-items:center;
-  gap:20px;
+  gap:15px;
 }
 
 .avatar {
-  width:40px;
-  height:40px;
+  width:40px;height:40px;
   border-radius:50%;
   background:linear-gradient(45deg,#ff416c,#ff4b2b);
-  display:flex;
-  align-items:center;
-  justify-content:center;
-  font-weight:bold;
+  display:flex;align-items:center;justify-content:center;
 }
 
-.small { width:35px; height:35px; }
+.small { width:35px;height:35px }
 
 .logout-btn {
   background:#ff416c;
@@ -323,10 +272,7 @@ export default {
   padding:40px;
 }
 
-.sidebar ul {
-  list-style:none;
-  padding:0;
-}
+.sidebar ul { list-style:none;padding:0 }
 
 .sidebar li {
   padding:12px;
@@ -339,14 +285,12 @@ export default {
   background:rgba(255,255,255,0.15);
 }
 
-.feed {
-  max-width:750px;
-  margin:auto;
-}
+.feed { max-width:750px;margin:auto }
 
-.glass {
+.composer,
+.post-card,
+.widget {
   background:rgba(255,255,255,0.08);
-  backdrop-filter:blur(12px);
   border-radius:20px;
   padding:20px;
   margin-bottom:25px;
@@ -369,40 +313,10 @@ textarea {
   cursor:pointer;
 }
 
-.post-card { position:relative; }
-
-.post-header {
-  display:flex;
-  align-items:center;
-  gap:15px;
-}
-
-.delete-btn {
-  margin-left:auto;
-  background:none;
-  border:none;
-  color:red;
-  cursor:pointer;
-}
-
 .media {
   width:100%;
   border-radius:16px;
   margin-top:15px;
-}
-
-.post-actions {
-  margin-top:15px;
-  display:flex;
-  gap:20px;
-}
-
-.comments input {
-  width:100%;
-  margin-top:10px;
-  padding:8px;
-  border-radius:8px;
-  border:none;
 }
 
 @media(max-width:950px){

@@ -1,44 +1,54 @@
 const express = require("express")
+const router = express.Router()
 const multer = require("multer")
 const path = require("path")
 const jwt = require("jsonwebtoken")
-const pool = require("../db")
+const Post = require("../models/Post")
+const User = require("../models/User")
+// AUTH MIDDLEWARE
+function authMiddleware(req, res, next) {
+  const authHeader = req.headers.authorization
+  if (!authHeader) return res.status(401).json({ error: "No token" })
 
-const router = express.Router()
-
-// ==============================
-// 🔐 Auth Middleware
-// ==============================
-const authMiddleware = (req, res, next) => {
-  const token = req.headers.authorization?.split(" ")[1]
-  if (!token) return res.status(401).json({ message: "No token provided" })
+  const token = authHeader.split(" ")[1]
 
   try {
     const decoded = jwt.verify(token, process.env.JWT_SECRET)
     req.user = decoded
     next()
-  } catch (err) {
-    return res.status(403).json({ message: "Invalid token" })
+  } catch {
+    res.status(401).json({ error: "Invalid token" })
   }
 }
 
-// ==============================
-// 📂 Multer Setup
-// ==============================
+// MULTER STORAGE
 const storage = multer.diskStorage({
   destination: (req, file, cb) => {
     cb(null, "uploads/")
   },
   filename: (req, file, cb) => {
-    cb(null, Date.now() + "-" + file.originalname)
+    cb(null, Date.now() + path.extname(file.originalname))
   }
 })
 
 const upload = multer({ storage })
 
-// ==============================
-// 📝 CREATE POST
-// ==============================
+// GET POSTS
+router.get("/", async (req, res) => {
+  try {
+    const posts = await db.Post.findAll({
+      include: [{ model: db.User, attributes: ["name"] }],
+      order: [["created_at", "DESC"]]
+    })
+
+    res.json(posts)
+
+  } catch (err) {
+    res.status(500).json({ error: err.message })
+  }
+})
+
+// CREATE POST
 router.post("/", authMiddleware, upload.single("media"), async (req, res) => {
   try {
     const { caption } = req.body
@@ -55,39 +65,17 @@ router.post("/", authMiddleware, upload.single("media"), async (req, res) => {
       }
     }
 
-    const result = await pool.query(
-      `INSERT INTO posts (user_id, caption, image_url, video_url)
-       VALUES ($1, $2, $3, $4)
-       RETURNING *`,
-      [user_id, caption, image_url, video_url]
-    )
-
-    res.status(201).json({
-      message: "Post created 🚀",
-      post: result.rows[0]
+    const post = await db.Post.create({
+      caption,
+      user_id,
+      image_url,
+      video_url
     })
 
-  } catch (err) {
-    console.error(err)
-    res.status(500).json({ message: "Failed to create post" })
-  }
-})
+    res.json(post)
 
-// ==============================
-// 📥 GET ALL POSTS
-// ==============================
-router.get("/", async (req, res) => {
-  try {
-    const result = await pool.query(`
-      SELECT posts.*, users.name
-      FROM posts
-      JOIN users ON posts.user_id = users.id
-      ORDER BY created_at DESC
-    `)
-
-    res.json(result.rows)
   } catch (err) {
-    res.status(500).json({ message: "Failed to fetch posts" })
+    res.status(500).json({ error: err.message })
   }
 })
 
