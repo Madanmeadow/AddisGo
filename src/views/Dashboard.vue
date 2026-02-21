@@ -3,7 +3,7 @@
 
     <!-- SIDEBAR -->
     <aside class="sidebar">
-      <h2 class="logo">🔥 AddisGo</h2>
+      <h1 class="logo">🔥 AddisGo</h1>
 
       <nav>
         <router-link to="/dashboard">🏠 Home</router-link>
@@ -11,13 +11,16 @@
         <router-link to="/live">📹 Live</router-link>
       </nav>
 
-      <div class="user-box">
+      <div class="profile">
+        <div class="avatar-big">
+          {{ user?.name?.charAt(0).toUpperCase() }}
+        </div>
         <p>{{ user?.name }}</p>
         <button @click="logout">Logout</button>
       </div>
     </aside>
 
-    <!-- MAIN CONTENT -->
+    <!-- MAIN -->
     <main class="main">
 
       <!-- CREATE POST -->
@@ -27,7 +30,7 @@
           placeholder="What's happening?"
         ></textarea>
 
-        <!-- Preview -->
+        <!-- PREVIEW -->
         <div v-if="previewUrl" class="preview">
           <img v-if="isImage" :src="previewUrl" />
           <video v-if="isVideo" controls :src="previewUrl"></video>
@@ -41,37 +44,44 @@
         </div>
       </div>
 
-      <!-- POSTS FEED -->
+      <!-- FEED -->
       <div class="feed">
-        <div class="post-card" v-for="post in posts" :key="post.id">
+        <div
+          class="post-card"
+          v-for="post in posts"
+          :key="post.id"
+        >
 
           <div class="post-header">
-            <div class="avatar">{{ post.name?.charAt(0) }}</div>
-            <div>
+            <div class="avatar">
+              {{ post.name?.charAt(0).toUpperCase() }}
+            </div>
+
+            <div class="post-meta">
               <strong>{{ post.name }}</strong>
-              <div class="time">
-                {{ formatDate(post.created_at) }}
-              </div>
+              <span>{{ formatDate(post.created_at) }}</span>
             </div>
           </div>
 
+          <!-- TEXT -->
           <p v-if="post.caption" class="caption">
             {{ post.caption }}
           </p>
 
+          <!-- IMAGE -->
           <img
             v-if="post.image_url"
             :src="apiUrl + post.image_url"
             class="media"
           />
 
+          <!-- VIDEO -->
           <video
             v-if="post.video_url"
             controls
             class="media"
-          >
-            <source :src="apiUrl + post.video_url" />
-          </video>
+            :src="apiUrl + post.video_url"
+          ></video>
 
         </div>
       </div>
@@ -167,21 +177,22 @@ onMounted(fetchPosts);
 .dashboard {
   display: flex;
   min-height: 100vh;
-  background: linear-gradient(135deg, #1f1c2c, #928dab);
+  background: linear-gradient(135deg, #141e30, #243b55);
   color: white;
 }
 
 /* SIDEBAR */
 .sidebar {
-  width: 240px;
-  background: rgba(0, 0, 0, 0.4);
-  backdrop-filter: blur(10px);
+  width: 260px;
   padding: 30px;
+  background: rgba(0,0,0,0.6);
+  backdrop-filter: blur(12px);
   display: flex;
   flex-direction: column;
 }
 
 .logo {
+  font-size: 28px;
   margin-bottom: 40px;
 }
 
@@ -193,22 +204,38 @@ onMounted(fetchPosts);
 
 .sidebar a {
   color: white;
-  text-decoration: none;
   font-size: 18px;
+  text-decoration: none;
+  transition: 0.3s;
 }
 
-.user-box {
+.sidebar a:hover {
+  color: #ff416c;
+}
+
+.profile {
   margin-top: auto;
+  text-align: center;
 }
 
-.user-box button {
-  margin-top: 10px;
-  padding: 8px;
-  width: 100%;
+.avatar-big {
+  width: 70px;
+  height: 70px;
+  background: linear-gradient(45deg, #ff416c, #ff4b2b);
+  border-radius: 50%;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  font-size: 28px;
+  margin: 0 auto 10px;
+}
+
+.profile button {
+  padding: 8px 16px;
   background: crimson;
   border: none;
+  border-radius: 8px;
   color: white;
-  border-radius: 6px;
   cursor: pointer;
 }
 
@@ -220,33 +247,34 @@ onMounted(fetchPosts);
 
 /* CREATE POST */
 .create-post {
-  background: rgba(255, 255, 255, 0.1);
-  padding: 20px;
-  border-radius: 15px;
+  background: rgba(255,255,255,0.1);
+  padding: 25px;
+  border-radius: 20px;
   margin-bottom: 40px;
 }
 
 textarea {
   width: 100%;
-  height: 100px;
-  border-radius: 10px;
-  padding: 10px;
+  height: 120px;
+  padding: 15px;
+  border-radius: 12px;
   border: none;
   resize: none;
+  font-size: 16px;
 }
 
 .actions {
+  margin-top: 15px;
   display: flex;
   justify-content: space-between;
-  margin-top: 10px;
 }
 
 .actions button {
   padding: 10px 20px;
-  background: #ff416c;
+  background: linear-gradient(45deg, #ff416c, #ff4b2b);
   border: none;
+  border-radius: 10px;
   color: white;
-  border-radius: 8px;
   cursor: pointer;
 }
 
@@ -254,21 +282,26 @@ textarea {
 .preview img,
 .preview video {
   width: 100%;
-  margin-top: 10px;
-  border-radius: 10px;
+  margin-top: 15px;
+  border-radius: 15px;
 }
 
 /* FEED */
 .feed {
   display: flex;
   flex-direction: column;
-  gap: 25px;
+  gap: 30px;
 }
 
 .post-card {
-  background: rgba(0, 0, 0, 0.4);
-  padding: 20px;
-  border-radius: 15px;
+  background: rgba(0,0,0,0.6);
+  padding: 25px;
+  border-radius: 20px;
+  transition: 0.3s;
+}
+
+.post-card:hover {
+  transform: translateY(-4px);
 }
 
 .post-header {
@@ -278,28 +311,29 @@ textarea {
 }
 
 .avatar {
-  width: 45px;
-  height: 45px;
+  width: 50px;
+  height: 50px;
   background: linear-gradient(45deg, #ff416c, #ff4b2b);
+  border-radius: 50%;
   display: flex;
   align-items: center;
   justify-content: center;
-  border-radius: 50%;
   font-weight: bold;
+}
+
+.post-meta span {
+  font-size: 12px;
+  opacity: 0.7;
 }
 
 .caption {
   margin: 15px 0;
-  font-size: 16px;
+  font-size: 17px;
 }
 
 .media {
   width: 100%;
-  border-radius: 12px;
-}
-
-.time {
-  font-size: 12px;
-  opacity: 0.7;
+  border-radius: 15px;
+  margin-top: 10px;
 }
 </style>
