@@ -1,21 +1,31 @@
 <template>
   <Layout>
-    <h2>📹 1-to-1 Video Call</h2>
+    <h2>📹 AddisGo Live Call</h2>
 
-    <div class="live-box">
-      <video ref="myVideo" autoplay muted playsinline></video>
-      <video ref="userVideo" autoplay playsinline></video>
+    <div class="live-container">
+
+      <div class="videos">
+        <video ref="myVideo" autoplay muted playsinline></video>
+        <video ref="userVideo" autoplay playsinline></video>
+      </div>
 
       <div class="controls">
         <button @click="startMedia">Start Camera</button>
-        <button @click="callUser">Call User</button>
       </div>
 
-      <p>Your Socket ID:</p>
-      <input v-model="myId" readonly />
+      <h3>🟢 Online Users</h3>
 
-      <p>Call This ID:</p>
-      <input v-model="callToId" placeholder="Enter other user's ID" />
+      <div class="users">
+        <div
+          v-for="user in onlineUsers"
+          :key="user"
+          class="user-card"
+        >
+          <span>User ID: {{ user }}</span>
+          <button @click="callUser(user)">Call</button>
+        </div>
+      </div>
+
     </div>
   </Layout>
 </template>
@@ -30,18 +40,29 @@ const socket = io(import.meta.env.VITE_API_URL);
 
 const myVideo = ref(null);
 const userVideo = ref(null);
-const myId = ref("");
-const callToId = ref("");
+const onlineUsers = ref([]);
+const token = localStorage.getItem("token");
 
 let stream;
 let peer;
 
+// Decode JWT to get user ID
+function parseJwt(token) {
+  return JSON.parse(atob(token.split('.')[1]));
+}
+
+const userId = parseJwt(token).id;
+
 onMounted(() => {
   socket.on("connect", () => {
-    myId.value = socket.id;
+    socket.emit("register-user", userId);
   });
 
-  socket.on("incoming-call", async ({ offer, from }) => {
+  socket.on("online-users", (users) => {
+    onlineUsers.value = users.filter(id => id !== userId);
+  });
+
+  socket.on("incoming-call", ({ offer, fromUserId }) => {
     peer = new Peer({
       initiator: false,
       trickle: false,
@@ -50,13 +71,13 @@ onMounted(() => {
 
     peer.on("signal", (answer) => {
       socket.emit("answer-call", {
-        answer,
-        to: from
+        toUserId: fromUserId,
+        answer
       });
     });
 
-    peer.on("stream", (userStream) => {
-      userVideo.value.srcObject = userStream;
+    peer.on("stream", (remoteStream) => {
+      userVideo.value.srcObject = remoteStream;
     });
 
     peer.signal(offer);
@@ -64,10 +85,6 @@ onMounted(() => {
 
   socket.on("call-answered", ({ answer }) => {
     peer.signal(answer);
-  });
-
-  socket.on("ice-candidate", (candidate) => {
-    peer.signal(candidate);
   });
 });
 
@@ -80,7 +97,7 @@ async function startMedia() {
   myVideo.value.srcObject = stream;
 }
 
-function callUser() {
+function callUser(targetUserId) {
   peer = new Peer({
     initiator: true,
     trickle: false,
@@ -89,45 +106,57 @@ function callUser() {
 
   peer.on("signal", (offer) => {
     socket.emit("call-user", {
-      offer,
-      to: callToId.value
+      toUserId: targetUserId,
+      fromUserId: userId,
+      offer
     });
   });
 
-  peer.on("stream", (userStream) => {
-    userVideo.value.srcObject = userStream;
+  peer.on("stream", (remoteStream) => {
+    userVideo.value.srcObject = remoteStream;
   });
 }
 </script>
 
 <style scoped>
-.live-box {
-  margin-top: 40px;
-  background: rgba(255,255,255,0.1);
-  padding: 30px;
-  border-radius: 20px;
+.live-container {
+  margin-top: 30px;
+}
+
+.videos {
   display: flex;
-  flex-direction: column;
   gap: 20px;
 }
 
 video {
-  width: 100%;
-  max-height: 300px;
-  border-radius: 20px;
+  width: 300px;
+  height: 200px;
   background: black;
+  border-radius: 15px;
 }
 
 .controls {
+  margin: 20px 0;
+}
+
+.users {
+  margin-top: 20px;
+}
+
+.user-card {
+  background: rgba(255,255,255,0.1);
+  padding: 15px;
+  margin-bottom: 10px;
+  border-radius: 10px;
   display: flex;
-  gap: 20px;
+  justify-content: space-between;
 }
 
 button {
-  padding: 10px 20px;
-  border-radius: 10px;
+  background: #ff4b2b;
   border: none;
-  background: linear-gradient(45deg, #ff416c, #ff4b2b);
+  padding: 8px 15px;
+  border-radius: 8px;
   color: white;
   cursor: pointer;
 }
