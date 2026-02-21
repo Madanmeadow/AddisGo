@@ -1,6 +1,6 @@
 /* =========================================================
-   🔥 ADDISGO BACKEND (Option B - Matches Current DB)
-   Vue + Node + PostgreSQL + Railway
+   🔥 ADDISGO BACKEND
+   Express + PostgreSQL + Auth + Uploads + Socket.io
 ========================================================= */
 
 import express from "express";
@@ -14,6 +14,7 @@ import multer from "multer";
 import { Server } from "socket.io";
 import path from "path";
 import { fileURLToPath } from "url";
+import fs from "fs";
 
 dotenv.config();
 
@@ -22,26 +23,52 @@ const app = express();
 const server = http.createServer(app);
 
 /* =========================================================
+   SOCKET.IO
+========================================================= */
+
+const io = new Server(server, {
+  cors: {
+    origin: "*"
+  }
+});
+
+io.on("connection", (socket) => {
+  console.log("User connected:", socket.id);
+
+  socket.on("join-room", (room) => {
+    socket.join(room);
+  });
+
+  socket.on("send-message", (data) => {
+    io.to(data.room).emit("receive-message", data);
+  });
+
+  socket.on("disconnect", () => {
+    console.log("User disconnected:", socket.id);
+  });
+});
+
+/* =========================================================
    BASIC MIDDLEWARE
 ========================================================= */
 
-app.use(cors({
-  origin: process.env.FRONTEND_URL || "*",
-  credentials: true
-}));
-
+app.use(cors());
 app.use(express.json());
 
 /* =========================================================
-   PATH FIX (ES MODULE)
+   PATH FIX FOR ES MODULE
 ========================================================= */
 
 const __filename = fileURLToPath(import.meta.url);
 const __dirname = path.dirname(__filename);
 
 /* =========================================================
-   STATIC UPLOADS
+   ENSURE UPLOADS FOLDER EXISTS
 ========================================================= */
+
+if (!fs.existsSync("uploads")) {
+  fs.mkdirSync("uploads");
+}
 
 app.use("/uploads", express.static(path.join(__dirname, "uploads")));
 
@@ -93,24 +120,18 @@ function authenticateToken(req, res, next) {
 }
 
 /* =========================================================
-   ROOT
+   ROUTES
 ========================================================= */
 
 app.get("/", (req, res) => {
   res.json({ message: "🔥 AddisGo Server Running" });
 });
 
-/* =========================================================
-   AUTH ROUTES
-========================================================= */
+/* ---------------- AUTH ---------------- */
 
-// REGISTER
 app.post("/auth/register", async (req, res) => {
   try {
     const { name, email, password } = req.body;
-
-    if (!name || !email || !password)
-      return res.status(400).json({ message: "All fields required" });
 
     const existing = await pool.query(
       "SELECT id FROM users WHERE email = $1",
@@ -118,26 +139,23 @@ app.post("/auth/register", async (req, res) => {
     );
 
     if (existing.rows.length > 0)
-      return res.status(400).json({ message: "Email already exists" });
+      return res.status(400).json({ message: "Email exists" });
 
-    const hashedPassword = await bcrypt.hash(password, 10);
+    const hashed = await bcrypt.hash(password, 10);
 
     const user = await pool.query(
-      `INSERT INTO users (name, email, password)
-       VALUES ($1, $2, $3)
-       RETURNING id, name, email`,
-      [name, email, hashedPassword]
+      "INSERT INTO users (name, email, password) VALUES ($1,$2,$3) RETURNING id,name,email",
+      [name, email, hashed]
     );
 
     res.status(201).json(user.rows[0]);
 
   } catch (err) {
-    console.error("REGISTER ERROR:", err);
-    res.status(500).json({ message: "Registration failed" });
+    console.error(err);
+    res.status(500).json({ message: "Register failed" });
   }
 });
 
-// LOGIN
 app.post("/auth/login", async (req, res) => {
   try {
     const { email, password } = req.body;
@@ -174,16 +192,13 @@ app.post("/auth/login", async (req, res) => {
     });
 
   } catch (err) {
-    console.error("LOGIN ERROR:", err);
+    console.error(err);
     res.status(500).json({ message: "Login failed" });
   }
 });
 
-/* =========================================================
-   POSTS ROUTES (MATCHES YOUR TABLE)
-========================================================= */
+/* ---------------- POSTS ---------------- */
 
-// CREATE POST
 app.post("/posts", authenticateToken, upload.single("file"), async (req, res) => {
   try {
     const { content } = req.body;
@@ -202,7 +217,7 @@ app.post("/posts", authenticateToken, upload.single("file"), async (req, res) =>
 
     const newPost = await pool.query(
       `INSERT INTO posts (user_id, caption, image_url, video_url)
-       VALUES ($1, $2, $3, $4)
+       VALUES ($1,$2,$3,$4)
        RETURNING *`,
       [user_id, content, image_url, video_url]
     );
@@ -210,12 +225,11 @@ app.post("/posts", authenticateToken, upload.single("file"), async (req, res) =>
     res.status(201).json(newPost.rows[0]);
 
   } catch (err) {
-    console.error("CREATE POST ERROR:", err);
+    console.error(err);
     res.status(500).json({ message: "Post failed" });
   }
 });
 
-// GET POSTS
 app.get("/posts", authenticateToken, async (req, res) => {
   try {
     const posts = await pool.query(
@@ -228,8 +242,8 @@ app.get("/posts", authenticateToken, async (req, res) => {
     res.json(posts.rows);
 
   } catch (err) {
-    console.error("FETCH POSTS ERROR:", err);
-    res.status(500).json({ message: "Failed to fetch posts" });
+    console.error(err);
+    res.status(500).json({ message: "Fetch failed" });
   }
 });
 
