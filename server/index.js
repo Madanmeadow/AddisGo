@@ -6,7 +6,8 @@ import dotenv from "dotenv";
 import pkg from "pg";
 import path from "path";
 import { fileURLToPath } from "url";
-
+import bcrypt from "bcrypt";
+import jwt from "jsonwebtoken";
 dotenv.config();
 
 const { Pool } = pkg;
