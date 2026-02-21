@@ -1,26 +1,28 @@
 <template>
   <div class="auth-container">
-    <h2>Login</h2>
+    <h1>Login</h1>
 
-    <input
-      v-model="email"
-      type="email"
-      placeholder="Email"
-    />
+    <form @submit.prevent="handleLogin">
+      <input
+        v-model="email"
+        type="email"
+        placeholder="Email"
+        required
+      />
 
-    <input
-      v-model="password"
-      type="password"
-      placeholder="Password"
-    />
+      <input
+        v-model="password"
+        type="password"
+        placeholder="Password"
+        required
+      />
 
-    <button @click="login">
-      Login
-    </button>
+      <button type="submit" :disabled="loading">
+        {{ loading ? "Logging in..." : "Login" }}
+      </button>
+    </form>
 
-    <p v-if="errorMessage" class="error">
-      {{ errorMessage }}
-    </p>
+    <p class="error" v-if="error">{{ error }}</p>
 
     <p>
       Don't have an account?
@@ -35,41 +37,46 @@ import { useRouter } from "vue-router";
 
 const email = ref("");
 const password = ref("");
-const errorMessage = ref("");
+const error = ref("");
+const loading = ref(false);
+
 const router = useRouter();
 
-async function login() {
-  try {
-    errorMessage.value = "";
+async function handleLogin() {
+  error.value = "";
+  loading.value = true;
 
-    const response = await fetch(
+  try {
+    const res = await fetch(
       `${import.meta.env.VITE_API_URL}/api/auth/login`,
       {
         method: "POST",
         headers: {
-          "Content-Type": "application/json"
+          "Content-Type": "application/json",
         },
         body: JSON.stringify({
           email: email.value,
-          password: password.value
-        })
+          password: password.value,
+        }),
       }
     );
 
-    const data = await response.json();
+    const data = await res.json();
 
-    if (!response.ok) {
+    if (!res.ok) {
       throw new Error(data.message || "Login failed");
     }
 
-    // Save token and user
+    // Save token + user
     localStorage.setItem("token", data.token);
     localStorage.setItem("user", JSON.stringify(data.user));
 
     router.push("/dashboard");
 
-  } catch (error) {
-    errorMessage.value = error.message;
+  } catch (err) {
+    error.value = err.message;
+  } finally {
+    loading.value = false;
   }
 }
 </script>
@@ -77,20 +84,22 @@ async function login() {
 <style scoped>
 .auth-container {
   max-width: 400px;
-  margin: 100px auto;
+  margin: 60px auto;
   display: flex;
   flex-direction: column;
-  gap: 10px;
+  gap: 15px;
 }
 
 input {
   padding: 10px;
+  font-size: 16px;
 }
 
 button {
   padding: 10px;
   background: black;
   color: white;
+  border: none;
   cursor: pointer;
 }
 
@@ -98,7 +107,6 @@ button {
   color: red;
 }
 </style>
-
 
 
 
