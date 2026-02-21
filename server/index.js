@@ -8,7 +8,7 @@ import jwt from "jsonwebtoken";
 import { Server } from "socket.io";
 import path from "path";
 import { fileURLToPath } from "url";
-
+import multer from "multer";
 dotenv.config();
 
 const { Pool } = pkg;
