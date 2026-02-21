@@ -1,3 +1,8 @@
+/* ======================================================
+   🔥 ADDISGO BACKEND - PRODUCTION READY
+   Vue + Node + PostgreSQL + Railway
+====================================================== */
+
 import express from "express";
 import http from "http";
 import cors from "cors";
@@ -5,20 +10,25 @@ import dotenv from "dotenv";
 import pkg from "pg";
 import bcrypt from "bcrypt";
 import jwt from "jsonwebtoken";
+import multer from "multer";
 import { Server } from "socket.io";
 import path from "path";
 import { fileURLToPath } from "url";
-import multer from "multer";
+
 dotenv.config();
 
 const { Pool } = pkg;
 
+/* ======================================================
+   APP INIT
+====================================================== */
+
 const app = express();
 const server = http.createServer(app);
 
-/* ========================
-   BASIC MIDDLEWARE
-======================== */
+/* ======================================================
+   MIDDLEWARE
+====================================================== */
 
 app.use(cors({
   origin: process.env.FRONTEND_URL || "*",
@@ -27,18 +37,22 @@ app.use(cors({
 
 app.use(express.json());
 
-/* ========================
-   FILE PATH (ES MODULE FIX)
-======================== */
+/* ======================================================
+   ES MODULE PATH FIX
+====================================================== */
 
 const __filename = fileURLToPath(import.meta.url);
 const __dirname = path.dirname(__filename);
 
+/* ======================================================
+   STATIC UPLOADS
+====================================================== */
+
 app.use("/uploads", express.static(path.join(__dirname, "uploads")));
 
-/* ========================
-   DATABASE CONNECTION
-======================== */
+/* ======================================================
+   DATABASE CONNECTION (Railway)
+====================================================== */
 
 const pool = new Pool({
   connectionString: process.env.DATABASE_URL,
@@ -49,24 +63,70 @@ const pool = new Pool({
 
 pool.connect()
   .then(() => console.log("✅ PostgreSQL Connected"))
-  .catch(err => console.error("❌ DB Error:", err));
+  .catch(err => console.error("❌ Database Error:", err));
 
-/* ========================
-   TEST ROUTE
-======================== */
+/* ======================================================
+   MULTER CONFIG
+====================================================== */
 
-app.get("/", (req, res) => {
-  res.json({ message: "AddisGo Server Running" });
+const storage = multer.diskStorage({
+  destination: (req, file, cb) => {
+    cb(null, "uploads/");
+  },
+  filename: (req, file, cb) => {
+    cb(null, Date.now() + "-" + file.originalname);
+  }
 });
 
-/* ========================
+const upload = multer({ storage });
+
+/* ======================================================
+   AUTH MIDDLEWARE
+====================================================== */
+
+function authenticateToken(req, res, next) {
+  const authHeader = req.headers["authorization"];
+  const token = authHeader && authHeader.split(" ")[1];
+
+  if (!token)
+    return res.status(401).json({ message: "Access denied" });
+
+  jwt.verify(token, process.env.JWT_SECRET, (err, user) => {
+    if (err)
+      return res.status(403).json({ message: "Invalid token" });
+
+    req.user = user;
+    next();
+  });
+}
+
+/* ======================================================
+   ROOT
+====================================================== */
+
+app.get("/", (req, res) => {
+  res.json({ message: "🔥 AddisGo Server Running" });
+});
+
+/* ======================================================
    AUTH ROUTES
-======================== */
+====================================================== */
 
 // REGISTER
 app.post("/auth/register", async (req, res) => {
   try {
     const { username, email, password } = req.body;
+
+    if (!username || !email || !password)
+      return res.status(400).json({ message: "All fields required" });
+
+    const existing = await pool.query(
+      "SELECT id FROM users WHERE email = $1",
+      [email]
+    );
+
+    if (existing.rows.length > 0)
+      return res.status(400).json({ message: "Email already exists" });
 
     const hashedPassword = await bcrypt.hash(password, 10);
 
@@ -98,18 +158,16 @@ app.post("/auth/login", async (req, res) => {
       [email]
     );
 
-    if (user.rows.length === 0) {
+    if (user.rows.length === 0)
       return res.status(400).json({ message: "Invalid credentials" });
-    }
 
     const validPassword = await bcrypt.compare(
       password,
       user.rows[0].password
     );
 
-    if (!validPassword) {
+    if (!validPassword)
       return res.status(400).json({ message: "Invalid credentials" });
-    }
 
     const token = jwt.sign(
       { id: user.rows[0].id },
@@ -132,32 +190,56 @@ app.post("/auth/login", async (req, res) => {
   }
 });
 
-/* ========================
-   MESSAGES API
-======================== */
+/* ======================================================
+   POSTS ROUTES (Protected)
+====================================================== */
 
-app.get("/messages/:user1/:user2", async (req, res) => {
+// CREATE POST
+app.post("/posts", authenticateToken, upload.single("file"), async (req, res) => {
   try {
-    const { user1, user2 } = req.params;
+    const { content } = req.body;
+    const user_id = req.user.id;
 
-    const result = await pool.query(
-      `SELECT * FROM messages
-       WHERE (sender_id = $1 AND receiver_id = $2)
-       OR (sender_id = $2 AND receiver_id = $1)
-       ORDER BY created_at ASC`,
-      [user1, user2]
+    const media_url = req.file
+      ? `/uploads/${req.file.filename}`
+      : null;
+
+    const newPost = await pool.query(
+      `INSERT INTO posts (user_id, content, media_url)
+       VALUES ($1, $2, $3)
+       RETURNING *`,
+      [user_id, content, media_url]
     );
 
-    res.json(result.rows);
+    res.status(201).json(newPost.rows[0]);
 
   } catch (err) {
-    res.status(500).json({ message: "Failed to fetch messages" });
+    console.error(err);
+    res.status(500).json({ message: "Failed to create post" });
   }
 });
 
-/* ========================
-   SOCKET.IO
-======================== */
+// GET ALL POSTS
+app.get("/posts", authenticateToken, async (req, res) => {
+  try {
+    const posts = await pool.query(
+      `SELECT posts.*, users.username
+       FROM posts
+       JOIN users ON posts.user_id = users.id
+       ORDER BY posts.created_at DESC`
+    );
+
+    res.json(posts.rows);
+
+  } catch (err) {
+    console.error(err);
+    res.status(500).json({ message: "Failed to fetch posts" });
+  }
+});
+
+/* ======================================================
+   SOCKET.IO (REAL-TIME READY)
+====================================================== */
 
 const io = new Server(server, {
   cors: {
@@ -169,31 +251,16 @@ const io = new Server(server, {
 const onlineUsers = new Map();
 
 io.on("connection", (socket) => {
-  console.log("User connected:", socket.id);
+  console.log("🟢 User connected:", socket.id);
 
   socket.on("registerUser", (userId) => {
     onlineUsers.set(userId, socket.id);
   });
 
-  socket.on("sendMessage", async ({ senderId, receiverId, message }) => {
-    try {
-      const saved = await pool.query(
-        `INSERT INTO messages (sender_id, receiver_id, message)
-         VALUES ($1, $2, $3)
-         RETURNING *`,
-        [senderId, receiverId, message]
-      );
-
-      const receiverSocket = onlineUsers.get(receiverId);
-
-      if (receiverSocket) {
-        io.to(receiverSocket).emit("receiveMessage", saved.rows[0]);
-      }
-
-      socket.emit("messageSent", saved.rows[0]);
-
-    } catch (err) {
-      console.error("Message error:", err);
+  socket.on("sendMessage", (data) => {
+    const receiverSocket = onlineUsers.get(data.receiverId);
+    if (receiverSocket) {
+      io.to(receiverSocket).emit("receiveMessage", data);
     }
   });
 
@@ -204,15 +271,16 @@ io.on("connection", (socket) => {
         break;
       }
     }
+    console.log("🔴 User disconnected");
   });
 });
 
-/* ========================
+/* ======================================================
    START SERVER
-======================== */
+====================================================== */
 
 const PORT = process.env.PORT || 5000;
 
 server.listen(PORT, () => {
-  console.log(`🚀 Server running on port ${PORT}`);
+  console.log(`🚀 AddisGo Server running on port ${PORT}`);
 });
