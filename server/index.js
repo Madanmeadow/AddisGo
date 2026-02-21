@@ -1,6 +1,6 @@
 /* =========================================================
    🔥 ADDISGO BACKEND
-   Express + PostgreSQL + Auth + Uploads + Socket.io
+   Express + PostgreSQL + JWT + Upload + Chat + WebRTC
 ========================================================= */
 
 import express from "express";
@@ -23,28 +23,61 @@ const app = express();
 const server = http.createServer(app);
 
 /* =========================================================
-   SOCKET.IO
+   SOCKET.IO SETUP
 ========================================================= */
 
 const io = new Server(server, {
   cors: {
-    origin: "*"
+    origin: "*",
+    methods: ["GET", "POST"]
   }
 });
 
-io.on("connection", (socket) => {
-  console.log("User connected:", socket.id);
+/* =========================================================
+   SOCKET CONNECTION (CHAT + VIDEO CALL SIGNALING)
+========================================================= */
 
+io.on("connection", (socket) => {
+  console.log("🔌 User connected:", socket.id);
+
+  // Join global chat room
   socket.on("join-room", (room) => {
     socket.join(room);
   });
 
+  /* -------------------------
+     REAL-TIME CHAT
+  -------------------------- */
   socket.on("send-message", (data) => {
     io.to(data.room).emit("receive-message", data);
   });
 
+  /* -------------------------
+     🔥 VIDEO CALL SIGNALING
+  -------------------------- */
+
+  // Caller sends offer
+  socket.on("call-user", (data) => {
+    socket.to(data.to).emit("incoming-call", {
+      offer: data.offer,
+      from: socket.id
+    });
+  });
+
+  // Receiver answers
+  socket.on("answer-call", (data) => {
+    socket.to(data.to).emit("call-answered", {
+      answer: data.answer
+    });
+  });
+
+  // ICE candidates exchange
+  socket.on("ice-candidate", (data) => {
+    socket.to(data.to).emit("ice-candidate", data.candidate);
+  });
+
   socket.on("disconnect", () => {
-    console.log("User disconnected:", socket.id);
+    console.log("❌ User disconnected:", socket.id);
   });
 });
 
@@ -56,7 +89,7 @@ app.use(cors());
 app.use(express.json());
 
 /* =========================================================
-   PATH FIX FOR ES MODULE
+   ES MODULE PATH FIX
 ========================================================= */
 
 const __filename = fileURLToPath(import.meta.url);
@@ -85,7 +118,7 @@ const pool = new Pool({
 
 pool.connect()
   .then(() => console.log("✅ PostgreSQL Connected"))
-  .catch(err => console.error("❌ DB Error:", err));
+  .catch((err) => console.error("❌ DB Error:", err));
 
 /* =========================================================
    FILE UPLOAD CONFIG
@@ -139,19 +172,20 @@ app.post("/auth/register", async (req, res) => {
     );
 
     if (existing.rows.length > 0)
-      return res.status(400).json({ message: "Email exists" });
+      return res.status(400).json({ message: "Email already exists" });
 
     const hashed = await bcrypt.hash(password, 10);
 
     const user = await pool.query(
-      "INSERT INTO users (name, email, password) VALUES ($1,$2,$3) RETURNING id,name,email",
+      `INSERT INTO users (name, email, password)
+       VALUES ($1, $2, $3)
+       RETURNING id, name, email`,
       [name, email, hashed]
     );
 
     res.status(201).json(user.rows[0]);
-
   } catch (err) {
-    console.error(err);
+    console.error("Register error:", err);
     res.status(500).json({ message: "Register failed" });
   }
 });
@@ -190,45 +224,48 @@ app.post("/auth/login", async (req, res) => {
         email: user.rows[0].email
       }
     });
-
   } catch (err) {
-    console.error(err);
+    console.error("Login error:", err);
     res.status(500).json({ message: "Login failed" });
   }
 });
 
 /* ---------------- POSTS ---------------- */
 
-app.post("/posts", authenticateToken, upload.single("file"), async (req, res) => {
-  try {
-    const { content } = req.body;
-    const user_id = req.user.id;
+app.post(
+  "/posts",
+  authenticateToken,
+  upload.single("file"),
+  async (req, res) => {
+    try {
+      const { content } = req.body;
+      const user_id = req.user.id;
 
-    let image_url = null;
-    let video_url = null;
+      let image_url = null;
+      let video_url = null;
 
-    if (req.file) {
-      if (req.file.mimetype.startsWith("image")) {
-        image_url = `/uploads/${req.file.filename}`;
-      } else if (req.file.mimetype.startsWith("video")) {
-        video_url = `/uploads/${req.file.filename}`;
+      if (req.file) {
+        if (req.file.mimetype.startsWith("image")) {
+          image_url = `/uploads/${req.file.filename}`;
+        } else if (req.file.mimetype.startsWith("video")) {
+          video_url = `/uploads/${req.file.filename}`;
+        }
       }
+
+      const newPost = await pool.query(
+        `INSERT INTO posts (user_id, caption, image_url, video_url)
+         VALUES ($1, $2, $3, $4)
+         RETURNING *`,
+        [user_id, content, image_url, video_url]
+      );
+
+      res.status(201).json(newPost.rows[0]);
+    } catch (err) {
+      console.error("Post error:", err);
+      res.status(500).json({ message: "Post failed" });
     }
-
-    const newPost = await pool.query(
-      `INSERT INTO posts (user_id, caption, image_url, video_url)
-       VALUES ($1,$2,$3,$4)
-       RETURNING *`,
-      [user_id, content, image_url, video_url]
-    );
-
-    res.status(201).json(newPost.rows[0]);
-
-  } catch (err) {
-    console.error(err);
-    res.status(500).json({ message: "Post failed" });
   }
-});
+);
 
 app.get("/posts", authenticateToken, async (req, res) => {
   try {
@@ -240,9 +277,8 @@ app.get("/posts", authenticateToken, async (req, res) => {
     );
 
     res.json(posts.rows);
-
   } catch (err) {
-    console.error(err);
+    console.error("Fetch posts error:", err);
     res.status(500).json({ message: "Fetch failed" });
   }
 });
