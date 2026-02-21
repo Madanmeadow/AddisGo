@@ -1,48 +1,18 @@
 import { createRouter, createWebHistory } from "vue-router";
 
-// Lazy load views
-const Home = () => import("../views/HomeView.vue")
-const Login = () => import("../views/Login.vue");
-const Register = () => import("../views/Register.vue");
-const Dashboard = () => import("../views/Dashboard.vue");
-const Inbox = () => import("../views/Inbox.vue");
-const Chat = () => import("../views/Chat.vue");
+import Login from "../views/Login.vue";
+import Register from "../views/Register.vue";
+import Dashboard from "../views/Dashboard.vue";
+import Messages from "../views/Messages.vue";
+import Live from "../views/Live.vue";
 
 const routes = [
-  {
-    path: "/",
-    name: "Home",
-    component: Home,
-  },
-  {
-    path: "/login",
-    name: "Login",
-    component: Login,
-  },
-  {
-    path: "/register",
-    name: "Register",
-    component: Register,
-  },
-  {
-    path: "/dashboard",
-    name: "Dashboard",
-    component: Dashboard,
-    meta: { requiresAuth: true },
-  },
-  {
-    path: "/inbox",
-    name: "Inbox",
-    component: Inbox,
-    meta: { requiresAuth: true },
-  },
-  {
-    path: "/chat/:id",
-    name: "Chat",
-    component: Chat,
-    props: true,
-    meta: { requiresAuth: true },
-  },
+  { path: "/", redirect: "/login" },
+  { path: "/login", component: Login },
+  { path: "/register", component: Register },
+  { path: "/dashboard", component: Dashboard },
+  { path: "/messages", component: Messages },
+  { path: "/live", component: Live },
 ];
 
 const router = createRouter({
@@ -50,19 +20,7 @@ const router = createRouter({
   routes,
 });
 
-// 🔐 Simple auth guard
-router.beforeEach((to, from, next) => {
-  const token = localStorage.getItem("token");
-
-  if (to.meta.requiresAuth && !token) {
-    next("/login");
-  } else {
-    next();
-  }
-});
-
 export default router;
-
 
 
 
