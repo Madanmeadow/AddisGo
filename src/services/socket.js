@@ -1,12 +1,5 @@
-// src/services/socket.js
-
 import { io } from "socket.io-client";
-import API_URL from "../config";
 
-const socket = io(API_URL, {
-  withCredentials: true,
-  transports: ["websocket"]
-});
+const socket = io("https://addisgo-production-63ae.up.railway.app");
 
 export default socket;
-

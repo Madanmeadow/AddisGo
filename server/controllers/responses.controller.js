@@ -1,5 +1,5 @@
-import { pool } from '../db.js';
-import { v4 as uuid } from 'uuid';
+import pool from "../db.js";
+
 
 export async function sendPrivateResponse(req, res) {
   const senderId = req.userId;

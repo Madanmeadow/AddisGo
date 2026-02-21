@@ -1,4 +1,4 @@
-import { pool } from '../db.js';
+import pool from "../db.js";
 
 export async function requireOnboarding(req, res, next) {
   const result = await pool.query(

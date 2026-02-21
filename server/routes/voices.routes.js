@@ -1,6 +1,6 @@
 import express from "express";
 import multer from "multer";
-import auth from "../middleware/auth.middleware.js";
+import { requireAuth as auth } from "../middleware/auth.middleware.js";
 import {
   getVoices,
   createVoice,
