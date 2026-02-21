@@ -1,62 +1,48 @@
 <template>
   <Layout>
-    <div class="dashboard">
+    <div class="feed">
 
       <!-- CREATE POST -->
-      <div class="create-post">
-        <textarea
-          v-model="content"
-          placeholder="What's happening?"
-          rows="3"
-        ></textarea>
-
-        <div class="create-actions">
+      <div class="create-box">
+        <textarea v-model="content" placeholder="What's happening?" />
+        <div class="actions">
           <input type="file" @change="handleFile" />
-          <button @click="submitPost" :disabled="loading">
-            {{ loading ? "Posting..." : "Post 🚀" }}
+          <button @click="submitPost">
+            Post 🚀
           </button>
         </div>
       </div>
 
-      <!-- POSTS FEED -->
-      <div v-if="posts.length === 0" class="empty">
-        No posts yet...
-      </div>
+      <!-- POSTS -->
+      <div v-for="post in posts" :key="post.id" class="post">
 
-      <div v-for="post in posts" :key="post.id" class="post-card">
-
-        <!-- HEADER -->
-        <div class="post-header">
+        <div class="header">
           <div class="avatar">
-            {{ post.name?.charAt(0).toUpperCase() }}
+            {{ post.name?.charAt(0) }}
           </div>
-
           <div>
-            <div class="username">{{ post.name }}</div>
-            <div class="time">
-              {{ formatDate(post.created_at) }}
+            <div class="name">{{ post.name }}</div>
+            <div class="date">
+              {{ new Date(post.created_at).toLocaleString() }}
             </div>
           </div>
         </div>
 
-        <!-- CONTENT -->
-        <div v-if="post.caption" class="post-text">
+        <div v-if="post.caption" class="caption">
           {{ post.caption }}
         </div>
 
-        <!-- IMAGE -->
         <img
           v-if="post.image_url"
           :src="apiUrl + post.image_url"
-          class="post-media"
+          class="media"
         />
 
-        <!-- VIDEO -->
         <video
           v-if="post.video_url"
-          :src="apiUrl + post.video_url"
           controls
-          class="post-media"
+          :src="apiUrl + post.video_url"
+          class="media"
         ></video>
 
       </div>
@@ -70,143 +56,86 @@ import { ref, onMounted } from "vue";
 import Layout from "../components/Layout.vue";
 
 const apiUrl = import.meta.env.VITE_API_URL;
+const token = localStorage.getItem("token");
 
 const posts = ref([]);
 const content = ref("");
 const file = ref(null);
-const loading = ref(false);
-
-const token = localStorage.getItem("token");
-
-/* ===============================
-   FETCH POSTS
-================================ */
 
 async function fetchPosts() {
-  try {
-    const res = await fetch(`${apiUrl}/posts`, {
-      headers: {
-        Authorization: `Bearer ${token}`
-      }
-    });
+  const res = await fetch(`${apiUrl}/posts`, {
+    headers: {
+      Authorization: `Bearer ${token}`
+    }
+  });
 
-    const data = await res.json();
-    posts.value = data;
-
-  } catch (err) {
-    console.error("Fetch posts error:", err);
-  }
+  posts.value = await res.json();
 }
 
-/* ===============================
-   SUBMIT POST
-================================ */
-
 async function submitPost() {
-  if (!content.value && !file.value) return;
-
-  loading.value = true;
-
   const formData = new FormData();
   formData.append("content", content.value);
+  if (file.value) formData.append("file", file.value);
 
-  if (file.value) {
-    formData.append("file", file.value);
-  }
+  await fetch(`${apiUrl}/posts`, {
+    method: "POST",
+    headers: {
+      Authorization: `Bearer ${token}`
+    },
+    body: formData
+  });
 
-  try {
-    const res = await fetch(`${apiUrl}/posts`, {
-      method: "POST",
-      headers: {
-        Authorization: `Bearer ${token}`
-      },
-      body: formData
-    });
-
-    if (!res.ok) throw new Error("Post failed");
-
-    content.value = "";
-    file.value = null;
-
-    await fetchPosts();
-
-  } catch (err) {
-    console.error("Post error:", err);
-  } finally {
-    loading.value = false;
-  }
+  content.value = "";
+  file.value = null;
+  fetchPosts();
 }
 
 function handleFile(e) {
   file.value = e.target.files[0];
 }
 
-/* ===============================
-   FORMAT DATE
-================================ */
-
-function formatDate(date) {
-  return new Date(date).toLocaleString();
-}
-
 onMounted(fetchPosts);
 </script>
 
 <style scoped>
-
-.dashboard {
+.feed {
   max-width: 700px;
   margin: auto;
   padding: 30px;
 }
 
-/* CREATE POST */
-
-.create-post {
+.create-box {
   background: rgba(255,255,255,0.08);
   padding: 20px;
-  border-radius: 18px;
-  margin-bottom: 30px;
-  backdrop-filter: blur(10px);
+  border-radius: 20px;
+  margin-bottom: 25px;
 }
 
 textarea {
   width: 100%;
-  resize: none;
-  border-radius: 12px;
   padding: 12px;
+  border-radius: 12px;
+  resize: none;
   border: none;
-  outline: none;
-  font-size: 15px;
-}
-
-.create-actions {
-  display: flex;
-  justify-content: space-between;
-  align-items: center;
-  margin-top: 15px;
+  margin-bottom: 12px;
 }
 
 button {
-  background: linear-gradient(45deg, #ff416c, #ff4b2b);
+  background: linear-gradient(45deg,#ff416c,#ff4b2b);
+  color: white;
   border: none;
   padding: 8px 18px;
   border-radius: 10px;
-  color: white;
-  cursor: pointer;
 }
 
-/* POST CARD */
-
-.post-card {
-  background: rgba(0,0,0,0.5);
+.post {
+  background: rgba(0,0,0,0.6);
   padding: 18px;
   border-radius: 18px;
   margin-bottom: 20px;
-  backdrop-filter: blur(8px);
 }
 
-.post-header {
+.header {
   display: flex;
   align-items: center;
   margin-bottom: 12px;
@@ -220,45 +149,16 @@ button {
   display: flex;
   align-items: center;
   justify-content: center;
+  margin-right: 10px;
   color: white;
   font-weight: bold;
-  margin-right: 12px;
 }
 
-.username {
-  font-weight: 600;
-}
-
-.time {
-  font-size: 12px;
-  opacity: 0.7;
-}
-
-.post-text {
-  margin-bottom: 12px;
-  font-size: 15px;
-}
-
-.post-media {
+.media {
   width: 100%;
-  max-height: 450px;
-  border-radius: 15px;
+  max-height: 500px;
   object-fit: cover;
+  border-radius: 15px;
+  margin-top: 12px;
 }
-
-/* EMPTY */
-
-.empty {
-  text-align: center;
-  opacity: 0.7;
-}
-
-/* MOBILE */
-
-@media (max-width: 768px) {
-  .dashboard {
-    padding: 15px;
-  }
-}
-
 </style>

@@ -1,117 +1,20 @@
-/* =========================================================
-   🔥 ADDISGO BACKEND CORE
-   Express + PostgreSQL + Auth + Upload + Realtime + WebRTC
-========================================================= */
-
 import express from "express";
-import http from "http";
 import cors from "cors";
 import dotenv from "dotenv";
-import pkg from "pg";
-import bcrypt from "bcrypt";
 import jwt from "jsonwebtoken";
+import bcrypt from "bcryptjs";
 import multer from "multer";
-import { Server } from "socket.io";
 import path from "path";
 import { fileURLToPath } from "url";
-import fs from "fs";
+import { Server } from "socket.io";
+import http from "http";
+import pkg from "pg";
 
 dotenv.config();
-
 const { Pool } = pkg;
+
 const app = express();
 const server = http.createServer(app);
-
-/* =========================================================
-   🔐 ENV CHECK
-========================================================= */
-
-if (!process.env.JWT_SECRET) {
-  console.error("❌ JWT_SECRET missing in environment");
-  process.exit(1);
-}
-
-/* =========================================================
-   🌍 MIDDLEWARE
-========================================================= */
-
-app.use(cors({
-  origin: "*",
-  credentials: true
-}));
-
-app.use(express.json({ limit: "10mb" }));
-
-/* =========================================================
-   📁 ES MODULE PATH FIX
-========================================================= */
-
-const __filename = fileURLToPath(import.meta.url);
-const __dirname = path.dirname(__filename);
-
-/* =========================================================
-   📂 UPLOAD FOLDER
-========================================================= */
-
-const uploadPath = path.join(__dirname, "uploads");
-
-if (!fs.existsSync(uploadPath)) {
-  fs.mkdirSync(uploadPath);
-}
-
-app.use("/uploads", express.static(uploadPath));
-
-/* =========================================================
-   🗄 DATABASE
-========================================================= */
-
-const pool = new Pool({
-  connectionString: process.env.DATABASE_URL,
-  ssl: process.env.NODE_ENV === "production"
-    ? { rejectUnauthorized: false }
-    : false
-});
-
-pool.connect()
-  .then(() => console.log("✅ PostgreSQL Connected"))
-  .catch(err => console.error("❌ DB Connection Error:", err));
-
-/* =========================================================
-   📤 FILE UPLOAD
-========================================================= */
-
-const storage = multer.diskStorage({
-  destination: (_, __, cb) => cb(null, uploadPath),
-  filename: (_, file, cb) =>
-    cb(null, Date.now() + "-" + file.originalname)
-});
-
-const upload = multer({ storage });
-
-/* =========================================================
-   🔐 AUTH MIDDLEWARE
-========================================================= */
-
-function authenticateToken(req, res, next) {
-  const authHeader = req.headers.authorization;
-  const token = authHeader?.split(" ")[1];
-
-  if (!token) {
-    return res.status(401).json({ message: "Unauthorized" });
-  }
-
-  jwt.verify(token, process.env.JWT_SECRET, (err, user) => {
-    if (err) return res.status(403).json({ message: "Invalid token" });
-
-    req.user = user;
-    next();
-  });
-}
-
-/* =========================================================
-   🔌 SOCKET.IO
-========================================================= */
-
 const io = new Server(server, {
   cors: {
     origin: "*",
@@ -119,208 +22,200 @@ const io = new Server(server, {
   }
 });
 
-// userId -> socketId
-const onlineUsers = new Map();
+/* ===================================
+   PATH FIX (ES MODULES)
+=================================== */
 
-io.on("connection", (socket) => {
-  console.log("🔌 Connected:", socket.id);
+const __filename = fileURLToPath(import.meta.url);
+const __dirname = path.dirname(__filename);
 
-  /* ===============================
-     REGISTER USER ONLINE
-  ================================ */
-  socket.on("register-user", (userId) => {
-    onlineUsers.set(userId, socket.id);
+/* ===================================
+   MIDDLEWARE
+=================================== */
 
-    io.emit("online-users", Array.from(onlineUsers.keys()));
-  });
+app.use(cors());
+app.use(express.json());
 
-  /* ===============================
-     REAL-TIME CHAT
-  ================================ */
-  socket.on("send-message", ({ room, message }) => {
-    io.to(room).emit("receive-message", message);
-  });
+/* ===================================
+   DATABASE
+=================================== */
 
-  /* ===============================
-     VIDEO CALL SIGNALING
-  ================================ */
-
-  socket.on("call-user", ({ toUserId, fromUserId, offer }) => {
-    const targetSocket = onlineUsers.get(toUserId);
-
-    if (targetSocket) {
-      io.to(targetSocket).emit("incoming-call", {
-        fromUserId,
-        offer
-      });
-    }
-  });
-
-  socket.on("answer-call", ({ toUserId, answer }) => {
-    const targetSocket = onlineUsers.get(toUserId);
-
-    if (targetSocket) {
-      io.to(targetSocket).emit("call-answered", { answer });
-    }
-  });
-
-  socket.on("disconnect", () => {
-    for (const [userId, socketId] of onlineUsers.entries()) {
-      if (socketId === socket.id) {
-        onlineUsers.delete(userId);
-        break;
-      }
-    }
-
-    io.emit("online-users", Array.from(onlineUsers.keys()));
-    console.log("❌ Disconnected:", socket.id);
-  });
+const pool = new Pool({
+  connectionString: process.env.DATABASE_URL,
+  ssl: { rejectUnauthorized: false }
 });
 
-/* =========================================================
-   🌐 ROUTES
-========================================================= */
+/* ===================================
+   STATIC UPLOADS (VERY IMPORTANT)
+=================================== */
 
-app.get("/", (_, res) => {
-  res.json({ status: "🔥 AddisGo Server Running" });
+app.use("/uploads", express.static(path.join(__dirname, "uploads")));
+
+/* ===================================
+   MULTER CONFIG
+=================================== */
+
+const storage = multer.diskStorage({
+  destination: (req, file, cb) => {
+    cb(null, "uploads/");
+  },
+  filename: (req, file, cb) => {
+    cb(null, Date.now() + "-" + file.originalname);
+  }
 });
 
-/* ---------------- AUTH ---------------- */
+const upload = multer({ storage });
+
+/* ===================================
+   AUTH MIDDLEWARE
+=================================== */
+
+function authenticateToken(req, res, next) {
+  const authHeader = req.headers["authorization"];
+  const token = authHeader && authHeader.split(" ")[1];
+
+  if (!token) return res.sendStatus(401);
+
+  jwt.verify(token, process.env.JWT_SECRET, (err, user) => {
+    if (err) return res.sendStatus(403);
+    req.user = user;
+    next();
+  });
+}
+
+/* ===================================
+   AUTH ROUTES
+=================================== */
 
 app.post("/auth/register", async (req, res) => {
-  try {
-    const { name, email, password } = req.body;
+  const { name, email, password } = req.body;
 
-    const existing = await pool.query(
-      "SELECT id FROM users WHERE email = $1",
-      [email]
-    );
+  const hashedPassword = await bcrypt.hash(password, 10);
 
-    if (existing.rows.length > 0) {
-      return res.status(400).json({ message: "Email already exists" });
-    }
+  const result = await pool.query(
+    "INSERT INTO users (name, email, password) VALUES ($1, $2, $3) RETURNING *",
+    [name, email, hashedPassword]
+  );
 
-    const hashedPassword = await bcrypt.hash(password, 10);
-
-    const newUser = await pool.query(
-      `INSERT INTO users (name, email, password)
-       VALUES ($1, $2, $3)
-       RETURNING id, name, email`,
-      [name, email, hashedPassword]
-    );
-
-    res.status(201).json(newUser.rows[0]);
-
-  } catch (err) {
-    console.error("Register Error:", err);
-    res.status(500).json({ message: "Registration failed" });
-  }
+  res.json(result.rows[0]);
 });
 
 app.post("/auth/login", async (req, res) => {
-  try {
-    const { email, password } = req.body;
+  const { email, password } = req.body;
 
-    const user = await pool.query(
-      "SELECT * FROM users WHERE email = $1",
-      [email]
-    );
+  const result = await pool.query(
+    "SELECT * FROM users WHERE email=$1",
+    [email]
+  );
 
-    if (user.rows.length === 0) {
-      return res.status(400).json({ message: "Invalid credentials" });
+  if (result.rows.length === 0) {
+    return res.status(400).json({ message: "User not found" });
+  }
+
+  const user = result.rows[0];
+
+  const validPassword = await bcrypt.compare(password, user.password);
+
+  if (!validPassword) {
+    return res.status(400).json({ message: "Wrong password" });
+  }
+
+  const token = jwt.sign(
+    { id: user.id, name: user.name },
+    process.env.JWT_SECRET
+  );
+
+  res.json({ token, user });
+});
+
+/* ===================================
+   POSTS
+=================================== */
+
+app.get("/posts", authenticateToken, async (req, res) => {
+  const result = await pool.query(`
+    SELECT posts.*, users.name
+    FROM posts
+    JOIN users ON posts.user_id = users.id
+    ORDER BY posts.created_at DESC
+  `);
+
+  res.json(result.rows);
+});
+
+app.post("/posts", authenticateToken, upload.single("file"), async (req, res) => {
+  const { content } = req.body;
+
+  let image_url = null;
+  let video_url = null;
+
+  if (req.file) {
+    const filePath = `/uploads/${req.file.filename}`;
+
+    if (req.file.mimetype.startsWith("image")) {
+      image_url = filePath;
     }
 
-    const valid = await bcrypt.compare(
-      password,
-      user.rows[0].password
-    );
-
-    if (!valid) {
-      return res.status(400).json({ message: "Invalid credentials" });
+    if (req.file.mimetype.startsWith("video")) {
+      video_url = filePath;
     }
+  }
 
-    const token = jwt.sign(
-      { id: user.rows[0].id },
-      process.env.JWT_SECRET,
-      { expiresIn: "7d" }
-    );
+  const result = await pool.query(
+    "INSERT INTO posts (user_id, caption, image_url, video_url) VALUES ($1, $2, $3, $4) RETURNING *",
+    [req.user.id, content, image_url, video_url]
+  );
 
-    res.json({
-      token,
-      user: {
-        id: user.rows[0].id,
-        name: user.rows[0].name,
-        email: user.rows[0].email
-      }
+  res.json(result.rows[0]);
+});
+
+/* ===================================
+   SOCKET.IO (ONLINE USERS + CALL)
+=================================== */
+
+const onlineUsers = new Map();
+
+io.on("connection", (socket) => {
+  console.log("User connected:", socket.id);
+
+  socket.on("register-user", (userId) => {
+    onlineUsers.set(userId, socket.id);
+    io.emit("online-users", Array.from(onlineUsers.entries()));
+  });
+
+  socket.on("call-user", (data) => {
+    io.to(data.to).emit("incoming-call", {
+      offer: data.offer,
+      from: socket.id
     });
+  });
 
-  } catch (err) {
-    console.error("Login Error:", err);
-    res.status(500).json({ message: "Login failed" });
-  }
-});
+  socket.on("answer-call", (data) => {
+    io.to(data.to).emit("call-answered", {
+      answer: data.answer
+    });
+  });
 
-/* ---------------- POSTS ---------------- */
+  socket.on("ice-candidate", (data) => {
+    io.to(data.to).emit("ice-candidate", data.candidate);
+  });
 
-app.post(
-  "/posts",
-  authenticateToken,
-  upload.single("file"),
-  async (req, res) => {
-    try {
-      const { content } = req.body;
-      const user_id = req.user.id;
-
-      let image_url = null;
-      let video_url = null;
-
-      if (req.file) {
-        if (req.file.mimetype.startsWith("image")) {
-          image_url = `/uploads/${req.file.filename}`;
-        } else if (req.file.mimetype.startsWith("video")) {
-          video_url = `/uploads/${req.file.filename}`;
-        }
+  socket.on("disconnect", () => {
+    for (let [userId, sockId] of onlineUsers.entries()) {
+      if (sockId === socket.id) {
+        onlineUsers.delete(userId);
       }
-
-      const result = await pool.query(
-        `INSERT INTO posts (user_id, caption, image_url, video_url)
-         VALUES ($1, $2, $3, $4)
-         RETURNING *`,
-        [user_id, content, image_url, video_url]
-      );
-
-      res.status(201).json(result.rows[0]);
-
-    } catch (err) {
-      console.error("Post Error:", err);
-      res.status(500).json({ message: "Post failed" });
     }
-  }
-);
-
-app.get("/posts", authenticateToken, async (_, res) => {
-  try {
-    const posts = await pool.query(
-      `SELECT posts.*, users.name
-       FROM posts
-       JOIN users ON posts.user_id = users.id
-       ORDER BY posts.created_at DESC`
-    );
-
-    res.json(posts.rows);
-
-  } catch (err) {
-    console.error("Fetch Posts Error:", err);
-    res.status(500).json({ message: "Failed to fetch posts" });
-  }
+    io.emit("online-users", Array.from(onlineUsers.entries()));
+  });
 });
 
-/* =========================================================
-   🚀 START SERVER
-========================================================= */
+/* ===================================
+   START SERVER
+=================================== */
 
 const PORT = process.env.PORT || 5000;
 
 server.listen(PORT, () => {
-  console.log(`🚀 AddisGo backend running on port ${PORT}`);
+  console.log(`🚀 Server running on port ${PORT}`);
 });
