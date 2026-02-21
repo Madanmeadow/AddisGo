@@ -1,82 +1,36 @@
-<template>
-  <div class="auth-container">
-    <h1>Register</h1>
-
-    <form @submit.prevent="handleRegister">
-      <input
-        v-model="username"
-        type="text"
-        placeholder="Username"
-        required
-      />
-
-      <input
-        v-model="email"
-        type="email"
-        placeholder="Email"
-        required
-      />
-
-      <input
-        v-model="password"
-        type="password"
-        placeholder="Password"
-        required
-      />
-
-      <button type="submit" :disabled="loading">
-        {{ loading ? "Creating..." : "Register" }}
-      </button>
-    </form>
-
-    <p class="error" v-if="error">{{ error }}</p>
-
-    <p>
-      Already have an account?
-      <router-link to="/login">Login</router-link>
-    </p>
-  </div>
-</template>
-
 <script setup>
 import { ref } from "vue";
 import { useRouter } from "vue-router";
 
-const username = ref("");
+const name = ref("");
 const email = ref("");
 const password = ref("");
 const error = ref("");
 const loading = ref(false);
-
 const router = useRouter();
 
-async function handleRegister() {
-  error.value = "";
+async function register() {
   loading.value = true;
+  error.value = "";
 
   try {
-    const res = await fetch(`${import.meta.env.VITE_API_URL}/auth/register`, 
+    const res = await fetch(
+      `${import.meta.env.VITE_API_URL}/auth/register`,
       {
         method: "POST",
-        headers: {
-          "Content-Type": "application/json",
-        },
+        headers: { "Content-Type": "application/json" },
         body: JSON.stringify({
-          username: username.value,
+          name: name.value,
           email: email.value,
-          password: password.value,
-        }),
+          password: password.value
+        })
       }
     );
 
     const data = await res.json();
-
-    if (!res.ok) {
-      throw new Error(data.message || "Registration failed");
-    }
+    if (!res.ok) throw new Error(data.message);
 
     router.push("/login");
-
   } catch (err) {
     error.value = err.message;
   } finally {
@@ -85,32 +39,23 @@ async function handleRegister() {
 }
 </script>
 
-<style scoped>
-.auth-container {
-  max-width: 400px;
-  margin: 60px auto;
-  display: flex;
-  flex-direction: column;
-  gap: 15px;
-}
+<template>
+  <div class="auth">
+    <h1>🚀 Create Account</h1>
 
-input {
-  padding: 10px;
-  font-size: 16px;
-}
+    <input v-model="name" placeholder="Full Name" />
+    <input v-model="email" placeholder="Email" />
+    <input v-model="password" type="password" placeholder="Password" />
 
-button {
-  padding: 10px;
-  background: black;
-  color: white;
-  border: none;
-  cursor: pointer;
-}
+    <button @click="register">
+      {{ loading ? "Creating..." : "Register" }}
+    </button>
 
-.error {
-  color: red;
-}
-</style>
+    <p class="error" v-if="error">{{ error }}</p>
+
+    <router-link to="/login">Already have account?</router-link>
+  </div>
+</template>
 
 
 
