@@ -231,6 +231,13 @@ io.on("connection", (socket) => {
   socket.on("end-call", ({ to }) => {
     io.to(to).emit("call-ended");
   });
+  socket.on("join-room", (room) => {
+  socket.join(room);
+  });
+
+  socket.on("send-message", (data) => {
+  io.to(data.room).emit("receive-message", data);
+  });
 
   /* ===== DISCONNECT CLEANUP ===== */
   socket.on("disconnect", () => {
