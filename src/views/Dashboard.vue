@@ -187,6 +187,7 @@ button {
   object-fit: cover;
   border-radius: 18px;
   margin-top: 15px;
+  background: #000;
 }
 
 .live-section {
