@@ -1,160 +1,142 @@
 <template>
-  <div class="dashboard">
+  <Layout>
+    <div class="container">
 
-    <h1 class="title">🔥 AddisGo Feed</h1>
+      <!-- CREATE POST -->
+      <div class="create">
+        <textarea v-model="content" placeholder="What's happening?" />
+        <div class="row">
+          <input type="file" @change="handleFile" />
+          <button @click="submitPost">Post 🚀</button>
+        </div>
+      </div>
 
-    <!-- CREATE POST -->
-    <div class="create-card">
-      <textarea
-        v-model="content"
-        placeholder="What's happening?"
-      ></textarea>
+      <!-- LIVE STREAMS -->
+      <div class="live-section">
+        <h2>🔴 Live Now</h2>
 
-      <input type="file" @change="handleFile" />
+        <button class="go-live" @click="startLive">
+          Go Live
+        </button>
 
-      <button @click="createPost" :disabled="loading">
-        {{ loading ? "Posting..." : "Post 🚀" }}
-      </button>
-    </div>
-
-    <!-- POSTS -->
-    <div class="feed">
-
-      <div
-        v-for="post in posts"
-        :key="post.id"
-        class="post-card"
-      >
-        <div class="post-header">
-          <div class="avatar">
-            {{ post.username?.charAt(0).toUpperCase() }}
+        <div class="live-grid">
+          <div
+            v-for="stream in liveStreams"
+            :key="stream"
+            class="live-card"
+            @click="joinLive(stream)"
+          >
+            🔴 {{ stream }}
           </div>
+        </div>
+      </div>
 
+      <!-- POSTS -->
+      <div v-for="post in posts" :key="post.id" class="post">
+
+        <div class="header">
+          <div class="avatar">
+            {{ post.name?.charAt(0) }}
+          </div>
           <div>
-            <h3>{{ post.username }}</h3>
-            <small>{{ formatDate(post.created_at) }}</small>
+            <strong>{{ post.name }}</strong>
+            <div class="date">
+              {{ new Date(post.created_at).toLocaleString() }}
+            </div>
           </div>
         </div>
 
-        <p class="post-content">
-          {{ post.content }}
-        </p>
+        <div v-if="post.caption" class="caption">
+          {{ post.caption }}
+        </div>
 
-        <!-- IMAGE -->
         <img
           v-if="post.image_url"
-          :src="fullMediaUrl(post.image_url)"
+          :src="getMedia(post.image_url)"
           class="media"
         />
 
-        <!-- VIDEO -->
         <video
           v-if="post.video_url"
           controls
+          :src="getMedia(post.video_url)"
           class="media"
-        >
-          <source
-            :src="fullMediaUrl(post.video_url)"
-            type="video/mp4"
-          />
-        </video>
+        ></video>
 
       </div>
 
     </div>
-
-  </div>
+  </Layout>
 </template>
 
 <script setup>
 import { ref, onMounted } from "vue";
+import Layout from "../components/Layout.vue";
+import { io } from "socket.io-client";
 
 const apiUrl = import.meta.env.VITE_API_URL;
 const token = localStorage.getItem("token");
+const user = JSON.parse(localStorage.getItem("user"));
+
+const socket = io(apiUrl);
 
 const posts = ref([]);
 const content = ref("");
 const file = ref(null);
-const loading = ref(false);
+const liveStreams = ref([]);
 
-/* ============================= */
-/* FETCH POSTS */
-/* ============================= */
+/* ===== POSTS ===== */
+
 async function fetchPosts() {
-  try {
-    const res = await fetch(`${apiUrl}/posts`);
-    const data = await res.json();
-
-    posts.value = data.reverse(); // newest first
-  } catch (err) {
-    console.error("Fetch posts error:", err);
-  }
+  const res = await fetch(`${apiUrl}/posts`, {
+    headers: { Authorization: `Bearer ${token}` }
+  });
+  posts.value = await res.json();
 }
 
-/* ============================= */
-/* CREATE POST */
-/* ============================= */
-async function createPost() {
-  if (!content.value && !file.value) return;
+async function submitPost() {
+  const form = new FormData();
+  form.append("content", content.value);
+  if (file.value) form.append("file", file.value);
 
-  loading.value = true;
+  await fetch(`${apiUrl}/posts`, {
+    method: "POST",
+    headers: { Authorization: `Bearer ${token}` },
+    body: form
+  });
 
-  const formData = new FormData();
-  formData.append("content", content.value);
-
-  if (file.value) {
-    formData.append("media", file.value);
-  }
-
-  try {
-    await fetch(`${apiUrl}/posts`, {
-      method: "POST",
-      headers: {
-        Authorization: `Bearer ${token}`
-      },
-      body: formData
-    });
-
-    content.value = "";
-    file.value = null;
-
-    await fetchPosts(); // 🔥 THIS FIXES DISAPPEAR ISSUE
-  } catch (err) {
-    console.error("Post error:", err);
-  }
-
-  loading.value = false;
+  content.value = "";
+  fetchPosts();
 }
 
-/* ============================= */
-/* HANDLE FILE */
-/* ============================= */
 function handleFile(e) {
   file.value = e.target.files[0];
 }
 
-/* ============================= */
-/* SAFE DATE FORMAT */
-/* ============================= */
-function formatDate(date) {
-  if (!date) return "";
+/* ===== MEDIA FIX ===== */
 
-  const d = new Date(date);
-  if (isNaN(d.getTime())) return "";
-
-  return d.toLocaleString();
+function getMedia(url) {
+  if (!url) return null;
+  if (url.startsWith("http")) return url;
+  return `${apiUrl}${url}`;
 }
 
-/* ============================= */
-/* FULL MEDIA URL */
-/* ============================= */
-function fullMediaUrl(path) {
-  if (!path) return "";
+/* ===== LIVE ===== */
 
-  if (path.startsWith("http")) return path;
-
-  return `${apiUrl}${path}`;
+function startLive() {
+  socket.emit("start-live", { userId: user.id });
 }
+
+function joinLive(streamId) {
+  socket.emit("join-live", streamId);
+  alert("Joined " + streamId);
+}
+
+socket.on("live-list", (streams) => {
+  liveStreams.value = streams;
+});
+
+/* ===== INIT ===== */
 
 onMounted(() => {
   fetchPosts();
@@ -162,92 +144,65 @@ onMounted(() => {
 </script>
 
 <style scoped>
-
-.dashboard {
-  padding: 40px;
+.container {
   max-width: 800px;
   margin: auto;
+  padding: 30px;
 }
 
-.title {
-  font-size: 32px;
-  margin-bottom: 30px;
-  text-align: center;
-}
-
-.create-card {
-  background: #1f2c3c;
-  padding: 25px;
+.create {
+  background: rgba(255,255,255,0.08);
+  padding: 20px;
   border-radius: 20px;
-  margin-bottom: 40px;
-  display: flex;
-  flex-direction: column;
-  gap: 15px;
+  margin-bottom: 30px;
 }
 
 textarea {
-  padding: 15px;
+  width: 100%;
+  padding: 12px;
   border-radius: 12px;
-  border: none;
   resize: none;
-  min-height: 100px;
+  margin-bottom: 10px;
 }
 
 button {
-  padding: 12px;
-  border-radius: 12px;
-  border: none;
-  background: #ff4d4d;
+  background: linear-gradient(45deg,#ff416c,#ff4b2b);
   color: white;
-  font-weight: bold;
+  border: none;
+  padding: 8px 18px;
+  border-radius: 12px;
   cursor: pointer;
 }
 
-button:disabled {
-  opacity: 0.6;
-}
-
-.feed {
-  display: flex;
-  flex-direction: column;
-  gap: 30px;
-}
-
-.post-card {
-  background: #16202b;
-  padding: 25px;
+.post {
+  background: rgba(0,0,0,0.6);
+  padding: 18px;
   border-radius: 20px;
-  box-shadow: 0 10px 25px rgba(0,0,0,0.3);
-}
-
-.post-header {
-  display: flex;
-  gap: 15px;
-  align-items: center;
-  margin-bottom: 15px;
-}
-
-.avatar {
-  width: 45px;
-  height: 45px;
-  background: #ff4d4d;
-  border-radius: 50%;
-  display: flex;
-  align-items: center;
-  justify-content: center;
-  font-weight: bold;
-}
-
-.post-content {
-  margin-bottom: 15px;
+  margin-bottom: 25px;
 }
 
 .media {
   width: 100%;
-  border-radius: 15px;
-  margin-top: 15px;
-  max-height: 500px;
+  max-height: 600px;
   object-fit: cover;
+  border-radius: 18px;
+  margin-top: 15px;
+  background: #000;
 }
 
+.live-section {
+  margin-bottom: 40px;
+}
+
+.live-card {
+  background: rgba(255,0,0,0.2);
+  padding: 15px;
+  border-radius: 15px;
+  margin: 10px 0;
+  cursor: pointer;
+}
+
+.go-live {
+  margin-bottom: 15px;
+}
 </style>
