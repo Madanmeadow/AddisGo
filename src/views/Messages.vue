@@ -1,122 +1,112 @@
 <template>
   <Layout>
-    <h2>💬 Inbox</h2>
-
     <div class="chat-container">
+
+      <h2>💬 Messages</h2>
+
       <div class="messages">
         <div
-          v-for="(msg, index) in messages"
-          :key="index"
-          :class="['message', msg.sender === user.name ? 'me' : 'other']"
+          v-for="msg in messages"
+          :key="msg.id"
+          :class="['msg', msg.userId === user.id ? 'mine' : 'other']"
         >
           {{ msg.text }}
         </div>
       </div>
 
       <div class="input-area">
-        <input
-          v-model="newMessage"
-          placeholder="Type a message..."
-          @keyup.enter="sendMessage"
-        />
+        <input v-model="text" placeholder="Type message..." />
         <button @click="sendMessage">Send</button>
       </div>
-    </div>
 
+    </div>
   </Layout>
 </template>
 
 <script setup>
 import { ref, onMounted } from "vue";
-import { io } from "socket.io-client";
 import Layout from "../components/Layout.vue";
+import { io } from "socket.io-client";
 
-const socket = io(import.meta.env.VITE_API_URL);
-
-const messages = ref([]);
-const newMessage = ref("");
+const apiUrl = import.meta.env.VITE_API_URL;
 const user = JSON.parse(localStorage.getItem("user"));
 
-const room = "global-chat";
+const socket = io(apiUrl);
+
+const messages = ref([]);
+const text = ref("");
 
 onMounted(() => {
-  socket.emit("join-room", room);
+  socket.emit("join-room", "global-chat");
 
-  socket.on("receive-message", (data) => {
-    messages.value.push(data);
+  socket.on("receive-message", msg => {
+    messages.value.push(msg);
   });
 });
 
 function sendMessage() {
-  if (!newMessage.value) return;
+  if (!text.value) return;
 
-  const messageData = {
-    room,
-    sender: user.name,
-    text: newMessage.value
+  const message = {
+    id: Date.now(),
+    text: text.value,
+    userId: user.id,
+    room: "global-chat"
   };
 
-  socket.emit("send-message", messageData);
-  messages.value.push(messageData);
+  socket.emit("send-message", message);
+  messages.value.push(message);
 
-  newMessage.value = "";
+  text.value = "";
 }
 </script>
 
 <style scoped>
 .chat-container {
-  margin-top: 30px;
-  background: rgba(255,255,255,0.1);
-  border-radius: 20px;
-  padding: 20px;
-  height: 70vh;
-  display: flex;
-  flex-direction: column;
+  max-width: 600px;
+  margin: auto;
+  padding: 30px;
 }
 
 .messages {
-  flex: 1;
+  height: 400px;
   overflow-y: auto;
-  display: flex;
-  flex-direction: column;
-  gap: 10px;
+  margin-bottom: 20px;
 }
 
-.message {
-  padding: 10px 15px;
+.msg {
+  padding: 8px 12px;
   border-radius: 15px;
-  max-width: 60%;
+  margin-bottom: 10px;
+  max-width: 70%;
 }
 
-.me {
-  background: linear-gradient(45deg, #ff416c, #ff4b2b);
-  align-self: flex-end;
+.mine {
+  background: #ff4b2b;
+  color: white;
+  margin-left: auto;
 }
 
 .other {
-  background: rgba(255,255,255,0.2);
-  align-self: flex-start;
+  background: rgba(255,255,255,0.1);
 }
 
 .input-area {
   display: flex;
-  margin-top: 10px;
-  gap: 10px;
 }
 
 input {
   flex: 1;
-  padding: 10px;
+  padding: 8px;
   border-radius: 10px;
-  border: none;
+  margin-right: 10px;
 }
 
 button {
-  padding: 10px 20px;
+  padding: 8px 15px;
   border-radius: 10px;
-  border: none;
-  background: linear-gradient(45deg, #ff416c, #ff4b2b);
+  background: #ff4b2b;
   color: white;
-  cursor: pointer;
+  border: none;
 }
 </style>

@@ -1,29 +1,34 @@
 <template>
   <Layout>
-    <div class="live-wrapper">
+    <div class="live-container">
 
-      <h2 class="title">📹 AddisGo 1-to-1 Live Call</h2>
+      <h2>📹 AddisGo 1-to-1 Live Call</h2>
 
-      <div class="video-grid">
-        <video ref="myVideo" autoplay muted playsinline></video>
-        <video ref="userVideo" autoplay playsinline></video>
+      <!-- VIDEO AREA -->
+      <div class="videos">
+        <video ref="localVideo" autoplay muted playsinline></video>
+        <video ref="remoteVideo" autoplay playsinline></video>
       </div>
 
+      <!-- CONTROLS -->
       <div class="controls">
-        <button @click="startMedia">Start Camera</button>
-        <button v-if="inCall" @click="endCall" class="end-btn">End Call</button>
+        <button @click="startCamera">Start Camera</button>
+        <button @click="callUser" :disabled="!selectedUser">
+          Call
+        </button>
       </div>
 
-      <h3 class="online-title">🟢 Online Users</h3>
-
+      <!-- ONLINE USERS -->
       <div class="users">
+        <h3>🟢 Online Users</h3>
         <div
           v-for="user in onlineUsers"
-          :key="user"
+          :key="user.userId"
           class="user-card"
+          @click="selectUser(user)"
+          :class="{ active: selectedUser?.userId === user.userId }"
         >
-          <span>User ID: {{ user }}</span>
-          <button @click="callUser(user)">Call</button>
+          User {{ user.userId }}
         </div>
       </div>
 
@@ -32,190 +37,179 @@
 </template>
 
 <script setup>
-import { ref, onMounted, onBeforeUnmount } from "vue";
+import { ref, onMounted } from "vue";
 import Layout from "../components/Layout.vue";
 import { io } from "socket.io-client";
-import Peer from "simple-peer";
 
-/* ===============================
-   GLOBAL STATE
-================================ */
+const apiUrl = import.meta.env.VITE_API_URL;
+const user = JSON.parse(localStorage.getItem("user"));
 
-let stream = null;
-let peer = null;
+const socket = io(apiUrl);
 
-const myVideo = ref(null);
-const userVideo = ref(null);
+const localVideo = ref(null);
+const remoteVideo = ref(null);
+
+const localStream = ref(null);
+const peerConnection = ref(null);
+
 const onlineUsers = ref([]);
-const inCall = ref(false);
+const selectedUser = ref(null);
 
-const socket = io(import.meta.env.VITE_API_URL);
+/* =============================
+   STUN + TURN CONFIG
+============================= */
 
-const token = localStorage.getItem("token");
+const rtcConfig = {
+  iceServers: [
+    { urls: "stun:stun.l.google.com:19302" },
+    {
+      urls: "turn:openrelay.metered.ca:80",
+      username: "openrelayproject",
+      credential: "openrelayproject"
+    }
+  ]
+};
 
-function parseJwt(token) {
-  return JSON.parse(atob(token.split(".")[1]));
+/* =============================
+   START CAMERA
+============================= */
+
+async function startCamera() {
+  localStream.value = await navigator.mediaDevices.getUserMedia({
+    video: true,
+    audio: true
+  });
+
+  localVideo.value.srcObject = localStream.value;
 }
 
-const userId = parseJwt(token).id;
+/* =============================
+   CREATE PEER
+============================= */
 
-/* ===============================
+function createPeer() {
+  peerConnection.value = new RTCPeerConnection(rtcConfig);
+
+  localStream.value.getTracks().forEach(track => {
+    peerConnection.value.addTrack(track, localStream.value);
+  });
+
+  peerConnection.value.ontrack = event => {
+    remoteVideo.value.srcObject = event.streams[0];
+  };
+
+  peerConnection.value.onicecandidate = event => {
+    if (event.candidate) {
+      socket.emit("ice-candidate", {
+        to: selectedUser.value.socketId,
+        candidate: event.candidate
+      });
+    }
+  };
+}
+
+/* =============================
+   CALL USER
+============================= */
+
+async function callUser() {
+  createPeer();
+
+  const offer = await peerConnection.value.createOffer();
+  await peerConnection.value.setLocalDescription(offer);
+
+  socket.emit("call-user", {
+    to: selectedUser.value.socketId,
+    offer
+  });
+}
+
+/* =============================
    SOCKET EVENTS
-================================ */
+============================= */
 
 onMounted(() => {
 
-  socket.on("connect", () => {
-    socket.emit("register-user", userId);
+  socket.emit("register-user", user.id);
+
+  socket.on("online-users", users => {
+    onlineUsers.value = users.map(([userId, socketId]) => ({
+      userId,
+      socketId
+    })).filter(u => u.userId !== user.id);
   });
 
-  socket.on("online-users", (users) => {
-    onlineUsers.value = users.filter(id => id !== userId);
+  socket.on("incoming-call", async ({ offer, from }) => {
+    selectedUser.value = { socketId: from };
+
+    createPeer();
+
+    await peerConnection.value.setRemoteDescription(
+      new RTCSessionDescription(offer)
+    );
+
+    const answer = await peerConnection.value.createAnswer();
+    await peerConnection.value.setLocalDescription(answer);
+
+    socket.emit("answer-call", {
+      to: from,
+      answer
+    });
   });
 
-  /* 🔥 INCOMING CALL HANDLER */
-  socket.on("incoming-call", ({ offer, fromUserId }) => {
+  socket.on("call-answered", async ({ answer }) => {
+    await peerConnection.value.setRemoteDescription(
+      new RTCSessionDescription(answer)
+    );
+  });
 
-    if (!stream) {
-      alert("Start camera before answering call!");
-      return;
+  socket.on("ice-candidate", async candidate => {
+    try {
+      await peerConnection.value.addIceCandidate(
+        new RTCIceCandidate(candidate)
+      );
+    } catch (err) {
+      console.error(err);
     }
-
-    peer = new Peer({
-      initiator: false,
-      trickle: false,
-      stream
-    });
-
-    peer.on("signal", (answer) => {
-      socket.emit("answer-call", {
-        toUserId: fromUserId,
-        answer
-      });
-    });
-
-    peer.on("stream", (remoteStream) => {
-      userVideo.value.srcObject = remoteStream;
-      inCall.value = true;
-    });
-
-    peer.signal(offer);
-  });
-
-  socket.on("call-answered", ({ answer }) => {
-    peer.signal(answer);
   });
 
 });
 
-onBeforeUnmount(() => {
-  if (peer) peer.destroy();
-});
+/* =============================
+   SELECT USER
+============================= */
 
-/* ===============================
-   MEDIA FUNCTIONS
-================================ */
-
-async function startMedia() {
-  try {
-    stream = await navigator.mediaDevices.getUserMedia({
-      video: true,
-      audio: true
-    });
-
-    myVideo.value.srcObject = stream;
-
-  } catch (err) {
-    alert("Camera access denied.");
-  }
-}
-
-function callUser(targetUserId) {
-
-  if (!stream) {
-    alert("Start camera first!");
-    return;
-  }
-
-  peer = new Peer({
-    initiator: true,
-    trickle: false,
-    stream
-  });
-
-  peer.on("signal", (offer) => {
-    socket.emit("call-user", {
-      toUserId: targetUserId,
-      fromUserId: userId,
-      offer
-    });
-  });
-
-  peer.on("stream", (remoteStream) => {
-    userVideo.value.srcObject = remoteStream;
-    inCall.value = true;
-  });
-}
-
-function endCall() {
-  if (peer) {
-    peer.destroy();
-    peer = null;
-  }
-
-  userVideo.value.srcObject = null;
-  inCall.value = false;
+function selectUser(user) {
+  selectedUser.value = user;
 }
 </script>
 
 <style scoped>
-
-.live-wrapper {
-  padding: 40px;
+.live-container {
+  max-width: 900px;
+  margin: auto;
+  padding: 30px;
 }
 
-.title {
-  font-size: 28px;
-  margin-bottom: 30px;
-}
-
-.video-grid {
+.videos {
   display: flex;
   gap: 20px;
-  justify-content: center;
-  flex-wrap: wrap;
+  margin-bottom: 20px;
 }
 
 video {
-  width: 480px;
-  height: 320px;
+  width: 50%;
+  border-radius: 15px;
   background: black;
-  border-radius: 20px;
-  object-fit: cover;
-  box-shadow: 0 0 25px rgba(0,0,0,0.5);
 }
 
-.controls {
-  margin-top: 25px;
-  display: flex;
-  gap: 15px;
-}
-
-button {
-  background: linear-gradient(45deg, #ff416c, #ff4b2b);
-  border: none;
-  padding: 10px 20px;
+.controls button {
+  margin-right: 10px;
+  padding: 8px 18px;
   border-radius: 10px;
+  border: none;
+  background: #ff4b2b;
   color: white;
-  cursor: pointer;
-}
-
-.end-btn {
-  background: #d00000;
-}
-
-.online-title {
-  margin-top: 40px;
 }
 
 .users {
@@ -223,20 +217,14 @@ button {
 }
 
 .user-card {
-  background: rgba(255,255,255,0.08);
-  padding: 15px;
+  padding: 10px;
+  background: rgba(255,255,255,0.1);
   margin-bottom: 10px;
-  border-radius: 12px;
-  display: flex;
-  justify-content: space-between;
-  align-items: center;
+  border-radius: 10px;
+  cursor: pointer;
 }
 
-@media (max-width: 768px) {
-  video {
-    width: 100%;
-    height: 220px;
-  }
+.user-card.active {
+  background: #ff4b2b;
 }
-
 </style>
