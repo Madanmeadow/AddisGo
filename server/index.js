@@ -14,12 +14,12 @@ dotenv.config();
 
 const { Pool } = pkg;
 
+/* =====================================
+   BASIC APP SETUP
+===================================== */
+
 const app = express();
 const server = http.createServer(app);
-
-/* ===============================
-   BASIC CONFIG
-================================ */
 
 const PORT = process.env.PORT || 5000;
 
@@ -31,20 +31,22 @@ app.use(cors({
 app.use(express.json());
 app.use(express.urlencoded({ extended: true }));
 
-/* ===============================
+/* =====================================
    DATABASE
-================================ */
+===================================== */
 
 const pool = new Pool({
   connectionString: process.env.DATABASE_URL,
-  ssl: {
-    rejectUnauthorized: false
-  }
+  ssl: process.env.DATABASE_URL ? { rejectUnauthorized: false } : false
 });
 
-/* ===============================
+pool.on("connect", () => {
+  console.log("✅ PostgreSQL Connected");
+});
+
+/* =====================================
    FILE UPLOAD CONFIG
-================================ */
+===================================== */
 
 const __filename = fileURLToPath(import.meta.url);
 const __dirname = path.dirname(__filename);
@@ -60,39 +62,40 @@ const upload = multer({ storage });
 
 app.use("/uploads", express.static(path.join(__dirname, "uploads")));
 
-/* ===============================
+/* =====================================
    AUTH MIDDLEWARE
-================================ */
+===================================== */
 
 function authenticateToken(req, res, next) {
-  const authHeader = req.headers["authorization"];
+  const authHeader = req.headers.authorization;
   const token = authHeader && authHeader.split(" ")[1];
 
-  if (!token) return res.sendStatus(401);
+  if (!token) return res.status(401).json({ error: "No token" });
 
   jwt.verify(token, process.env.JWT_SECRET, (err, user) => {
-    if (err) return res.sendStatus(403);
+    if (err) return res.status(403).json({ error: "Invalid token" });
     req.user = user;
     next();
   });
 }
 
-/* ===============================
+/* =====================================
    AUTH ROUTES
-================================ */
+===================================== */
 
 app.post("/auth/register", async (req, res) => {
   try {
     const { username, email, password } = req.body;
 
-    const hashedPassword = await bcrypt.hash(password, 10);
+    const hashed = await bcrypt.hash(password, 10);
 
     const result = await pool.query(
       "INSERT INTO users (username, email, password) VALUES ($1,$2,$3) RETURNING id, username",
-      [username, email, hashedPassword]
+      [username, email, hashed]
     );
 
     res.json(result.rows[0]);
+
   } catch (err) {
     console.error(err);
     res.status(500).json({ error: "Register failed" });
@@ -108,26 +111,24 @@ app.post("/auth/login", async (req, res) => {
       [email]
     );
 
-    if (result.rows.length === 0)
+    if (!result.rows.length)
       return res.status(400).json({ error: "User not found" });
 
     const user = result.rows[0];
 
     const valid = await bcrypt.compare(password, user.password);
     if (!valid)
-      return res.status(400).json({ error: "Invalid password" });
+      return res.status(400).json({ error: "Wrong password" });
 
     const token = jwt.sign(
       { id: user.id, username: user.username },
-      process.env.JWT_SECRET
+      process.env.JWT_SECRET,
+      { expiresIn: "7d" }
     );
 
     res.json({
       token,
-      user: {
-        id: user.id,
-        username: user.username
-      }
+      user: { id: user.id, username: user.username }
     });
 
   } catch (err) {
@@ -136,9 +137,9 @@ app.post("/auth/login", async (req, res) => {
   }
 });
 
-/* ===============================
+/* =====================================
    POSTS
-================================ */
+===================================== */
 
 app.post("/posts", authenticateToken, upload.single("media"), async (req, res) => {
   try {
@@ -151,6 +152,7 @@ app.post("/posts", authenticateToken, upload.single("media"), async (req, res) =
     );
 
     res.json(result.rows[0]);
+
   } catch (err) {
     console.error(err);
     res.status(500).json({ error: "Post failed" });
@@ -167,15 +169,16 @@ app.get("/posts", async (req, res) => {
     `);
 
     res.json(result.rows);
+
   } catch (err) {
     console.error(err);
     res.status(500).json({ error: "Fetch posts failed" });
   }
 });
 
-/* ===============================
-   SOCKET.IO (REALTIME ENGINE)
-================================ */
+/* =====================================
+   SOCKET.IO REALTIME ENGINE
+===================================== */
 
 const io = new Server(server, {
   cors: {
@@ -188,7 +191,7 @@ const onlineUsers = new Map(); // userId -> socketId
 
 io.on("connection", (socket) => {
 
-  console.log("User connected:", socket.id);
+  console.log("🔌 Connected:", socket.id);
 
   /* ===== REGISTER USER ===== */
   socket.on("register-user", (userId) => {
@@ -221,7 +224,15 @@ io.on("connection", (socket) => {
     io.to(to).emit("ice-candidate", candidate);
   });
 
-  /* ===== DISCONNECT ===== */
+  socket.on("reject-call", ({ to }) => {
+    io.to(to).emit("call-rejected");
+  });
+
+  socket.on("end-call", ({ to }) => {
+    io.to(to).emit("call-ended");
+  });
+
+  /* ===== DISCONNECT CLEANUP ===== */
   socket.on("disconnect", () => {
     for (let [userId, socketId] of onlineUsers.entries()) {
       if (socketId === socket.id) {
@@ -229,16 +240,25 @@ io.on("connection", (socket) => {
         break;
       }
     }
+
     io.emit("online-users", Array.from(onlineUsers.entries()));
-    console.log("User disconnected:", socket.id);
+    console.log("❌ Disconnected:", socket.id);
   });
 
 });
 
-/* ===============================
+/* =====================================
+   HEALTH CHECK
+===================================== */
+
+app.get("/", (req, res) => {
+  res.send("🚀 AddisGo backend running");
+});
+
+/* =====================================
    START SERVER
-================================ */
+===================================== */
 
 server.listen(PORT, () => {
-  console.log(`🚀 AddisGo Server running on port ${PORT}`);
+  console.log(`🔥 AddisGo Server running on port ${PORT}`);
 });

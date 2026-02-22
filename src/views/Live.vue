@@ -13,14 +13,20 @@
       <!-- CONTROLS -->
       <div class="controls">
         <button @click="startCamera">Start Camera</button>
+
         <button @click="callUser" :disabled="!selectedUser">
           Call
+        </button>
+
+        <button v-if="inCall" class="end-btn" @click="endCall">
+          End Call
         </button>
       </div>
 
       <!-- ONLINE USERS -->
       <div class="users">
         <h3>🟢 Online Users</h3>
+
         <div
           v-for="user in onlineUsers"
           :key="user.userId"
@@ -29,6 +35,15 @@
           :class="{ active: selectedUser?.userId === user.userId }"
         >
           User {{ user.userId }}
+        </div>
+      </div>
+
+      <!-- INCOMING CALL POPUP -->
+      <div v-if="incomingCall" class="popup">
+        <div class="popup-box">
+          <h3>📞 Incoming Call</h3>
+          <button @click="acceptCall">Accept</button>
+          <button class="reject" @click="rejectCall">Reject</button>
         </div>
       </div>
 
@@ -55,9 +70,11 @@ const peerConnection = ref(null);
 const onlineUsers = ref([]);
 const selectedUser = ref(null);
 
-/* =============================
-   STUN + TURN CONFIG
-============================= */
+const incomingCall = ref(false);
+const callerSocket = ref(null);
+const incomingOffer = ref(null);
+
+const inCall = ref(false);
 
 const rtcConfig = {
   iceServers: [
@@ -70,9 +87,7 @@ const rtcConfig = {
   ]
 };
 
-/* =============================
-   START CAMERA
-============================= */
+/* ================= CAMERA ================= */
 
 async function startCamera() {
   localStream.value = await navigator.mediaDevices.getUserMedia({
@@ -83,9 +98,7 @@ async function startCamera() {
   localVideo.value.srcObject = localStream.value;
 }
 
-/* =============================
-   CREATE PEER
-============================= */
+/* ================= PEER ================= */
 
 function createPeer() {
   peerConnection.value = new RTCPeerConnection(rtcConfig);
@@ -99,7 +112,7 @@ function createPeer() {
   };
 
   peerConnection.value.onicecandidate = event => {
-    if (event.candidate) {
+    if (event.candidate && selectedUser.value) {
       socket.emit("ice-candidate", {
         to: selectedUser.value.socketId,
         candidate: event.candidate
@@ -108,11 +121,13 @@ function createPeer() {
   };
 }
 
-/* =============================
-   CALL USER
-============================= */
+/* ================= CALL ================= */
 
 async function callUser() {
+  if (!selectedUser.value) return;
+
+  if (!localStream.value) await startCamera();
+
   createPeer();
 
   const offer = await peerConnection.value.createOffer();
@@ -122,39 +137,79 @@ async function callUser() {
     to: selectedUser.value.socketId,
     offer
   });
+
+  inCall.value = true;
 }
 
-/* =============================
-   SOCKET EVENTS
-============================= */
+/* ================= ACCEPT ================= */
+
+async function acceptCall() {
+  incomingCall.value = false;
+
+  if (!localStream.value) await startCamera();
+
+  selectedUser.value = { socketId: callerSocket.value };
+
+  createPeer();
+
+  await peerConnection.value.setRemoteDescription(
+    new RTCSessionDescription(incomingOffer.value)
+  );
+
+  const answer = await peerConnection.value.createAnswer();
+  await peerConnection.value.setLocalDescription(answer);
+
+  socket.emit("answer-call", {
+    to: callerSocket.value,
+    answer
+  });
+
+  inCall.value = true;
+}
+
+/* ================= REJECT ================= */
+
+function rejectCall() {
+  socket.emit("reject-call", { to: callerSocket.value });
+  incomingCall.value = false;
+}
+
+/* ================= END ================= */
+
+function endCall() {
+  if (selectedUser.value) {
+    socket.emit("end-call", { to: selectedUser.value.socketId });
+  }
+
+  cleanupCall();
+}
+
+function cleanupCall() {
+  if (peerConnection.value) {
+    peerConnection.value.close();
+    peerConnection.value = null;
+  }
+
+  remoteVideo.value.srcObject = null;
+  inCall.value = false;
+}
+
+/* ================= SOCKET ================= */
 
 onMounted(() => {
 
   socket.emit("register-user", user.id);
 
   socket.on("online-users", users => {
-    onlineUsers.value = users.map(([userId, socketId]) => ({
-      userId,
-      socketId
-    })).filter(u => u.userId !== user.id);
+    onlineUsers.value = users
+      .map(([userId, socketId]) => ({ userId, socketId }))
+      .filter(u => u.userId !== user.id);
   });
 
-  socket.on("incoming-call", async ({ offer, from }) => {
-    selectedUser.value = { socketId: from };
-
-    createPeer();
-
-    await peerConnection.value.setRemoteDescription(
-      new RTCSessionDescription(offer)
-    );
-
-    const answer = await peerConnection.value.createAnswer();
-    await peerConnection.value.setLocalDescription(answer);
-
-    socket.emit("answer-call", {
-      to: from,
-      answer
-    });
+  socket.on("incoming-call", ({ offer, from }) => {
+    incomingCall.value = true;
+    callerSocket.value = from;
+    incomingOffer.value = offer;
   });
 
   socket.on("call-answered", async ({ answer }) => {
@@ -168,16 +223,22 @@ onMounted(() => {
       await peerConnection.value.addIceCandidate(
         new RTCIceCandidate(candidate)
       );
-    } catch (err) {
-      console.error(err);
-    }
+    } catch {}
+  });
+
+  socket.on("call-rejected", () => {
+    alert("Call Rejected");
+    cleanupCall();
+  });
+
+  socket.on("call-ended", () => {
+    alert("Call Ended");
+    cleanupCall();
   });
 
 });
 
-/* =============================
-   SELECT USER
-============================= */
+/* ================= SELECT ================= */
 
 function selectUser(user) {
   selectedUser.value = user;
@@ -194,7 +255,6 @@ function selectUser(user) {
 .videos {
   display: flex;
   gap: 20px;
-  margin-bottom: 20px;
 }
 
 video {
@@ -203,13 +263,21 @@ video {
   background: black;
 }
 
-.controls button {
+.controls {
+  margin-top: 15px;
+}
+
+button {
   margin-right: 10px;
   padding: 8px 18px;
   border-radius: 10px;
   border: none;
   background: #ff4b2b;
   color: white;
+}
+
+.end-btn {
+  background: red;
 }
 
 .users {
@@ -226,5 +294,29 @@ video {
 
 .user-card.active {
   background: #ff4b2b;
+}
+
+.popup {
+  position: fixed;
+  top: 0;
+  left: 0;
+  width: 100%;
+  height: 100%;
+  background: rgba(0,0,0,0.7);
+  display: flex;
+  justify-content: center;
+  align-items: center;
+}
+
+.popup-box {
+  background: white;
+  padding: 30px;
+  border-radius: 15px;
+  text-align: center;
+}
+
+.reject {
+  background: gray;
+  margin-left: 10px;
 }
 </style>
