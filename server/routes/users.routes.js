@@ -1,49 +1,29 @@
-import express from "express";
-import bcrypt from "bcryptjs";
-import jwt from "jsonwebtoken";
+import express from "express"
+import { pool } from "../db.js"
+import { authenticateToken } from "../middleware/auth.middleware.js"
 
-const router = express.Router();
+const router = express.Router()
 
-// TEMP IN-MEMORY STORE (for now)
-const users = [];
+// List users for starting chats (exclude yourself)
+router.get("/", authenticateToken, async (req, res) => {
+  try {
+    const result = await pool.query(
+      `
+      SELECT
+        id,
+        COALESCE(username, name, email, 'User') AS display_name
+      FROM users
+      WHERE id <> $1
+      ORDER BY id DESC
+      LIMIT 200
+      `,
+      [req.user.id]
+    )
+    res.json(result.rows)
+  } catch (err) {
+    console.error("GET /users ERROR:", err)
+    res.status(500).json({ error: err.message })
+  }
+})
 
-// REGISTER
-router.post("/register", async (req, res) => {
-  const { email, password } = req.body;
-
-  if (!email || !password)
-    return res.status(400).json({ message: "Missing fields" });
-
-  const exists = users.find(u => u.email === email);
-  if (exists)
-    return res.status(400).json({ message: "User already exists" });
-
-  const hashedPassword = await bcrypt.hash(password, 10);
-
-  users.push({ email, password: hashedPassword });
-
-  res.json({ success: true });
-});
-
-// LOGIN
-router.post("/login", async (req, res) => {
-  const { email, password } = req.body;
-
-  const user = users.find(u => u.email === email);
-  if (!user)
-    return res.status(401).json({ message: "Invalid credentials" });
-
-  const valid = await bcrypt.compare(password, user.password);
-  if (!valid)
-    return res.status(401).json({ message: "Invalid credentials" });
-
-  const token = jwt.sign(
-    { email },
-    process.env.JWT_SECRET,
-    { expiresIn: "7d" }
-  );
-
-  res.json({ token });
-});
-
-export default router;
+export default router
