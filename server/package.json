@@ -1,6 +1,7 @@
 {
   "name": "addisgo-server",
   "version": "1.0.0",
+  "type": "module",
   "description": "AddisGo Backend Server",
   "main": "index.js",
   "scripts": {
