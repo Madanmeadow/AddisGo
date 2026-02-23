@@ -122,6 +122,7 @@
               class="media"
               :src="getMedia(post.video_url)"
               controls
+              playsinline
               preload="metadata"
             ></video>
           </article>
@@ -165,183 +166,196 @@
 </template>
 
 <script setup>
-import { ref, computed, onMounted } from "vue"
-import Layout from "../components/Layout.vue"
-import { io } from "socket.io-client"
+import { ref, computed, onMounted } from "vue";
+import Layout from "../components/Layout.vue";
+import { io } from "socket.io-client";
 
-const apiUrl = import.meta.env.VITE_API_URL
-const token = localStorage.getItem("token")
+const apiUrl = import.meta.env.VITE_API_URL;
+const token = localStorage.getItem("token");
 const me = (() => {
-  try { return JSON.parse(localStorage.getItem("user") || "null") } catch { return null }
-})()
+  try { return JSON.parse(localStorage.getItem("user") || "null"); } catch { return null; }
+})();
 
 /* ================= POSTS ================= */
-const posts = ref([])
-const loading = ref(true)
-const posting = ref(false)
-const error = ref("")
-const caption = ref("")
-const imageFile = ref(null)
-const videoFile = ref(null)
+const posts = ref([]);
+const loading = ref(true);
+const posting = ref(false);
+const error = ref("");
+const caption = ref("");
+const imageFile = ref(null);
+const videoFile = ref(null);
 
-const search = ref("")
+const search = ref("");
 
-const myInitial = computed(() => (me?.username ? me.username[0].toUpperCase() : "A"))
+const myInitial = computed(() => (me?.username ? me.username[0].toUpperCase() : "A"));
 
 function formatDate(d) {
-  if (!d) return ""
-  const date = new Date(d)
-  return Number.isNaN(date.getTime()) ? "" : date.toLocaleString()
+  if (!d) return "";
+  const date = new Date(d);
+  return Number.isNaN(date.getTime()) ? "" : date.toLocaleString();
 }
 
 function getMedia(url) {
-  if (!url) return ""
-  if (url.startsWith("http")) return url
-  return `${apiUrl}${url}`
+  if (!url) return "";
+  if (url.startsWith("http")) return url;
+  return `${apiUrl}${url}`;
 }
 
 function getInitial(userId) {
-  return String(userId || "?").slice(-1)
+  return String(userId || "?").slice(-1);
 }
 
 async function fetchPosts() {
   try {
-    loading.value = true
-    error.value = ""
+    loading.value = true;
+    error.value = "";
 
-    const res = await fetch(`${apiUrl}/posts`)
-    const data = await res.json()
+    const res = await fetch(`${apiUrl}/posts`);
+    const data = await res.json();
 
     if (!Array.isArray(data)) {
-      posts.value = []
-      error.value = data?.error || "Failed to load posts"
-      return
+      posts.value = [];
+      error.value = data?.error || "Failed to load posts";
+      return;
     }
 
-    posts.value = data
+    posts.value = data;
   } catch (e) {
-    posts.value = []
-    error.value = "Failed to fetch posts"
+    posts.value = [];
+    error.value = "Failed to fetch posts";
   } finally {
-    loading.value = false
+    loading.value = false;
   }
 }
 
 async function submitPost() {
-  if (!caption.value.trim() && !imageFile.value && !videoFile.value) return
+  if (!caption.value.trim() && !imageFile.value && !videoFile.value) return;
 
   try {
-    posting.value = true
-    error.value = ""
+    posting.value = true;
+    error.value = "";
 
-    const form = new FormData()
-    form.append("caption", caption.value || "")
-    if (imageFile.value) form.append("image", imageFile.value)
-    if (videoFile.value) form.append("video", videoFile.value)
+    const form = new FormData();
+    form.append("caption", caption.value || "");
+    if (imageFile.value) form.append("image", imageFile.value);
+    if (videoFile.value) form.append("video", videoFile.value);
 
     const res = await fetch(`${apiUrl}/posts`, {
       method: "POST",
       headers: { Authorization: `Bearer ${token}` },
-      body: form
-    })
+      body: form,
+    });
 
-    const newPost = await res.json()
+    const newPost = await res.json();
     if (!res.ok) {
-      error.value = newPost?.error || "Post failed"
-      return
+      error.value = newPost?.error || "Post failed";
+      return;
     }
 
-    // ✅ keeps it on screen instantly
-    posts.value.unshift(newPost)
+    posts.value.unshift(newPost);
 
-    // ✅ ensure it stays after refresh too
-    // (because GET /posts reads from DB)
-    caption.value = ""
-    imageFile.value = null
-    videoFile.value = null
+    caption.value = "";
+    imageFile.value = null;
+    videoFile.value = null;
   } catch (e) {
-    error.value = "Post failed"
+    error.value = "Post failed";
   } finally {
-    posting.value = false
+    posting.value = false;
   }
 }
 
 function onPickImage(e) {
-  imageFile.value = e.target.files?.[0] || null
+  imageFile.value = e.target.files?.[0] || null;
 }
 function onPickVideo(e) {
-  videoFile.value = e.target.files?.[0] || null
+  videoFile.value = e.target.files?.[0] || null;
 }
 function scrollToTop() {
-  window.scrollTo({ top: 0, behavior: "smooth" })
+  window.scrollTo({ top: 0, behavior: "smooth" });
 }
 
 /* ================= CHAT (UI + socket room) ================= */
-const chatOpen = ref(false)
-const chatRoom = ref("global")
-const chatText = ref("")
-const chatMessages = ref([])
+const chatOpen = ref(false);
+const chatRoom = ref("global");
+const chatText = ref("");
+const chatMessages = ref([]);
 
-let socket = null
-const liveStreams = ref([])
+let socket = null;
+const liveStreams = ref([]);
 
 function toggleChat() {
-  chatOpen.value = !chatOpen.value
+  chatOpen.value = !chatOpen.value;
 }
 function openNewChat() {
-  chatOpen.value = true
-  alert("Next step: real user list + conversations")
+  chatOpen.value = true;
+  alert("Next step: real user list + conversations");
 }
 function selectChat(room) {
-  chatRoom.value = room
-  socket?.emit("join-room", room)
-  chatMessages.value.push({ from: "system", text: `Joined room: ${room}` })
+  chatRoom.value = room;
+  socket?.emit("join-room", room);
+  chatMessages.value.push({ from: "system", text: `Joined room: ${room}` });
 }
 function sendChat() {
-  if (!chatText.value.trim()) return
+  if (!chatText.value.trim()) return;
+
   const payload = {
     room: chatRoom.value,
     from: me?.username || "me",
-    text: chatText.value
-  }
-  socket?.emit("send-message", payload)
-  chatText.value = ""
+    text: chatText.value,
+  };
+
+  // ✅ works because server supports send-message (room style)
+  socket?.emit("send-message", payload);
+
+  chatText.value = "";
 }
 
-/* ================= LIVE ================= */
+/* ================= LIVE (UPDATED to real Live page) ================= */
 function startLive() {
-  socket?.emit("start-live", { userId: me?.id })
+  // Create unique liveId
+  const liveId = `live-${me?.id || Math.random().toString(36).slice(2, 8)}-${Date.now().toString().slice(-4)}`;
+
+  // Tell server you are the host (also updates live-list)
+  socket?.emit("live:create", { liveId });
+
+  // Go to Live page in host mode
+  window.location.href = `/live?mode=host&liveId=${encodeURIComponent(liveId)}`;
 }
-function joinLive(stream) {
-  socket?.emit("join-live", stream)
-  alert("Joined " + stream)
+
+function joinLive(liveId) {
+  // Go to Live page in watch mode
+  window.location.href = `/live?mode=watch&liveId=${encodeURIComponent(liveId)}`;
 }
 
 /* ================= INIT ================= */
 const filteredPosts = computed(() => {
-  const q = search.value.trim().toLowerCase()
-  if (!q) return posts.value
-  return posts.value.filter(p => (p.caption || "").toLowerCase().includes(q))
-})
+  const q = search.value.trim().toLowerCase();
+  if (!q) return posts.value;
+  return posts.value.filter((p) => (p.caption || "").toLowerCase().includes(q));
+});
 
 onMounted(async () => {
-  await fetchPosts()
+  await fetchPosts();
 
-  socket = io(apiUrl, { transports: ["websocket", "polling"] })
+  socket = io(apiUrl, { transports: ["websocket", "polling"] });
 
   socket.on("connect", () => {
-    if (me?.id) socket.emit("register-user", me.id)
-    socket.emit("join-room", chatRoom.value)
-  })
+    // ✅ Send username too (better live chat + identity)
+    if (me?.id) socket.emit("register-user", { id: me.id, username: me.username });
+
+    socket.emit("join-room", chatRoom.value);
+    socket.emit("get-live-list"); // ensure list loads on mount
+  });
 
   socket.on("receive-message", (msg) => {
-    chatMessages.value.push(msg)
-  })
+    // room chat comes here
+    chatMessages.value.push(msg);
+  });
 
   socket.on("live-list", (streams) => {
-    liveStreams.value = Array.isArray(streams) ? streams : []
-  })
-})
+    liveStreams.value = Array.isArray(streams) ? streams : [];
+  });
+});
 </script>
 
 <style scoped>
