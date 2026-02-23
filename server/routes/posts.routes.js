@@ -2,13 +2,13 @@ import express from "express"
 import multer from "multer"
 import path from "path"
 import { fileURLToPath } from "url"
-import { pool, authenticateToken } from "../index.js"
+
+import { pool } from "../db.js"
+import { authenticateToken } from "../index.js"
 
 const router = express.Router()
 
-/* =====================================
-   FILE STORAGE
-===================================== */
+/* ================= MULTER ================= */
 
 const __filename = fileURLToPath(import.meta.url)
 const __dirname = path.dirname(__filename)
@@ -22,9 +22,7 @@ const storage = multer.diskStorage({
 
 const upload = multer({ storage })
 
-/* =====================================
-   GET POSTS
-===================================== */
+/* ================= GET POSTS ================= */
 
 router.get("/", async (req, res) => {
   try {
@@ -43,14 +41,15 @@ router.get("/", async (req, res) => {
   }
 })
 
-/* =====================================
-   CREATE POST
-===================================== */
+/* ================= CREATE POST ================= */
 
 router.post("/", authenticateToken, upload.single("file"), async (req, res) => {
   try {
     const { content } = req.body
-    const mediaUrl = req.file ? `/uploads/${req.file.filename}` : null
+
+    const mediaUrl = req.file
+      ? `/uploads/${req.file.filename}`
+      : null
 
     const result = await pool.query(
       `
