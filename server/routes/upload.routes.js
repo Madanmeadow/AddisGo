@@ -1,31 +1,36 @@
-const express = require("express")
-const multer = require("multer")
-const path = require("path")
-const router = express.Router()
+import express from "express";
+import { authenticateToken } from "../middleware/auth.middleware.js";
+import { uploadToCloudinary } from "../utils/cloudinaryUpload.js";
 
-// Storage config
-const storage = multer.diskStorage({
-  destination: function (req, file, cb) {
-    cb(null, "uploads/")
-  },
-  filename: function (req, file, cb) {
-    cb(null, Date.now() + "-" + file.originalname)
+const router = express.Router();
+
+router.post(
+  "/",
+  authenticateToken,
+  uploadToCloudinary.single("file"),
+  async (req, res) => {
+    try {
+      if (!req.file) {
+        return res.status(400).json({ ok: false, message: "No file uploaded" });
+      }
+
+      const url = (req.file.path || "").replace("http://", "https://");
+      const type = req.file.mimetype?.startsWith("video/") ? "video" : "image";
+
+      return res.json({
+        ok: true,
+        url,
+        type,
+        publicId: req.file.filename,
+      });
+    } catch (err) {
+      console.error("Upload error:", err);
+      return res.status(500).json({ ok: false, message: "Upload failed" });
+    }
   }
-})
+);
 
-const upload = multer({ storage })
-
-// POST /api/upload
-router.post("/", upload.single("file"), (req, res) => {
-  const fileUrl = `${req.protocol}://${req.get("host")}/uploads/${req.file.filename}`
-
-  res.json({
-    success: true,
-    url: fileUrl
-  })
-})
-
-module.exports = router
+export default router;
 
 
 

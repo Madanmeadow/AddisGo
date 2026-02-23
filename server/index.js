@@ -16,7 +16,7 @@ import postsRoutes from "./routes/posts.routes.js"
 import usersRoutes from "./routes/users.routes.js"
 import conversationsRoutes from "./routes/conversations.routes.js"
 import messagesRoutes from "./routes/messages.routes.js"
-
+import uploadRoutes from "./routes/upload.routes.js";
 dotenv.config()
 
 /* =========================
@@ -49,7 +49,7 @@ app.use(express.urlencoded({ extended: true }))
 
 // IMPORTANT: your upload routes save into server/uploads
 app.use("/uploads", express.static(path.join(__dirname, "uploads")))
-
+app.use("/api/upload", uploadRoutes);
 /* =========================
    DB HEALTH (optional)
 ========================= */
