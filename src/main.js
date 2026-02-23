@@ -1,31 +1,26 @@
 import { createApp } from "vue";
 import App from "./App.vue";
-
-// If you use Vue Router, this MUST be here:
 import router from "./router";
 
 const app = createApp(App);
 app.use(router);
 app.mount("#app");
 
-// ✅ PWA: only register in production (prevents dev white screen)
-// Also safe if plugin is missing temporarily.
+// ✅ PWA: only in production, and safe
 if (import.meta.env.PROD) {
   import("virtual:pwa-register")
     .then(({ registerSW }) => {
-      registerSW({
+      const updateSW = registerSW({
         immediate: true,
         onNeedRefresh() {
-          // optional: auto refresh on update
-          // window.location.reload();
+          // Optional: auto reload when a new version is ready
+          // updateSW(true);
+          console.log("New version available. Refresh to update.");
         },
         onOfflineReady() {
-          // optional: console.log("App ready to work offline");
+          console.log("App ready to work offline.");
         },
       });
     })
-    .catch(() => {
-      // If PWA plugin not active or build issue, don't crash the app
-    });
+    .catch(() => {});
 }
-
