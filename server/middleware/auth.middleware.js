@@ -1,4 +1,4 @@
-// server/middleware/auth.js
+// server/middleware/auth.middleware.js
 import jwt from "jsonwebtoken"
 
 export function authenticateToken(req, res, next) {
