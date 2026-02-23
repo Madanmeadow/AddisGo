@@ -8,6 +8,7 @@ import { fileURLToPath } from "url";
 import { Server } from "socket.io";
 import bcrypt from "bcrypt";
 import jwt from "jsonwebtoken";
+import twilio from "twilio";
 
 import { pool } from "./db.js";
 
@@ -25,18 +26,25 @@ dotenv.config();
 ========================= */
 const app = express();
 const server = http.createServer(app);
+
 const __filename = fileURLToPath(import.meta.url);
 const __dirname = path.dirname(__filename);
 
 const PORT = process.env.PORT || 5000;
-const CLIENT_ORIGIN = process.env.CLIENT_ORIGIN || "*"; // can be "https://addis-go.vercel.app"
+const CLIENT_ORIGIN = process.env.CLIENT_ORIGIN || "*"; // "https://addis-go.vercel.app,http://localhost:5173"
+const JWT_SECRET = process.env.JWT_SECRET || "dev_secret_change_me";
+
+const ORIGINS =
+  CLIENT_ORIGIN === "*"
+    ? "*"
+    : CLIENT_ORIGIN.split(",").map((s) => s.trim()).filter(Boolean);
 
 /* =========================
    MIDDLEWARE
 ========================= */
 app.use(
   cors({
-    origin: CLIENT_ORIGIN === "*" ? "*" : CLIENT_ORIGIN.split(",").map(s => s.trim()),
+    origin: ORIGINS,
     credentials: true,
     methods: ["GET", "POST", "PUT", "PATCH", "DELETE", "OPTIONS"],
   })
@@ -65,7 +73,7 @@ function signToken(user) {
       id: user.id,
       username: user.username || user.name || user.email || `User${user.id}`,
     },
-    process.env.JWT_SECRET,
+    JWT_SECRET,
     { expiresIn: "7d" }
   );
 }
@@ -81,12 +89,14 @@ app.post("/auth/register", async (req, res) => {
     let created;
     try {
       created = await pool.query(
-        `INSERT INTO users (username, email, password) VALUES ($1,$2,$3) RETURNING id, username, email`,
+        `INSERT INTO users (username, email, password) VALUES ($1,$2,$3)
+         RETURNING id, username, email`,
         [display, email, hashed]
       );
-    } catch (e1) {
+    } catch {
       created = await pool.query(
-        `INSERT INTO users (name, email, password) VALUES ($1,$2,$3) RETURNING id, name, email`,
+        `INSERT INTO users (name, email, password) VALUES ($1,$2,$3)
+         RETURNING id, name, email`,
         [display, email, hashed]
       );
     }
@@ -140,40 +150,79 @@ app.use("/messages", messagesRoutes);
    HEALTH
 ========================= */
 app.get("/", (req, res) => res.send("🚀 AddisGo backend running"));
+app.get("/api/health", async (req, res) => {
+  try {
+    const r = await pool.query("SELECT NOW() as now");
+    res.json({ ok: true, now: r.rows[0].now });
+  } catch {
+    res.status(500).json({ ok: false });
+  }
+});
+
+/* =========================
+   TWILIO TURN (ICE servers)
+   Secure way: frontend asks backend for ICE servers.
+   Requires:
+     TWILIO_ACCOUNT_SID
+     TWILIO_AUTH_TOKEN
+========================= */
+app.get("/api/turn", async (req, res) => {
+  try {
+    const sid = process.env.TWILIO_ACCOUNT_SID;
+    const auth = process.env.TWILIO_AUTH_TOKEN;
+    const ttl = Number(process.env.TWILIO_TURN_TTL || 3600);
+
+    if (!sid || !auth) {
+      // still ok: frontend will fallback to STUN
+      return res.status(200).json({
+        ok: true,
+        iceServers: [{ urls: "stun:stun.l.google.com:19302" }],
+        note: "Twilio TURN not configured; using STUN only",
+      });
+    }
+
+    const client = twilio(sid, auth);
+    const token = await client.tokens.create({ ttl });
+
+    // Twilio returns perfect WebRTC iceServers format
+    res.json({ ok: true, iceServers: token.iceServers });
+  } catch (e) {
+    console.error("TURN ERROR:", e);
+    res.status(500).json({ ok: false, message: "Failed to get TURN servers" });
+  }
+});
 
 /* =========================
    SOCKET.IO (Realtime Engine)
-   ✅ FIXED: no nested connections
-   ✅ Supports:
-      - online users
-      - room chat
-      - DB conversation messages
-      - LIVE one-to-many WebRTC signaling + chat
-      - live-list for dashboard
+   - online users
+   - room chat
+   - DB conversation messages
+   - LIVE one-to-many WebRTC signaling + chat
+   - live-list for dashboard
 ========================= */
 const io = new Server(server, {
   cors: {
-    origin: CLIENT_ORIGIN === "*" ? "*" : CLIENT_ORIGIN.split(",").map(s => s.trim()),
+    origin: ORIGINS,
+    credentials: true,
     methods: ["GET", "POST"],
   },
 });
 
+// Presence
 const onlineUsers = new Map(); // userId -> socketId
 
-// Live list for dashboard (ids)
+// Dashboard live list
 const liveStreams = new Set(); // liveId strings
 
-// WebRTC live: host per liveId
+// Live host mapping (WebRTC)
 const liveHosts = new Map(); // liveId -> hostSocketId
 
 function emitOnlineUsers() {
   io.emit("online-users", Array.from(onlineUsers.entries()));
 }
-
 function emitLiveList() {
   io.emit("live-list", Array.from(liveStreams));
 }
-
 function emitLivePresence(liveId) {
   const room = io.sockets.adapter.rooms.get(`live:${liveId}`);
   const count = room ? room.size : 0;
@@ -196,11 +245,13 @@ io.on("connection", (socket) => {
     socket.data.user = { id: String(userId), username: username || `User${userId}` };
     onlineUsers.set(String(userId), socket.id);
 
+    // personal room (future: inbox refresh)
     socket.join(`user:${userId}`);
+
     emitOnlineUsers();
   });
 
-  /* ===== ROOMS ===== */
+  /* ===== BASIC ROOMS ===== */
   socket.on("join-room", (room) => {
     if (!room) return;
     socket.join(String(room));
@@ -216,7 +267,7 @@ io.on("connection", (socket) => {
     socket.leave(`conv:${conversationId}`);
   });
 
-  /* ===== ROOM CHAT (compat: send-message + send-room-message) ===== */
+  /* ===== ROOM CHAT (dashboard uses send-message(room)) ===== */
   function emitRoomMessage(data) {
     const room = data?.room;
     const text = data?.text?.trim();
@@ -232,15 +283,18 @@ io.on("connection", (socket) => {
 
   socket.on("send-room-message", emitRoomMessage);
 
-  /* ===== DB + ROOM MESSAGE (single event) ===== */
+  /* ===== send-message supports BOTH:
+         A) room chat: {room, from, text}
+         B) db conv:   {conversationId, senderId, text}
+  ===== */
   socket.on("send-message", async (data) => {
-    // If it looks like room chat, handle it
+    // A) room chat
     if (data?.room && data?.text) {
       emitRoomMessage(data);
       return;
     }
 
-    // Otherwise: DB conversation message
+    // B) DB conversation message
     try {
       const conversationId = data?.conversationId;
       const senderId = data?.senderId;
@@ -265,10 +319,17 @@ io.on("connection", (socket) => {
   });
 
   /* =========================
-     LIVE STREAMING (WebRTC One-to-Many) + Chat
+     LIVE STREAMING (WebRTC One-to-Many)
+     Host:
+       live:create { liveId }
+     Viewer:
+       live:join { liveId }
+     Live chat:
+       live:chat { liveId, message }
+     Signaling relay:
+       webrtc:offer / answer / ice
   ========================= */
 
-  // Host starts live
   socket.on("live:create", ({ liveId }) => {
     if (!liveId) return;
 
@@ -277,7 +338,7 @@ io.on("connection", (socket) => {
 
     liveHosts.set(liveId, socket.id);
 
-    // show in dashboard list
+    // show in dashboard
     liveStreams.add(String(liveId));
     emitLiveList();
 
@@ -287,7 +348,6 @@ io.on("connection", (socket) => {
     emitLivePresence(liveId);
   });
 
-  // Viewer joins live
   socket.on("live:join", ({ liveId }) => {
     if (!liveId) return;
 
@@ -315,7 +375,6 @@ io.on("connection", (socket) => {
     emitLivePresence(liveId);
   });
 
-  // Host ends live
   socket.on("live:end", ({ liveId }) => {
     if (!liveId) return;
 
@@ -324,13 +383,11 @@ io.on("connection", (socket) => {
       io.to(`live:${liveId}`).emit("live:ended", { liveId });
 
       liveHosts.delete(liveId);
-
       liveStreams.delete(String(liveId));
       emitLiveList();
     }
   });
 
-  // Live chat
   socket.on("live:chat", ({ liveId, message }) => {
     if (!liveId || !message) return;
 
@@ -344,7 +401,7 @@ io.on("connection", (socket) => {
     });
   });
 
-  // WebRTC signaling relay
+  // Signaling relay
   socket.on("webrtc:offer", ({ liveId, to, offer }) => {
     if (!to || !offer) return;
     io.to(to).emit("webrtc:offer", { liveId, from: socket.id, offer });
@@ -360,7 +417,7 @@ io.on("connection", (socket) => {
     io.to(to).emit("webrtc:ice", { liveId, from: socket.id, candidate });
   });
 
-  /* ===== LEGACY LIVE LIST (keep old buttons safe) ===== */
+  /* ===== Legacy live-list (optional compatibility) ===== */
   socket.on("start-live", ({ userId }) => {
     const id = userId ? String(userId) : socket.id;
     liveStreams.add(id);
@@ -379,7 +436,7 @@ io.on("connection", (socket) => {
 
   /* ===== DISCONNECT ===== */
   socket.on("disconnect", () => {
-    // remove from online users map
+    // online cleanup
     for (const [userId, socketId] of onlineUsers.entries()) {
       if (socketId === socket.id) {
         onlineUsers.delete(userId);
@@ -387,7 +444,7 @@ io.on("connection", (socket) => {
       }
     }
 
-    // clean live host
+    // live cleanup
     const liveId = socket.data?.liveId;
     const role = socket.data?.role;
 
@@ -410,7 +467,7 @@ io.on("connection", (socket) => {
       emitLivePresence(liveId);
     }
 
-    // remove legacy live id if socket.id was used
+    // legacy cleanup
     liveStreams.delete(socket.id);
 
     emitOnlineUsers();
