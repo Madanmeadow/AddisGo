@@ -24,7 +24,8 @@ dotenv.config()
 ========================= */
 const app = express()
 const server = http.createServer(app)
-
+const __filename = fileURLToPath(import.meta.url)
+const __dirname = path.dirname(__filename)
 const PORT = process.env.PORT || 5000
 const CLIENT_ORIGIN = process.env.CLIENT_ORIGIN || "*" // optional if you want to lock later
 
@@ -45,8 +46,6 @@ app.use(express.urlencoded({ extended: true }))
 /* =========================
    STATIC UPLOADS
 ========================= */
-const __filename = fileURLToPath(import.meta.url)
-const __dirname = path.dirname(__filename)
 
 // IMPORTANT: your upload routes save into server/uploads
 app.use("/uploads", express.static(path.join(__dirname, "uploads")))
