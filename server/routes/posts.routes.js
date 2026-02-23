@@ -2,7 +2,6 @@ import express from "express"
 import multer from "multer"
 import path from "path"
 import { fileURLToPath } from "url"
-
 import { pool } from "../db.js"
 import { authenticateToken } from "../index.js"
 
@@ -29,52 +28,56 @@ router.get("/", async (req, res) => {
     const result = await pool.query(`
       SELECT posts.*, users.username
       FROM posts
-      JOIN users ON posts.user_id = users.id
+      LEFT JOIN users ON posts.user_id = users.id
       ORDER BY posts.created_at DESC
     `)
 
     res.json(result.rows)
-
   } catch (err) {
     console.error(err)
-    res.status(500).json({ error: "Fetch posts failed" })
+    res.status(500).json({ error: "Failed to fetch posts" })
   }
 })
 
 /* ================= CREATE POST ================= */
 
-router.post("/", authenticateToken, upload.single("file"), async (req, res) => {
-  try {
-    const { content } = req.body
+router.post(
+  "/",
+  authenticateToken,
+  upload.fields([
+    { name: "image", maxCount: 1 },
+    { name: "video", maxCount: 1 }
+  ]),
+  async (req, res) => {
+    try {
+      const { caption } = req.body
 
-    const mediaUrl = req.file
-      ? `/uploads/${req.file.filename}`
-      : null
+      let imageUrl = null
+      let videoUrl = null
 
-    const result = await pool.query(
-      `
-      INSERT INTO posts (user_id, content, media_url)
-      VALUES ($1,$2,$3)
-      RETURNING *
-      `,
-      [req.user.id, content, mediaUrl]
-    )
+      if (req.files?.image) {
+        imageUrl = `/uploads/${req.files.image[0].filename}`
+      }
 
-    const newPost = result.rows[0]
+      if (req.files?.video) {
+        videoUrl = `/uploads/${req.files.video[0].filename}`
+      }
 
-    const userResult = await pool.query(
-      "SELECT username FROM users WHERE id=$1",
-      [req.user.id]
-    )
+      const result = await pool.query(
+        `
+        INSERT INTO posts (user_id, caption, image_url, video_url)
+        VALUES ($1, $2, $3, $4)
+        RETURNING *
+        `,
+        [req.user.id, caption, imageUrl, videoUrl]
+      )
 
-    newPost.username = userResult.rows[0].username
-
-    res.json(newPost)
-
-  } catch (err) {
-    console.error(err)
-    res.status(500).json({ error: "Post failed" })
+      res.json(result.rows[0])
+    } catch (err) {
+      console.error(err)
+      res.status(500).json({ error: "Create post failed" })
+    }
   }
-})
+)
 
 export default router
