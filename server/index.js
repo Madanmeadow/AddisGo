@@ -204,6 +204,123 @@ io.on("connection", (socket) => {
       created_at: new Date().toISOString()
     })
   })
+  // =============================
+// LIVE STREAMING (WebRTC + Chat)
+// =============================
+
+// Track who is host per liveId (in-memory MVP)
+const liveHosts = new Map(); // liveId -> hostSocketId
+
+function presenceEmit(liveId, io) {
+  const room = io.sockets.adapter.rooms.get(`live:${liveId}`);
+  const count = room ? room.size : 0;
+  io.to(`live:${liveId}`).emit("live:presence", { liveId, viewerCount: count });
+}
+
+io.on("connection", (socket) => {
+  // create live (host)
+  socket.on("live:create", ({ liveId }) => {
+    if (!liveId) return;
+    socket.data.liveId = liveId;
+    socket.data.role = "host";
+
+    liveHosts.set(liveId, socket.id);
+
+    socket.join(`live:${liveId}`);
+    // Tell everyone in room who host is
+    io.to(`live:${liveId}`).emit("live:host", { liveId, hostSocketId: socket.id });
+
+    presenceEmit(liveId, io);
+  });
+
+  // join live (viewer)
+  socket.on("live:join", ({ liveId }) => {
+    if (!liveId) return;
+    socket.data.liveId = liveId;
+    socket.data.role = "viewer";
+
+    socket.join(`live:${liveId}`);
+
+    const hostSocketId = liveHosts.get(liveId) || null;
+    socket.emit("live:host", { liveId, hostSocketId });
+
+    // Notify host a viewer joined (host will create a peer connection)
+    if (hostSocketId) {
+      io.to(hostSocketId).emit("live:viewer-joined", {
+        liveId,
+        viewerSocketId: socket.id,
+      });
+    }
+
+    presenceEmit(liveId, io);
+  });
+
+  socket.on("live:leave", ({ liveId }) => {
+    if (!liveId) return;
+    socket.leave(`live:${liveId}`);
+    presenceEmit(liveId, io);
+  });
+
+  // Host ended live
+  socket.on("live:end", ({ liveId }) => {
+    if (!liveId) return;
+    const hostSocketId = liveHosts.get(liveId);
+    if (hostSocketId === socket.id) {
+      io.to(`live:${liveId}`).emit("live:ended", { liveId });
+      liveHosts.delete(liveId);
+    }
+  });
+
+  // -----------------------------
+  // WebRTC Signaling (relay)
+  // -----------------------------
+  socket.on("webrtc:offer", ({ liveId, to, offer }) => {
+    if (!to || !offer) return;
+    io.to(to).emit("webrtc:offer", { liveId, from: socket.id, offer });
+  });
+
+  socket.on("webrtc:answer", ({ liveId, to, answer }) => {
+    if (!to || !answer) return;
+    io.to(to).emit("webrtc:answer", { liveId, from: socket.id, answer });
+  });
+
+  socket.on("webrtc:ice", ({ liveId, to, candidate }) => {
+    if (!to || !candidate) return;
+    io.to(to).emit("webrtc:ice", { liveId, from: socket.id, candidate });
+  });
+
+  // -----------------------------
+  // Live chat
+  // -----------------------------
+  socket.on("live:chat", ({ liveId, message }) => {
+    if (!liveId || !message) return;
+    io.to(`live:${liveId}`).emit("live:chat", {
+      liveId,
+      from: socket.user ? { id: socket.user.id, username: socket.user.username } : null,
+      message: String(message).slice(0, 500),
+      at: new Date().toISOString(),
+    });
+  });
+
+  socket.on("disconnect", () => {
+    const liveId = socket.data?.liveId;
+    const role = socket.data?.role;
+
+    if (liveId) {
+      // If host disconnected, end live
+      if (role === "host" && liveHosts.get(liveId) === socket.id) {
+        io.to(`live:${liveId}`).emit("live:ended", { liveId });
+        liveHosts.delete(liveId);
+      } else {
+        const hostSocketId = liveHosts.get(liveId);
+        if (hostSocketId) {
+          io.to(hostSocketId).emit("live:viewer-left", { liveId, viewerSocketId: socket.id });
+        }
+      }
+      presenceEmit(liveId, io);
+    }
+  });
+});
 
   /* ===== DB-PERSISTED MESSAGES ===== */
   socket.on("send-message", async (data) => {
