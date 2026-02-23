@@ -1,12 +1,104 @@
-<!DOCTYPE html>
+<!doctype html>
 <html lang="en">
   <head>
+    <!-- Basics -->
     <meta charset="UTF-8" />
-    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
-    <title>AddisGo</title>
+    <meta http-equiv="X-UA-Compatible" content="IE=edge" />
+    <meta
+      name="viewport"
+      content="width=device-width, initial-scale=1, viewport-fit=cover"
+    />
+
+    <title>AddisGo — Social • Live • Chat</title>
+    <meta
+      name="description"
+      content="AddisGo — Social • Live • Chat. Share posts, message friends in realtime, and go live."
+    />
+    <meta name="robots" content="index,follow" />
+
+    <!-- Theme / UI -->
+    <meta name="theme-color" content="#0b1220" />
+
+    <!-- PWA Manifest -->
+    <link rel="manifest" href="/manifest.webmanifest" />
+
+    <!-- Favicons -->
+    <link rel="icon" href="/favicon.ico" />
+    <link rel="icon" type="image/png" sizes="192x192" href="/pwa-192x192.png" />
+    <link rel="icon" type="image/png" sizes="512x512" href="/pwa-512x512.png" />
+    <link rel="mask-icon" href="/masked-icon.svg" color="#ff3b5c" />
+
+    <!-- Apple (iOS) PWA -->
+    <meta name="apple-mobile-web-app-capable" content="yes" />
+    <meta name="apple-mobile-web-app-title" content="AddisGo" />
+    <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent" />
+    <link rel="apple-touch-icon" sizes="180x180" href="/apple-touch-icon.png" />
+
+    <!-- Optional: nicer iOS splash behavior -->
+    <meta name="format-detection" content="telephone=no" />
+
+    <!-- Social preview (Open Graph) -->
+    <meta property="og:type" content="website" />
+    <meta property="og:site_name" content="AddisGo" />
+    <meta property="og:title" content="AddisGo — Social • Live • Chat" />
+    <meta
+      property="og:description"
+      content="Share posts, message friends in realtime, and go live."
+    />
+    <meta property="og:url" content="https://addis-go.vercel.app" />
+    <meta property="og:image" content="/pwa-512x512.png" />
+
+    <!-- Twitter preview -->
+    <meta name="twitter:card" content="summary_large_image" />
+    <meta name="twitter:title" content="AddisGo — Social • Live • Chat" />
+    <meta
+      name="twitter:description"
+      content="Share posts, message friends in realtime, and go live."
+    />
+    <meta name="twitter:image" content="/pwa-512x512.png" />
+
+    <!-- Performance: preconnect (optional if you use these) -->
+    <!-- If you load media from Cloudinary, keep this -->
+    <link rel="preconnect" href="https://res.cloudinary.com" crossorigin />
+
+    <!-- Optional: prevent white flash on dark UI before CSS loads -->
+    <style>
+      :root {
+        color-scheme: dark;
+      }
+      html,
+      body {
+        margin: 0;
+        height: 100%;
+        background: #0b1220;
+      }
+      /* Simple initial loader (shows before Vue mounts) */
+      #app {
+        min-height: 100%;
+        display: grid;
+        place-items: center;
+      }
+      .boot {
+        width: 42px;
+        height: 42px;
+        border-radius: 999px;
+        border: 3px solid rgba(255, 255, 255, 0.15);
+        border-top-color: rgba(255, 255, 255, 0.85);
+        animation: spin 0.9s linear infinite;
+      }
+      @keyframes spin {
+        to {
+          transform: rotate(360deg);
+        }
+      }
+    </style>
   </head>
+
   <body>
-    <div id="app"></div>
+    <div id="app">
+      <!-- shows instantly before JS loads -->
+      <div class="boot" aria-label="Loading"></div>
+    </div>
 
     <script type="module" src="/src/main.js"></script>
   </body>
