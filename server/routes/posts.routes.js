@@ -2,13 +2,12 @@ import express from "express"
 import multer from "multer"
 import path from "path"
 import { fileURLToPath } from "url"
-
 import { pool } from "../db.js"
 import { authenticateToken } from "../middleware/auth.middleware.js"
 
 const router = express.Router()
 
-/* ================= MULTER ================= */
+/* ================= MULTER STORAGE ================= */
 const __filename = fileURLToPath(import.meta.url)
 const __dirname = path.dirname(__filename)
 
@@ -19,22 +18,19 @@ const storage = multer.diskStorage({
 
 const upload = multer({ storage })
 
-/* ================= GET POSTS ================= */
+/* ================= GET POSTS (SAFE: NO JOIN) ================= */
 router.get("/", async (req, res) => {
   try {
-    // Aliases make SQL safer + clearer
     const result = await pool.query(`
       SELECT
-        p.id,
-        p.user_id,
-        p.caption,
-        p.image_url,
-        p.video_url,
-        p.created_at,
-        u.username
-      FROM posts p
-      LEFT JOIN users u ON u.id = p.user_id
-      ORDER BY p.created_at DESC
+        id,
+        user_id,
+        caption,
+        image_url,
+        video_url,
+        created_at
+      FROM posts
+      ORDER BY created_at DESC
     `)
 
     res.json(result.rows)
@@ -45,10 +41,10 @@ router.get("/", async (req, res) => {
 })
 
 /* ================= CREATE POST =================
-   Supports:
-   - caption (text)
-   - image (file input name="image")
-   - video (file input name="video")
+   expects:
+   - caption
+   - image (optional)
+   - video (optional)
 */
 router.post(
   "/",
@@ -78,11 +74,8 @@ router.post(
         [req.user.id, caption || null, imageUrl, videoUrl]
       )
 
-      // attach username for frontend convenience
-      const row = result.rows[0]
-      row.username = req.user.username
-
-      res.json(row)
+      // return new row so frontend can instantly display it
+      res.json(result.rows[0])
     } catch (err) {
       console.error("POST /posts ERROR:", err)
       res.status(500).json({ error: err.message })
