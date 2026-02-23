@@ -1,12 +1,15 @@
-const { Pool } = require("pg");
+import pkg from "pg"
+import dotenv from "dotenv"
 
-const pool = new Pool({
+dotenv.config()
+
+const { Pool } = pkg
+
+export const pool = new Pool({
   connectionString: process.env.DATABASE_URL,
-  ssl:
-    process.env.NODE_ENV === "production"
-      ? { rejectUnauthorized: false }
-      : false,
-});
+  ssl: process.env.DATABASE_URL ? { rejectUnauthorized: false } : false
+})
 
-module.exports = pool;
-
+pool.on("connect", () => {
+  console.log("✅ PostgreSQL Connected")
+})
