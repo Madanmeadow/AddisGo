@@ -2,7 +2,11 @@ import { createApp } from "vue";
 import App from "./App.vue";
 import router from "./router";
 
+// ✅ Global styles (world-class + accessible)
+import "./style.css";
+
 const app = createApp(App);
+
 app.use(router);
 app.mount("#app");
 
@@ -13,9 +17,9 @@ if (import.meta.env.PROD) {
       const updateSW = registerSW({
         immediate: true,
         onNeedRefresh() {
-          // Optional: auto reload when a new version is ready
-          // updateSW(true);
+          // Optional: show a toast/button to refresh
           console.log("New version available. Refresh to update.");
+          // updateSW(true); // uncomment if you want auto-refresh
         },
         onOfflineReady() {
           console.log("App ready to work offline.");
