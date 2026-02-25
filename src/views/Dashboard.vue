@@ -109,7 +109,7 @@
               preload="metadata"
             ></video>
 
-            <!-- ✅ WORLD-CLASS ACTION BAR -->
+            <!-- ✅ ACTION BAR -->
             <div class="actions">
               <button
                 class="action-btn"
@@ -119,16 +119,12 @@
                 title="Like"
               >
                 <span class="icon">❤️</span>
-                <span class="label">
-                  {{ likesByPost[post.id]?.count ?? 0 }}
-                </span>
+                <span class="label">{{ likesByPost[post.id]?.count ?? 0 }}</span>
               </button>
 
               <button class="action-btn" @click="toggleComments(post)" title="Comments">
                 <span class="icon">💬</span>
-                <span class="label">
-                  {{ commentCount(post.id) }}
-                </span>
+                <span class="label">{{ commentCount(post.id) }}</span>
               </button>
 
               <div class="spacer"></div>
@@ -158,11 +154,13 @@
                 <div v-for="c in (commentsByPost[post.id] || [])" :key="c.id" class="comment">
                   <div class="comment-top">
                     <div class="comment-who">
-                      <span class="badge">{{ (c.name || c.email || `User #${c.user_id}`) }}</span>
+                      <span class="badge">{{ c.username || c.name || c.email || `User #${c.user_id}` }}</span>
                       <span class="comment-time">{{ formatDate(c.created_at) }}</span>
                     </div>
                   </div>
-                  <div class="comment-text">{{ c.content }}</div>
+
+                  <!-- ✅ backend returns "body" -->
+                  <div class="comment-text">{{ c.body }}</div>
                 </div>
               </div>
 
@@ -243,7 +241,6 @@ const error = ref("");
 const caption = ref("");
 const imageFile = ref(null);
 const videoFile = ref(null);
-
 const search = ref("");
 
 const myInitial = computed(() => (me?.username ? me.username[0].toUpperCase() : "A"));
@@ -280,9 +277,9 @@ async function fetchPosts() {
 
     posts.value = data;
 
-    // ✅ preload likes for visible posts (fast + feels premium)
+    // preload likes for visible posts (fast)
     await preloadLikesForPosts(data.slice(0, 20));
-  } catch (e) {
+  } catch {
     posts.value = [];
     error.value = "Failed to fetch posts";
   } finally {
@@ -316,13 +313,12 @@ async function submitPost() {
 
     posts.value.unshift(newPost);
 
-    // preload like state for the new post
     await ensureLikeState(newPost.id);
 
     caption.value = "";
     imageFile.value = null;
     videoFile.value = null;
-  } catch (e) {
+  } catch {
     error.value = "Post failed";
   } finally {
     posting.value = false;
@@ -339,12 +335,14 @@ function scrollToTop() {
   window.scrollTo({ top: 0, behavior: "smooth" });
 }
 
-/* ================= LIKES (WORLD CLASS) ================= */
+/* ================= LIKES =================
+   NOTE: keeping your existing endpoints since you said likes are working.
+*/
 const likesByPost = ref({}); // { [postId]: { count, likedByMe } }
 const likeBusyByPost = ref({}); // { [postId]: true/false }
 
 async function preloadLikesForPosts(list) {
-  if (!token) return; // likes endpoints are auth-protected
+  if (!token) return;
   await Promise.allSettled(list.map((p) => ensureLikeState(p.id)));
 }
 
@@ -364,7 +362,7 @@ async function ensureLikeState(postId) {
       [postId]: { count: data?.count ?? 0, likedByMe: !!data?.likedByMe },
     };
   } catch {
-    // silent fail (UI still works)
+    // silent
   }
 }
 
@@ -381,7 +379,6 @@ async function toggleLike(post) {
   const optimisticLiked = !prev.likedByMe;
   const optimisticCount = Math.max(0, prev.count + (optimisticLiked ? 1 : -1));
 
-  // optimistic UI
   likesByPost.value = {
     ...likesByPost.value,
     [postId]: { count: optimisticCount, likedByMe: optimisticLiked },
@@ -397,31 +394,28 @@ async function toggleLike(post) {
     const data = await res.json();
 
     if (!res.ok) {
-      // rollback
       likesByPost.value = { ...likesByPost.value, [postId]: prev };
       return;
     }
 
-    // authoritative state
     likesByPost.value = {
       ...likesByPost.value,
       [postId]: { count: data?.count ?? optimisticCount, likedByMe: !!data?.likedByMe },
     };
   } catch {
-    // rollback on network error
     likesByPost.value = { ...likesByPost.value, [postId]: prev };
   } finally {
     likeBusyByPost.value = { ...likeBusyByPost.value, [postId]: false };
   }
 }
 
-/* ================= COMMENTS (WORLD CLASS) ================= */
-const commentsOpenByPost = ref({}); // { [postId]: boolean }
-const commentsByPost = ref({}); // { [postId]: comment[] }
-const commentDraftByPost = ref({}); // { [postId]: string }
-const commentLoadingByPost = ref({}); // { [postId]: boolean }
-const commentBusyByPost = ref({}); // { [postId]: boolean }
-const commentErrorByPost = ref({}); // { [postId]: string }
+/* ================= COMMENTS (FIXED FOR OPTION A) ================= */
+const commentsOpenByPost = ref({});
+const commentsByPost = ref({});
+const commentDraftByPost = ref({});
+const commentLoadingByPost = ref({});
+const commentBusyByPost = ref({});
+const commentErrorByPost = ref({});
 
 function commentCount(postId) {
   return (commentsByPost.value[postId] || []).length;
@@ -429,39 +423,41 @@ function commentCount(postId) {
 
 async function toggleComments(post) {
   const postId = post.id;
-  commentsOpenByPost.value = { ...commentsOpenByPost.value, [postId]: !commentsOpenByPost.value[postId] };
+  commentsOpenByPost.value = {
+    ...commentsOpenByPost.value,
+    [postId]: !commentsOpenByPost.value[postId],
+  };
 
-  // load comments when opening
   if (commentsOpenByPost.value[postId]) {
-    await loadComments(postId);
+    await loadComments(postId, { force: true }); // always refresh when opened
   }
 }
 
-async function loadComments(postId) {
-  if (!token) {
-    commentErrorByPost.value = { ...commentErrorByPost.value, [postId]: "Please login again to view comments." };
-    return;
-  }
-
-  // already loaded once? keep it (fast UI). You can refresh later if you want.
-  if (Array.isArray(commentsByPost.value[postId])) return;
+async function loadComments(postId, { force = false } = {}) {
+  // comments GET is not auth-required in your backend, but sending token is fine
+  if (!force && Array.isArray(commentsByPost.value[postId])) return;
 
   commentLoadingByPost.value = { ...commentLoadingByPost.value, [postId]: true };
   commentErrorByPost.value = { ...commentErrorByPost.value, [postId]: "" };
 
   try {
     const res = await fetch(`${apiUrl}/posts/${postId}/comments`, {
-      headers: { Authorization: `Bearer ${token}` },
+      headers: token ? { Authorization: `Bearer ${token}` } : {},
     });
     const data = await res.json();
 
     if (!res.ok) {
-      commentErrorByPost.value = { ...commentErrorByPost.value, [postId]: data?.error || "Failed to load comments" };
+      commentErrorByPost.value = {
+        ...commentErrorByPost.value,
+        [postId]: data?.error || "Failed to load comments",
+      };
       commentsByPost.value = { ...commentsByPost.value, [postId]: [] };
       return;
     }
 
-    commentsByPost.value = { ...commentsByPost.value, [postId]: Array.isArray(data) ? data : [] };
+    // your backend returns { items: [...] }
+    const items = Array.isArray(data) ? data : Array.isArray(data?.items) ? data.items : [];
+    commentsByPost.value = { ...commentsByPost.value, [postId]: items };
   } catch {
     commentErrorByPost.value = { ...commentErrorByPost.value, [postId]: "Failed to load comments" };
     commentsByPost.value = { ...commentsByPost.value, [postId]: [] };
@@ -472,6 +468,7 @@ async function loadComments(postId) {
 
 async function submitComment(post) {
   const postId = post.id;
+
   if (!token) {
     alert("Please login again to comment.");
     return;
@@ -489,9 +486,8 @@ async function submitComment(post) {
     id: tempId,
     post_id: postId,
     user_id: me?.id || 0,
-    name: me?.username || "me",
-    email: "",
-    content: text,
+    username: me?.username || "me",
+    body: text, // ✅ match backend
     created_at: new Date().toISOString(),
     _optimistic: true,
   };
@@ -501,23 +497,26 @@ async function submitComment(post) {
   commentDraftByPost.value = { ...commentDraftByPost.value, [postId]: "" };
 
   try {
-    const res = await fetch(`${apiUrl}/comments/${postId}`, {
+    // ✅ OPTION A endpoint + body field
+    const res = await fetch(`${apiUrl}/posts/${postId}/comments`, {
       method: "POST",
       headers: {
         "Content-Type": "application/json",
         Authorization: `Bearer ${token}`,
       },
-      body: JSON.stringify({ content: text }),
+      body: JSON.stringify({ body: text }),
     });
     const data = await res.json();
 
     if (!res.ok) {
-      // remove optimistic + show error
       commentsByPost.value = {
         ...commentsByPost.value,
         [postId]: (commentsByPost.value[postId] || []).filter((c) => c.id !== tempId),
       };
-      commentErrorByPost.value = { ...commentErrorByPost.value, [postId]: data?.error || "Failed to send comment" };
+      commentErrorByPost.value = {
+        ...commentErrorByPost.value,
+        [postId]: data?.error || "Failed to send comment",
+      };
       return;
     }
 
@@ -527,7 +526,6 @@ async function submitComment(post) {
       [postId]: (commentsByPost.value[postId] || []).map((c) => (c.id === tempId ? data : c)),
     };
   } catch {
-    // remove optimistic + show error
     commentsByPost.value = {
       ...commentsByPost.value,
       [postId]: (commentsByPost.value[postId] || []).filter((c) => c.id !== tempId),
@@ -591,7 +589,7 @@ function sendChat() {
   chatText.value = "";
 }
 
-/* ================= LIVE (UPDATED to real Live page) ================= */
+/* ================= LIVE ================= */
 function startLive() {
   const liveId = `live-${me?.id || Math.random().toString(36).slice(2, 8)}-${Date.now().toString().slice(-4)}`;
   socket?.emit("live:create", { liveId });
