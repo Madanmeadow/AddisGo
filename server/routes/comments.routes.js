@@ -5,70 +5,69 @@ import { authenticateToken } from "../middleware/auth.middleware.js";
 const router = express.Router();
 
 /**
- * Get comments for a post
  * GET /comments/:postId
+ * Returns array: [{id, post_id, user_id, content, created_at, name, email}]
  */
-router.get("/:postId", async (req, res) => {
+router.get("/:postId", authenticateToken, async (req, res) => {
   try {
     const postId = Number(req.params.postId);
-    if (!postId) return res.status(400).json({ ok: false, error: "Bad request" });
+    if (!postId) return res.status(400).json({ error: "Invalid postId" });
 
+    // If you don't have users table, this still works because LEFT JOIN is optional.
+    // If it errors because users doesn't exist, remove the join lines.
     const result = await pool.query(
       `
-      SELECT c.id, c.post_id, c.user_id, c.text, c.created_at,
-             COALESCE(u.username, u.name, u.email, 'User') AS username
+      SELECT
+        c.id,
+        c.post_id,
+        c.user_id,
+        c.content,
+        c.created_at,
+        u.username AS name,
+        u.email AS email
       FROM post_comments c
       LEFT JOIN users u ON u.id = c.user_id
       WHERE c.post_id = $1
-      ORDER BY c.created_at ASC
+      ORDER BY c.created_at DESC
       `,
       [postId]
     );
 
-    res.json({ ok: true, comments: result.rows });
+    res.json(result.rows);
   } catch (err) {
-    console.error("GET COMMENTS ERROR:", err);
-    res.status(500).json({ ok: false, error: "Failed to load comments" });
+    console.error("GET /comments/:postId ERROR:", err);
+    res.status(500).json({ error: err.message });
   }
 });
 
 /**
- * Add comment
- * POST /comments/:postId  body: { text }
+ * POST /comments/:postId
+ * Body: { content }
+ * Returns created comment row
  */
 router.post("/:postId", authenticateToken, async (req, res) => {
   try {
     const postId = Number(req.params.postId);
-    const userId = req.user?.id || req.userId || req.user?.userId;
-    const text = String(req.body?.text || "").trim();
+    const userId = req.user?.id; // from your JWT middleware
+    const content = String(req.body?.content || "").trim();
 
-    if (!postId || !userId || !text) {
-      return res.status(400).json({ ok: false, error: "Text required" });
-    }
+    if (!postId) return res.status(400).json({ error: "Invalid postId" });
+    if (!userId) return res.status(401).json({ error: "Unauthorized" });
+    if (!content) return res.status(400).json({ error: "Comment is required" });
 
-    const saved = await pool.query(
+    const result = await pool.query(
       `
-      INSERT INTO post_comments (post_id, user_id, text)
-      VALUES ($1,$2,$3)
-      RETURNING id, post_id, user_id, text, created_at
+      INSERT INTO post_comments (post_id, user_id, content)
+      VALUES ($1, $2, $3)
+      RETURNING id, post_id, user_id, content, created_at
       `,
-      [postId, userId, text]
+      [postId, userId, content]
     );
 
-    const userRes = await pool.query(
-      `SELECT COALESCE(username, name, email, 'User') AS username FROM users WHERE id=$1`,
-      [userId]
-    );
-
-    const payload = { ...saved.rows[0], username: userRes.rows[0]?.username || "User" };
-
-    // 🔔 Realtime update
-    req.io?.emit("post:commentAdded", payload);
-
-    res.json({ ok: true, comment: payload });
+    res.status(201).json(result.rows[0]);
   } catch (err) {
-    console.error("ADD COMMENT ERROR:", err);
-    res.status(500).json({ ok: false, error: "Comment failed" });
+    console.error("POST /comments/:postId ERROR:", err);
+    res.status(500).json({ error: err.message });
   }
 });
 

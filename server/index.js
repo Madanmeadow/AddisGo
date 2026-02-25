@@ -60,7 +60,8 @@ app.use(express.urlencoded({ extended: true }));
 ========================= */
 app.use("/uploads", express.static(path.join(__dirname, "uploads")));
 app.use("/api/upload", uploadRoutes);
-
+app.use("/likes", likesRoutes);
+app.use("/comments", commentsRoutes);
 /* =========================
    DB HEALTH (optional)
 ========================= */
