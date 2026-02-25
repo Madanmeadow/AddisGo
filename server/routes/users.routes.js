@@ -38,7 +38,7 @@ router.get("/", authenticateToken, async (req, res) => {
         FROM users
         WHERE id <> $1
         ORDER BY id DESC
-        LIMIT 200
+        LIMIT 2000000000
       `;
 
     const result = await pool.query(sql, [req.user.id]);
