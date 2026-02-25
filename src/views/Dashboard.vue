@@ -11,6 +11,7 @@
           </div>
         </div>
 
+        <!-- LIVE -->
         <div class="panel">
           <div class="panel-title">🔴 Live Now</div>
           <button class="btn btn-primary w100" @click="startLive">Go Live</button>
@@ -22,22 +23,51 @@
           </div>
         </div>
 
+        <!-- ✅ PEOPLE / CALLS -->
+        <div class="panel">
+          <div class="panel-title">📞 People</div>
+
+          <div class="row">
+            <input v-model="userSearch" class="searchMini" placeholder="Search users..." />
+            <button class="btn mini" @click="fetchUsers" :disabled="usersLoading">
+              {{ usersLoading ? "…" : "↻" }}
+            </button>
+          </div>
+
+          <div v-if="usersError" class="hint red mt10">{{ usersError }}</div>
+
+          <div class="people">
+            <div v-for="u in filteredUsers" :key="u.id" class="person">
+              <div class="person-left">
+                <div class="avatarSm">{{ String(u.display_name || 'U').slice(0,1).toUpperCase() }}</div>
+                <div class="person-meta">
+                  <div class="person-name">{{ u.display_name }}</div>
+                  <div class="person-sub">
+                    <span class="statusDot" :class="{ on: isOnline(u.id) }"></span>
+                    <span>{{ isOnline(u.id) ? "Online" : "Offline" }}</span>
+                  </div>
+                </div>
+              </div>
+
+              <div class="person-actions">
+                <button class="iconBtn" title="Audio Call" @click="startCall(u.id, 'audio')">📞</button>
+                <button class="iconBtn" title="Video Call" @click="startCall(u.id, 'video')">🎥</button>
+              </div>
+            </div>
+
+            <div v-if="filteredUsers.length === 0" class="hint mt10">
+              No users found.
+            </div>
+          </div>
+        </div>
+
         <!-- CHAT BUTTONS -->
         <div class="panel">
           <div class="panel-title">💬 Chat</div>
           <button class="btn w100" @click="toggleChat">
             {{ chatOpen ? "Close Inbox" : "Open Inbox" }}
           </button>
-
           <button class="btn w100 mt10" @click="openNewChat">+ New Chat</button>
-        </div>
-
-        <!-- ✅ CALL ACTIONS -->
-        <div class="panel">
-          <div class="panel-title">📞 Calls</div>
-          <button class="btn w100" @click="startCall('audio')">📞 Audio Call</button>
-          <button class="btn w100 mt10" @click="startCall('video')">🎥 Video Call</button>
-          <div class="hint mt12">Tip: enter a userId for now (we’ll replace with real user list)</div>
         </div>
 
         <div class="panel">
@@ -102,17 +132,9 @@
             <div v-if="post.caption" class="text">{{ post.caption }}</div>
 
             <img v-if="post.image_url" class="media" :src="getMedia(post.image_url)" loading="lazy" />
+            <video v-if="post.video_url" class="media" :src="getMedia(post.video_url)" controls playsinline preload="metadata"></video>
 
-            <video
-              v-if="post.video_url"
-              class="media"
-              :src="getMedia(post.video_url)"
-              controls
-              playsinline
-              preload="metadata"
-            ></video>
-
-            <!-- ✅ ACTION BAR -->
+            <!-- ACTION BAR -->
             <div class="actions">
               <button
                 class="action-btn"
@@ -138,7 +160,7 @@
               </button>
             </div>
 
-            <!-- ✅ COMMENTS PANEL -->
+            <!-- COMMENTS PANEL -->
             <div v-if="commentsOpenByPost[post.id]" class="comments">
               <div class="comments-head">
                 <div class="comments-title">Comments</div>
@@ -159,7 +181,6 @@
                       <span class="comment-time">{{ formatDate(c.created_at) }}</span>
                     </div>
                   </div>
-
                   <div class="comment-text">{{ c.body }}</div>
                 </div>
               </div>
@@ -188,12 +209,12 @@
         </section>
       </main>
 
-      <!-- RIGHT CHAT PANEL (desktop only) -->
+      <!-- RIGHT CHAT PANEL -->
       <aside v-if="chatOpen" class="right">
         <div class="panel">
           <div class="panel-title">📥 Inbox</div>
 
-          <div class="chat-hint">(Next step: real user list + conversations/messages)</div>
+          <div class="chat-hint">(Next step: connect to your conversations/messages tables)</div>
 
           <div class="chat-list">
             <button class="chat-item" @click="selectChat('global')">🌍 Global Room</button>
@@ -215,23 +236,30 @@
         </div>
       </aside>
 
-      <!-- ✅ MOBILE FLOATING ACTION BUTTON -->
-      <button class="fab" @click="openCallSheet">📞</button>
-      <div v-if="callSheetOpen" class="sheet-backdrop" @click.self="callSheetOpen=false">
-        <div class="sheet">
-          <div class="sheet-title">Calls</div>
-          <button class="btn w100" @click="startCall('audio')">📞 Audio Call</button>
-          <button class="btn w100 mt10" @click="startCall('video')">🎥 Video Call</button>
-          <button class="btn w100 mt10" @click="callSheetOpen=false">Close</button>
+      <!-- ✅ INCOMING CALL POPUP -->
+      <div v-if="incoming.open" class="modal-backdrop">
+        <div class="modal">
+          <div class="modalTop">
+            <div class="modalTitle">Incoming {{ incoming.kind === 'video' ? "Video" : "Audio" }} Call</div>
+            <div class="modalSub">{{ incoming.fromUsername || "Someone" }} is calling…</div>
+          </div>
+
+          <div class="modalActions">
+            <button class="btn danger" @click="rejectIncoming">Reject</button>
+            <button class="btn btn-primary" @click="acceptIncoming">Accept</button>
+          </div>
         </div>
       </div>
 
-      <!-- ✅ INCOMING CALL POPUP -->
-      <IncomingCallModal
-        v-model="incomingOpen"
-        :call="incomingCall"
-        :socket="socketRef"
-      />
+      <!-- ✅ OUTGOING CALL STATUS -->
+      <div v-if="outgoing.open" class="toast">
+        <div class="toastTitle">Calling…</div>
+        <div class="toastSub">
+          {{ outgoing.kind === 'video' ? "Video" : "Audio" }} call
+          <span v-if="outgoing.toUserId">→ User #{{ outgoing.toUserId }}</span>
+        </div>
+        <button class="toastX" @click="cancelOutgoing">✕</button>
+      </div>
     </div>
   </Layout>
 </template>
@@ -240,20 +268,130 @@
 import { ref, computed, onMounted } from "vue";
 import { useRouter } from "vue-router";
 import Layout from "../components/Layout.vue";
-import IncomingCallModal from "../components/IncomingCallModal.vue";
 import { io } from "socket.io-client";
 
 const router = useRouter();
 
 const apiUrl = import.meta.env.VITE_API_URL;
 const token = localStorage.getItem("token");
+
 const me = (() => {
-  try {
-    return JSON.parse(localStorage.getItem("user") || "null");
-  } catch {
-    return null;
-  }
+  try { return JSON.parse(localStorage.getItem("user") || "null"); }
+  catch { return null; }
 })();
+
+/* ================= SOCKET ================= */
+let socket = null;
+
+/* ================= ONLINE USERS ================= */
+const onlineMap = ref(new Map()); // userId -> socketId
+
+function isOnline(userId) {
+  return onlineMap.value.has(String(userId));
+}
+
+/* ================= USERS LIST (People) ================= */
+const users = ref([]);
+const usersLoading = ref(false);
+const usersError = ref("");
+const userSearch = ref("");
+
+const filteredUsers = computed(() => {
+  const q = userSearch.value.trim().toLowerCase();
+  if (!q) return users.value;
+  return users.value.filter((u) => String(u.display_name || "").toLowerCase().includes(q));
+});
+
+async function fetchUsers() {
+  if (!token) {
+    usersError.value = "Login again to load users.";
+    return;
+  }
+  try {
+    usersLoading.value = true;
+    usersError.value = "";
+    const res = await fetch(`${apiUrl}/users`, {
+      headers: { Authorization: `Bearer ${token}` },
+    });
+    const data = await res.json();
+    if (!res.ok) {
+      usersError.value = data?.error || "Failed to load users";
+      users.value = [];
+      return;
+    }
+    users.value = Array.isArray(data) ? data : [];
+  } catch {
+    usersError.value = "Failed to load users";
+    users.value = [];
+  } finally {
+    usersLoading.value = false;
+  }
+}
+
+/* ================= CALLS ================= */
+const incoming = ref({
+  open: false,
+  callId: "",
+  kind: "audio",
+  fromUserId: "",
+  fromUsername: "",
+  fromSocketId: "",
+});
+
+const outgoing = ref({
+  open: false,
+  callId: "",
+  kind: "audio",
+  toUserId: "",
+});
+
+function startCall(toUserId, kind = "audio") {
+  if (!socket) return alert("Socket not connected yet.");
+  if (!me?.id) return alert("Login again first.");
+
+  outgoing.value = { open: true, callId: "", kind, toUserId: String(toUserId) };
+  socket.emit("call:start", { toUserId: String(toUserId), kind });
+}
+
+function cancelOutgoing() {
+  // just close the toast; real cancel can be added later
+  outgoing.value.open = false;
+}
+
+function acceptIncoming() {
+  if (!socket) return;
+
+  // tell caller we accept
+  socket.emit("call:accept", {
+    roomId: incoming.value.callId,       // backend names it roomId
+    fromSocketId: incoming.value.fromSocketId,
+    kind: incoming.value.kind,
+  });
+
+  // go to Call page as callee
+  router.push({
+    path: "/call",
+    query: {
+      callId: incoming.value.callId,
+      role: "callee",
+      kind: incoming.value.kind,
+      otherSocketId: incoming.value.fromSocketId,
+    },
+  });
+
+  incoming.value.open = false;
+}
+
+function rejectIncoming() {
+  if (!socket) return;
+
+  socket.emit("call:reject", {
+    roomId: incoming.value.callId,
+    fromSocketId: incoming.value.fromSocketId,
+  });
+
+  incoming.value.open = false;
+}
 
 /* ================= POSTS ================= */
 const posts = ref([]);
@@ -344,17 +482,11 @@ async function submitPost() {
   }
 }
 
-function onPickImage(e) {
-  imageFile.value = e.target.files?.[0] || null;
-}
-function onPickVideo(e) {
-  videoFile.value = e.target.files?.[0] || null;
-}
-function scrollToTop() {
-  window.scrollTo({ top: 0, behavior: "smooth" });
-}
+function onPickImage(e) { imageFile.value = e.target.files?.[0] || null; }
+function onPickVideo(e) { videoFile.value = e.target.files?.[0] || null; }
+function scrollToTop() { window.scrollTo({ top: 0, behavior: "smooth" }); }
 
-/* ================= LIKES ================= */
+/* ================= LIKES (unchanged) ================= */
 const likesByPost = ref({});
 const likeBusyByPost = ref({});
 
@@ -383,7 +515,7 @@ async function ensureLikeState(postId) {
 
 async function toggleLike(post) {
   const postId = post.id;
-  if (!token) return alert("Please login again.");
+  if (!token) return alert("Please login again to like posts.");
 
   await ensureLikeState(postId);
 
@@ -421,7 +553,7 @@ async function toggleLike(post) {
   }
 }
 
-/* ================= COMMENTS ================= */
+/* ================= COMMENTS (Option A) ================= */
 const commentsOpenByPost = ref({});
 const commentsByPost = ref({});
 const commentDraftByPost = ref({});
@@ -495,13 +627,19 @@ async function submitComment(post) {
   try {
     const res = await fetch(`${apiUrl}/posts/${postId}/comments`, {
       method: "POST",
-      headers: { "Content-Type": "application/json", Authorization: `Bearer ${token}` },
+      headers: {
+        "Content-Type": "application/json",
+        Authorization: `Bearer ${token}`,
+      },
       body: JSON.stringify({ body: text }),
     });
     const data = await res.json();
 
     if (!res.ok) {
-      commentsByPost.value = { ...commentsByPost.value, [postId]: (commentsByPost.value[postId] || []).filter((c) => c.id !== tempId) };
+      commentsByPost.value = {
+        ...commentsByPost.value,
+        [postId]: (commentsByPost.value[postId] || []).filter((c) => c.id !== tempId),
+      };
       commentErrorByPost.value = { ...commentErrorByPost.value, [postId]: data?.error || "Failed to send comment" };
       return;
     }
@@ -511,13 +649,17 @@ async function submitComment(post) {
       [postId]: (commentsByPost.value[postId] || []).map((c) => (c.id === tempId ? data : c)),
     };
   } catch {
-    commentsByPost.value = { ...commentsByPost.value, [postId]: (commentsByPost.value[postId] || []).filter((c) => c.id !== tempId) };
+    commentsByPost.value = {
+      ...commentsByPost.value,
+      [postId]: (commentsByPost.value[postId] || []).filter((c) => c.id !== tempId),
+    };
     commentErrorByPost.value = { ...commentErrorByPost.value, [postId]: "Failed to send comment" };
   } finally {
     commentBusyByPost.value = { ...commentBusyByPost.value, [postId]: false };
   }
 }
 
+/* ================= SHARE ================= */
 async function sharePost(post) {
   const url = `${window.location.origin}/#post-${post.id}`;
   try {
@@ -535,72 +677,36 @@ async function sharePost(post) {
   }
 }
 
-/* ================= CHAT (UI + socket room) ================= */
+/* ================= CHAT ================= */
 const chatOpen = ref(false);
 const chatRoom = ref("global");
 const chatText = ref("");
 const chatMessages = ref([]);
 
-const socketRef = ref(null);
-const liveStreams = ref([]);
-
-function toggleChat() {
-  chatOpen.value = !chatOpen.value;
-}
-function openNewChat() {
-  chatOpen.value = true;
-  alert("Next step: real user list + conversations");
-}
+function toggleChat() { chatOpen.value = !chatOpen.value; }
+function openNewChat() { chatOpen.value = true; alert("Next step: real user list + conversations"); }
 function selectChat(room) {
   chatRoom.value = room;
-  socketRef.value?.emit("join-room", room);
+  socket?.emit("join-room", room);
   chatMessages.value.push({ from: "system", text: `Joined room: ${room}` });
 }
 function sendChat() {
   if (!chatText.value.trim()) return;
-
-  socketRef.value?.emit("send-message", {
-    room: chatRoom.value,
-    from: me?.username || "me",
-    text: chatText.value,
-  });
-
+  socket?.emit("send-message", { room: chatRoom.value, from: me?.username || "me", text: chatText.value });
   chatText.value = "";
 }
 
 /* ================= LIVE ================= */
+const liveStreams = ref([]);
+
 function startLive() {
   const liveId = `live-${me?.id || Math.random().toString(36).slice(2, 8)}-${Date.now().toString().slice(-4)}`;
-  socketRef.value?.emit("live:create", { liveId });
-  router.push(`/live?mode=host&liveId=${encodeURIComponent(liveId)}`);
+  socket?.emit("live:create", { liveId });
+  window.location.href = `/live?mode=host&liveId=${encodeURIComponent(liveId)}`;
 }
+
 function joinLive(liveId) {
-  router.push(`/live?mode=watch&liveId=${encodeURIComponent(liveId)}`);
-}
-
-/* ================= CALLS (NEW) ================= */
-const incomingOpen = ref(false);
-const incomingCall = ref({});
-const callSheetOpen = ref(false);
-
-function openCallSheet() {
-  callSheetOpen.value = true;
-}
-
-function startCall(kind = "audio") {
-  callSheetOpen.value = false;
-
-  if (!socketRef.value) return alert("Socket not connected yet.");
-  if (!me?.id) return alert("Login again please.");
-
-  const toUserId = prompt("Call which userId? (example: 4)");
-  if (!toUserId) return;
-
-  socketRef.value.emit("call:start", { toUserId: Number(toUserId), kind });
-}
-
-function scrollToTop() {
-  window.scrollTo({ top: 0, behavior: "smooth" });
+  window.location.href = `/live?mode=watch&liveId=${encodeURIComponent(liveId)}`;
 }
 
 /* ================= INIT ================= */
@@ -612,38 +718,72 @@ const filteredPosts = computed(() => {
 
 onMounted(async () => {
   await fetchPosts();
+  await fetchUsers();
 
-  socketRef.value = io(apiUrl, { transports: ["websocket", "polling"] });
+  socket = io(apiUrl, { transports: ["websocket", "polling"] });
 
-  socketRef.value.on("connect", () => {
-    if (me?.id) socketRef.value.emit("register-user", { id: me.id, username: me.username });
-    socketRef.value.emit("join-room", chatRoom.value);
-    socketRef.value.emit("get-live-list");
+  socket.on("connect", () => {
+    if (me?.id) socket.emit("register-user", { id: me.id, username: me.username });
+    socket.emit("join-room", chatRoom.value);
+    socket.emit("get-live-list");
   });
 
-  socketRef.value.on("receive-message", (msg) => {
-    chatMessages.value.push(msg);
-  });
+  socket.on("receive-message", (msg) => chatMessages.value.push(msg));
 
-  socketRef.value.on("live-list", (streams) => {
+  socket.on("live-list", (streams) => {
     liveStreams.value = Array.isArray(streams) ? streams : [];
   });
 
-  // ✅ incoming call popup
-  socketRef.value.on("call:incoming", (payload) => {
-    incomingCall.value = payload;
-    incomingOpen.value = true;
+  // ✅ online users list from server
+  socket.on("online-users", (pairs) => {
+    // pairs = [[userId, socketId], ...]
+    const m = new Map();
+    if (Array.isArray(pairs)) {
+      for (const [uid, sid] of pairs) m.set(String(uid), String(sid));
+    }
+    onlineMap.value = m;
   });
 
-  // caller side results
-  socketRef.value.on("call:offline", () => alert("User is offline — missed call ✅"));
-  socketRef.value.on("call:rejected", () => alert("Call rejected"));
-  socketRef.value.on("call:accepted", ({ roomId, kind, calleeSocketId }) => {
-    // caller goes to Call page and creates offer
+  // ✅ incoming call
+  socket.on("call:incoming", (payload) => {
+    incoming.value = {
+      open: true,
+      callId: String(payload.roomId || payload.callId || ""),
+      kind: String(payload.kind || "audio"),
+      fromUserId: String(payload.fromUserId || ""),
+      fromUsername: String(payload.fromUsername || ""),
+      fromSocketId: String(payload.fromSocketId || ""),
+    };
+  });
+
+  // ✅ caller gets ringing/offline/accepted
+  socket.on("call:ringing", ({ roomId, toUserId, kind }) => {
+    outgoing.value = { open: true, callId: String(roomId), kind: String(kind || "audio"), toUserId: String(toUserId || "") };
+  });
+
+  socket.on("call:offline", () => {
+    outgoing.value.open = false;
+    alert("User is offline. (Next: save missed call + leave message)");
+  });
+
+  socket.on("call:accepted", ({ roomId, calleeSocketId, kind }) => {
+    const cId = String(roomId || "");
+    outgoing.value.open = false;
+
     router.push({
       path: "/call",
-      query: { roomId, role: "caller", kind, otherSocketId: calleeSocketId },
+      query: {
+        callId: cId,
+        role: "caller",
+        kind: String(kind || "audio"),
+        otherSocketId: String(calleeSocketId || ""),
+      },
     });
+  });
+
+  socket.on("call:rejected", () => {
+    outgoing.value.open = false;
+    alert("Call rejected");
   });
 });
 </script>
@@ -658,18 +798,9 @@ onMounted(async () => {
   padding: 24px;
 }
 @media (max-width: 1100px) {
-  .page {
-    grid-template-columns: 260px 1fr;
-  }
-  .right {
-    display: none;
-  }
-}
-@media (max-width: 820px) {
-  .page {
-    grid-template-columns: 1fr;
-    padding-bottom: 120px; /* space for FAB */
-  }
+  .page { grid-template-columns: 1fr; }
+  .right { display: none; }
+  .left { position: relative; top: 0; }
 }
 
 .panel,
@@ -689,28 +820,11 @@ onMounted(async () => {
   top: 12px;
 }
 
-.brand {
-  display: flex;
-  gap: 10px;
-  align-items: center;
-  margin-bottom: 14px;
-}
-.brand-icon {
-  font-size: 24px;
-}
-.brand-title {
-  font-weight: 900;
-  font-size: 22px;
-}
-.brand-sub {
-  opacity: 0.7;
-  font-size: 12px;
-}
-
-.panel-title {
-  font-weight: 900;
-  margin-bottom: 10px;
-}
+.brand { display: flex; gap: 10px; align-items: center; margin-bottom: 14px; }
+.brand-icon { font-size: 24px; }
+.brand-title { font-weight: 900; font-size: 22px; }
+.brand-sub { opacity: 0.7; font-size: 12px; }
+.panel-title { font-weight: 900; margin-bottom: 10px; }
 
 .input {
   width: 100%;
@@ -723,22 +837,9 @@ onMounted(async () => {
   resize: none;
 }
 
-.upload-row {
-  display: flex;
-  gap: 10px;
-  align-items: center;
-  flex-wrap: wrap;
-  margin-top: 10px;
-}
-.file-pill {
-  background: rgba(255, 255, 255, 0.12);
-  border-radius: 999px;
-  padding: 10px 12px;
-  cursor: pointer;
-}
-.file-pill input {
-  display: none;
-}
+.upload-row { display: flex; gap: 10px; align-items: center; flex-wrap: wrap; margin-top: 10px; }
+.file-pill { background: rgba(255, 255, 255, 0.12); border-radius: 999px; padding: 10px 12px; cursor: pointer; }
+.file-pill input { display: none; }
 
 .btn {
   border: none;
@@ -748,30 +849,22 @@ onMounted(async () => {
   background: rgba(255, 255, 255, 0.12);
   color: white;
 }
-.btn-primary {
-  background: linear-gradient(45deg, #ff416c, #ff4b2b);
-}
-.w100 {
-  width: 100%;
-}
-.mt10 {
+.btn-primary { background: linear-gradient(45deg, #ff416c, #ff4b2b); }
+.w100 { width: 100%; }
+.mt10 { margin-top: 10px; }
+.mt12 { margin-top: 12px; }
+.hint { opacity: 0.75; font-size: 13px; }
+.hint.red { color: #ff9aa2; }
+.alert {
   margin-top: 10px;
-}
-.mt12 {
-  margin-top: 12px;
+  padding: 10px;
+  border-radius: 14px;
+  background: rgba(255, 80, 80, 0.18);
+  border: 1px solid rgba(255, 80, 80, 0.35);
 }
 
-.feed-head {
-  display: flex;
-  justify-content: space-between;
-  align-items: center;
-  gap: 10px;
-  margin-bottom: 10px;
-}
-.feed-title {
-  font-weight: 900;
-  font-size: 18px;
-}
+.feed-head { display: flex; justify-content: space-between; align-items: center; gap: 10px; margin-bottom: 10px; }
+.feed-title { font-weight: 900; font-size: 18px; }
 .search {
   background: rgba(0, 0, 0, 0.35);
   border: 1px solid rgba(255, 255, 255, 0.12);
@@ -781,179 +874,89 @@ onMounted(async () => {
   outline: none;
 }
 
-.post {
-  background: rgba(0, 0, 0, 0.55);
-}
-.post-head {
-  display: flex;
-  gap: 10px;
-  align-items: center;
-  margin-bottom: 10px;
-}
+.post { background: rgba(0, 0, 0, 0.55); }
+.post-head { display: flex; gap: 10px; align-items: center; margin-bottom: 10px; }
 .avatar {
-  width: 44px;
-  height: 44px;
-  border-radius: 50%;
+  width: 44px; height: 44px; border-radius: 50%;
   background: linear-gradient(45deg, #ff416c, #ff4b2b);
-  display: grid;
-  place-items: center;
-  font-weight: 900;
+  display: grid; place-items: center; font-weight: 900;
 }
-.avatar.big {
-  width: 52px;
-  height: 52px;
-}
-.name {
-  font-weight: 900;
-}
-.time {
-  opacity: 0.75;
-  font-size: 12px;
-}
-.text {
-  margin: 6px 0 10px;
-  line-height: 1.5;
-}
+.avatar.big { width: 52px; height: 52px; }
+.name { font-weight: 900; }
+.time { opacity: 0.75; font-size: 12px; }
+.text { margin: 6px 0 10px; line-height: 1.5; }
+.media { width: 100%; border-radius: 16px; background: #000; margin-top: 10px; max-height: 700px; object-fit: cover; }
 
-.media {
-  width: 100%;
-  border-radius: 16px;
-  background: #000;
-  margin-top: 10px;
-  max-height: 700px;
-  object-fit: cover;
-}
-
-.state {
-  text-align: center;
-  padding: 26px;
-  opacity: 0.8;
-  border-radius: 18px;
-  background: rgba(255, 255, 255, 0.06);
-}
-.hint {
-  opacity: 0.75;
-  font-size: 13px;
-}
-.alert {
-  margin-top: 10px;
-  padding: 10px;
-  border-radius: 14px;
-  background: rgba(255, 80, 80, 0.18);
-  border: 1px solid rgba(255, 80, 80, 0.35);
-}
+.state { text-align: center; padding: 26px; opacity: 0.8; border-radius: 18px; background: rgba(255, 255, 255, 0.06); }
 
 .live-card {
-  display: flex;
-  align-items: center;
-  gap: 10px;
+  display: flex; align-items: center; gap: 10px;
   background: rgba(255, 0, 0, 0.12);
   border: 1px solid rgba(255, 0, 0, 0.18);
-  padding: 10px 12px;
-  border-radius: 14px;
-  margin-top: 10px;
-  cursor: pointer;
+  padding: 10px 12px; border-radius: 14px; margin-top: 10px; cursor: pointer;
 }
-.dot {
-  width: 10px;
-  height: 10px;
-  border-radius: 50%;
-  background: red;
-}
+.dot { width: 10px; height: 10px; border-radius: 50%; background: red; }
 
-.chat-hint {
-  opacity: 0.7;
-  font-size: 12px;
-  margin-bottom: 10px;
-}
-.chat-list {
-  display: grid;
-  gap: 8px;
-  margin-bottom: 12px;
-}
-.chat-item {
-  background: rgba(255, 255, 255, 0.10);
-  border: 1px solid rgba(255, 255, 255, 0.12);
-  padding: 10px 12px;
-  border-radius: 14px;
-  color: white;
-  cursor: pointer;
-  text-align: left;
-}
-.chat-box {
-  background: rgba(0, 0, 0, 0.35);
-  border-radius: 16px;
-  padding: 10px;
-}
-.chat-messages {
-  max-height: 280px;
-  overflow: auto;
-  display: grid;
-  gap: 8px;
-  padding: 6px;
-}
-.chat-msg {
-  font-size: 13px;
-  opacity: 0.95;
-}
-.chat-input {
-  display: flex;
-  gap: 8px;
-  margin-top: 10px;
-}
-.chat-input input {
+/* ✅ People panel */
+.row { display:flex; gap:10px; align-items:center; }
+.searchMini {
   flex: 1;
-  background: rgba(0, 0, 0, 0.35);
-  border: 1px solid rgba(255, 255, 255, 0.12);
-  color: white;
-  padding: 10px 12px;
-  border-radius: 12px;
-  outline: none;
-}
-
-/* ACTION BAR */
-.actions {
-  display: flex;
-  align-items: center;
-  gap: 10px;
-  margin-top: 12px;
-  padding-top: 10px;
-  border-top: 1px solid rgba(255, 255, 255, 0.10);
-}
-.action-btn {
-  display: inline-flex;
-  align-items: center;
-  gap: 10px;
-  border: 1px solid rgba(255, 255, 255, 0.14);
-  background: rgba(255, 255, 255, 0.08);
+  background: rgba(0,0,0,0.35);
+  border: 1px solid rgba(255,255,255,0.12);
   color: white;
   padding: 10px 12px;
   border-radius: 999px;
-  cursor: pointer;
+  outline: none;
 }
-.action-btn:disabled {
-  opacity: 0.6;
-  cursor: not-allowed;
+.btn.mini { padding: 10px 12px; min-width: 44px; }
+.people { display:grid; gap:10px; margin-top:12px; }
+.person {
+  display:flex; align-items:center; justify-content:space-between; gap:10px;
+  padding: 10px 12px;
+  border-radius: 14px;
+  background: rgba(255,255,255,0.06);
+  border: 1px solid rgba(255,255,255,0.10);
 }
-.action-btn .icon {
-  font-size: 16px;
+.person-left { display:flex; gap:10px; align-items:center; min-width:0; }
+.avatarSm {
+  width: 38px; height: 38px; border-radius: 50%;
+  display:grid; place-items:center; font-weight:900;
+  background: rgba(255,255,255,0.10);
+  border: 1px solid rgba(255,255,255,0.12);
 }
-.action-btn .label {
-  font-weight: 900;
-  font-size: 13px;
-}
-.action-btn.active {
-  border-color: rgba(255, 75, 43, 0.6);
-  background: rgba(255, 75, 43, 0.18);
-}
-.action-btn.ghost {
-  opacity: 0.95;
-}
-.spacer {
-  flex: 1;
+.person-meta { min-width:0; }
+.person-name { font-weight:900; white-space:nowrap; overflow:hidden; text-overflow:ellipsis; max-width: 150px; }
+.person-sub { display:flex; gap:8px; align-items:center; opacity:.8; font-size:12px; }
+.statusDot { width:10px; height:10px; border-radius:50%; background: rgba(255,255,255,0.25); }
+.statusDot.on { background: #4cff7a; }
+.person-actions { display:flex; gap:8px; }
+.iconBtn{
+  border:none; cursor:pointer;
+  border-radius: 12px;
+  padding: 10px 10px;
+  background: rgba(255,255,255,0.10);
+  border: 1px solid rgba(255,255,255,0.14);
+  color:white;
 }
 
-/* COMMENTS */
+/* ✅ action bar */
+.actions {
+  display:flex; align-items:center; gap:10px;
+  margin-top:12px; padding-top:10px;
+  border-top: 1px solid rgba(255,255,255,0.10);
+}
+.action-btn {
+  display:inline-flex; align-items:center; gap:10px;
+  border: 1px solid rgba(255,255,255,0.14);
+  background: rgba(255,255,255,0.08);
+  color:white;
+  padding: 10px 12px;
+  border-radius: 999px;
+  cursor:pointer;
+}
+.action-btn.active { border-color: rgba(255,75,43,0.6); background: rgba(255,75,43,0.18); }
+.spacer { flex:1; }
+
 .comments {
   margin-top: 12px;
   background: rgba(0, 0, 0, 0.35);
@@ -961,129 +964,77 @@ onMounted(async () => {
   border-radius: 16px;
   padding: 12px;
 }
-.comments-head {
-  display: flex;
-  align-items: center;
-  justify-content: space-between;
-  margin-bottom: 8px;
-}
-.comments-title {
-  font-weight: 900;
-}
-.x {
-  border: none;
-  cursor: pointer;
-  background: rgba(255, 255, 255, 0.10);
-  color: white;
-  border-radius: 10px;
-  padding: 6px 10px;
-}
-.comments-state,
-.comments-empty {
-  opacity: 0.8;
-  padding: 10px 6px;
-}
-.comments-list {
-  display: grid;
-  gap: 10px;
-  max-height: 280px;
-  overflow: auto;
-  padding-right: 4px;
-}
-.comment {
-  padding: 10px 10px;
-  border-radius: 14px;
-  background: rgba(255, 255, 255, 0.08);
-  border: 1px solid rgba(255, 255, 255, 0.10);
-}
-.comment-top {
-  display: flex;
-  justify-content: space-between;
-  align-items: center;
-  margin-bottom: 6px;
-}
-.comment-who {
-  display: inline-flex;
-  gap: 10px;
-  align-items: center;
-}
-.badge {
-  font-weight: 900;
-  font-size: 12px;
-  padding: 6px 10px;
-  border-radius: 999px;
-  background: rgba(255, 255, 255, 0.10);
-}
-.comment-time {
-  opacity: 0.75;
-  font-size: 12px;
-}
-.comment-text {
-  line-height: 1.5;
-  font-size: 14px;
-}
+.comments-head { display:flex; align-items:center; justify-content:space-between; margin-bottom:8px; }
+.comments-title { font-weight:900; }
+.x { border:none; cursor:pointer; background: rgba(255,255,255,0.10); color:white; border-radius:10px; padding:6px 10px; }
 
-.comment-compose {
-  display: flex;
-  gap: 8px;
-  margin-top: 10px;
-}
+.comments-list { display:grid; gap:10px; max-height: 280px; overflow:auto; padding-right:4px; }
+.comment { padding:10px; border-radius:14px; background: rgba(255,255,255,0.08); border:1px solid rgba(255,255,255,0.10); }
+.badge { font-weight:900; font-size:12px; padding:6px 10px; border-radius:999px; background: rgba(255,255,255,0.10); }
+.comment-time { opacity:0.75; font-size:12px; }
+.comment-text { line-height: 1.5; font-size:14px; }
+
+.comment-compose { display:flex; gap:8px; margin-top:10px; }
 .comment-input {
-  flex: 1;
+  flex:1;
   background: rgba(0, 0, 0, 0.35);
-  border: 1px solid rgba(255, 255, 255, 0.12);
-  color: white;
-  padding: 10px 12px;
-  border-radius: 12px;
-  outline: none;
+  border: 1px solid rgba(255,255,255,0.12);
+  color:white;
+  padding:10px 12px;
+  border-radius:12px;
+  outline:none;
 }
 .comment-error {
-  margin-top: 10px;
-  padding: 10px;
-  border-radius: 14px;
-  background: rgba(255, 80, 80, 0.18);
-  border: 1px solid rgba(255, 80, 80, 0.35);
+  margin-top:10px; padding:10px;
+  border-radius:14px;
+  background: rgba(255,80,80,0.18);
+  border:1px solid rgba(255,80,80,0.35);
 }
 
-/* ✅ Mobile FAB + Sheet */
-.fab {
-  position: fixed;
-  right: 18px;
-  bottom: 18px;
-  width: 62px;
-  height: 62px;
-  border-radius: 999px;
-  border: 1px solid rgba(255, 255, 255, 0.18);
-  background: linear-gradient(45deg, #ff416c, #ff4b2b);
-  color: white;
-  font-size: 22px;
-  font-weight: 900;
-  cursor: pointer;
-  z-index: 9998;
-  box-shadow: 0 18px 40px rgba(0,0,0,0.35);
-}
-@media (min-width: 821px) {
-  .fab { display: none; }
-}
-
-.sheet-backdrop {
-  position: fixed;
-  inset: 0;
+/* ✅ incoming modal */
+.modal-backdrop{
+  position:fixed; inset:0;
   background: rgba(0,0,0,0.55);
-  z-index: 9997;
-  display: grid;
-  place-items: end center;
+  display:grid; place-items:center;
+  z-index: 9999;
 }
-.sheet {
-  width: min(520px, 100%);
-  background: rgba(20, 26, 40, 0.96);
+.modal{
+  width:min(420px, 92vw);
+  border-radius: 18px;
+  background: rgba(20, 28, 44, 0.92);
   border: 1px solid rgba(255,255,255,0.14);
-  border-radius: 22px 22px 0 0;
   padding: 16px;
+  backdrop-filter: blur(12px);
 }
-.sheet-title {
-  font-weight: 900;
-  font-size: 16px;
-  margin-bottom: 10px;
+.modalTop{ margin-bottom: 12px; }
+.modalTitle{ font-weight:900; font-size: 18px; }
+.modalSub{ opacity:.8; margin-top: 6px; }
+.modalActions{ display:flex; gap:10px; justify-content:flex-end; }
+
+/* ✅ outgoing toast */
+.toast{
+  position: fixed;
+  left: 12px;
+  right: 12px;
+  bottom: 12px;
+  z-index: 9998;
+  padding: 12px 14px;
+  border-radius: 16px;
+  background: rgba(0,0,0,0.55);
+  border: 1px solid rgba(255,255,255,0.12);
+  backdrop-filter: blur(10px);
+}
+.toastTitle{ font-weight:900; }
+.toastSub{ opacity:.8; font-size: 13px; margin-top: 4px; }
+.toastX{
+  position:absolute;
+  right: 10px;
+  top: 10px;
+  border:none;
+  background: rgba(255,255,255,0.10);
+  color:white;
+  border-radius: 10px;
+  padding: 6px 10px;
+  cursor:pointer;
 }
 </style>
