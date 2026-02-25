@@ -404,11 +404,12 @@ io.on("connection", (socket) => {
     });
   });
 
-  // Signaling relay
-  socket.on("webrtc:offer", ({ liveId, to, offer }) => {
-    if (!to || !offer) return;
-    io.to(to).emit("webrtc:offer", { liveId, from: socket.id, offer });
-  });
+  // ✅ Signaling relay (works for both LIVE and CALLS)
+ socket.on("webrtc:offer", ({ callId, liveId, to, offer }) => {
+  const id = callId || liveId;
+  if (!to || !offer || !id) return;
+  io.to(to).emit("webrtc:offer", { callId: id, liveId: id, from: socket.id, offer });
+});
 
   socket.on("webrtc:answer", ({ liveId, to, answer }) => {
     if (!to || !answer) return;
