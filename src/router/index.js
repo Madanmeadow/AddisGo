@@ -5,6 +5,7 @@ import Register from "../views/Register.vue";
 import Dashboard from "../views/Dashboard.vue";
 import Messages from "../views/Messages.vue";
 import Live from "../views/Live.vue";
+import Call from "../views/Call.vue"; // ✅ NEW
 
 const routes = [
   { path: "/", redirect: "/login" },
@@ -13,6 +14,7 @@ const routes = [
   { path: "/dashboard", component: Dashboard },
   { path: "/messages", component: Messages },
   { path: "/live", component: Live },
+  { path: "/call", component: Call }, // ✅ NEW
 ];
 
 const router = createRouter({
@@ -21,7 +23,6 @@ const router = createRouter({
 });
 
 export default router;
-
 
 
 

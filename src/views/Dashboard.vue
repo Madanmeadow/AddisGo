@@ -32,6 +32,14 @@
           <button class="btn w100 mt10" @click="openNewChat">+ New Chat</button>
         </div>
 
+        <!-- ✅ CALL ACTIONS -->
+        <div class="panel">
+          <div class="panel-title">📞 Calls</div>
+          <button class="btn w100" @click="startCall('audio')">📞 Audio Call</button>
+          <button class="btn w100 mt10" @click="startCall('video')">🎥 Video Call</button>
+          <div class="hint mt12">Tip: enter a userId for now (we’ll replace with real user list)</div>
+        </div>
+
         <div class="panel">
           <div class="panel-title">⚡ Quick Actions</div>
           <button class="btn w100" @click="fetchPosts">Refresh Feed</button>
@@ -93,12 +101,7 @@
 
             <div v-if="post.caption" class="text">{{ post.caption }}</div>
 
-            <img
-              v-if="post.image_url"
-              class="media"
-              :src="getMedia(post.image_url)"
-              loading="lazy"
-            />
+            <img v-if="post.image_url" class="media" :src="getMedia(post.image_url)" loading="lazy" />
 
             <video
               v-if="post.video_url"
@@ -142,9 +145,7 @@
                 <button class="x" @click="commentsOpenByPost[post.id] = false">✕</button>
               </div>
 
-              <div v-if="commentLoadingByPost[post.id]" class="comments-state">
-                Loading comments...
-              </div>
+              <div v-if="commentLoadingByPost[post.id]" class="comments-state">Loading comments...</div>
 
               <div v-else class="comments-list">
                 <div v-if="(commentsByPost[post.id] || []).length === 0" class="comments-empty">
@@ -159,7 +160,6 @@
                     </div>
                   </div>
 
-                  <!-- ✅ backend returns "body" -->
                   <div class="comment-text">{{ c.body }}</div>
                 </div>
               </div>
@@ -188,12 +188,12 @@
         </section>
       </main>
 
-      <!-- RIGHT CHAT PANEL -->
+      <!-- RIGHT CHAT PANEL (desktop only) -->
       <aside v-if="chatOpen" class="right">
         <div class="panel">
           <div class="panel-title">📥 Inbox</div>
 
-          <div class="chat-hint">(Next step: connect to your conversations/messages tables)</div>
+          <div class="chat-hint">(Next step: real user list + conversations/messages)</div>
 
           <div class="chat-list">
             <button class="chat-item" @click="selectChat('global')">🌍 Global Room</button>
@@ -214,14 +214,36 @@
           </div>
         </div>
       </aside>
+
+      <!-- ✅ MOBILE FLOATING ACTION BUTTON -->
+      <button class="fab" @click="openCallSheet">📞</button>
+      <div v-if="callSheetOpen" class="sheet-backdrop" @click.self="callSheetOpen=false">
+        <div class="sheet">
+          <div class="sheet-title">Calls</div>
+          <button class="btn w100" @click="startCall('audio')">📞 Audio Call</button>
+          <button class="btn w100 mt10" @click="startCall('video')">🎥 Video Call</button>
+          <button class="btn w100 mt10" @click="callSheetOpen=false">Close</button>
+        </div>
+      </div>
+
+      <!-- ✅ INCOMING CALL POPUP -->
+      <IncomingCallModal
+        v-model="incomingOpen"
+        :call="incomingCall"
+        :socket="socketRef"
+      />
     </div>
   </Layout>
 </template>
 
 <script setup>
 import { ref, computed, onMounted } from "vue";
+import { useRouter } from "vue-router";
 import Layout from "../components/Layout.vue";
+import IncomingCallModal from "../components/IncomingCallModal.vue";
 import { io } from "socket.io-client";
+
+const router = useRouter();
 
 const apiUrl = import.meta.env.VITE_API_URL;
 const token = localStorage.getItem("token");
@@ -276,8 +298,6 @@ async function fetchPosts() {
     }
 
     posts.value = data;
-
-    // preload likes for visible posts (fast)
     await preloadLikesForPosts(data.slice(0, 20));
   } catch {
     posts.value = [];
@@ -312,7 +332,6 @@ async function submitPost() {
     }
 
     posts.value.unshift(newPost);
-
     await ensureLikeState(newPost.id);
 
     caption.value = "";
@@ -335,11 +354,9 @@ function scrollToTop() {
   window.scrollTo({ top: 0, behavior: "smooth" });
 }
 
-/* ================= LIKES =================
-   NOTE: keeping your existing endpoints since you said likes are working.
-*/
-const likesByPost = ref({}); // { [postId]: { count, likedByMe } }
-const likeBusyByPost = ref({}); // { [postId]: true/false }
+/* ================= LIKES ================= */
+const likesByPost = ref({});
+const likeBusyByPost = ref({});
 
 async function preloadLikesForPosts(list) {
   if (!token) return;
@@ -361,17 +378,12 @@ async function ensureLikeState(postId) {
       ...likesByPost.value,
       [postId]: { count: data?.count ?? 0, likedByMe: !!data?.likedByMe },
     };
-  } catch {
-    // silent
-  }
+  } catch {}
 }
 
 async function toggleLike(post) {
   const postId = post.id;
-  if (!token) {
-    alert("Please login again to like posts.");
-    return;
-  }
+  if (!token) return alert("Please login again.");
 
   await ensureLikeState(postId);
 
@@ -409,7 +421,7 @@ async function toggleLike(post) {
   }
 }
 
-/* ================= COMMENTS (FIXED FOR OPTION A) ================= */
+/* ================= COMMENTS ================= */
 const commentsOpenByPost = ref({});
 const commentsByPost = ref({});
 const commentDraftByPost = ref({});
@@ -423,18 +435,11 @@ function commentCount(postId) {
 
 async function toggleComments(post) {
   const postId = post.id;
-  commentsOpenByPost.value = {
-    ...commentsOpenByPost.value,
-    [postId]: !commentsOpenByPost.value[postId],
-  };
-
-  if (commentsOpenByPost.value[postId]) {
-    await loadComments(postId, { force: true }); // always refresh when opened
-  }
+  commentsOpenByPost.value = { ...commentsOpenByPost.value, [postId]: !commentsOpenByPost.value[postId] };
+  if (commentsOpenByPost.value[postId]) await loadComments(postId, { force: true });
 }
 
 async function loadComments(postId, { force = false } = {}) {
-  // comments GET is not auth-required in your backend, but sending token is fine
   if (!force && Array.isArray(commentsByPost.value[postId])) return;
 
   commentLoadingByPost.value = { ...commentLoadingByPost.value, [postId]: true };
@@ -447,15 +452,11 @@ async function loadComments(postId, { force = false } = {}) {
     const data = await res.json();
 
     if (!res.ok) {
-      commentErrorByPost.value = {
-        ...commentErrorByPost.value,
-        [postId]: data?.error || "Failed to load comments",
-      };
+      commentErrorByPost.value = { ...commentErrorByPost.value, [postId]: data?.error || "Failed to load comments" };
       commentsByPost.value = { ...commentsByPost.value, [postId]: [] };
       return;
     }
 
-    // your backend returns { items: [...] }
     const items = Array.isArray(data) ? data : Array.isArray(data?.items) ? data.items : [];
     commentsByPost.value = { ...commentsByPost.value, [postId]: items };
   } catch {
@@ -468,11 +469,7 @@ async function loadComments(postId, { force = false } = {}) {
 
 async function submitComment(post) {
   const postId = post.id;
-
-  if (!token) {
-    alert("Please login again to comment.");
-    return;
-  }
+  if (!token) return alert("Please login again to comment.");
 
   const text = String(commentDraftByPost.value[postId] || "").trim();
   if (!text) return;
@@ -480,14 +477,13 @@ async function submitComment(post) {
   commentBusyByPost.value = { ...commentBusyByPost.value, [postId]: true };
   commentErrorByPost.value = { ...commentErrorByPost.value, [postId]: "" };
 
-  // optimistic insert
   const tempId = `tmp-${Date.now()}`;
   const optimistic = {
     id: tempId,
     post_id: postId,
     user_id: me?.id || 0,
     username: me?.username || "me",
-    body: text, // ✅ match backend
+    body: text,
     created_at: new Date().toISOString(),
     _optimistic: true,
   };
@@ -497,39 +493,25 @@ async function submitComment(post) {
   commentDraftByPost.value = { ...commentDraftByPost.value, [postId]: "" };
 
   try {
-    // ✅ OPTION A endpoint + body field
     const res = await fetch(`${apiUrl}/posts/${postId}/comments`, {
       method: "POST",
-      headers: {
-        "Content-Type": "application/json",
-        Authorization: `Bearer ${token}`,
-      },
+      headers: { "Content-Type": "application/json", Authorization: `Bearer ${token}` },
       body: JSON.stringify({ body: text }),
     });
     const data = await res.json();
 
     if (!res.ok) {
-      commentsByPost.value = {
-        ...commentsByPost.value,
-        [postId]: (commentsByPost.value[postId] || []).filter((c) => c.id !== tempId),
-      };
-      commentErrorByPost.value = {
-        ...commentErrorByPost.value,
-        [postId]: data?.error || "Failed to send comment",
-      };
+      commentsByPost.value = { ...commentsByPost.value, [postId]: (commentsByPost.value[postId] || []).filter((c) => c.id !== tempId) };
+      commentErrorByPost.value = { ...commentErrorByPost.value, [postId]: data?.error || "Failed to send comment" };
       return;
     }
 
-    // replace optimistic with real
     commentsByPost.value = {
       ...commentsByPost.value,
       [postId]: (commentsByPost.value[postId] || []).map((c) => (c.id === tempId ? data : c)),
     };
   } catch {
-    commentsByPost.value = {
-      ...commentsByPost.value,
-      [postId]: (commentsByPost.value[postId] || []).filter((c) => c.id !== tempId),
-    };
+    commentsByPost.value = { ...commentsByPost.value, [postId]: (commentsByPost.value[postId] || []).filter((c) => c.id !== tempId) };
     commentErrorByPost.value = { ...commentErrorByPost.value, [postId]: "Failed to send comment" };
   } finally {
     commentBusyByPost.value = { ...commentBusyByPost.value, [postId]: false };
@@ -543,9 +525,7 @@ async function sharePost(post) {
       await navigator.share({ title: "AddisGo Post", text: post.caption || "Post", url });
       return;
     }
-  } catch {
-    // ignore
-  }
+  } catch {}
 
   try {
     await navigator.clipboard.writeText(url);
@@ -561,7 +541,7 @@ const chatRoom = ref("global");
 const chatText = ref("");
 const chatMessages = ref([]);
 
-let socket = null;
+const socketRef = ref(null);
 const liveStreams = ref([]);
 
 function toggleChat() {
@@ -573,31 +553,54 @@ function openNewChat() {
 }
 function selectChat(room) {
   chatRoom.value = room;
-  socket?.emit("join-room", room);
+  socketRef.value?.emit("join-room", room);
   chatMessages.value.push({ from: "system", text: `Joined room: ${room}` });
 }
 function sendChat() {
   if (!chatText.value.trim()) return;
 
-  const payload = {
+  socketRef.value?.emit("send-message", {
     room: chatRoom.value,
     from: me?.username || "me",
     text: chatText.value,
-  };
+  });
 
-  socket?.emit("send-message", payload);
   chatText.value = "";
 }
 
 /* ================= LIVE ================= */
 function startLive() {
   const liveId = `live-${me?.id || Math.random().toString(36).slice(2, 8)}-${Date.now().toString().slice(-4)}`;
-  socket?.emit("live:create", { liveId });
-  window.location.href = `/live?mode=host&liveId=${encodeURIComponent(liveId)}`;
+  socketRef.value?.emit("live:create", { liveId });
+  router.push(`/live?mode=host&liveId=${encodeURIComponent(liveId)}`);
+}
+function joinLive(liveId) {
+  router.push(`/live?mode=watch&liveId=${encodeURIComponent(liveId)}`);
 }
 
-function joinLive(liveId) {
-  window.location.href = `/live?mode=watch&liveId=${encodeURIComponent(liveId)}`;
+/* ================= CALLS (NEW) ================= */
+const incomingOpen = ref(false);
+const incomingCall = ref({});
+const callSheetOpen = ref(false);
+
+function openCallSheet() {
+  callSheetOpen.value = true;
+}
+
+function startCall(kind = "audio") {
+  callSheetOpen.value = false;
+
+  if (!socketRef.value) return alert("Socket not connected yet.");
+  if (!me?.id) return alert("Login again please.");
+
+  const toUserId = prompt("Call which userId? (example: 4)");
+  if (!toUserId) return;
+
+  socketRef.value.emit("call:start", { toUserId: Number(toUserId), kind });
+}
+
+function scrollToTop() {
+  window.scrollTo({ top: 0, behavior: "smooth" });
 }
 
 /* ================= INIT ================= */
@@ -610,21 +613,37 @@ const filteredPosts = computed(() => {
 onMounted(async () => {
   await fetchPosts();
 
-  socket = io(apiUrl, { transports: ["websocket", "polling"] });
+  socketRef.value = io(apiUrl, { transports: ["websocket", "polling"] });
 
-  socket.on("connect", () => {
-    if (me?.id) socket.emit("register-user", { id: me.id, username: me.username });
-
-    socket.emit("join-room", chatRoom.value);
-    socket.emit("get-live-list");
+  socketRef.value.on("connect", () => {
+    if (me?.id) socketRef.value.emit("register-user", { id: me.id, username: me.username });
+    socketRef.value.emit("join-room", chatRoom.value);
+    socketRef.value.emit("get-live-list");
   });
 
-  socket.on("receive-message", (msg) => {
+  socketRef.value.on("receive-message", (msg) => {
     chatMessages.value.push(msg);
   });
 
-  socket.on("live-list", (streams) => {
+  socketRef.value.on("live-list", (streams) => {
     liveStreams.value = Array.isArray(streams) ? streams : [];
+  });
+
+  // ✅ incoming call popup
+  socketRef.value.on("call:incoming", (payload) => {
+    incomingCall.value = payload;
+    incomingOpen.value = true;
+  });
+
+  // caller side results
+  socketRef.value.on("call:offline", () => alert("User is offline — missed call ✅"));
+  socketRef.value.on("call:rejected", () => alert("Call rejected"));
+  socketRef.value.on("call:accepted", ({ roomId, kind, calleeSocketId }) => {
+    // caller goes to Call page and creates offer
+    router.push({
+      path: "/call",
+      query: { roomId, role: "caller", kind, otherSocketId: calleeSocketId },
+    });
   });
 });
 </script>
@@ -649,6 +668,7 @@ onMounted(async () => {
 @media (max-width: 820px) {
   .page {
     grid-template-columns: 1fr;
+    padding-bottom: 120px; /* space for FAB */
   }
 }
 
@@ -891,7 +911,7 @@ onMounted(async () => {
   outline: none;
 }
 
-/* ✅ ACTION BAR */
+/* ACTION BAR */
 .actions {
   display: flex;
   align-items: center;
@@ -933,7 +953,7 @@ onMounted(async () => {
   flex: 1;
 }
 
-/* ✅ COMMENTS */
+/* COMMENTS */
 .comments {
   margin-top: 12px;
   background: rgba(0, 0, 0, 0.35);
@@ -1023,5 +1043,47 @@ onMounted(async () => {
   border-radius: 14px;
   background: rgba(255, 80, 80, 0.18);
   border: 1px solid rgba(255, 80, 80, 0.35);
+}
+
+/* ✅ Mobile FAB + Sheet */
+.fab {
+  position: fixed;
+  right: 18px;
+  bottom: 18px;
+  width: 62px;
+  height: 62px;
+  border-radius: 999px;
+  border: 1px solid rgba(255, 255, 255, 0.18);
+  background: linear-gradient(45deg, #ff416c, #ff4b2b);
+  color: white;
+  font-size: 22px;
+  font-weight: 900;
+  cursor: pointer;
+  z-index: 9998;
+  box-shadow: 0 18px 40px rgba(0,0,0,0.35);
+}
+@media (min-width: 821px) {
+  .fab { display: none; }
+}
+
+.sheet-backdrop {
+  position: fixed;
+  inset: 0;
+  background: rgba(0,0,0,0.55);
+  z-index: 9997;
+  display: grid;
+  place-items: end center;
+}
+.sheet {
+  width: min(520px, 100%);
+  background: rgba(20, 26, 40, 0.96);
+  border: 1px solid rgba(255,255,255,0.14);
+  border-radius: 22px 22px 0 0;
+  padding: 16px;
+}
+.sheet-title {
+  font-weight: 900;
+  font-size: 16px;
+  margin-bottom: 10px;
 }
 </style>
