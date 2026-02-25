@@ -399,11 +399,13 @@ async function fetchPeople() {
 }
 
 /* ================= CALLS ================= */
-const incomingCall = ref(null); // { roomId, kind, from, callerSocketId }
+// incomingCall: { roomId, kind, fromUserId, fromName }
+const incomingCall = ref(null);
 const callBusy = ref(false);
 
-const callingToast = ref("");
-const pendingRoomId = ref("");
+const callingToast = ref("");     // "Calling X…"
+const pendingRoomId = ref("");    // roomId from server
+const pendingKind = ref("audio"); // remember if audio or video
 
 function startCall(user, kind = "audio") {
   if (!socket) return;
@@ -411,32 +413,102 @@ function startCall(user, kind = "audio") {
   if (!isOnline(user.id)) return alert("User is offline.");
 
   callBusy.value = true;
+  pendingKind.value = kind;
   callingToast.value = `Calling ${user.display_name || "user"}…`;
   pendingRoomId.value = "";
 
+  // ✅ server creates room + notifies callee
   socket.emit("call:request", { toUserId: user.id, kind });
 }
 
 function cancelCall() {
-  // cancels only the UI. backend cancel is optional.
+  // cancels the UI + tells server to cancel if room exists
+  const roomId = pendingRoomId.value;
+
   callingToast.value = "";
   callBusy.value = false;
-  if (pendingRoomId.value) socket?.emit("call:cancel", { roomId: pendingRoomId.value });
   pendingRoomId.value = "";
+
+  if (roomId) socket?.emit("call:cancel", { roomId });
 }
 
 function acceptIncoming() {
-  if (!incomingCall.value) return;
-  socket.emit("call:accept", { roomId: incomingCall.value.roomId });
+  if (!incomingCall.value || !socket) return;
+
+  const roomId = incomingCall.value.roomId;
+  const kind = incomingCall.value.kind || "audio";
+
+  // ✅ accept + immediately go to call page (callee)
+  socket.emit("call:accept", { roomId });
+
+  // IMPORTANT: navigate now so Call.vue joins the room and can receive offer
+  window.location.href = `/call?roomId=${encodeURIComponent(roomId)}&role=callee&kind=${encodeURIComponent(
+    kind
+  )}`;
+
+  incomingCall.value = null;
 }
 
 function rejectIncoming() {
-  if (!incomingCall.value) return;
+  if (!incomingCall.value || !socket) return;
   socket.emit("call:reject", { roomId: incomingCall.value.roomId });
   incomingCall.value = null;
 }
 
-/* ================= POSTS ================= */
+/* ===== SOCKET LISTENERS (put inside onMounted where you set socket.on...) =====
+   These MUST exist, otherwise caller never gets the roomId and never navigates.
+*/
+function wireCallSocketHandlers() {
+  if (!socket) return;
+
+  // Caller receives roomId to navigate
+  socket.on("call:outgoing", ({ roomId, kind, toUserId }) => {
+    pendingRoomId.value = roomId;
+    pendingKind.value = kind || pendingKind.value;
+
+    // ✅ caller should enter Call.vue page now
+    window.location.href = `/call?roomId=${encodeURIComponent(roomId)}&role=caller&kind=${encodeURIComponent(
+      pendingKind.value
+    )}`;
+  });
+
+  // Callee gets incoming popup data
+  socket.on("call:incoming", ({ roomId, kind, fromUserId, fromName }) => {
+    incomingCall.value = {
+      roomId,
+      kind: kind || "audio",
+      fromUserId,
+      fromName: fromName || `User #${fromUserId}`,
+    };
+  });
+
+  // Server updates
+  socket.on("call:cancelled", () => {
+    callingToast.value = "";
+    callBusy.value = false;
+    pendingRoomId.value = "";
+  });
+
+  socket.on("call:rejected", () => {
+    callingToast.value = "";
+    callBusy.value = false;
+    pendingRoomId.value = "";
+    alert("Call rejected");
+  });
+
+  socket.on("call:ended", () => {
+    callingToast.value = "";
+    callBusy.value = false;
+    pendingRoomId.value = "";
+  });
+
+  socket.on("call:error", ({ message }) => {
+    callingToast.value = "";
+    callBusy.value = false;
+    pendingRoomId.value = "";
+    alert(message || "Call error");
+  });
+}
 const posts = ref([]);
 const loading = ref(true);
 const posting = ref(false);
