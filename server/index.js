@@ -19,7 +19,7 @@ import conversationsRoutes from "./routes/conversations.routes.js";
 import messagesRoutes from "./routes/messages.routes.js";
 import uploadRoutes from "./routes/upload.routes.js";
 import likesRoutes from "./routes/likes.routes.js";
-import commentsRoutes from "./routes/comments.routes.js";
+
 
 dotenv.config();
 
@@ -61,7 +61,7 @@ app.use(express.urlencoded({ extended: true }));
 app.use("/uploads", express.static(path.join(__dirname, "uploads")));
 app.use("/api/upload", uploadRoutes);
 app.use("/likes", likesRoutes);
-app.use("/comments", commentsRoutes);
+
 /* =========================
    DB HEALTH (optional)
 ========================= */
