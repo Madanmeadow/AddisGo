@@ -18,6 +18,8 @@ import usersRoutes from "./routes/users.routes.js";
 import conversationsRoutes from "./routes/conversations.routes.js";
 import messagesRoutes from "./routes/messages.routes.js";
 import uploadRoutes from "./routes/upload.routes.js";
+import likesRoutes from "./routes/likes.routes.js";
+import commentsRoutes from "./routes/comments.routes.js";
 
 dotenv.config();
 
