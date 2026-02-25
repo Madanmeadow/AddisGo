@@ -60,8 +60,8 @@ app.use(express.urlencoded({ extended: true }));
 app.use("/uploads", express.static(path.join(__dirname, "uploads")));
 
 // ✅ You said “no /api” — so mount clean paths:
-app.use("/upload", uploadRoutes);          // POST /upload
-app.use("/likes", likesRoutes);            // /likes/:postId etc
+app.use("/upload", uploadRoutes); // POST /upload
+app.use("/likes", likesRoutes); // /likes/:postId etc
 app.use("/posts", postsRoutes);
 app.use("/users", usersRoutes);
 app.use("/conversations", conversationsRoutes);
@@ -92,7 +92,8 @@ function signToken(user) {
 app.post("/auth/register", async (req, res) => {
   try {
     const { username, name, email, password } = req.body;
-    if (!email || !password) return res.status(400).json({ error: "Email and password required" });
+    if (!email || !password)
+      return res.status(400).json({ error: "Email and password required" });
 
     const display = username || name || email.split("@")[0];
     const hashed = await bcrypt.hash(password, 10);
@@ -117,7 +118,10 @@ app.post("/auth/register", async (req, res) => {
 
     res.json({
       token,
-      user: { id: userRow.id, username: userRow.username || userRow.name || userRow.email },
+      user: {
+        id: userRow.id,
+        username: userRow.username || userRow.name || userRow.email,
+      },
     });
   } catch (err) {
     console.error("REGISTER ERROR:", err);
@@ -128,10 +132,15 @@ app.post("/auth/register", async (req, res) => {
 app.post("/auth/login", async (req, res) => {
   try {
     const { email, password } = req.body;
-    if (!email || !password) return res.status(400).json({ error: "Email and password required" });
+    if (!email || !password)
+      return res.status(400).json({ error: "Email and password required" });
 
-    const found = await pool.query(`SELECT * FROM users WHERE email=$1 LIMIT 1`, [email]);
-    if (!found.rows.length) return res.status(400).json({ error: "User not found" });
+    const found = await pool.query(
+      `SELECT * FROM users WHERE email=$1 LIMIT 1`,
+      [email]
+    );
+    if (!found.rows.length)
+      return res.status(400).json({ error: "User not found" });
 
     const user = found.rows[0];
     const ok = await bcrypt.compare(password, user.password);
@@ -153,6 +162,7 @@ app.post("/auth/login", async (req, res) => {
    HEALTH
 ========================= */
 app.get("/", (req, res) => res.send("🚀 AddisGo backend running"));
+
 app.get("/health", async (req, res) => {
   try {
     const r = await pool.query("SELECT NOW() as now");
@@ -161,6 +171,7 @@ app.get("/health", async (req, res) => {
     res.status(500).json({ ok: false });
   }
 });
+
 // Backwards compat
 app.get("/api/health", async (req, res) => {
   try {
@@ -201,6 +212,7 @@ app.get("/turn", async (req, res) => {
     res.status(500).json({ ok: false, message: "Failed to get TURN servers" });
   }
 });
+
 // Backwards compat
 app.get("/api/turn", async (req, res) => {
   try {
@@ -225,7 +237,7 @@ const onlineUsers = new Map();
 const liveStreams = new Set();
 const liveHosts = new Map(); // liveId -> hostSocketId
 
-// ✅ Calls (room-based: fixes “waiting for offer” forever)
+// ✅ Calls sessions (stable by roomId)
 const callSessions = new Map();
 /*
 callSessions.set(roomId, {
@@ -284,185 +296,161 @@ io.on("connection", (socket) => {
   });
 
   /* =========================
-     ✅ CALLS (Invite / Accept / Room Join / Relay)
+     ✅ CALLS (ONLY PART UPDATED)
+     - Supports BOTH frontend styles:
+       A) call:invite (old)
+       B) call:request (new Dashboard)
+     - Stable room: call:<roomId>
+     - Emits call:ringing, call:incoming, call:ready
+     - WebRTC relay via call:webrtc:* (room-based)
   ========================= */
 
-  // Caller clicks 📞 or 🎥
-  /* =========================
-   ✅ CALLS (UPGRADED — keeps EVERYTHING else same)
-   - Supports BOTH frontend styles:
-     A) call:invite (your old)
-     B) call:request (new dashboard)
-   - Stable rooms: call:<roomId>
-   - Emits call:ringing + call:incoming + call:ready
-========================= */
-
-function makeRoomId() {
-  return `call-${socket.id}-${Date.now()}`;
-}
-
-// ✅ NEW: Support Dashboard.vue startCall() that emits call:request
-socket.on("call:request", ({ toUserId, kind = "audio" }) => {
-  const roomId = makeRoomId();
-  handleCallInvite({ toUserId, kind, roomId, legacy: false });
-});
-
-// ✅ Keep old clients: they emit call:invite with roomId
-socket.on("call:invite", ({ toUserId, kind = "audio", roomId }) => {
-  handleCallInvite({ toUserId, kind, roomId: String(roomId || makeRoomId()), legacy: true });
-});
-
-function handleCallInvite({ toUserId, kind, roomId, legacy }) {
-  const from = socket.data.user;
-  if (!from?.id) {
-    socket.emit("call:error", { roomId, message: "You are not registered. (register-user missing)" });
-    return;
+  function makeRoomId() {
+    return `call-${socket.id}-${Date.now()}`;
   }
 
-  if (!toUserId) {
-    socket.emit("call:error", { roomId, message: "Missing toUserId" });
-    return;
-  }
+  function handleCallInvite({ toUserId, kind = "audio", roomId, legacy = false }) {
+    const from = socket.data.user;
+    if (!from?.id) {
+      socket.emit("call:error", {
+        roomId: String(roomId || ""),
+        message: "You are not registered. (register-user missing)",
+      });
+      return;
+    }
 
-  const calleeSocketId = onlineUsers.get(String(toUserId)) || null;
+    if (!toUserId) {
+      socket.emit("call:error", { roomId: String(roomId || ""), message: "Missing toUserId" });
+      return;
+    }
 
-  // Create/overwrite session
-  callSessions.set(String(roomId), {
-    roomId: String(roomId),
-    kind: kind === "video" ? "video" : "audio",
-    caller: { userId: String(from.id), socketId: socket.id },
-    callee: { userId: String(toUserId), socketId: calleeSocketId },
-    createdAt: Date.now(),
-  });
+    const calleeSocketId = onlineUsers.get(String(toUserId)) || null;
 
-  if (!calleeSocketId) {
-    socket.emit("call:error", { roomId, message: "User is not online." });
-    return;
-  }
-
-  // ✅ Notify callee (popup)
-  io.to(`user:${toUserId}`).emit("call:incoming", {
-    roomId: String(roomId),
-    kind: kind === "video" ? "video" : "audio",
-    fromUserId: String(from.id),
-    fromName: from.username || `User${from.id}`,
-    // (Keep old shape too — harmless)
-    fromUser: { id: String(from.id), username: from.username || `User${from.id}` },
-  });
-
-  // ✅ Notify caller (must include roomId so UI can navigate)
-  socket.emit("call:ringing", { roomId: String(roomId), kind: kind === "video" ? "video" : "audio" });
-
-  // Optional: for older UI expecting call:outgoing
-  if (legacy) {
-    socket.emit("call:outgoing", { roomId: String(roomId), kind });
-  }
-}
-
-// ✅ Cancel from caller (new dashboard uses call:cancel)
-socket.on("call:cancel", ({ roomId }) => {
-  const sess = callSessions.get(String(roomId));
-  if (!sess) return;
-  if (socket.id !== sess.caller.socketId) return;
-
-  // tell callee
-  if (sess.callee.socketId) io.to(sess.callee.socketId).emit("call:canceled", { roomId: String(roomId) });
-  io.to(`call:${roomId}`).emit("call:ended", { roomId: String(roomId), reason: "canceled" });
-
-  callSessions.delete(String(roomId));
-});
-
-// ✅ Reject (callee)
-socket.on("call:reject", ({ roomId }) => {
-  const sess = callSessions.get(String(roomId));
-  if (!sess) return;
-
-  io.to(sess.caller.socketId).emit("call:rejected", { roomId: String(roomId) });
-  if (sess.callee.socketId) io.to(sess.callee.socketId).emit("call:ended", { roomId: String(roomId), reason: "rejected" });
-  io.to(`call:${roomId}`).emit("call:ended", { roomId: String(roomId), reason: "rejected" });
-
-  callSessions.delete(String(roomId));
-});
-
-// ✅ Accept (callee)
-socket.on("call:accept", ({ roomId }) => {
-  const sess = callSessions.get(String(roomId));
-  if (!sess) return;
-
-  // Update callee socketId (important if callee navigated)
-  sess.callee.socketId = socket.id;
-  callSessions.set(String(roomId), sess);
-
-  io.to(sess.caller.socketId).emit("call:accepted", {
-    roomId: String(roomId),
-    kind: sess.kind,
-  });
-
-  // Also tell callee accepted (harmless)
-  io.to(sess.callee.socketId).emit("call:accepted", {
-    roomId: String(roomId),
-    kind: sess.kind,
-  });
-});
-
-// ✅ Both sides join the call room from Call.vue
-socket.on("call:join", ({ roomId }) => {
-  const sess = callSessions.get(String(roomId));
-  if (!sess) {
-    socket.emit("call:error", { roomId, message: "Call session not found." });
-    return;
-  }
-
-  socket.join(`call:${roomId}`);
-
-  // Keep socket IDs fresh
-  const meId = socket.data.user?.id;
-  if (meId && meId === sess.caller.userId) sess.caller.socketId = socket.id;
-  if (meId && meId === sess.callee.userId) sess.callee.socketId = socket.id;
-  callSessions.set(String(roomId), sess);
-
-  const room = io.sockets.adapter.rooms.get(`call:${roomId}`);
-  const count = room ? room.size : 0;
-
-  io.to(`call:${roomId}`).emit("call:presence", { roomId: String(roomId), count });
-
-  // ✅ When both are in room, tell both "call:ready"
-  if (count >= 2) {
-    io.to(`call:${roomId}`).emit("call:ready", {
+    callSessions.set(String(roomId), {
       roomId: String(roomId),
-      kind: sess.kind,
-      callerUserId: sess.caller.userId,
-      calleeUserId: sess.callee.userId,
+      kind: kind === "video" ? "video" : "audio",
+      caller: { userId: String(from.id), socketId: socket.id },
+      callee: { userId: String(toUserId), socketId: calleeSocketId },
+      createdAt: Date.now(),
     });
+
+    if (!calleeSocketId) {
+      socket.emit("call:error", { roomId: String(roomId), message: "User is not online." });
+      return;
+    }
+
+    // Incoming popup to callee
+    io.to(`user:${toUserId}`).emit("call:incoming", {
+      roomId: String(roomId),
+      kind: kind === "video" ? "video" : "audio",
+      fromUserId: String(from.id),
+      fromName: from.username || `User${from.id}`,
+
+      // keep old payload shape too (harmless)
+      fromUser: { id: String(from.id), username: from.username || `User${from.id}` },
+    });
+
+    // caller toast + roomId
+    socket.emit("call:ringing", { roomId: String(roomId), kind: kind === "video" ? "video" : "audio" });
+
+    // optional legacy event
+    if (legacy) socket.emit("call:outgoing", { roomId: String(roomId), kind });
   }
-});
 
-// ✅ End call
-socket.on("call:end", ({ roomId }) => {
-  const sess = callSessions.get(String(roomId));
-  if (!sess) return;
+  // ✅ New dashboard flow
+  socket.on("call:request", ({ toUserId, kind = "audio" }) => {
+    const roomId = makeRoomId();
+    handleCallInvite({ toUserId, kind, roomId, legacy: false });
+  });
 
-  io.to(`call:${roomId}`).emit("call:ended", { roomId: String(roomId), reason: "ended" });
-  callSessions.delete(String(roomId));
-});
+  // ✅ Old flow
+  socket.on("call:invite", ({ toUserId, kind = "audio", roomId }) => {
+    handleCallInvite({
+      toUserId,
+      kind,
+      roomId: String(roomId || makeRoomId()),
+      legacy: true,
+    });
+  });
 
-// ✅ WebRTC relay for calls (room-based)
-socket.on("call:webrtc:offer", ({ roomId, offer }) => {
-  if (!roomId || !offer) return;
-  socket.to(`call:${roomId}`).emit("call:webrtc:offer", { roomId: String(roomId), offer });
-});
+  // Cancel from caller
+  socket.on("call:cancel", ({ roomId }) => {
+    const sess = callSessions.get(String(roomId));
+    if (!sess) return;
+    if (socket.id !== sess.caller.socketId) return;
 
-socket.on("call:webrtc:answer", ({ roomId, answer }) => {
-  if (!roomId || !answer) return;
-  socket.to(`call:${roomId}`).emit("call:webrtc:answer", { roomId: String(roomId), answer });
-});
+    if (sess.callee.socketId) io.to(sess.callee.socketId).emit("call:canceled", { roomId: String(roomId) });
+    io.to(`call:${roomId}`).emit("call:ended", { roomId: String(roomId), reason: "canceled" });
 
-socket.on("call:webrtc:ice", ({ roomId, candidate }) => {
-  if (!roomId || !candidate) return;
-  socket.to(`call:${roomId}`).emit("call:webrtc:ice", { roomId: String(roomId), candidate });
-});
+    callSessions.delete(String(roomId));
+  });
 
-  // ✅ WebRTC relay for calls by roomId (no "to" needed)
+  // Reject from callee
+  socket.on("call:reject", ({ roomId }) => {
+    const sess = callSessions.get(String(roomId));
+    if (!sess) return;
+
+    io.to(sess.caller.socketId).emit("call:rejected", { roomId: String(roomId) });
+    if (sess.callee.socketId) io.to(sess.callee.socketId).emit("call:ended", { roomId: String(roomId), reason: "rejected" });
+    io.to(`call:${roomId}`).emit("call:ended", { roomId: String(roomId), reason: "rejected" });
+
+    callSessions.delete(String(roomId));
+  });
+
+  // Accept from callee
+  socket.on("call:accept", ({ roomId }) => {
+    const sess = callSessions.get(String(roomId));
+    if (!sess) return;
+
+    // callee may have navigated; update socketId
+    sess.callee.socketId = socket.id;
+    callSessions.set(String(roomId), sess);
+
+    io.to(sess.caller.socketId).emit("call:accepted", { roomId: String(roomId), kind: sess.kind });
+    io.to(sess.callee.socketId).emit("call:accepted", { roomId: String(roomId), kind: sess.kind });
+  });
+
+  // Call page joins room (both sides)
+  socket.on("call:join", ({ roomId }) => {
+    const sess = callSessions.get(String(roomId));
+    if (!sess) {
+      socket.emit("call:error", { roomId, message: "Call session not found." });
+      return;
+    }
+
+    socket.join(`call:${roomId}`);
+
+    // refresh socket IDs
+    const meId = socket.data.user?.id;
+    if (meId && meId === sess.caller.userId) sess.caller.socketId = socket.id;
+    if (meId && meId === sess.callee.userId) sess.callee.socketId = socket.id;
+    callSessions.set(String(roomId), sess);
+
+    const room = io.sockets.adapter.rooms.get(`call:${roomId}`);
+    const count = room ? room.size : 0;
+
+    io.to(`call:${roomId}`).emit("call:presence", { roomId: String(roomId), count });
+
+    // ✅ when both joined → ready
+    if (count >= 2) {
+      io.to(`call:${roomId}`).emit("call:ready", {
+        roomId: String(roomId),
+        kind: sess.kind,
+        callerUserId: sess.caller.userId,
+        calleeUserId: sess.callee.userId,
+      });
+    }
+  });
+
+  socket.on("call:end", ({ roomId }) => {
+    const sess = callSessions.get(String(roomId));
+    if (!sess) return;
+
+    io.to(`call:${roomId}`).emit("call:ended", { roomId: String(roomId), reason: "ended" });
+    callSessions.delete(String(roomId));
+  });
+
+  // ✅ WebRTC relay for calls (room-based)
   socket.on("call:webrtc:offer", ({ roomId, offer }) => {
     if (!roomId || !offer) return;
     socket.to(`call:${roomId}`).emit("call:webrtc:offer", { roomId: String(roomId), offer });
@@ -559,6 +547,8 @@ socket.on("call:webrtc:ice", ({ roomId, candidate }) => {
         emitLiveList();
       }
     }
+
+    // NOTE: callSessions are auto-cleaned when users end; we keep minimal changes here.
 
     emitOnlineUsers();
     console.log("❌ Socket disconnected:", socket.id);
