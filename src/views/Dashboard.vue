@@ -450,7 +450,7 @@ async function loadComments(postId) {
   commentErrorByPost.value = { ...commentErrorByPost.value, [postId]: "" };
 
   try {
-    const res = await fetch(`${apiUrl}/comments/${postId}`, {
+    const res = await fetch(`${apiUrl}/posts/${postId}/comments`, {
       headers: { Authorization: `Bearer ${token}` },
     });
     const data = await res.json();

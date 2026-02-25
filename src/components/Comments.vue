@@ -31,7 +31,7 @@ export default {
   methods: {
     async fetchComments() {
       const res = await axios.get(
-        `/api/comments/${this.filename}`
+        `/api/posts/${this.filename}/comments`
       );
       this.comments = res.data;
     },
