@@ -4,11 +4,7 @@
       <div class="left">
         <div class="pill">{{ kind.toUpperCase() }}</div>
         <div class="meta">
-          <div class="h1">
-            <span v-if="role === 'caller' && status.includes('Ringing')">Calling…</span>
-            <span v-else-if="role === 'caller'">Calling…</span>
-            <span v-else>In Call</span>
-          </div>
+          <div class="h1">{{ role === "caller" ? "Calling…" : "In Call" }}</div>
           <div class="sub">Call: {{ callId }}</div>
         </div>
       </div>
@@ -22,10 +18,7 @@
     </div>
 
     <div class="controls">
-      <button class="btn" @click="toggleMute">
-        {{ muted ? "Unmute" : "Mute" }}
-      </button>
-
+      <button class="btn" @click="toggleMute">{{ muted ? "Unmute" : "Mute" }}</button>
       <button class="btn" v-if="kind === 'video'" @click="toggleCamera">
         {{ camOff ? "Camera On" : "Camera Off" }}
       </button>
@@ -45,14 +38,12 @@ const router = useRouter();
 
 const apiUrl = import.meta.env.VITE_API_URL;
 
-const callId = String(route.query.callId || route.query.roomId || ""); // support old param
+const callId = String(route.query.callId || route.query.roomId || "");
 const role = String(route.query.role || "caller"); // caller | callee
 const kind = String(route.query.kind || "audio");  // audio | video
 
-// otherSocketId should be passed:
-// - caller: from call:accepted event OR from dashboard after you start the call
-// - callee: from incoming popup param
-const otherSocketId = ref(String(route.query.otherSocketId || ""));
+// caller passes calleeSocketId, callee may pass callerSocketId (but we ALSO learn it from incoming offer)
+const initialPeer = String(route.query.otherSocketId || "");
 
 const localVideo = ref(null);
 const remoteVideo = ref(null);
@@ -65,8 +56,11 @@ let socket = null;
 let pc = null;
 let localStream = null;
 
+// ✅ IMPORTANT: always send ICE/offer/answer to THIS peer socket id (learned dynamically)
+const peerSocketId = ref(initialPeer);
+
 async function getIceServers() {
-  // ✅ NO /api
+  // no /api
   try {
     const r = await fetch(`${apiUrl}/turn`);
     const j = await r.json();
@@ -82,7 +76,10 @@ async function initMedia() {
       : { audio: true, video: false };
 
   localStream = await navigator.mediaDevices.getUserMedia(constraints);
-  if (localVideo.value) localVideo.value.srcObject = localStream;
+  if (localVideo.value) {
+    localVideo.value.srcObject = localStream;
+    try { await localVideo.value.play?.(); } catch {}
+  }
 }
 
 async function initPeer() {
@@ -90,47 +87,61 @@ async function initPeer() {
   pc = new RTCPeerConnection({ iceServers });
 
   pc.onicecandidate = (event) => {
-    if (event.candidate && otherSocketId.value) {
-      socket.emit("webrtc:ice", {
-        callId,
-        to: otherSocketId.value,
-        candidate: event.candidate,
-      });
+    if (!event.candidate) return;
+    if (!peerSocketId.value) return;
+
+    socket.emit("call:webrtc-ice", {
+      callId,
+      to: peerSocketId.value,
+      candidate: event.candidate,
+    });
+  };
+
+  pc.ontrack = async (event) => {
+    if (remoteVideo.value) {
+      remoteVideo.value.srcObject = event.streams[0];
+      // iOS sometimes needs explicit play after user gesture (accept)
+      try { await remoteVideo.value.play?.(); } catch {}
     }
   };
 
-  pc.ontrack = (event) => {
-    if (remoteVideo.value) remoteVideo.value.srcObject = event.streams[0];
-  };
-
+  // add local tracks
   for (const track of localStream.getTracks()) {
     pc.addTrack(track, localStream);
   }
 }
 
 async function makeOffer() {
+  if (!peerSocketId.value) {
+    status.value = "Missing callee socket id. Go back and call again.";
+    return;
+  }
+
   status.value = "Creating offer…";
   const offer = await pc.createOffer();
   await pc.setLocalDescription(offer);
 
-  socket.emit("webrtc:offer", {
+  socket.emit("call:webrtc-offer", {
     callId,
-    to: otherSocketId.value,
+    to: peerSocketId.value,
     offer,
+    kind,
   });
 
   status.value = "Offer sent. Waiting for answer…";
 }
 
 async function handleOffer(offer, from) {
-  status.value = "Received offer…";
-  otherSocketId.value = otherSocketId.value || from;
+  // ✅ learn peer socket id from sender
+  peerSocketId.value = from;
 
+  status.value = "Received offer…";
   await pc.setRemoteDescription(new RTCSessionDescription(offer));
+
   const answer = await pc.createAnswer();
   await pc.setLocalDescription(answer);
 
-  socket.emit("webrtc:answer", {
+  socket.emit("call:webrtc-answer", {
     callId,
     to: from,
     answer,
@@ -140,7 +151,9 @@ async function handleOffer(offer, from) {
 }
 
 async function handleAnswer(answer, from) {
-  otherSocketId.value = otherSocketId.value || from;
+  // ✅ keep peer up to date
+  if (!peerSocketId.value) peerSocketId.value = from;
+
   await pc.setRemoteDescription(new RTCSessionDescription(answer));
   status.value = "Connected ✅";
 }
@@ -174,9 +187,8 @@ function cleanup() {
 
 function endCall() {
   try {
-    socket?.emit("call:end", { callId, otherSocketId: otherSocketId.value });
+    socket?.emit("call:end", { callId, to: peerSocketId.value || null });
   } catch {}
-
   cleanup();
   router.push("/dashboard");
 }
@@ -192,57 +204,29 @@ onMounted(async () => {
     await initPeer();
 
     if (role === "caller") {
-      // caller MUST know otherSocketId (after accept) OR passed via query
-      if (!otherSocketId.value) {
-        status.value = "Ringing… waiting for callee to accept";
-      } else {
-        await makeOffer();
-      }
+      await makeOffer();
     } else {
       status.value = "Waiting for offer…";
     }
   });
 
-  // ✅ If caller didn’t know socketId yet, backend will send call:accepted
-  socket.on("call:accepted", async ({ callId: cId, calleeSocketId }) => {
-    if (String(cId) !== callId) return;
-    otherSocketId.value = calleeSocketId;
-    status.value = "Accepted ✅ connecting…";
-    if (role === "caller") await makeOffer();
+  // ✅ call-specific signaling (avoid mixing with live stream events)
+  socket.on("call:webrtc-offer", async ({ offer, from }) => {
+    try { await handleOffer(offer, from); } catch (e) { status.value = "Offer error"; }
   });
 
-  socket.on("call:rejected", ({ callId: cId }) => {
-    if (String(cId) !== callId) return;
-    status.value = "Rejected ❌";
-    setTimeout(() => {
-      cleanup();
-      router.push("/dashboard");
-    }, 600);
+  socket.on("call:webrtc-answer", async ({ answer, from }) => {
+    try { await handleAnswer(answer, from); } catch (e) { status.value = "Answer error"; }
   });
 
-  // ✅ WebRTC relay: now uses callId (not liveId)
-  socket.on("webrtc:offer", async ({ callId: cId, offer, from }) => {
-    if (String(cId) !== callId) return;
-    await handleOffer(offer, from);
-  });
+  socket.on("call:webrtc-ice", async ({ candidate }) => handleIce(candidate));
 
-  socket.on("webrtc:answer", async ({ callId: cId, answer, from }) => {
-    if (String(cId) !== callId) return;
-    await handleAnswer(answer, from);
-  });
-
-  socket.on("webrtc:ice", async ({ callId: cId, candidate }) => {
-    if (String(cId) !== callId) return;
-    await handleIce(candidate);
-  });
-
-  socket.on("call:ended", ({ callId: cId }) => {
-    if (String(cId) !== callId) return;
+  socket.on("call:ended", () => {
     status.value = "Call ended";
     setTimeout(() => {
       cleanup();
       router.push("/dashboard");
-    }, 500);
+    }, 400);
   });
 });
 
