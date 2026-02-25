@@ -25,7 +25,7 @@ router.get("/:postId", authenticateToken, async (req, res) => {
         c.created_at,
         u.username AS name,
         u.email AS email
-      FROM comments c
+      FROM comments
       LEFT JOIN users u ON u.id = c.user_id
       WHERE c.post_id = $1
       ORDER BY c.created_at DESC
