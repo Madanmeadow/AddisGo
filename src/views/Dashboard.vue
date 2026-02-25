@@ -1,271 +1,340 @@
+<!-- src/views/Dashboard.vue -->
 <template>
   <Layout>
-    <div class="page">
-      <!-- LEFT -->
-      <aside class="left">
+    <div class="wrap">
+      <!-- TOP BAR (mobile-first) -->
+      <header class="topbar">
         <div class="brand">
-          <div class="brand-icon">🔥</div>
-          <div>
-            <div class="brand-title">AddisGo</div>
-            <div class="brand-sub">Social • Live • Chat</div>
+          <div class="logo">🔥</div>
+          <div class="brand-text">
+            <div class="title">AddisGo</div>
+            <div class="sub">Social • Live • Calls • Chat</div>
           </div>
         </div>
 
-        <!-- LIVE -->
-        <div class="panel">
-          <div class="panel-title">🔴 Live Now</div>
-          <button class="btn btn-primary w100" @click="startLive">Go Live</button>
-          <div v-if="liveStreams.length === 0" class="hint mt12">No one live right now</div>
-
-          <div v-for="stream in liveStreams" :key="stream" class="live-card" @click="joinLive(stream)">
-            <span class="dot"></span>
-            <span class="live-name">{{ stream }}</span>
-          </div>
-        </div>
-
-        <!-- ✅ PEOPLE / CALLS -->
-        <div class="panel">
-          <div class="panel-title">📞 People</div>
-
-          <div class="row">
-            <input v-model="userSearch" class="searchMini" placeholder="Search users..." />
-            <button class="btn mini" @click="fetchUsers" :disabled="usersLoading">
-              {{ usersLoading ? "…" : "↻" }}
-            </button>
-          </div>
-
-          <div v-if="usersError" class="hint red mt10">{{ usersError }}</div>
-
-          <div class="people">
-            <div v-for="u in filteredUsers" :key="u.id" class="person">
-              <div class="person-left">
-                <div class="avatarSm">{{ String(u.display_name || 'U').slice(0,1).toUpperCase() }}</div>
-                <div class="person-meta">
-                  <div class="person-name">{{ u.display_name }}</div>
-                  <div class="person-sub">
-                    <span class="statusDot" :class="{ on: isOnline(u.id) }"></span>
-                    <span>{{ isOnline(u.id) ? "Online" : "Offline" }}</span>
-                  </div>
-                </div>
-              </div>
-
-              <div class="person-actions">
-                <button class="iconBtn" title="Audio Call" @click="startCall(u.id, 'audio')">📞</button>
-                <button class="iconBtn" title="Video Call" @click="startCall(u.id, 'video')">🎥</button>
-              </div>
-            </div>
-
-            <div v-if="filteredUsers.length === 0" class="hint mt10">
-              No users found.
-            </div>
-          </div>
-        </div>
-
-        <!-- CHAT BUTTONS -->
-        <div class="panel">
-          <div class="panel-title">💬 Chat</div>
-          <button class="btn w100" @click="toggleChat">
-            {{ chatOpen ? "Close Inbox" : "Open Inbox" }}
+        <div class="top-actions">
+          <button class="chip" @click="fetchPosts" :disabled="loading">↻ Refresh</button>
+          <button class="chip ghost" @click="togglePeople">
+            {{ peopleOpen ? "Hide People" : "People" }}
           </button>
-          <button class="btn w100 mt10" @click="openNewChat">+ New Chat</button>
+          <button class="chip ghost" @click="toggleChat">
+            {{ chatOpen ? "Close Chat" : "Chat" }}
+          </button>
+          <button class="chip danger" @click="logout">Logout</button>
         </div>
+      </header>
 
-        <div class="panel">
-          <div class="panel-title">⚡ Quick Actions</div>
-          <button class="btn w100" @click="fetchPosts">Refresh Feed</button>
-          <button class="btn w100 mt10" @click="scrollToTop">Scroll Top</button>
-        </div>
-      </aside>
-
-      <!-- CENTER -->
-      <main class="center">
-        <!-- CREATE POST -->
-        <section class="composer">
-          <div class="composer-head">
-            <div class="avatar big">{{ myInitial }}</div>
-            <div>
-              <div class="me">{{ me?.username || "You" }}</div>
-              <div class="small muted">Share something with the world</div>
+      <!-- GRID -->
+      <div class="page">
+        <!-- LEFT: LIVE + PEOPLE -->
+        <aside class="left" :class="{ open: peopleOpen }">
+          <section class="panel">
+            <div class="panel-head">
+              <div class="panel-title">🔴 Live Now</div>
+              <button class="btn btn-primary" @click="startLive">Go Live</button>
             </div>
-          </div>
 
-          <textarea v-model="caption" class="input" placeholder="What's happening?" rows="3"></textarea>
+            <div v-if="liveStreams.length === 0" class="hint mt10">No one live right now</div>
 
-          <div class="upload-row">
-            <label class="file-pill">
-              <input type="file" accept="image/*" @change="onPickImage" />
-              📷 Image
-            </label>
-
-            <label class="file-pill">
-              <input type="file" accept="video/*" @change="onPickVideo" />
-              🎥 Video
-            </label>
-
-            <button class="btn btn-primary" :disabled="posting" @click="submitPost">
-              {{ posting ? "Posting..." : "Post 🚀" }}
-            </button>
-          </div>
-
-          <div v-if="error" class="alert">{{ error }}</div>
-        </section>
-
-        <!-- FEED -->
-        <section class="feed-head">
-          <div class="feed-title">Feed</div>
-          <input v-model="search" class="search" placeholder="Search posts..." />
-        </section>
-
-        <section class="feed">
-          <div v-if="loading" class="state">Loading posts...</div>
-          <div v-else-if="filteredPosts.length === 0" class="state">No posts found.</div>
-
-          <article v-else v-for="post in filteredPosts" :key="post.id" class="post">
-            <header class="post-head">
-              <div class="avatar">{{ getInitial(post.user_id) }}</div>
-              <div class="who">
-                <div class="name">User #{{ post.user_id }}</div>
-                <div class="time">{{ formatDate(post.created_at) }}</div>
+            <div
+              v-for="stream in liveStreams"
+              :key="stream"
+              class="live-card"
+              @click="joinLive(stream)"
+              title="Tap to watch"
+            >
+              <span class="dot"></span>
+              <div class="live-meta">
+                <div class="live-name">{{ stream }}</div>
+                <div class="live-sub">Tap to watch</div>
               </div>
-            </header>
+              <span class="chev">›</span>
+            </div>
+          </section>
 
-            <div v-if="post.caption" class="text">{{ post.caption }}</div>
-
-            <img v-if="post.image_url" class="media" :src="getMedia(post.image_url)" loading="lazy" />
-            <video v-if="post.video_url" class="media" :src="getMedia(post.video_url)" controls playsinline preload="metadata"></video>
-
-            <!-- ACTION BAR -->
-            <div class="actions">
-              <button
-                class="action-btn"
-                :class="{ active: likesByPost[post.id]?.likedByMe }"
-                :disabled="likeBusyByPost[post.id]"
-                @click="toggleLike(post)"
-                title="Like"
-              >
-                <span class="icon">❤️</span>
-                <span class="label">{{ likesByPost[post.id]?.count ?? 0 }}</span>
-              </button>
-
-              <button class="action-btn" @click="toggleComments(post)" title="Comments">
-                <span class="icon">💬</span>
-                <span class="label">{{ commentCount(post.id) }}</span>
-              </button>
-
-              <div class="spacer"></div>
-
-              <button class="action-btn ghost" @click="sharePost(post)" title="Share">
-                <span class="icon">🔗</span>
-                <span class="label">Share</span>
+          <section class="panel">
+            <div class="panel-head">
+              <div class="panel-title">👥 People</div>
+              <button class="btn" @click="fetchPeople" :disabled="peopleLoading">
+                {{ peopleLoading ? "Loading…" : "Refresh" }}
               </button>
             </div>
 
-            <!-- COMMENTS PANEL -->
-            <div v-if="commentsOpenByPost[post.id]" class="comments">
-              <div class="comments-head">
-                <div class="comments-title">Comments</div>
-                <button class="x" @click="commentsOpenByPost[post.id] = false">✕</button>
-              </div>
+            <div v-if="!token" class="alert soft">
+              Login again to see people and call buttons.
+            </div>
 
-              <div v-if="commentLoadingByPost[post.id]" class="comments-state">Loading comments...</div>
+            <div v-else class="people">
+              <div v-if="peopleError" class="alert">{{ peopleError }}</div>
+              <div v-else-if="people.length === 0" class="hint">No users found.</div>
 
-              <div v-else class="comments-list">
-                <div v-if="(commentsByPost[post.id] || []).length === 0" class="comments-empty">
-                  Be the first to comment.
-                </div>
+              <div v-else v-for="u in people" :key="u.id" class="person">
+                <div class="avatar small">{{ (u.display_name || "U")[0]?.toUpperCase() }}</div>
 
-                <div v-for="c in (commentsByPost[post.id] || [])" :key="c.id" class="comment">
-                  <div class="comment-top">
-                    <div class="comment-who">
-                      <span class="badge">{{ c.username || c.name || c.email || `User #${c.user_id}` }}</span>
-                      <span class="comment-time">{{ formatDate(c.created_at) }}</span>
-                    </div>
+                <div class="person-meta">
+                  <div class="person-name">{{ u.display_name || ("User #" + u.id) }}</div>
+                  <div class="person-sub">
+                    <span class="status" :class="{ on: isOnline(u.id) }"></span>
+                    <span class="status-text">{{ isOnline(u.id) ? "Online" : "Offline" }}</span>
+                    <span class="sep">•</span>
+                    <span class="id">ID {{ u.id }}</span>
                   </div>
-                  <div class="comment-text">{{ c.body }}</div>
+                </div>
+
+                <div class="person-actions">
+                  <button
+                    class="iconbtn"
+                    title="Audio Call"
+                    :disabled="!isOnline(u.id) || callBusy"
+                    @click="startCall(u, 'audio')"
+                  >
+                    📞
+                  </button>
+                  <button
+                    class="iconbtn"
+                    title="Video Call"
+                    :disabled="!isOnline(u.id) || callBusy"
+                    @click="startCall(u, 'video')"
+                  >
+                    🎥
+                  </button>
                 </div>
               </div>
 
-              <div class="comment-compose">
-                <input
-                  v-model="commentDraftByPost[post.id]"
-                  class="comment-input"
-                  placeholder="Write a comment..."
-                  @keydown.enter.prevent="submitComment(post)"
-                />
+              <div class="hint mt10">
+                Tip: calls require both users to be online (green).
+              </div>
+            </div>
+          </section>
+
+          <section class="panel">
+            <div class="panel-title">⚡ Quick Actions</div>
+            <div class="stack">
+              <button class="btn w100" @click="scrollToTop">Scroll Top</button>
+              <button class="btn w100" @click="togglePeople">
+                {{ peopleOpen ? "Collapse Sidebar" : "Open Sidebar" }}
+              </button>
+            </div>
+          </section>
+        </aside>
+
+        <!-- CENTER: FEED -->
+        <main class="center">
+          <!-- COMPOSER -->
+          <section class="composer">
+            <div class="composer-head">
+              <div class="avatar big">{{ myInitial }}</div>
+              <div>
+                <div class="me">{{ me?.username || "You" }}</div>
+                <div class="small muted">Share something with the world</div>
+              </div>
+            </div>
+
+            <textarea
+              v-model="caption"
+              class="input"
+              placeholder="What's happening?"
+              rows="3"
+            ></textarea>
+
+            <div class="upload-row">
+              <label class="file-pill">
+                <input type="file" accept="image/*" @change="onPickImage" />
+                📷 Image
+              </label>
+
+              <label class="file-pill">
+                <input type="file" accept="video/*" @change="onPickVideo" />
+                🎥 Video
+              </label>
+
+              <button class="btn btn-primary" :disabled="posting" @click="submitPost">
+                {{ posting ? "Posting…" : "Post 🚀" }}
+              </button>
+            </div>
+
+            <div v-if="error" class="alert">{{ error }}</div>
+          </section>
+
+          <!-- FEED HEAD -->
+          <section class="feed-head">
+            <div class="feed-title">Feed</div>
+            <input v-model="search" class="search" placeholder="Search posts…" />
+          </section>
+
+          <!-- FEED -->
+          <section class="feed">
+            <div v-if="loading" class="state">Loading posts…</div>
+            <div v-else-if="filteredPosts.length === 0" class="state">No posts found.</div>
+
+            <article v-else v-for="post in filteredPosts" :key="post.id" class="post" :id="`post-${post.id}`">
+              <header class="post-head">
+                <div class="avatar">{{ getInitial(post.user_id) }}</div>
+                <div class="who">
+                  <div class="name">User #{{ post.user_id }}</div>
+                  <div class="time">{{ formatDate(post.created_at) }}</div>
+                </div>
+              </header>
+
+              <div v-if="post.caption" class="text">{{ post.caption }}</div>
+
+              <img v-if="post.image_url" class="media" :src="getMedia(post.image_url)" loading="lazy" />
+
+              <video
+                v-if="post.video_url"
+                class="media"
+                :src="getMedia(post.video_url)"
+                controls
+                playsinline
+                preload="metadata"
+              ></video>
+
+              <!-- ACTIONS -->
+              <div class="actions">
                 <button
-                  class="btn btn-primary"
-                  :disabled="commentBusyByPost[post.id] || !String(commentDraftByPost[post.id] || '').trim()"
-                  @click="submitComment(post)"
+                  class="action-btn"
+                  :class="{ active: likesByPost[post.id]?.likedByMe }"
+                  :disabled="likeBusyByPost[post.id]"
+                  @click="toggleLike(post)"
+                  title="Like"
                 >
-                  {{ commentBusyByPost[post.id] ? "Sending..." : "Send" }}
+                  <span class="icon">❤️</span>
+                  <span class="label">{{ likesByPost[post.id]?.count ?? 0 }}</span>
+                </button>
+
+                <button class="action-btn" @click="toggleComments(post)" title="Comments">
+                  <span class="icon">💬</span>
+                  <span class="label">{{ commentCount(post.id) }}</span>
+                </button>
+
+                <div class="spacer"></div>
+
+                <button class="action-btn ghost" @click="sharePost(post)" title="Share">
+                  <span class="icon">🔗</span>
+                  <span class="label">Share</span>
                 </button>
               </div>
 
-              <div v-if="commentErrorByPost[post.id]" class="comment-error">
-                {{ commentErrorByPost[post.id] }}
+              <!-- COMMENTS PANEL -->
+              <div v-if="commentsOpenByPost[post.id]" class="comments">
+                <div class="comments-head">
+                  <div class="comments-title">Comments</div>
+                  <button class="x" @click="commentsOpenByPost[post.id] = false">✕</button>
+                </div>
+
+                <div v-if="commentLoadingByPost[post.id]" class="comments-state">
+                  Loading comments…
+                </div>
+
+                <div v-else class="comments-list">
+                  <div v-if="(commentsByPost[post.id] || []).length === 0" class="comments-empty">
+                    Be the first to comment.
+                  </div>
+
+                  <div v-for="c in (commentsByPost[post.id] || [])" :key="c.id" class="comment">
+                    <div class="comment-top">
+                      <div class="comment-who">
+                        <span class="badge">
+                          {{ c.username || c.name || c.email || `User #${c.user_id}` }}
+                        </span>
+                        <span class="comment-time">{{ formatDate(c.created_at) }}</span>
+                      </div>
+                    </div>
+                    <div class="comment-text">{{ c.body }}</div>
+                  </div>
+                </div>
+
+                <div class="comment-compose">
+                  <input
+                    v-model="commentDraftByPost[post.id]"
+                    class="comment-input"
+                    placeholder="Write a comment…"
+                    @keydown.enter.prevent="submitComment(post)"
+                  />
+                  <button
+                    class="btn btn-primary"
+                    :disabled="commentBusyByPost[post.id] || !String(commentDraftByPost[post.id] || '').trim()"
+                    @click="submitComment(post)"
+                  >
+                    {{ commentBusyByPost[post.id] ? "Sending…" : "Send" }}
+                  </button>
+                </div>
+
+                <div v-if="commentErrorByPost[post.id]" class="comment-error">
+                  {{ commentErrorByPost[post.id] }}
+                </div>
+              </div>
+            </article>
+          </section>
+        </main>
+
+        <!-- RIGHT: CHAT (drawer) -->
+        <aside class="right" :class="{ open: chatOpen }">
+          <section class="panel">
+            <div class="panel-head">
+              <div class="panel-title">💬 Chat</div>
+              <button class="btn" @click="toggleChat">{{ chatOpen ? "Close" : "Open" }}</button>
+            </div>
+
+            <div class="chat-hint">
+              Global room chat (simple). Calls use the People panel 📞.
+            </div>
+
+            <div class="chat-list">
+              <button class="chat-item" :class="{ active: chatRoom === 'global' }" @click="selectChat('global')">
+                🌍 Global
+              </button>
+              <button class="chat-item" :class="{ active: chatRoom === 'support' }" @click="selectChat('support')">
+                🛠 Support
+              </button>
+            </div>
+
+            <div class="chat-box">
+              <div class="chat-messages" ref="chatBoxRef">
+                <div v-for="(m, i) in chatMessages" :key="i" class="chat-msg">
+                  <strong>{{ m.from }}:</strong> {{ m.text }}
+                </div>
+              </div>
+
+              <div class="chat-input">
+                <input v-model="chatText" placeholder="Type message…" @keydown.enter.prevent="sendChat" />
+                <button class="btn btn-primary" @click="sendChat">Send</button>
               </div>
             </div>
-          </article>
-        </section>
-      </main>
+          </section>
+        </aside>
+      </div>
 
-      <!-- RIGHT CHAT PANEL -->
-      <aside v-if="chatOpen" class="right">
-        <div class="panel">
-          <div class="panel-title">📥 Inbox</div>
-
-          <div class="chat-hint">(Next step: connect to your conversations/messages tables)</div>
-
-          <div class="chat-list">
-            <button class="chat-item" @click="selectChat('global')">🌍 Global Room</button>
-            <button class="chat-item" @click="selectChat('support')">🛠 Support</button>
-          </div>
-
-          <div class="chat-box">
-            <div class="chat-messages">
-              <div v-for="(m, i) in chatMessages" :key="i" class="chat-msg">
-                <strong>{{ m.from }}:</strong> {{ m.text }}
-              </div>
-            </div>
-
-            <div class="chat-input">
-              <input v-model="chatText" placeholder="Type message..." />
-              <button class="btn btn-primary" @click="sendChat">Send</button>
-            </div>
-          </div>
-        </div>
-      </aside>
-
-      <!-- ✅ INCOMING CALL POPUP -->
-      <div v-if="incoming.open" class="modal-backdrop">
+      <!-- INCOMING CALL POPUP (ALWAYS ON TOP) -->
+      <div v-if="incomingCall" class="modal-backdrop" @click.self="rejectIncoming">
         <div class="modal">
-          <div class="modalTop">
-            <div class="modalTitle">Incoming {{ incoming.kind === 'video' ? "Video" : "Audio" }} Call</div>
-            <div class="modalSub">{{ incoming.fromUsername || "Someone" }} is calling…</div>
+          <div class="modal-title">Incoming {{ incomingCall.kind === "video" ? "Video" : "Audio" }} Call</div>
+          <div class="modal-sub">
+            From <span class="pill">{{ incomingCall.from?.username || ("User #" + incomingCall.from?.id) }}</span>
           </div>
 
-          <div class="modalActions">
+          <div class="modal-actions">
             <button class="btn danger" @click="rejectIncoming">Reject</button>
             <button class="btn btn-primary" @click="acceptIncoming">Accept</button>
+          </div>
+
+          <div class="tiny muted mt10">
+            Tip: keep Dashboard open on both devices for best call reliability.
           </div>
         </div>
       </div>
 
-      <!-- ✅ OUTGOING CALL STATUS -->
-      <div v-if="outgoing.open" class="toast">
-        <div class="toastTitle">Calling…</div>
-        <div class="toastSub">
-          {{ outgoing.kind === 'video' ? "Video" : "Audio" }} call
-          <span v-if="outgoing.toUserId">→ User #{{ outgoing.toUserId }}</span>
-        </div>
-        <button class="toastX" @click="cancelOutgoing">✕</button>
+      <!-- CALLING TOAST -->
+      <div v-if="callingToast" class="toast">
+        {{ callingToast }}
+        <button class="mini-x" @click="cancelCall">✕</button>
       </div>
     </div>
   </Layout>
 </template>
 
 <script setup>
-import { ref, computed, onMounted } from "vue";
+import { ref, computed, onMounted, onBeforeUnmount, nextTick } from "vue";
 import { useRouter } from "vue-router";
 import Layout from "../components/Layout.vue";
 import { io } from "socket.io-client";
@@ -276,121 +345,95 @@ const apiUrl = import.meta.env.VITE_API_URL;
 const token = localStorage.getItem("token");
 
 const me = (() => {
-  try { return JSON.parse(localStorage.getItem("user") || "null"); }
-  catch { return null; }
+  try {
+    return JSON.parse(localStorage.getItem("user") || "null");
+  } catch {
+    return null;
+  }
 })();
 
 /* ================= SOCKET ================= */
 let socket = null;
 
-/* ================= ONLINE USERS ================= */
-const onlineMap = ref(new Map()); // userId -> socketId
+const onlinePairs = ref([]); // from server: [ [userId, socketId], ... ]
+const liveStreams = ref([]);
 
 function isOnline(userId) {
-  return onlineMap.value.has(String(userId));
+  const id = String(userId);
+  return onlinePairs.value.some(([uid]) => String(uid) === id);
 }
 
-/* ================= USERS LIST (People) ================= */
-const users = ref([]);
-const usersLoading = ref(false);
-const usersError = ref("");
-const userSearch = ref("");
+/* ================= PEOPLE ================= */
+const peopleOpen = ref(true);
+const people = ref([]);
+const peopleLoading = ref(false);
+const peopleError = ref("");
 
-const filteredUsers = computed(() => {
-  const q = userSearch.value.trim().toLowerCase();
-  if (!q) return users.value;
-  return users.value.filter((u) => String(u.display_name || "").toLowerCase().includes(q));
-});
+function togglePeople() {
+  peopleOpen.value = !peopleOpen.value;
+}
 
-async function fetchUsers() {
-  if (!token) {
-    usersError.value = "Login again to load users.";
-    return;
-  }
+async function fetchPeople() {
+  if (!token) return;
+  peopleLoading.value = true;
+  peopleError.value = "";
+
   try {
-    usersLoading.value = true;
-    usersError.value = "";
     const res = await fetch(`${apiUrl}/users`, {
       headers: { Authorization: `Bearer ${token}` },
     });
     const data = await res.json();
+
     if (!res.ok) {
-      usersError.value = data?.error || "Failed to load users";
-      users.value = [];
+      peopleError.value = data?.error || "Failed to load users";
+      people.value = [];
       return;
     }
-    users.value = Array.isArray(data) ? data : [];
+    people.value = Array.isArray(data) ? data : [];
   } catch {
-    usersError.value = "Failed to load users";
-    users.value = [];
+    peopleError.value = "Failed to load users";
+    people.value = [];
   } finally {
-    usersLoading.value = false;
+    peopleLoading.value = false;
   }
 }
 
 /* ================= CALLS ================= */
-const incoming = ref({
-  open: false,
-  callId: "",
-  kind: "audio",
-  fromUserId: "",
-  fromUsername: "",
-  fromSocketId: "",
-});
+const incomingCall = ref(null); // { roomId, kind, from, callerSocketId }
+const callBusy = ref(false);
 
-const outgoing = ref({
-  open: false,
-  callId: "",
-  kind: "audio",
-  toUserId: "",
-});
+const callingToast = ref("");
+const pendingRoomId = ref("");
 
-function startCall(toUserId, kind = "audio") {
-  if (!socket) return alert("Socket not connected yet.");
-  if (!me?.id) return alert("Login again first.");
+function startCall(user, kind = "audio") {
+  if (!socket) return;
+  if (!token) return alert("Login again to call.");
+  if (!isOnline(user.id)) return alert("User is offline.");
 
-  outgoing.value = { open: true, callId: "", kind, toUserId: String(toUserId) };
-  socket.emit("call:start", { toUserId: String(toUserId), kind });
+  callBusy.value = true;
+  callingToast.value = `Calling ${user.display_name || "user"}…`;
+  pendingRoomId.value = "";
+
+  socket.emit("call:request", { toUserId: user.id, kind });
 }
 
-function cancelOutgoing() {
-  // just close the toast; real cancel can be added later
-  outgoing.value.open = false;
+function cancelCall() {
+  // cancels only the UI. backend cancel is optional.
+  callingToast.value = "";
+  callBusy.value = false;
+  if (pendingRoomId.value) socket?.emit("call:cancel", { roomId: pendingRoomId.value });
+  pendingRoomId.value = "";
 }
 
 function acceptIncoming() {
-  if (!socket) return;
-
-  // tell caller we accept
-  socket.emit("call:accept", {
-    roomId: incoming.value.callId,       // backend names it roomId
-    fromSocketId: incoming.value.fromSocketId,
-    kind: incoming.value.kind,
-  });
-
-  // go to Call page as callee
-  router.push({
-    path: "/call",
-    query: {
-      callId: incoming.value.callId,
-      role: "callee",
-      kind: incoming.value.kind,
-      otherSocketId: incoming.value.fromSocketId,
-    },
-  });
-
-  incoming.value.open = false;
+  if (!incomingCall.value) return;
+  socket.emit("call:accept", { roomId: incomingCall.value.roomId });
 }
 
 function rejectIncoming() {
-  if (!socket) return;
-
-  socket.emit("call:reject", {
-    roomId: incoming.value.callId,
-    fromSocketId: incoming.value.fromSocketId,
-  });
-
-  incoming.value.open = false;
+  if (!incomingCall.value) return;
+  socket.emit("call:reject", { roomId: incomingCall.value.roomId });
+  incomingCall.value = null;
 }
 
 /* ================= POSTS ================= */
@@ -398,6 +441,7 @@ const posts = ref([]);
 const loading = ref(true);
 const posting = ref(false);
 const error = ref("");
+
 const caption = ref("");
 const imageFile = ref(null);
 const videoFile = ref(null);
@@ -410,13 +454,11 @@ function formatDate(d) {
   const date = new Date(d);
   return Number.isNaN(date.getTime()) ? "" : date.toLocaleString();
 }
-
 function getMedia(url) {
   if (!url) return "";
   if (url.startsWith("http")) return url;
   return `${apiUrl}${url}`;
 }
-
 function getInitial(userId) {
   return String(userId || "?").slice(-1);
 }
@@ -482,11 +524,17 @@ async function submitPost() {
   }
 }
 
-function onPickImage(e) { imageFile.value = e.target.files?.[0] || null; }
-function onPickVideo(e) { videoFile.value = e.target.files?.[0] || null; }
-function scrollToTop() { window.scrollTo({ top: 0, behavior: "smooth" }); }
+function onPickImage(e) {
+  imageFile.value = e.target.files?.[0] || null;
+}
+function onPickVideo(e) {
+  videoFile.value = e.target.files?.[0] || null;
+}
+function scrollToTop() {
+  window.scrollTo({ top: 0, behavior: "smooth" });
+}
 
-/* ================= LIKES (unchanged) ================= */
+/* ================= LIKES ================= */
 const likesByPost = ref({});
 const likeBusyByPost = ref({});
 
@@ -523,11 +571,7 @@ async function toggleLike(post) {
   const optimisticLiked = !prev.likedByMe;
   const optimisticCount = Math.max(0, prev.count + (optimisticLiked ? 1 : -1));
 
-  likesByPost.value = {
-    ...likesByPost.value,
-    [postId]: { count: optimisticCount, likedByMe: optimisticLiked },
-  };
-
+  likesByPost.value = { ...likesByPost.value, [postId]: { count: optimisticCount, likedByMe: optimisticLiked } };
   likeBusyByPost.value = { ...likeBusyByPost.value, [postId]: true };
 
   try {
@@ -553,7 +597,7 @@ async function toggleLike(post) {
   }
 }
 
-/* ================= COMMENTS (Option A) ================= */
+/* ================= COMMENTS (Option A endpoints inside posts.routes.js) ================= */
 const commentsOpenByPost = ref({});
 const commentsByPost = ref({});
 const commentDraftByPost = ref({});
@@ -568,7 +612,10 @@ function commentCount(postId) {
 async function toggleComments(post) {
   const postId = post.id;
   commentsOpenByPost.value = { ...commentsOpenByPost.value, [postId]: !commentsOpenByPost.value[postId] };
-  if (commentsOpenByPost.value[postId]) await loadComments(postId, { force: true });
+
+  if (commentsOpenByPost.value[postId]) {
+    await loadComments(postId, { force: true });
+  }
 }
 
 async function loadComments(postId, { force = false } = {}) {
@@ -601,6 +648,7 @@ async function loadComments(postId, { force = false } = {}) {
 
 async function submitComment(post) {
   const postId = post.id;
+
   if (!token) return alert("Please login again to comment.");
 
   const text = String(commentDraftByPost.value[postId] || "").trim();
@@ -627,10 +675,7 @@ async function submitComment(post) {
   try {
     const res = await fetch(`${apiUrl}/posts/${postId}/comments`, {
       method: "POST",
-      headers: {
-        "Content-Type": "application/json",
-        Authorization: `Bearer ${token}`,
-      },
+      headers: { "Content-Type": "application/json", Authorization: `Bearer ${token}` },
       body: JSON.stringify({ body: text }),
     });
     const data = await res.json();
@@ -662,6 +707,7 @@ async function submitComment(post) {
 /* ================= SHARE ================= */
 async function sharePost(post) {
   const url = `${window.location.origin}/#post-${post.id}`;
+
   try {
     if (navigator.share) {
       await navigator.share({ title: "AddisGo Post", text: post.caption || "Post", url });
@@ -682,9 +728,11 @@ const chatOpen = ref(false);
 const chatRoom = ref("global");
 const chatText = ref("");
 const chatMessages = ref([]);
+const chatBoxRef = ref(null);
 
-function toggleChat() { chatOpen.value = !chatOpen.value; }
-function openNewChat() { chatOpen.value = true; alert("Next step: real user list + conversations"); }
+function toggleChat() {
+  chatOpen.value = !chatOpen.value;
+}
 function selectChat(room) {
   chatRoom.value = room;
   socket?.emit("join-room", room);
@@ -697,134 +745,252 @@ function sendChat() {
 }
 
 /* ================= LIVE ================= */
-const liveStreams = ref([]);
-
 function startLive() {
   const liveId = `live-${me?.id || Math.random().toString(36).slice(2, 8)}-${Date.now().toString().slice(-4)}`;
   socket?.emit("live:create", { liveId });
-  window.location.href = `/live?mode=host&liveId=${encodeURIComponent(liveId)}`;
+  router.push(`/live?mode=host&liveId=${encodeURIComponent(liveId)}`);
 }
-
 function joinLive(liveId) {
-  window.location.href = `/live?mode=watch&liveId=${encodeURIComponent(liveId)}`;
+  router.push(`/live?mode=watch&liveId=${encodeURIComponent(liveId)}`);
 }
 
-/* ================= INIT ================= */
+/* ================= AUTH ================= */
+function logout() {
+  localStorage.removeItem("token");
+  localStorage.removeItem("user");
+  router.push("/login");
+}
+
+/* ================= FILTER ================= */
 const filteredPosts = computed(() => {
   const q = search.value.trim().toLowerCase();
   if (!q) return posts.value;
   return posts.value.filter((p) => (p.caption || "").toLowerCase().includes(q));
 });
 
+/* ================= INIT ================= */
 onMounted(async () => {
   await fetchPosts();
-  await fetchUsers();
+  if (token) await fetchPeople();
 
   socket = io(apiUrl, { transports: ["websocket", "polling"] });
 
   socket.on("connect", () => {
+    // ✅ this is REQUIRED for calls/online mapping
     if (me?.id) socket.emit("register-user", { id: me.id, username: me.username });
+
     socket.emit("join-room", chatRoom.value);
     socket.emit("get-live-list");
   });
 
-  socket.on("receive-message", (msg) => chatMessages.value.push(msg));
+  socket.on("receive-message", (msg) => {
+    chatMessages.value.push(msg);
+    nextTick(() => {
+      const el = chatBoxRef.value;
+      if (el) el.scrollTop = el.scrollHeight;
+    });
+  });
 
   socket.on("live-list", (streams) => {
     liveStreams.value = Array.isArray(streams) ? streams : [];
   });
 
-  // ✅ online users list from server
+  // ✅ Online users list
   socket.on("online-users", (pairs) => {
-    // pairs = [[userId, socketId], ...]
-    const m = new Map();
-    if (Array.isArray(pairs)) {
-      for (const [uid, sid] of pairs) m.set(String(uid), String(sid));
-    }
-    onlineMap.value = m;
+    onlinePairs.value = Array.isArray(pairs) ? pairs : [];
   });
 
-  // ✅ incoming call
-  socket.on("call:incoming", (payload) => {
-    incoming.value = {
-      open: true,
-      callId: String(payload.roomId || payload.callId || ""),
-      kind: String(payload.kind || "audio"),
-      fromUserId: String(payload.fromUserId || ""),
-      fromUsername: String(payload.fromUsername || ""),
-      fromSocketId: String(payload.fromSocketId || ""),
-    };
+  // ✅ Calls
+  socket.on("call:ringing", ({ roomId, kind }) => {
+    pendingRoomId.value = roomId;
+    callingToast.value = `Calling… (${kind})`;
   });
 
-  // ✅ caller gets ringing/offline/accepted
-  socket.on("call:ringing", ({ roomId, toUserId, kind }) => {
-    outgoing.value = { open: true, callId: String(roomId), kind: String(kind || "audio"), toUserId: String(toUserId || "") };
+  socket.on("call:incoming", (p) => {
+    // show popup on callee device
+    incomingCall.value = p;
   });
 
-  socket.on("call:offline", () => {
-    outgoing.value.open = false;
-    alert("User is offline. (Next: save missed call + leave message)");
-  });
+  socket.on("call:ready", ({ roomId, kind, role, otherSocketId }) => {
+    // both sides get this
+    callingToast.value = "";
+    callBusy.value = false;
+    incomingCall.value = null;
 
-  socket.on("call:accepted", ({ roomId, calleeSocketId, kind }) => {
-    const cId = String(roomId || "");
-    outgoing.value.open = false;
-
-    router.push({
-      path: "/call",
-      query: {
-        callId: cId,
-        role: "caller",
-        kind: String(kind || "audio"),
-        otherSocketId: String(calleeSocketId || ""),
-      },
-    });
+    router.push(
+      `/call?roomId=${encodeURIComponent(roomId)}&role=${role}&kind=${kind}&otherSocketId=${encodeURIComponent(otherSocketId)}`
+    );
   });
 
   socket.on("call:rejected", () => {
-    outgoing.value.open = false;
+    callingToast.value = "";
+    callBusy.value = false;
     alert("Call rejected");
   });
+
+  socket.on("call:canceled", () => {
+    incomingCall.value = null;
+  });
+
+  socket.on("call:unavailable", () => {
+    callingToast.value = "";
+    callBusy.value = false;
+    alert("User is offline / unavailable");
+  });
+
+  socket.on("call:ended", () => {
+    callingToast.value = "";
+    callBusy.value = false;
+    incomingCall.value = null;
+  });
+});
+
+onBeforeUnmount(() => {
+  try { socket?.disconnect(); } catch {}
+  socket = null;
 });
 </script>
 
 <style scoped>
-.page {
-  display: grid;
-  grid-template-columns: 280px 1fr 360px;
-  gap: 20px;
-  max-width: 1400px;
-  margin: 0 auto;
-  padding: 24px;
-}
-@media (max-width: 1100px) {
-  .page { grid-template-columns: 1fr; }
-  .right { display: none; }
-  .left { position: relative; top: 0; }
+/* Background */
+.wrap {
+  min-height: 100vh;
+  background:
+    radial-gradient(1200px 700px at 20% 0%, rgba(255,75,43,0.18), transparent),
+    radial-gradient(900px 600px at 80% 20%, rgba(255,65,108,0.16), transparent),
+    #0b1220;
+  color: white;
 }
 
-.panel,
-.composer,
-.post {
+/* Topbar */
+.topbar {
+  position: sticky;
+  top: 0;
+  z-index: 20;
+  padding: 14px 14px;
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  gap: 12px;
+  background: rgba(8, 12, 20, 0.72);
+  backdrop-filter: blur(10px);
+  border-bottom: 1px solid rgba(255, 255, 255, 0.10);
+}
+.brand { display: flex; align-items: center; gap: 10px; }
+.logo {
+  width: 42px; height: 42px; border-radius: 14px;
+  display: grid; place-items: center;
+  background: rgba(255, 255, 255, 0.10);
+  border: 1px solid rgba(255,255,255,0.14);
+  font-size: 20px;
+}
+.title { font-weight: 900; font-size: 18px; }
+.sub { opacity: .72; font-size: 12px; }
+
+.top-actions { display: flex; gap: 8px; flex-wrap: wrap; justify-content: flex-end; }
+
+/* Layout */
+.page {
+  display: grid;
+  grid-template-columns: 320px 1fr 360px;
+  gap: 16px;
+  max-width: 1500px;
+  margin: 0 auto;
+  padding: 16px;
+}
+.left, .right { height: fit-content; position: sticky; top: 74px; }
+.center { min-width: 0; }
+
+/* Panels */
+.panel, .composer, .post {
   background: rgba(255, 255, 255, 0.08);
   border: 1px solid rgba(255, 255, 255, 0.12);
   border-radius: 18px;
-  padding: 16px;
+  padding: 14px;
   backdrop-filter: blur(10px);
-  margin-bottom: 16px;
+  margin-bottom: 14px;
 }
-.left,
-.right {
-  height: fit-content;
-  position: sticky;
-  top: 12px;
+.panel-head {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 10px;
+  margin-bottom: 10px;
 }
+.panel-title { font-weight: 900; }
 
-.brand { display: flex; gap: 10px; align-items: center; margin-bottom: 14px; }
-.brand-icon { font-size: 24px; }
-.brand-title { font-weight: 900; font-size: 22px; }
-.brand-sub { opacity: 0.7; font-size: 12px; }
-.panel-title { font-weight: 900; margin-bottom: 10px; }
+/* Buttons */
+.btn, .chip {
+  border: none;
+  border-radius: 999px;
+  padding: 10px 14px;
+  cursor: pointer;
+  background: rgba(255,255,255,0.12);
+  color: white;
+}
+.btn:hover, .chip:hover { filter: brightness(1.05); }
+.btn-primary {
+  background: linear-gradient(45deg, #ff416c, #ff4b2b);
+}
+.danger {
+  background: rgba(255,80,80,0.22);
+  border: 1px solid rgba(255,80,80,0.35);
+}
+.ghost { opacity: .92; }
+.w100 { width: 100%; }
+.stack { display: grid; gap: 10px; }
+
+.iconbtn {
+  width: 40px; height: 40px;
+  border-radius: 14px;
+  border: 1px solid rgba(255,255,255,0.14);
+  background: rgba(255,255,255,0.10);
+  cursor: pointer;
+}
+.iconbtn:disabled { opacity: .45; cursor: not-allowed; }
+
+/* Live cards */
+.live-card {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  background: rgba(255, 0, 0, 0.12);
+  border: 1px solid rgba(255, 0, 0, 0.18);
+  padding: 10px 12px;
+  border-radius: 14px;
+  margin-top: 10px;
+  cursor: pointer;
+}
+.dot { width: 10px; height: 10px; border-radius: 50%; background: red; }
+.live-meta { display: grid; }
+.live-name { font-weight: 900; }
+.live-sub { opacity: .75; font-size: 12px; }
+.chev { margin-left: auto; opacity: .7; font-size: 22px; }
+
+/* People */
+.people { display: grid; gap: 10px; }
+.person {
+  display: flex;
+  gap: 10px;
+  align-items: center;
+  padding: 10px;
+  border-radius: 16px;
+  background: rgba(0,0,0,0.28);
+  border: 1px solid rgba(255,255,255,0.10);
+}
+.person-meta { flex: 1; min-width: 0; }
+.person-name { font-weight: 900; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.person-sub { display: flex; align-items: center; gap: 8px; opacity: .75; font-size: 12px; margin-top: 2px; }
+.status { width: 10px; height: 10px; border-radius: 50%; background: rgba(255,255,255,0.35); }
+.status.on { background: #00e676; }
+.sep { opacity: .5; }
+.person-actions { display: flex; gap: 8px; }
+
+/* Composer */
+.composer-head { display: flex; gap: 10px; align-items: center; margin-bottom: 10px; }
+.me { font-weight: 900; }
+.small { font-size: 12px; }
+.muted { opacity: .75; }
 
 .input {
   width: 100%;
@@ -836,34 +1002,23 @@ onMounted(async () => {
   padding: 12px;
   resize: none;
 }
-
 .upload-row { display: flex; gap: 10px; align-items: center; flex-wrap: wrap; margin-top: 10px; }
-.file-pill { background: rgba(255, 255, 255, 0.12); border-radius: 999px; padding: 10px 12px; cursor: pointer; }
+.file-pill {
+  background: rgba(255, 255, 255, 0.12);
+  border-radius: 999px;
+  padding: 10px 12px;
+  cursor: pointer;
+}
 .file-pill input { display: none; }
 
-.btn {
-  border: none;
-  border-radius: 999px;
-  padding: 10px 14px;
-  cursor: pointer;
-  background: rgba(255, 255, 255, 0.12);
-  color: white;
+/* Feed */
+.feed-head {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  gap: 10px;
+  margin-bottom: 10px;
 }
-.btn-primary { background: linear-gradient(45deg, #ff416c, #ff4b2b); }
-.w100 { width: 100%; }
-.mt10 { margin-top: 10px; }
-.mt12 { margin-top: 12px; }
-.hint { opacity: 0.75; font-size: 13px; }
-.hint.red { color: #ff9aa2; }
-.alert {
-  margin-top: 10px;
-  padding: 10px;
-  border-radius: 14px;
-  background: rgba(255, 80, 80, 0.18);
-  border: 1px solid rgba(255, 80, 80, 0.35);
-}
-
-.feed-head { display: flex; justify-content: space-between; align-items: center; gap: 10px; margin-bottom: 10px; }
 .feed-title { font-weight: 900; font-size: 18px; }
 .search {
   background: rgba(0, 0, 0, 0.35);
@@ -873,90 +1028,75 @@ onMounted(async () => {
   border-radius: 999px;
   outline: none;
 }
-
 .post { background: rgba(0, 0, 0, 0.55); }
 .post-head { display: flex; gap: 10px; align-items: center; margin-bottom: 10px; }
+.who .name { font-weight: 900; }
+.time { opacity: .75; font-size: 12px; }
+.text { margin: 6px 0 10px; line-height: 1.5; }
+
+.media {
+  width: 100%;
+  border-radius: 16px;
+  background: #000;
+  margin-top: 10px;
+  max-height: 700px;
+  object-fit: cover;
+}
+.state {
+  text-align: center;
+  padding: 26px;
+  opacity: 0.8;
+  border-radius: 18px;
+  background: rgba(255, 255, 255, 0.06);
+}
+.hint { opacity: .75; font-size: 13px; }
+.mt10 { margin-top: 10px; }
+.mt10 { margin-top: 10px; }
+
+/* Avatars */
 .avatar {
   width: 44px; height: 44px; border-radius: 50%;
   background: linear-gradient(45deg, #ff416c, #ff4b2b);
-  display: grid; place-items: center; font-weight: 900;
+  display: grid; place-items: center;
+  font-weight: 900;
 }
 .avatar.big { width: 52px; height: 52px; }
-.name { font-weight: 900; }
-.time { opacity: 0.75; font-size: 12px; }
-.text { margin: 6px 0 10px; line-height: 1.5; }
-.media { width: 100%; border-radius: 16px; background: #000; margin-top: 10px; max-height: 700px; object-fit: cover; }
-
-.state { text-align: center; padding: 26px; opacity: 0.8; border-radius: 18px; background: rgba(255, 255, 255, 0.06); }
-
-.live-card {
-  display: flex; align-items: center; gap: 10px;
-  background: rgba(255, 0, 0, 0.12);
-  border: 1px solid rgba(255, 0, 0, 0.18);
-  padding: 10px 12px; border-radius: 14px; margin-top: 10px; cursor: pointer;
+.avatar.small {
+  width: 40px; height: 40px;
+  border-radius: 14px;
+  background: rgba(255,255,255,0.10);
+  border: 1px solid rgba(255,255,255,0.14);
 }
-.dot { width: 10px; height: 10px; border-radius: 50%; background: red; }
 
-/* ✅ People panel */
-.row { display:flex; gap:10px; align-items:center; }
-.searchMini {
-  flex: 1;
-  background: rgba(0,0,0,0.35);
-  border: 1px solid rgba(255,255,255,0.12);
+/* Actions */
+.actions {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  margin-top: 12px;
+  padding-top: 10px;
+  border-top: 1px solid rgba(255, 255, 255, 0.10);
+}
+.action-btn {
+  display: inline-flex;
+  align-items: center;
+  gap: 10px;
+  border: 1px solid rgba(255, 255, 255, 0.14);
+  background: rgba(255, 255, 255, 0.08);
   color: white;
   padding: 10px 12px;
   border-radius: 999px;
-  outline: none;
+  cursor: pointer;
 }
-.btn.mini { padding: 10px 12px; min-width: 44px; }
-.people { display:grid; gap:10px; margin-top:12px; }
-.person {
-  display:flex; align-items:center; justify-content:space-between; gap:10px;
-  padding: 10px 12px;
-  border-radius: 14px;
-  background: rgba(255,255,255,0.06);
-  border: 1px solid rgba(255,255,255,0.10);
+.action-btn:disabled { opacity: 0.6; cursor: not-allowed; }
+.action-btn .label { font-weight: 900; font-size: 13px; }
+.action-btn.active {
+  border-color: rgba(255, 75, 43, 0.6);
+  background: rgba(255, 75, 43, 0.18);
 }
-.person-left { display:flex; gap:10px; align-items:center; min-width:0; }
-.avatarSm {
-  width: 38px; height: 38px; border-radius: 50%;
-  display:grid; place-items:center; font-weight:900;
-  background: rgba(255,255,255,0.10);
-  border: 1px solid rgba(255,255,255,0.12);
-}
-.person-meta { min-width:0; }
-.person-name { font-weight:900; white-space:nowrap; overflow:hidden; text-overflow:ellipsis; max-width: 150px; }
-.person-sub { display:flex; gap:8px; align-items:center; opacity:.8; font-size:12px; }
-.statusDot { width:10px; height:10px; border-radius:50%; background: rgba(255,255,255,0.25); }
-.statusDot.on { background: #4cff7a; }
-.person-actions { display:flex; gap:8px; }
-.iconBtn{
-  border:none; cursor:pointer;
-  border-radius: 12px;
-  padding: 10px 10px;
-  background: rgba(255,255,255,0.10);
-  border: 1px solid rgba(255,255,255,0.14);
-  color:white;
-}
+.spacer { flex: 1; }
 
-/* ✅ action bar */
-.actions {
-  display:flex; align-items:center; gap:10px;
-  margin-top:12px; padding-top:10px;
-  border-top: 1px solid rgba(255,255,255,0.10);
-}
-.action-btn {
-  display:inline-flex; align-items:center; gap:10px;
-  border: 1px solid rgba(255,255,255,0.14);
-  background: rgba(255,255,255,0.08);
-  color:white;
-  padding: 10px 12px;
-  border-radius: 999px;
-  cursor:pointer;
-}
-.action-btn.active { border-color: rgba(255,75,43,0.6); background: rgba(255,75,43,0.18); }
-.spacer { flex:1; }
-
+/* Comments */
 .comments {
   margin-top: 12px;
   background: rgba(0, 0, 0, 0.35);
@@ -964,77 +1104,159 @@ onMounted(async () => {
   border-radius: 16px;
   padding: 12px;
 }
-.comments-head { display:flex; align-items:center; justify-content:space-between; margin-bottom:8px; }
-.comments-title { font-weight:900; }
-.x { border:none; cursor:pointer; background: rgba(255,255,255,0.10); color:white; border-radius:10px; padding:6px 10px; }
-
-.comments-list { display:grid; gap:10px; max-height: 280px; overflow:auto; padding-right:4px; }
-.comment { padding:10px; border-radius:14px; background: rgba(255,255,255,0.08); border:1px solid rgba(255,255,255,0.10); }
-.badge { font-weight:900; font-size:12px; padding:6px 10px; border-radius:999px; background: rgba(255,255,255,0.10); }
-.comment-time { opacity:0.75; font-size:12px; }
-.comment-text { line-height: 1.5; font-size:14px; }
-
-.comment-compose { display:flex; gap:8px; margin-top:10px; }
-.comment-input {
-  flex:1;
-  background: rgba(0, 0, 0, 0.35);
-  border: 1px solid rgba(255,255,255,0.12);
-  color:white;
-  padding:10px 12px;
-  border-radius:12px;
-  outline:none;
-}
-.comment-error {
-  margin-top:10px; padding:10px;
-  border-radius:14px;
-  background: rgba(255,80,80,0.18);
-  border:1px solid rgba(255,80,80,0.35);
-}
-
-/* ✅ incoming modal */
-.modal-backdrop{
-  position:fixed; inset:0;
-  background: rgba(0,0,0,0.55);
-  display:grid; place-items:center;
-  z-index: 9999;
-}
-.modal{
-  width:min(420px, 92vw);
-  border-radius: 18px;
-  background: rgba(20, 28, 44, 0.92);
-  border: 1px solid rgba(255,255,255,0.14);
-  padding: 16px;
-  backdrop-filter: blur(12px);
-}
-.modalTop{ margin-bottom: 12px; }
-.modalTitle{ font-weight:900; font-size: 18px; }
-.modalSub{ opacity:.8; margin-top: 6px; }
-.modalActions{ display:flex; gap:10px; justify-content:flex-end; }
-
-/* ✅ outgoing toast */
-.toast{
-  position: fixed;
-  left: 12px;
-  right: 12px;
-  bottom: 12px;
-  z-index: 9998;
-  padding: 12px 14px;
-  border-radius: 16px;
-  background: rgba(0,0,0,0.55);
-  border: 1px solid rgba(255,255,255,0.12);
-  backdrop-filter: blur(10px);
-}
-.toastTitle{ font-weight:900; }
-.toastSub{ opacity:.8; font-size: 13px; margin-top: 4px; }
-.toastX{
-  position:absolute;
-  right: 10px;
-  top: 10px;
-  border:none;
-  background: rgba(255,255,255,0.10);
-  color:white;
+.comments-head { display:flex; align-items:center; justify-content:space-between; margin-bottom: 8px; }
+.comments-title { font-weight: 900; }
+.x {
+  border: none; cursor: pointer;
+  background: rgba(255, 255, 255, 0.10);
+  color: white;
   border-radius: 10px;
   padding: 6px 10px;
-  cursor:pointer;
+}
+.comments-list {
+  display: grid;
+  gap: 10px;
+  max-height: 280px;
+  overflow: auto;
+  padding-right: 4px;
+}
+.comment {
+  padding: 10px 10px;
+  border-radius: 14px;
+  background: rgba(255, 255, 255, 0.08);
+  border: 1px solid rgba(255, 255, 255, 0.10);
+}
+.badge {
+  font-weight: 900;
+  font-size: 12px;
+  padding: 6px 10px;
+  border-radius: 999px;
+  background: rgba(255, 255, 255, 0.10);
+}
+.comment-time { opacity: .75; font-size: 12px; }
+.comment-text { line-height: 1.5; font-size: 14px; }
+.comment-compose { display: flex; gap: 8px; margin-top: 10px; }
+.comment-input {
+  flex: 1;
+  background: rgba(0, 0, 0, 0.35);
+  border: 1px solid rgba(255, 255, 255, 0.12);
+  color: white;
+  padding: 10px 12px;
+  border-radius: 12px;
+  outline: none;
+}
+.comment-error {
+  margin-top: 10px;
+  padding: 10px;
+  border-radius: 14px;
+  background: rgba(255, 80, 80, 0.18);
+  border: 1px solid rgba(255, 80, 80, 0.35);
+}
+
+/* Chat */
+.chat-hint { opacity: .7; font-size: 12px; margin-bottom: 10px; }
+.chat-list { display: grid; gap: 8px; margin-bottom: 12px; }
+.chat-item {
+  background: rgba(255, 255, 255, 0.10);
+  border: 1px solid rgba(255, 255, 255, 0.12);
+  padding: 10px 12px;
+  border-radius: 14px;
+  color: white;
+  cursor: pointer;
+  text-align: left;
+}
+.chat-item.active { border-color: rgba(255,75,43,.5); background: rgba(255,75,43,.14); }
+.chat-box { background: rgba(0, 0, 0, 0.35); border-radius: 16px; padding: 10px; }
+.chat-messages { max-height: 320px; overflow: auto; display: grid; gap: 8px; padding: 6px; }
+.chat-msg { font-size: 13px; opacity: 0.95; }
+.chat-input { display:flex; gap: 8px; margin-top: 10px; }
+.chat-input input {
+  flex: 1;
+  background: rgba(0, 0, 0, 0.35);
+  border: 1px solid rgba(255, 255, 255, 0.12);
+  color: white;
+  padding: 10px 12px;
+  border-radius: 12px;
+  outline: none;
+}
+
+/* Alerts */
+.alert {
+  margin-top: 10px;
+  padding: 10px;
+  border-radius: 14px;
+  background: rgba(255, 80, 80, 0.18);
+  border: 1px solid rgba(255, 80, 80, 0.35);
+}
+.alert.soft {
+  background: rgba(255,255,255,0.08);
+  border: 1px solid rgba(255,255,255,0.12);
+}
+
+/* Incoming modal */
+.modal-backdrop {
+  position: fixed;
+  inset: 0;
+  z-index: 80;
+  background: rgba(0,0,0,0.58);
+  display: grid;
+  place-items: center;
+  padding: 16px;
+}
+.modal {
+  width: min(520px, 100%);
+  background: rgba(12, 18, 32, 0.95);
+  border: 1px solid rgba(255,255,255,0.14);
+  border-radius: 18px;
+  padding: 16px;
+  box-shadow: 0 12px 40px rgba(0,0,0,0.45);
+}
+.modal-title { font-weight: 900; font-size: 18px; }
+.modal-sub { margin-top: 8px; opacity: .9; }
+.pill {
+  display: inline-block;
+  margin-left: 6px;
+  padding: 6px 10px;
+  border-radius: 999px;
+  background: rgba(255,255,255,0.10);
+  border: 1px solid rgba(255,255,255,0.14);
+  font-weight: 900;
+  font-size: 12px;
+}
+.modal-actions { display: flex; gap: 10px; justify-content: flex-end; margin-top: 14px; }
+.tiny { font-size: 12px; }
+
+/* Calling toast */
+.toast {
+  position: fixed;
+  left: 50%;
+  bottom: 18px;
+  transform: translateX(-50%);
+  z-index: 90;
+  background: rgba(12, 18, 32, 0.95);
+  border: 1px solid rgba(255,255,255,0.14);
+  padding: 10px 12px;
+  border-radius: 999px;
+  display: flex;
+  align-items: center;
+  gap: 10px;
+}
+.mini-x {
+  border: none;
+  cursor: pointer;
+  background: rgba(255,255,255,0.10);
+  color: white;
+  border-radius: 10px;
+  padding: 4px 8px;
+}
+
+/* Responsive: make sidebars drawers on mobile */
+@media (max-width: 1100px) {
+  .page { grid-template-columns: 1fr; }
+  .left, .right { position: fixed; top: 74px; bottom: 0; width: min(420px, 92vw); z-index: 30; overflow: auto; }
+  .left { left: 0; transform: translateX(-105%); transition: transform .25s ease; }
+  .left.open { transform: translateX(0); }
+  .right { right: 0; transform: translateX(105%); transition: transform .25s ease; }
+  .right.open { transform: translateX(0); }
 }
 </style>

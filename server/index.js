@@ -55,12 +55,15 @@ app.use(express.json({ limit: "15mb" }));
 app.use(express.urlencoded({ extended: true }));
 
 /* =========================
-   STATIC + ROUTES (NO /api)
+   STATIC UPLOADS + ROUTES
 ========================= */
 app.use("/uploads", express.static(path.join(__dirname, "uploads")));
 
-// ✅ NO /api
+// ✅ You said: "we don’t use api"
+// So main routes are without /api, but we ALSO keep old /api paths (safe backwards-compat)
 app.use("/upload", uploadRoutes);
+app.use("/api/upload", uploadRoutes);
+
 app.use("/likes", likesRoutes);
 
 app.use("/posts", postsRoutes);
@@ -78,10 +81,7 @@ pool.on("connect", () => console.log("✅ PostgreSQL Connected"));
 ========================= */
 function signToken(user) {
   return jwt.sign(
-    {
-      id: user.id,
-      username: user.username || user.name || user.email || `User${user.id}`,
-    },
+    { id: user.id, username: user.username || user.name || user.email || `User${user.id}` },
     JWT_SECRET,
     { expiresIn: "7d" }
   );
@@ -90,8 +90,7 @@ function signToken(user) {
 app.post("/auth/register", async (req, res) => {
   try {
     const { username, name, email, password } = req.body;
-    if (!email || !password)
-      return res.status(400).json({ error: "Email and password required" });
+    if (!email || !password) return res.status(400).json({ error: "Email and password required" });
 
     const display = username || name || email.split("@")[0];
     const hashed = await bcrypt.hash(password, 10);
@@ -127,8 +126,7 @@ app.post("/auth/register", async (req, res) => {
 app.post("/auth/login", async (req, res) => {
   try {
     const { email, password } = req.body;
-    if (!email || !password)
-      return res.status(400).json({ error: "Email and password required" });
+    if (!email || !password) return res.status(400).json({ error: "Email and password required" });
 
     const found = await pool.query(`SELECT * FROM users WHERE email=$1 LIMIT 1`, [email]);
     if (!found.rows.length) return res.status(400).json({ error: "User not found" });
@@ -150,10 +148,20 @@ app.post("/auth/login", async (req, res) => {
 });
 
 /* =========================
-   HEALTH (NO /api)
+   HEALTH
 ========================= */
 app.get("/", (req, res) => res.send("🚀 AddisGo backend running"));
+
 app.get("/health", async (req, res) => {
+  try {
+    const r = await pool.query("SELECT NOW() as now");
+    res.json({ ok: true, now: r.rows[0].now });
+  } catch {
+    res.status(500).json({ ok: false });
+  }
+});
+// backwards compatible
+app.get("/api/health", async (req, res) => {
   try {
     const r = await pool.query("SELECT NOW() as now");
     res.json({ ok: true, now: r.rows[0].now });
@@ -163,9 +171,9 @@ app.get("/health", async (req, res) => {
 });
 
 /* =========================
-   TURN (NO /api)
+   TURN (ICE servers)
 ========================= */
-app.get("/turn", async (req, res) => {
+async function handleTurn(req, res) {
   try {
     const sid = process.env.TWILIO_ACCOUNT_SID;
     const auth = process.env.TWILIO_AUTH_TOKEN;
@@ -186,10 +194,13 @@ app.get("/turn", async (req, res) => {
     console.error("TURN ERROR:", e);
     res.status(500).json({ ok: false, message: "Failed to get TURN servers" });
   }
-});
+}
+
+app.get("/turn", handleTurn);
+app.get("/api/turn", handleTurn);
 
 /* =========================
-   SOCKET.IO
+   SOCKET.IO (Realtime Engine)
 ========================= */
 const io = new Server(server, {
   cors: { origin: ORIGINS, credentials: true, methods: ["GET", "POST"] },
@@ -198,12 +209,12 @@ const io = new Server(server, {
 // Presence: userId -> socketId
 const onlineUsers = new Map();
 
-// Live lists (your existing)
+// Dashboard live list
 const liveStreams = new Set();
 const liveHosts = new Map();
 
-// ✅ Calls: roomId -> { callerUserId, calleeUserId, callerSocketId, calleeSocketId, kind }
-const activeCalls = new Map();
+// ✅ CALLS: roomId -> call state
+const activeCalls = new Map(); // roomId -> { callerSocketId, calleeSocketId, kind, callerUser, calleeUser }
 
 function emitOnlineUsers() {
   io.emit("online-users", Array.from(onlineUsers.entries()));
@@ -233,113 +244,100 @@ io.on("connection", (socket) => {
     socket.data.user = { id: String(userId), username: username || `User${userId}` };
     onlineUsers.set(String(userId), socket.id);
 
-    // personal room (for calls + notifications)
     socket.join(`user:${userId}`);
-
     emitOnlineUsers();
   });
 
-  /* =========================
-     ✅ CALL SIGNALING (NEW)
-     - request -> incoming -> accept/reject -> ready
-  ========================= */
+  /* ======================================================================
+     ✅ CALLS (WhatsApp-style ringing + accept/reject) using existing WebRTC events
+     Flow:
+       caller -> call:request { toUserId, kind }
+       server -> callee: call:incoming { roomId, from, kind, callerSocketId }
+       callee -> call:accept { roomId }
+       server -> BOTH: call:ready { roomId, role, kind, otherSocketId }
+       then Call.vue uses: webrtc:offer/answer/ice with liveId = roomId
+  ====================================================================== */
 
-  // Caller: request call by userId
-  // payload: { toUserId, kind: "audio"|"video", roomId? }
-  socket.on("call:request", ({ toUserId, kind = "audio", roomId }) => {
-    const fromUserId = socket.data.user?.id;
-    if (!fromUserId) {
-      socket.emit("call:error", { message: "Not registered (missing register-user)" });
-      return;
-    }
-    if (!toUserId) {
-      socket.emit("call:error", { message: "Missing toUserId" });
-      return;
-    }
+  socket.on("call:request", ({ toUserId, kind }) => {
+    const callerUser = socket.data.user;
+    if (!callerUser?.id) return socket.emit("call:error", { message: "Not registered on socket" });
 
-    const calleeSocketId = onlineUsers.get(String(toUserId)) || null;
+    const calleeSocketId = onlineUsers.get(String(toUserId));
+    if (!calleeSocketId) return socket.emit("call:unavailable", { toUserId: String(toUserId) });
 
-    // If offline -> tell caller unavailable
-    if (!calleeSocketId) {
-      socket.emit("call:unavailable", { toUserId, reason: "offline" });
-      return;
-    }
+    const roomId = `call-${callerUser.id}-${toUserId}-${Date.now()}`;
+    const callKind = kind === "video" ? "video" : "audio";
 
-    const rid =
-      roomId ||
-      `call-${fromUserId}-${toUserId}-${Date.now().toString(36)}-${Math.random()
-        .toString(36)
-        .slice(2, 6)}`;
-
-    activeCalls.set(rid, {
-      roomId: rid,
-      kind,
-      callerUserId: String(fromUserId),
-      calleeUserId: String(toUserId),
+    activeCalls.set(roomId, {
       callerSocketId: socket.id,
       calleeSocketId,
+      kind: callKind,
+      callerUser: { id: callerUser.id, username: callerUser.username },
+      calleeUser: { id: String(toUserId) },
     });
 
-    // Notify callee (popup)
+    // tell caller "ringing"
+    socket.emit("call:ringing", { roomId, kind: callKind, toUserId: String(toUserId) });
+
+    // tell callee incoming
     io.to(calleeSocketId).emit("call:incoming", {
-      roomId: rid,
-      kind,
-      from: { userId: String(fromUserId), username: socket.data.user?.username || `User${fromUserId}` },
-      fromSocketId: socket.id,
+      roomId,
+      kind: callKind,
+      from: { id: callerUser.id, username: callerUser.username },
+      callerSocketId: socket.id,
     });
-
-    // Notify caller: ringing
-    socket.emit("call:ringing", { roomId: rid, toUserId: String(toUserId), calleeSocketId });
   });
 
-  // Callee accepts
-  // payload: { roomId }
   socket.on("call:accept", ({ roomId }) => {
-    const c = activeCalls.get(String(roomId));
-    if (!c) return;
+    const call = activeCalls.get(roomId);
+    if (!call) return;
 
-    // Only callee socket can accept
-    if (socket.id !== c.calleeSocketId) return;
+    // only the intended callee can accept
+    if (socket.id !== call.calleeSocketId) return;
 
-    // Tell both sides the other socketId so they can do WebRTC offer/answer
-    io.to(c.callerSocketId).emit("call:ready", {
-      roomId: c.roomId,
-      kind: c.kind,
+    // Tell both sides to open Call.vue
+    io.to(call.callerSocketId).emit("call:ready", {
+      roomId,
+      kind: call.kind,
       role: "caller",
-      otherSocketId: c.calleeSocketId,
-      otherUserId: c.calleeUserId,
+      otherSocketId: call.calleeSocketId,
     });
 
-    io.to(c.calleeSocketId).emit("call:ready", {
-      roomId: c.roomId,
-      kind: c.kind,
+    io.to(call.calleeSocketId).emit("call:ready", {
+      roomId,
+      kind: call.kind,
       role: "callee",
-      otherSocketId: c.callerSocketId,
-      otherUserId: c.callerUserId,
+      otherSocketId: call.callerSocketId,
     });
   });
 
-  // Callee rejects
   socket.on("call:reject", ({ roomId }) => {
-    const c = activeCalls.get(String(roomId));
-    if (!c) return;
-    if (socket.id !== c.calleeSocketId) return;
+    const call = activeCalls.get(roomId);
+    if (!call) return;
 
-    io.to(c.callerSocketId).emit("call:rejected", { roomId: c.roomId });
-    io.to(c.calleeSocketId).emit("call:ended", { roomId: c.roomId });
-
-    activeCalls.delete(String(roomId));
+    if (socket.id === call.calleeSocketId) {
+      io.to(call.callerSocketId).emit("call:rejected", { roomId });
+      activeCalls.delete(roomId);
+    }
   });
 
-  // Either side ends
+  socket.on("call:cancel", ({ roomId }) => {
+    const call = activeCalls.get(roomId);
+    if (!call) return;
+
+    if (socket.id === call.callerSocketId) {
+      io.to(call.calleeSocketId).emit("call:canceled", { roomId });
+      activeCalls.delete(roomId);
+    }
+  });
+
   socket.on("call:end", ({ roomId }) => {
-    const c = activeCalls.get(String(roomId));
-    if (!c) return;
+    const call = activeCalls.get(roomId);
+    if (!call) return;
 
-    io.to(c.callerSocketId).emit("call:ended", { roomId: c.roomId });
-    io.to(c.calleeSocketId).emit("call:ended", { roomId: c.roomId });
-
-    activeCalls.delete(String(roomId));
+    io.to(call.callerSocketId).emit("call:ended", { roomId });
+    io.to(call.calleeSocketId).emit("call:ended", { roomId });
+    activeCalls.delete(roomId);
   });
 
   /* ===== BASIC ROOMS ===== */
@@ -371,17 +369,15 @@ io.on("connection", (socket) => {
       created_at: new Date().toISOString(),
     });
   }
-
   socket.on("send-room-message", emitRoomMessage);
 
+  /* ===== send-message supports BOTH room chat and DB conv ===== */
   socket.on("send-message", async (data) => {
-    // A) room chat
     if (data?.room && data?.text) {
       emitRoomMessage(data);
       return;
     }
 
-    // B) DB conversation message
     try {
       const conversationId = data?.conversationId;
       const senderId = data?.senderId;
@@ -405,7 +401,7 @@ io.on("connection", (socket) => {
   });
 
   /* =========================
-     LIVE (your existing)
+     LIVE STREAMING (existing)
   ========================= */
   socket.on("live:create", ({ liveId }) => {
     if (!liveId) return;
@@ -419,6 +415,7 @@ io.on("connection", (socket) => {
 
     socket.join(`live:${liveId}`);
     io.to(`live:${liveId}`).emit("live:host", { liveId, hostSocketId: socket.id });
+
     emitLivePresence(liveId);
   });
 
@@ -434,12 +431,8 @@ io.on("connection", (socket) => {
     socket.emit("live:host", { liveId, hostSocketId });
 
     if (hostSocketId) {
-      io.to(hostSocketId).emit("live:viewer-joined", {
-        liveId,
-        viewerSocketId: socket.id,
-      });
+      io.to(hostSocketId).emit("live:viewer-joined", { liveId, viewerSocketId: socket.id });
     }
-
     emitLivePresence(liveId);
   });
 
@@ -451,11 +444,9 @@ io.on("connection", (socket) => {
 
   socket.on("live:end", ({ liveId }) => {
     if (!liveId) return;
-
     const hostSocketId = liveHosts.get(liveId);
     if (hostSocketId === socket.id) {
       io.to(`live:${liveId}`).emit("live:ended", { liveId });
-
       liveHosts.delete(liveId);
       liveStreams.delete(String(liveId));
       emitLiveList();
@@ -464,7 +455,6 @@ io.on("connection", (socket) => {
 
   socket.on("live:chat", ({ liveId, message }) => {
     if (!liveId || !message) return;
-
     io.to(`live:${liveId}`).emit("live:chat", {
       liveId,
       from: socket.data.user
@@ -475,25 +465,21 @@ io.on("connection", (socket) => {
     });
   });
 
-  // WebRTC relay (re-used for calls too)
+  // ✅ WebRTC relay (used by Live AND Calls)
   socket.on("webrtc:offer", ({ liveId, to, offer }) => {
     if (!to || !offer) return;
     io.to(to).emit("webrtc:offer", { liveId, from: socket.id, offer });
   });
-
   socket.on("webrtc:answer", ({ liveId, to, answer }) => {
     if (!to || !answer) return;
     io.to(to).emit("webrtc:answer", { liveId, from: socket.id, answer });
   });
-
   socket.on("webrtc:ice", ({ liveId, to, candidate }) => {
     if (!to || !candidate) return;
     io.to(to).emit("webrtc:ice", { liveId, from: socket.id, candidate });
   });
 
-  socket.on("get-live-list", () => {
-    socket.emit("live-list", Array.from(liveStreams));
-  });
+  socket.on("get-live-list", () => socket.emit("live-list", Array.from(liveStreams)));
 
   /* ===== DISCONNECT ===== */
   socket.on("disconnect", () => {
@@ -505,16 +491,31 @@ io.on("connection", (socket) => {
       }
     }
 
-    // End any active call if someone disconnects
-    for (const [roomId, c] of activeCalls.entries()) {
-      if (c.callerSocketId === socket.id || c.calleeSocketId === socket.id) {
-        io.to(c.callerSocketId).emit("call:ended", { roomId });
-        io.to(c.calleeSocketId).emit("call:ended", { roomId });
+    // cleanup calls where this socket was involved
+    for (const [roomId, call] of activeCalls.entries()) {
+      if (call.callerSocketId === socket.id || call.calleeSocketId === socket.id) {
+        io.to(call.callerSocketId).emit("call:ended", { roomId });
+        io.to(call.calleeSocketId).emit("call:ended", { roomId });
         activeCalls.delete(roomId);
       }
     }
 
+    // live cleanup
+    const liveId = socket.data?.liveId;
+    const role = socket.data?.role;
+
+    if (liveId) {
+      if (role === "host" && liveHosts.get(liveId) === socket.id) {
+        io.to(`live:${liveId}`).emit("live:ended", { liveId });
+        liveHosts.delete(liveId);
+        liveStreams.delete(String(liveId));
+        emitLiveList();
+      }
+      emitLivePresence(liveId);
+    }
+
     emitOnlineUsers();
+    emitLiveList();
     console.log("❌ Socket disconnected:", socket.id);
   });
 });
