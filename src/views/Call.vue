@@ -4,8 +4,10 @@
       <div class="left">
         <div class="pill">{{ kind.toUpperCase() }}</div>
         <div class="meta">
-          <div class="h1">{{ role === "caller" ? "Calling…" : "In Call" }}</div>
-          <div class="sub">Call: {{ callId }}</div>
+          <div class="h1">
+            {{ role === "caller" ? "Calling…" : "In Call" }}
+          </div>
+          <div class="sub">Call: {{ roomId }}</div>
         </div>
       </div>
 
@@ -18,7 +20,10 @@
     </div>
 
     <div class="controls">
-      <button class="btn" @click="toggleMute">{{ muted ? "Unmute" : "Mute" }}</button>
+      <button class="btn" @click="toggleMute">
+        {{ muted ? "Unmute" : "Mute" }}
+      </button>
+
       <button class="btn" v-if="kind === 'video'" @click="toggleCamera">
         {{ camOff ? "Camera On" : "Camera Off" }}
       </button>
@@ -38,12 +43,10 @@ const router = useRouter();
 
 const apiUrl = import.meta.env.VITE_API_URL;
 
-const callId = String(route.query.callId || route.query.roomId || "");
+// ✅ room-based id from dashboard/incoming popup
+const roomId = String(route.query.roomId || route.query.callId || "");
 const role = String(route.query.role || "caller"); // caller | callee
 const kind = String(route.query.kind || "audio");  // audio | video
-
-// caller passes calleeSocketId, callee may pass callerSocketId (but we ALSO learn it from incoming offer)
-const initialPeer = String(route.query.otherSocketId || "");
 
 const localVideo = ref(null);
 const remoteVideo = ref(null);
@@ -56,11 +59,13 @@ let socket = null;
 let pc = null;
 let localStream = null;
 
-// ✅ IMPORTANT: always send ICE/offer/answer to THIS peer socket id (learned dynamically)
-const peerSocketId = ref(initialPeer);
+function safeJsonParse(str) {
+  try { return JSON.parse(str); } catch { return null; }
+}
+
+const me = safeJsonParse(localStorage.getItem("user") || "null");
 
 async function getIceServers() {
-  // no /api
   try {
     const r = await fetch(`${apiUrl}/turn`);
     const j = await r.json();
@@ -76,6 +81,7 @@ async function initMedia() {
       : { audio: true, video: false };
 
   localStream = await navigator.mediaDevices.getUserMedia(constraints);
+
   if (localVideo.value) {
     localVideo.value.srcObject = localStream;
     try { await localVideo.value.play?.(); } catch {}
@@ -88,11 +94,10 @@ async function initPeer() {
 
   pc.onicecandidate = (event) => {
     if (!event.candidate) return;
-    if (!peerSocketId.value) return;
 
-    socket.emit("call:webrtc-ice", {
-      callId,
-      to: peerSocketId.value,
+    // ✅ ROOM relay (no "to")
+    socket?.emit("call:webrtc:ice", {
+      roomId,
       candidate: event.candidate,
     });
   };
@@ -100,7 +105,6 @@ async function initPeer() {
   pc.ontrack = async (event) => {
     if (remoteVideo.value) {
       remoteVideo.value.srcObject = event.streams[0];
-      // iOS sometimes needs explicit play after user gesture (accept)
       try { await remoteVideo.value.play?.(); } catch {}
     }
   };
@@ -112,48 +116,30 @@ async function initPeer() {
 }
 
 async function makeOffer() {
-  if (!peerSocketId.value) {
-    status.value = "Missing callee socket id. Go back and call again.";
-    return;
-  }
-
   status.value = "Creating offer…";
   const offer = await pc.createOffer();
   await pc.setLocalDescription(offer);
 
-  socket.emit("call:webrtc-offer", {
-    callId,
-    to: peerSocketId.value,
-    offer,
-    kind,
-  });
+  // ✅ ROOM relay
+  socket?.emit("call:webrtc:offer", { roomId, offer });
 
   status.value = "Offer sent. Waiting for answer…";
 }
 
-async function handleOffer(offer, from) {
-  // ✅ learn peer socket id from sender
-  peerSocketId.value = from;
-
+async function handleOffer(offer) {
   status.value = "Received offer…";
   await pc.setRemoteDescription(new RTCSessionDescription(offer));
 
   const answer = await pc.createAnswer();
   await pc.setLocalDescription(answer);
 
-  socket.emit("call:webrtc-answer", {
-    callId,
-    to: from,
-    answer,
-  });
+  // ✅ ROOM relay
+  socket?.emit("call:webrtc:answer", { roomId, answer });
 
   status.value = "Answered. Connecting…";
 }
 
-async function handleAnswer(answer, from) {
-  // ✅ keep peer up to date
-  if (!peerSocketId.value) peerSocketId.value = from;
-
+async function handleAnswer(answer) {
   await pc.setRemoteDescription(new RTCSessionDescription(answer));
   status.value = "Connected ✅";
 }
@@ -187,39 +173,61 @@ function cleanup() {
 
 function endCall() {
   try {
-    socket?.emit("call:end", { callId, to: peerSocketId.value || null });
+    socket?.emit("call:end", { roomId });
   } catch {}
   cleanup();
   router.push("/dashboard");
 }
 
 onMounted(async () => {
-  if (!callId) return router.push("/dashboard");
+  if (!roomId) return router.push("/dashboard");
 
+  // ✅ Important: iOS needs media started ASAP (and accept click helps)
   await initMedia();
 
   socket = io(apiUrl, { transports: ["websocket", "polling"] });
 
   socket.on("connect", async () => {
+    // ✅ register user so server can map userId->socket
+    if (me?.id) socket.emit("register-user", { id: me.id, username: me.username });
+
     await initPeer();
 
+    // ✅ join call room
+    socket.emit("call:join", { roomId });
+
+    status.value = role === "caller" ? "Joining call…" : "Waiting…";
+  });
+
+  // ✅ When both sides are in the room, server emits call:ready
+  socket.on("call:ready", async ({ kind: k }) => {
+    // (optional) trust server kind if you want
+    // kind = k
+
     if (role === "caller") {
-      await makeOffer();
+      // caller starts negotiation after both joined
+      try {
+        await makeOffer();
+      } catch (e) {
+        status.value = "Failed to create offer";
+      }
     } else {
       status.value = "Waiting for offer…";
     }
   });
 
-  // ✅ call-specific signaling (avoid mixing with live stream events)
-  socket.on("call:webrtc-offer", async ({ offer, from }) => {
-    try { await handleOffer(offer, from); } catch (e) { status.value = "Offer error"; }
+  // ✅ ROOM signaling events
+  socket.on("call:webrtc:offer", async ({ offer }) => {
+    try { await handleOffer(offer); } catch { status.value = "Offer error"; }
   });
 
-  socket.on("call:webrtc-answer", async ({ answer, from }) => {
-    try { await handleAnswer(answer, from); } catch (e) { status.value = "Answer error"; }
+  socket.on("call:webrtc:answer", async ({ answer }) => {
+    try { await handleAnswer(answer); } catch { status.value = "Answer error"; }
   });
 
-  socket.on("call:webrtc-ice", async ({ candidate }) => handleIce(candidate));
+  socket.on("call:webrtc:ice", async ({ candidate }) => {
+    await handleIce(candidate);
+  });
 
   socket.on("call:ended", () => {
     status.value = "Call ended";
@@ -227,6 +235,10 @@ onMounted(async () => {
       cleanup();
       router.push("/dashboard");
     }, 400);
+  });
+
+  socket.on("call:error", ({ message }) => {
+    status.value = message || "Call error";
   });
 });
 
