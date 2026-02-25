@@ -5,16 +5,14 @@ import { authenticateToken } from "../middleware/auth.middleware.js";
 const router = express.Router();
 
 /**
- * GET /comments/:postId
- * Returns array: [{id, post_id, user_id, content, created_at, name, email}]
+ * GET comments for a post
+ * GET /posts/:postId/comments
  */
-router.get("/:postId", authenticateToken, async (req, res) => {
+router.get("/posts/:postId/comments", async (req, res) => {
   try {
     const postId = Number(req.params.postId);
     if (!postId) return res.status(400).json({ error: "Invalid postId" });
 
-    // If you don't have users table, this still works because LEFT JOIN is optional.
-    // If it errors because users doesn't exist, remove the join lines.
     const result = await pool.query(
       `
       SELECT
@@ -22,38 +20,35 @@ router.get("/:postId", authenticateToken, async (req, res) => {
         c.post_id,
         c.user_id,
         c.content,
-        c.created_at,
-        u.username AS name,
-        u.email AS email
-      FROM comments
-      LEFT JOIN users u ON u.id = c.user_id
+        c.created_at
+      FROM post_comments c
       WHERE c.post_id = $1
-      ORDER BY c.created_at DESC
+      ORDER BY c.created_at ASC
       `,
       [postId]
     );
 
     res.json(result.rows);
   } catch (err) {
-    console.error("GET /comments/:postId ERROR:", err);
+    console.error("GET comments ERROR:", err);
     res.status(500).json({ error: err.message });
   }
 });
 
 /**
- * POST /comments/:postId
- * Body: { content }
- * Returns created comment row
+ * POST a comment
+ * POST /posts/:postId/comments
+ * body: { content }
  */
-router.post("/:postId", authenticateToken, async (req, res) => {
+router.post("/posts/:postId/comments", authenticateToken, async (req, res) => {
   try {
     const postId = Number(req.params.postId);
-    const userId = req.user?.id; // from your JWT middleware
-    const content = String(req.body?.content || "").trim();
+    const userId = req.user?.id; // from JWT middleware
+    const content = (req.body?.content || "").trim();
 
     if (!postId) return res.status(400).json({ error: "Invalid postId" });
     if (!userId) return res.status(401).json({ error: "Unauthorized" });
-    if (!content) return res.status(400).json({ error: "Comment is required" });
+    if (!content) return res.status(400).json({ error: "Comment is empty" });
 
     const result = await pool.query(
       `
@@ -66,7 +61,38 @@ router.post("/:postId", authenticateToken, async (req, res) => {
 
     res.status(201).json(result.rows[0]);
   } catch (err) {
-    console.error("POST /comments/:postId ERROR:", err);
+    console.error("POST comment ERROR:", err);
+    res.status(500).json({ error: err.message });
+  }
+});
+
+/**
+ * DELETE a comment (only owner)
+ * DELETE /comments/:commentId
+ */
+router.delete("/comments/:commentId", authenticateToken, async (req, res) => {
+  try {
+    const commentId = Number(req.params.commentId);
+    const userId = req.user?.id;
+
+    if (!commentId) return res.status(400).json({ error: "Invalid commentId" });
+
+    const result = await pool.query(
+      `
+      DELETE FROM post_comments c
+      WHERE c.id = $1 AND c.user_id = $2
+      RETURNING c.id
+      `,
+      [commentId, userId]
+    );
+
+    if (result.rowCount === 0) {
+      return res.status(403).json({ error: "Not allowed or not found" });
+    }
+
+    res.json({ ok: true, id: result.rows[0].id });
+  } catch (err) {
+    console.error("DELETE comment ERROR:", err);
     res.status(500).json({ error: err.message });
   }
 });
