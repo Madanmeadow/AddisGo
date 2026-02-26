@@ -6,6 +6,11 @@ import Dashboard from "../views/Dashboard.vue";
 import Messages from "../views/Messages.vue";
 import Live from "../views/Live.vue";
 import Call from "../views/Call.vue"; // ✅ NEW
+import Watch from "../views/Watch.vue";
+import Profile from "../views/Profile.vue";
+
+
+
 
 const routes = [
   { path: "/", redirect: "/login" },
@@ -14,6 +19,8 @@ const routes = [
   { path: "/dashboard", component: Dashboard },
   { path: "/messages", component: Messages },
   { path: "/live", component: Live },
+  { path: "/watch/:id", name: "Watch", component: Watch },
+  { path: "/profile/:id?", component: Profile },
   { path: "/call", component: Call }, // ✅ NEW
 ];
 
