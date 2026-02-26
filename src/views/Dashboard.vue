@@ -2,9 +2,9 @@
 <template>
   <Layout>
     <div class="wrap">
-      <!-- TOP BAR (mobile-first) -->
+      <!-- TOP BAR -->
       <header class="topbar">
-        <div class="brand">
+        <div class="brand" @click="scrollToTop" title="Scroll to top">
           <div class="logo">🔥</div>
           <div class="brand-text">
             <div class="title">AddisGo</div>
@@ -13,25 +13,36 @@
         </div>
 
         <div class="top-actions">
+          <div class="status-pill" :class="{ ok: socketConnected }" title="Socket status">
+            <span class="dot" :class="{ on: socketConnected }"></span>
+            <span>{{ socketConnected ? "Connected" : "Connecting" }}</span>
+          </div>
+
           <button class="chip" @click="fetchPosts" :disabled="loading">↻ Refresh</button>
+
           <button class="chip ghost" @click="togglePeople">
             {{ peopleOpen ? "Hide People" : "People" }}
           </button>
+
           <button class="chip ghost" @click="toggleChat">
             {{ chatOpen ? "Close Chat" : "Chat" }}
           </button>
+
           <button class="chip danger" @click="logout">Logout</button>
         </div>
       </header>
 
       <!-- GRID -->
       <div class="page">
-        <!-- LEFT: LIVE + PEOPLE -->
+        <!-- LEFT -->
         <aside class="left" :class="{ open: peopleOpen }">
+          <!-- LIVE -->
           <section class="panel">
             <div class="panel-head">
               <div class="panel-title">🔴 Live Now</div>
-              <button class="btn btn-primary" @click="startLive">Go Live</button>
+              <button class="btn btn-primary" @click="startLive" :disabled="!socketConnected">
+                Go Live
+              </button>
             </div>
 
             <div v-if="liveStreams.length === 0" class="hint mt10">No one live right now</div>
@@ -43,7 +54,7 @@
               @click="joinLive(stream)"
               title="Tap to watch"
             >
-              <span class="dot"></span>
+              <span class="dot-live"></span>
               <div class="live-meta">
                 <div class="live-name">{{ stream }}</div>
                 <div class="live-sub">Tap to watch</div>
@@ -52,12 +63,16 @@
             </div>
           </section>
 
+          <!-- PEOPLE -->
           <section class="panel">
             <div class="panel-head">
               <div class="panel-title">👥 People</div>
-              <button class="btn" @click="fetchPeople" :disabled="peopleLoading">
-                {{ peopleLoading ? "Loading…" : "Refresh" }}
-              </button>
+
+              <div class="row-actions">
+                <button class="btn" @click="fetchPeople" :disabled="peopleLoading || !token">
+                  {{ peopleLoading ? "Loading…" : "Refresh" }}
+                </button>
+              </div>
             </div>
 
             <div v-if="!token" class="alert soft">
@@ -65,14 +80,29 @@
             </div>
 
             <div v-else class="people">
-              <div v-if="peopleError" class="alert">{{ peopleError }}</div>
-              <div v-else-if="people.length === 0" class="hint">No users found.</div>
+              <div class="people-tools">
+                <input
+                  v-model="peopleSearch"
+                  class="search small"
+                  placeholder="Search users…"
+                />
+                <label class="toggle">
+                  <input type="checkbox" v-model="onlineFirst" />
+                  <span>Online first</span>
+                </label>
+              </div>
 
-              <div v-else v-for="u in people" :key="u.id" class="person">
-                <div class="avatar small">{{ (u.display_name || "U")[0]?.toUpperCase() }}</div>
+              <div v-if="peopleError" class="alert">{{ peopleError }}</div>
+              <div v-else-if="sortedPeople.length === 0" class="hint">No users found.</div>
+
+              <div v-else v-for="u in sortedPeople" :key="u.id" class="person">
+                <div class="avatar small">{{ (u.display_name || u.username || "U")[0]?.toUpperCase() }}</div>
 
                 <div class="person-meta">
-                  <div class="person-name">{{ u.display_name || ("User #" + u.id) }}</div>
+                  <div class="person-name">
+                    {{ u.display_name || u.username || ("User #" + u.id) }}
+                  </div>
+
                   <div class="person-sub">
                     <span class="status" :class="{ on: isOnline(u.id) }"></span>
                     <span class="status-text">{{ isOnline(u.id) ? "Online" : "Offline" }}</span>
@@ -85,7 +115,7 @@
                   <button
                     class="iconbtn"
                     title="Audio Call"
-                    :disabled="!isOnline(u.id) || callBusy"
+                    :disabled="!isOnline(u.id) || callBusy || !socketConnected"
                     @click="startCall(u, 'audio')"
                   >
                     📞
@@ -93,7 +123,7 @@
                   <button
                     class="iconbtn"
                     title="Video Call"
-                    :disabled="!isOnline(u.id) || callBusy"
+                    :disabled="!isOnline(u.id) || callBusy || !socketConnected"
                     @click="startCall(u, 'video')"
                   >
                     🎥
@@ -107,9 +137,10 @@
             </div>
           </section>
 
+          <!-- QUICK ACTIONS -->
           <section class="panel">
             <div class="panel-title">⚡ Quick Actions</div>
-            <div class="stack">
+            <div class="stack mt10">
               <button class="btn w100" @click="scrollToTop">Scroll Top</button>
               <button class="btn w100" @click="togglePeople">
                 {{ peopleOpen ? "Collapse Sidebar" : "Open Sidebar" }}
@@ -118,14 +149,14 @@
           </section>
         </aside>
 
-        <!-- CENTER: FEED -->
+        <!-- CENTER -->
         <main class="center">
           <!-- COMPOSER -->
           <section class="composer">
             <div class="composer-head">
               <div class="avatar big">{{ myInitial }}</div>
-              <div>
-                <div class="me">{{ me?.username || "You" }}</div>
+              <div class="mebox">
+                <div class="me">{{ me?.username || me?.name || "You" }}</div>
                 <div class="small muted">Share something with the world</div>
               </div>
             </div>
@@ -148,9 +179,14 @@
                 🎥 Video
               </label>
 
-              <button class="btn btn-primary" :disabled="posting" @click="submitPost">
+              <button class="btn btn-primary" :disabled="posting || !token" @click="submitPost">
                 {{ posting ? "Posting…" : "Post 🚀" }}
               </button>
+            </div>
+
+            <div v-if="pickedLabel" class="picked">
+              Selected: <strong>{{ pickedLabel }}</strong>
+              <button class="mini-x" @click="clearPicked">✕</button>
             </div>
 
             <div v-if="error" class="alert">{{ error }}</div>
@@ -167,7 +203,13 @@
             <div v-if="loading" class="state">Loading posts…</div>
             <div v-else-if="filteredPosts.length === 0" class="state">No posts found.</div>
 
-            <article v-else v-for="post in filteredPosts" :key="post.id" class="post" :id="`post-${post.id}`">
+            <article
+              v-else
+              v-for="post in filteredPosts"
+              :key="post.id"
+              class="post"
+              :id="`post-${post.id}`"
+            >
               <header class="post-head">
                 <div class="avatar">{{ getInitial(post.user_id) }}</div>
                 <div class="who">
@@ -178,7 +220,12 @@
 
               <div v-if="post.caption" class="text">{{ post.caption }}</div>
 
-              <img v-if="post.image_url" class="media" :src="getMedia(post.image_url)" loading="lazy" />
+              <img
+                v-if="post.image_url"
+                class="media"
+                :src="getMedia(post.image_url)"
+                loading="lazy"
+              />
 
               <video
                 v-if="post.video_url"
@@ -194,7 +241,7 @@
                 <button
                   class="action-btn"
                   :class="{ active: likesByPost[post.id]?.likedByMe }"
-                  :disabled="likeBusyByPost[post.id]"
+                  :disabled="likeBusyByPost[post.id] || !token"
                   @click="toggleLike(post)"
                   title="Like"
                 >
@@ -227,7 +274,10 @@
                 </div>
 
                 <div v-else class="comments-list">
-                  <div v-if="(commentsByPost[post.id] || []).length === 0" class="comments-empty">
+                  <div
+                    v-if="(commentsByPost[post.id] || []).length === 0"
+                    class="comments-empty"
+                  >
                     Be the first to comment.
                   </div>
 
@@ -250,10 +300,11 @@
                     class="comment-input"
                     placeholder="Write a comment…"
                     @keydown.enter.prevent="submitComment(post)"
+                    :disabled="!token"
                   />
                   <button
                     class="btn btn-primary"
-                    :disabled="commentBusyByPost[post.id] || !String(commentDraftByPost[post.id] || '').trim()"
+                    :disabled="commentBusyByPost[post.id] || !String(commentDraftByPost[post.id] || '').trim() || !token"
                     @click="submitComment(post)"
                   >
                     {{ commentBusyByPost[post.id] ? "Sending…" : "Send" }}
@@ -268,7 +319,7 @@
           </section>
         </main>
 
-        <!-- RIGHT: CHAT (drawer) -->
+        <!-- RIGHT -->
         <aside class="right" :class="{ open: chatOpen }">
           <section class="panel">
             <div class="panel-head">
@@ -298,19 +349,22 @@
 
               <div class="chat-input">
                 <input v-model="chatText" placeholder="Type message…" @keydown.enter.prevent="sendChat" />
-                <button class="btn btn-primary" @click="sendChat">Send</button>
+                <button class="btn btn-primary" @click="sendChat" :disabled="!socketConnected">Send</button>
               </div>
             </div>
           </section>
         </aside>
       </div>
 
-      <!-- INCOMING CALL POPUP (ALWAYS ON TOP) -->
+      <!-- INCOMING CALL POPUP -->
       <div v-if="incomingCall" class="modal-backdrop" @click.self="rejectIncoming">
         <div class="modal">
           <div class="modal-title">Incoming {{ incomingCall.kind === "video" ? "Video" : "Audio" }} Call</div>
           <div class="modal-sub">
-            From <span class="pill">{{ incomingCall.fromName || ("User #" + incomingCall.fromUserId) }}</span>
+            From
+            <span class="pill">
+              {{ incomingCall.fromUser?.username || incomingCall.fromName || ("User #" + incomingCall.fromUserId) }}
+            </span>
           </div>
 
           <div class="modal-actions">
@@ -354,13 +408,14 @@ const me = (() => {
 
 /* ================= SOCKET ================= */
 let socket = null;
+const socketConnected = ref(false);
 
-// ✅ NEW: list of online user IDs (strings)
-const onlineUserIds = ref([]);
+const onlinePairs = ref([]); // [ [userId, socketId], ... ]
 const liveStreams = ref([]);
 
 function isOnline(userId) {
-  return onlineUserIds.value.includes(String(userId));
+  const id = String(userId);
+  return onlinePairs.value.some(([uid]) => String(uid) === id);
 }
 
 /* ================= PEOPLE ================= */
@@ -368,6 +423,8 @@ const peopleOpen = ref(true);
 const people = ref([]);
 const peopleLoading = ref(false);
 const peopleError = ref("");
+const peopleSearch = ref("");
+const onlineFirst = ref(true);
 
 function togglePeople() {
   peopleOpen.value = !peopleOpen.value;
@@ -377,13 +434,11 @@ async function fetchPeople() {
   if (!token) return;
   peopleLoading.value = true;
   peopleError.value = "";
-
   try {
     const res = await fetch(`${apiUrl}/users`, {
       headers: { Authorization: `Bearer ${token}` },
     });
     const data = await res.json();
-
     if (!res.ok) {
       peopleError.value = data?.error || "Failed to load users";
       people.value = [];
@@ -398,10 +453,27 @@ async function fetchPeople() {
   }
 }
 
+const sortedPeople = computed(() => {
+  const q = peopleSearch.value.trim().toLowerCase();
+  const list = (people.value || []).filter((u) => {
+    if (!q) return true;
+    const name = (u.display_name || u.username || u.name || "").toLowerCase();
+    return name.includes(q) || String(u.id).includes(q);
+  });
+
+  if (!onlineFirst.value) return list;
+
+  return [...list].sort((a, b) => {
+    const ao = isOnline(a.id) ? 1 : 0;
+    const bo = isOnline(b.id) ? 1 : 0;
+    if (bo !== ao) return bo - ao;
+    return String(a.id).localeCompare(String(b.id));
+  });
+});
+
 /* ================= CALLS ================= */
 const incomingCall = ref(null);
 const callBusy = ref(false);
-
 const callingToast = ref("");
 const pendingRoomId = ref("");
 const pendingKind = ref("audio");
@@ -413,33 +485,31 @@ function startCall(user, kind = "audio") {
 
   callBusy.value = true;
   pendingKind.value = kind;
-  callingToast.value = `Calling ${user.display_name || "user"}…`;
+  callingToast.value = `Calling ${user.display_name || user.username || "user"}…`;
   pendingRoomId.value = "";
 
-  // ✅ backend handles routing
-  socket.emit("call:request", { toUserId: user.id, kind });
+  // server generates room + sends incoming to callee
+  const roomId = `call-${socket.id}-${Date.now()}`;
+  socket.emit("call:invite", { toUserId: user.id, kind, roomId });
 }
 
 function cancelCall() {
-  const roomId = pendingRoomId.value;
-
   callingToast.value = "";
   callBusy.value = false;
+  if (pendingRoomId.value) socket?.emit("call:end", { roomId: pendingRoomId.value });
   pendingRoomId.value = "";
-
-  if (roomId) socket?.emit("call:cancel", { roomId });
 }
 
 function acceptIncoming() {
   if (!incomingCall.value || !socket) return;
-
   const roomId = incomingCall.value.roomId;
   const kind = incomingCall.value.kind || "audio";
 
   socket.emit("call:accept", { roomId });
 
-  // ✅ Callee navigates immediately
-  router.push(`/call?roomId=${encodeURIComponent(roomId)}&role=callee&kind=${encodeURIComponent(kind)}`);
+  router.push(
+    `/call?roomId=${encodeURIComponent(roomId)}&role=callee&kind=${encodeURIComponent(kind)}`
+  );
 
   incomingCall.value = null;
 }
@@ -461,7 +531,10 @@ const imageFile = ref(null);
 const videoFile = ref(null);
 const search = ref("");
 
-const myInitial = computed(() => (me?.username ? me.username[0].toUpperCase() : "A"));
+const myInitial = computed(() => {
+  const name = me?.username || me?.name || "A";
+  return String(name)[0]?.toUpperCase() || "A";
+});
 
 function formatDate(d) {
   if (!d) return "";
@@ -492,7 +565,7 @@ async function fetchPosts() {
     }
 
     posts.value = data;
-    await preloadLikesForPosts(data.slice(0, 20));
+    await preloadLikesForPosts(data.slice(0, 30));
   } catch {
     posts.value = [];
     error.value = "Failed to fetch posts";
@@ -502,6 +575,7 @@ async function fetchPosts() {
 }
 
 async function submitPost() {
+  if (!token) return alert("Login again.");
   if (!caption.value.trim() && !imageFile.value && !videoFile.value) return;
 
   try {
@@ -544,9 +618,16 @@ function onPickImage(e) {
 function onPickVideo(e) {
   videoFile.value = e.target.files?.[0] || null;
 }
-function scrollToTop() {
-  window.scrollTo({ top: 0, behavior: "smooth" });
+function clearPicked() {
+  imageFile.value = null;
+  videoFile.value = null;
 }
+
+const pickedLabel = computed(() => {
+  if (imageFile.value) return imageFile.value.name;
+  if (videoFile.value) return videoFile.value.name;
+  return "";
+});
 
 /* ================= LIKES ================= */
 const likesByPost = ref({});
@@ -585,7 +666,10 @@ async function toggleLike(post) {
   const optimisticLiked = !prev.likedByMe;
   const optimisticCount = Math.max(0, prev.count + (optimisticLiked ? 1 : -1));
 
-  likesByPost.value = { ...likesByPost.value, [postId]: { count: optimisticCount, likedByMe: optimisticLiked } };
+  likesByPost.value = {
+    ...likesByPost.value,
+    [postId]: { count: optimisticCount, likedByMe: optimisticLiked },
+  };
   likeBusyByPost.value = { ...likeBusyByPost.value, [postId]: true };
 
   try {
@@ -625,7 +709,11 @@ function commentCount(postId) {
 
 async function toggleComments(post) {
   const postId = post.id;
-  commentsOpenByPost.value = { ...commentsOpenByPost.value, [postId]: !commentsOpenByPost.value[postId] };
+  commentsOpenByPost.value = {
+    ...commentsOpenByPost.value,
+    [postId]: !commentsOpenByPost.value[postId],
+  };
+
   if (commentsOpenByPost.value[postId]) {
     await loadComments(postId, { force: true });
   }
@@ -644,7 +732,10 @@ async function loadComments(postId, { force = false } = {}) {
     const data = await res.json();
 
     if (!res.ok) {
-      commentErrorByPost.value = { ...commentErrorByPost.value, [postId]: data?.error || "Failed to load comments" };
+      commentErrorByPost.value = {
+        ...commentErrorByPost.value,
+        [postId]: data?.error || "Failed to load comments",
+      };
       commentsByPost.value = { ...commentsByPost.value, [postId]: [] };
       return;
     }
@@ -652,7 +743,10 @@ async function loadComments(postId, { force = false } = {}) {
     const items = Array.isArray(data) ? data : Array.isArray(data?.items) ? data.items : [];
     commentsByPost.value = { ...commentsByPost.value, [postId]: items };
   } catch {
-    commentErrorByPost.value = { ...commentErrorByPost.value, [postId]: "Failed to load comments" };
+    commentErrorByPost.value = {
+      ...commentErrorByPost.value,
+      [postId]: "Failed to load comments",
+    };
     commentsByPost.value = { ...commentsByPost.value, [postId]: [] };
   } finally {
     commentLoadingByPost.value = { ...commentLoadingByPost.value, [postId]: false };
@@ -697,7 +791,10 @@ async function submitComment(post) {
         ...commentsByPost.value,
         [postId]: (commentsByPost.value[postId] || []).filter((c) => c.id !== tempId),
       };
-      commentErrorByPost.value = { ...commentErrorByPost.value, [postId]: data?.error || "Failed to send comment" };
+      commentErrorByPost.value = {
+        ...commentErrorByPost.value,
+        [postId]: data?.error || "Failed to send comment",
+      };
       return;
     }
 
@@ -710,7 +807,10 @@ async function submitComment(post) {
       ...commentsByPost.value,
       [postId]: (commentsByPost.value[postId] || []).filter((c) => c.id !== tempId),
     };
-    commentErrorByPost.value = { ...commentErrorByPost.value, [postId]: "Failed to send comment" };
+    commentErrorByPost.value = {
+      ...commentErrorByPost.value,
+      [postId]: "Failed to send comment",
+    };
   } finally {
     commentBusyByPost.value = { ...commentBusyByPost.value, [postId]: false };
   }
@@ -719,6 +819,7 @@ async function submitComment(post) {
 /* ================= SHARE ================= */
 async function sharePost(post) {
   const url = `${window.location.origin}/#post-${post.id}`;
+
   try {
     if (navigator.share) {
       await navigator.share({ title: "AddisGo Post", text: post.caption || "Post", url });
@@ -751,13 +852,19 @@ function selectChat(room) {
 }
 function sendChat() {
   if (!chatText.value.trim()) return;
-  socket?.emit("send-message", { room: chatRoom.value, from: me?.username || "me", text: chatText.value });
+  socket?.emit("send-room-message", {
+    room: chatRoom.value,
+    from: me?.username || "me",
+    text: chatText.value,
+  });
   chatText.value = "";
 }
 
 /* ================= LIVE ================= */
 function startLive() {
-  const liveId = `live-${me?.id || Math.random().toString(36).slice(2, 8)}-${Date.now().toString().slice(-4)}`;
+  const liveId = `live-${me?.id || Math.random().toString(36).slice(2, 8)}-${Date.now()
+    .toString()
+    .slice(-4)}`;
   socket?.emit("live:create", { liveId });
   router.push(`/live?mode=host&liveId=${encodeURIComponent(liveId)}`);
 }
@@ -779,6 +886,11 @@ const filteredPosts = computed(() => {
   return posts.value.filter((p) => (p.caption || "").toLowerCase().includes(q));
 });
 
+/* ================= UTIL ================= */
+function scrollToTop() {
+  window.scrollTo({ top: 0, behavior: "smooth" });
+}
+
 /* ================= INIT ================= */
 onMounted(async () => {
   await fetchPosts();
@@ -787,18 +899,21 @@ onMounted(async () => {
   socket = io(apiUrl, { transports: ["websocket", "polling"] });
 
   socket.on("connect", () => {
-    // ✅ REQUIRED for presence + calls routing
-    if (me?.id) socket.emit("user:online", { userId: me.id });
+    socketConnected.value = true;
 
-    // keep your chat + live
+    // REQUIRED: presence + calls routing
+    if (me?.id) socket.emit("register-user", { id: me.id, username: me.username || me.name });
+
+    // chat + live
     socket.emit("join-room", chatRoom.value);
     socket.emit("get-live-list");
-
-    // ✅ ask for presence list
-    socket.emit("presence:get");
   });
 
-  /* Chat */
+  socket.on("disconnect", () => {
+    socketConnected.value = false;
+  });
+
+  // chat
   socket.on("receive-message", (msg) => {
     chatMessages.value.push(msg);
     nextTick(() => {
@@ -807,42 +922,33 @@ onMounted(async () => {
     });
   });
 
-  /* Live list */
+  // live list
   socket.on("live-list", (streams) => {
     liveStreams.value = Array.isArray(streams) ? streams : [];
   });
 
-  /* ✅ Presence list + updates */
-  socket.on("presence:list", ({ onlineUserIds: list }) => {
-    onlineUserIds.value = (list || []).map(String);
+  // online users list (map entries)
+  socket.on("online-users", (pairs) => {
+    onlinePairs.value = Array.isArray(pairs) ? pairs : [];
   });
 
-  socket.on("presence:update", ({ userId, online }) => {
-    const id = String(userId);
-    const set = new Set(onlineUserIds.value);
-    if (online) set.add(id);
-    else set.delete(id);
-    onlineUserIds.value = Array.from(set);
-  });
-
-  /* ✅ Calls */
+  // calls
   socket.on("call:ringing", ({ roomId, kind }) => {
     pendingRoomId.value = roomId;
     callingToast.value = `Calling… (${kind || pendingKind.value})`;
 
-    // ✅ Caller navigates immediately (caller will create offer in Call.vue)
     router.push(
       `/call?roomId=${encodeURIComponent(roomId)}&role=caller&kind=${encodeURIComponent(kind || pendingKind.value)}`
     );
   });
 
   socket.on("call:incoming", (p) => {
-    // show popup on callee device
     incomingCall.value = {
       roomId: p.roomId,
       kind: p.kind || "audio",
+      fromUser: p.fromUser,
       fromUserId: p.fromUserId,
-      fromName: p.fromName || `User #${p.fromUserId}`,
+      fromName: p.fromName,
     };
   });
 
@@ -851,12 +957,11 @@ onMounted(async () => {
     callBusy.value = false;
   });
 
-  socket.on("call:ended", ({ reason } = {}) => {
+  socket.on("call:ended", () => {
     callingToast.value = "";
     callBusy.value = false;
     incomingCall.value = null;
     pendingRoomId.value = "";
-    if (reason) console.log("Call ended:", reason);
   });
 
   socket.on("call:error", ({ message } = {}) => {
@@ -877,15 +982,9 @@ onBeforeUnmount(() => {
 </script>
 
 <style scoped>
-/* YOUR SAME STYLES (UNCHANGED) */
 /* =========================
-   AddisGo Dashboard Polish (3-column)
-   - Keep layout A
-   - Cleaner spacing, consistent panels
-   - Better mobile/iPad drawers
+   POLISHED 3-COLUMN DASHBOARD
 ========================= */
-
-/* Page background */
 .wrap {
   min-height: 100vh;
   padding-bottom: env(safe-area-inset-bottom);
@@ -912,7 +1011,7 @@ onBeforeUnmount(() => {
   border-bottom: 1px solid rgba(255, 255, 255, 0.10);
 }
 
-.brand { display: flex; align-items: center; gap: 10px; }
+.brand { display: flex; align-items: center; gap: 10px; cursor: pointer; user-select: none; }
 .logo {
   width: 42px; height: 42px;
   border-radius: 14px;
@@ -927,7 +1026,25 @@ onBeforeUnmount(() => {
 
 .top-actions { display: flex; gap: 8px; flex-wrap: wrap; justify-content: flex-end; }
 
-/* Grid container (centered, not too wide) */
+.status-pill{
+  display:flex;
+  align-items:center;
+  gap:8px;
+  padding: 9px 12px;
+  border-radius: 999px;
+  border: 1px solid rgba(255,255,255,0.12);
+  background: rgba(255,255,255,0.08);
+  font-size: 12px;
+  opacity: .92;
+}
+.status-pill.ok { border-color: rgba(0,230,118,0.28); }
+.status-pill .dot {
+  width: 10px; height: 10px; border-radius: 999px;
+  background: rgba(255,255,255,0.25);
+}
+.status-pill .dot.on { background:#00e676; box-shadow: 0 0 0 3px rgba(0,230,118,0.12); }
+
+/* Layout */
 .page {
   width: min(1280px, 100%);
   margin: 0 auto;
@@ -938,12 +1055,7 @@ onBeforeUnmount(() => {
   gap: 16px;
 }
 
-/* Sticky columns on desktop */
-.left, .right {
-  height: fit-content;
-  position: sticky;
-  top: 78px;
-}
+.left, .right { height: fit-content; position: sticky; top: 78px; }
 .center { min-width: 0; }
 
 /* Panels */
@@ -956,7 +1068,6 @@ onBeforeUnmount(() => {
   backdrop-filter: blur(10px);
   margin-bottom: 14px;
 }
-
 .panel-head {
   display: flex;
   align-items: center;
@@ -965,6 +1076,7 @@ onBeforeUnmount(() => {
   margin-bottom: 12px;
 }
 .panel-title { font-weight: 900; letter-spacing: .2px; }
+.row-actions { display:flex; gap: 8px; }
 
 /* Buttons */
 .btn, .chip {
@@ -979,6 +1091,8 @@ onBeforeUnmount(() => {
 }
 .btn:hover, .chip:hover { filter: brightness(1.06); border-color: rgba(255,255,255,0.18); }
 .btn:active, .chip:active { transform: scale(0.98); }
+.btn:disabled, .chip:disabled { opacity: .55; cursor: not-allowed; }
+
 .btn-primary {
   border: none;
   background: linear-gradient(45deg, #ff416c, #ff4b2b);
@@ -1004,7 +1118,7 @@ onBeforeUnmount(() => {
   cursor: pointer;
 }
 .live-card:hover { filter: brightness(1.06); }
-.dot { width: 10px; height: 10px; border-radius: 50%; background: #ff3b30; }
+.dot-live { width: 10px; height: 10px; border-radius: 50%; background: #ff3b30; }
 .live-meta { display: grid; }
 .live-name { font-weight: 900; }
 .live-sub { opacity: .75; font-size: 12px; }
@@ -1012,6 +1126,21 @@ onBeforeUnmount(() => {
 
 /* People */
 .people { display: grid; gap: 10px; }
+.people-tools{
+  display:flex;
+  gap: 10px;
+  align-items:center;
+  margin-bottom: 10px;
+}
+.toggle{
+  display:flex;
+  gap: 8px;
+  align-items:center;
+  font-size: 12px;
+  opacity: .85;
+}
+.toggle input{ transform: translateY(1px); }
+
 .person {
   display: flex;
   gap: 12px;
@@ -1060,6 +1189,7 @@ onBeforeUnmount(() => {
 
 /* Composer */
 .composer-head { display: flex; gap: 10px; align-items: center; margin-bottom: 10px; }
+.mebox { display:grid; gap: 2px; }
 .me { font-weight: 900; }
 .small { font-size: 12px; }
 .muted { opacity: .75; }
@@ -1087,7 +1217,19 @@ onBeforeUnmount(() => {
 .file-pill:hover { filter: brightness(1.06); }
 .file-pill input { display: none; }
 
-/* Feed head */
+.picked{
+  margin-top: 10px;
+  padding: 10px;
+  border-radius: 14px;
+  background: rgba(255,255,255,0.06);
+  border: 1px solid rgba(255,255,255,0.10);
+  display:flex;
+  align-items:center;
+  justify-content: space-between;
+  gap: 10px;
+}
+
+/* Feed */
 .feed-head {
   display: flex;
   justify-content: space-between;
@@ -1106,14 +1248,15 @@ onBeforeUnmount(() => {
   border-radius: 999px;
   outline: none;
 }
+.search.small{ width: 100%; padding: 9px 10px; }
 .search:focus { border-color: rgba(255,75,43,0.35); }
 
 .post { background: rgba(0,0,0,0.52); }
 .post-head { display: flex; gap: 10px; align-items: center; margin-bottom: 10px; }
-
+.who .name { font-weight: 900; }
+.time { opacity: .75; font-size: 12px; }
 .text { margin: 6px 0 10px; line-height: 1.5; opacity: .98; }
 
-/* Media */
 .media {
   width: 100%;
   border-radius: 16px;
@@ -1123,7 +1266,6 @@ onBeforeUnmount(() => {
   object-fit: cover;
 }
 
-/* State blocks */
 .state {
   text-align: center;
   padding: 26px;
@@ -1132,9 +1274,9 @@ onBeforeUnmount(() => {
   background: rgba(255, 255, 255, 0.06);
   border: 1px solid rgba(255,255,255,0.10);
 }
+
 .hint { opacity: .75; font-size: 13px; }
 .mt10 { margin-top: 10px; }
-.mt12 { margin-top: 12px; }
 
 /* Avatars */
 .avatar {
@@ -1152,7 +1294,7 @@ onBeforeUnmount(() => {
   border: 1px solid rgba(255,255,255,0.14);
 }
 
-/* Actions row */
+/* Actions */
 .actions {
   display: flex;
   align-items: center;
@@ -1181,7 +1323,7 @@ onBeforeUnmount(() => {
 }
 .spacer { flex: 1; }
 
-/* Comments box */
+/* Comments */
 .comments {
   margin-top: 12px;
   background: rgba(0, 0, 0, 0.35);
@@ -1253,7 +1395,12 @@ onBeforeUnmount(() => {
 }
 .chat-item:hover { filter: brightness(1.06); }
 .chat-item.active { border-color: rgba(255,75,43,.5); background: rgba(255,75,43,.14); }
-.chat-box { background: rgba(0, 0, 0, 0.35); border-radius: 16px; padding: 10px; border: 1px solid rgba(255,255,255,0.10); }
+.chat-box {
+  background: rgba(0, 0, 0, 0.35);
+  border-radius: 16px;
+  padding: 10px;
+  border: 1px solid rgba(255,255,255,0.10);
+}
 .chat-messages { max-height: 320px; overflow: auto; display: grid; gap: 8px; padding: 6px; }
 .chat-msg { font-size: 13px; opacity: 0.95; }
 .chat-input { display:flex; gap: 8px; margin-top: 10px; }
@@ -1339,10 +1486,9 @@ onBeforeUnmount(() => {
   padding: 4px 8px;
 }
 
-/* Mobile/iPad drawers */
+/* Responsive drawers */
 @media (max-width: 1100px) {
   .page { grid-template-columns: 1fr; width: 100%; }
-
   .left, .right {
     position: fixed;
     top: 74px;
