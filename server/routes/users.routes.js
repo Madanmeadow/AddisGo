@@ -1,246 +1,271 @@
+// server/routes/users.routes.js
 import express from "express";
 import { pool } from "../db.js";
+
+// If you already have auth middleware, keep it.
+// (This matches your style from posts.routes.js)
+import { authenticateToken } from "../middleware/auth.middleware.js";
 
 const router = express.Router();
 
 /* =========================
-   AUTH MIDDLEWARE (inline)
-   - Uses same JWT_SECRET as server/index.js env
+   Helpers
 ========================= */
-import jwt from "jsonwebtoken";
-const JWT_SECRET = process.env.JWT_SECRET || "dev_secret_change_me";
+function normalizeUser(row) {
+  if (!row) return null;
 
-function auth(req, res, next) {
-  try {
-    const header = req.headers.authorization || "";
-    const [type, token] = header.split(" ");
-    if (type !== "Bearer" || !token) {
-      return res.status(401).json({ error: "Missing token" });
-    }
+  const id = row.id;
+  const email = row.email || null;
 
-    const decoded = jwt.verify(token, JWT_SECRET);
-    req.user = decoded; // { id, username, iat, exp }
-    next();
-  } catch (err) {
-    return res.status(401).json({ error: "Invalid token" });
-  }
+  // Support BOTH schemas:
+  // - old: username
+  // - current: name + display_name
+  const baseName =
+    row.display_name ||
+    row.username ||
+    row.name ||
+    (email ? String(email).split("@")[0] : `User${id}`);
+
+  return {
+    id,
+    email,
+    username: baseName,            // keep for UI compatibility
+    display_name: row.display_name || baseName,
+    bio: row.bio || "",
+    avatar_url: row.avatar_url || "",
+    created_at: row.created_at || null,
+  };
+}
+
+async function detectUserColumns() {
+  // Detect which columns exist in `users` so we never query a missing column.
+  const r = await pool.query(
+    `
+    SELECT column_name
+    FROM information_schema.columns
+    WHERE table_schema='public' AND table_name='users'
+    `
+  );
+  const set = new Set(r.rows.map((x) => x.column_name));
+  return set;
 }
 
 /* =========================
-   GET /users
-   - Used by Dashboard "People" panel
-   - Requires auth (matches your frontend)
+   GET /users  (People list)
+   Requires auth (because your Dashboard calls with Bearer token)
 ========================= */
-router.get("/", auth, async (req, res) => {
+router.get("/", authenticateToken, async (req, res) => {
   try {
-    const r = await pool.query(
-      `
-      SELECT
-        id,
-        COALESCE(display_name, username, name, split_part(email,'@',1)) AS display_name,
-        bio,
-        avatar_url
-      FROM users
-      ORDER BY id DESC
-      `
-    );
+    const cols = await detectUserColumns();
 
-    res.json(r.rows);
+    // Build a safe SELECT list depending on what exists
+    const select = [
+      "id",
+      cols.has("email") ? "email" : null,
+      cols.has("created_at") ? "created_at" : null,
+      cols.has("display_name") ? "display_name" : null,
+      cols.has("bio") ? "bio" : null,
+      cols.has("avatar_url") ? "avatar_url" : null,
+      cols.has("username") ? "username" : null,
+      cols.has("name") ? "name" : null,
+    ]
+      .filter(Boolean)
+      .join(", ");
+
+    const q = String(req.query.q || "").trim().toLowerCase();
+
+    let result;
+    if (q) {
+      // search by display_name / username / name / email (only if columns exist)
+      const whereParts = [];
+      const params = [];
+      let i = 1;
+
+      if (cols.has("display_name")) {
+        whereParts.push(`LOWER(display_name) LIKE $${i++}`);
+        params.push(`%${q}%`);
+      }
+      if (cols.has("username")) {
+        whereParts.push(`LOWER(username) LIKE $${i++}`);
+        params.push(`%${q}%`);
+      }
+      if (cols.has("name")) {
+        whereParts.push(`LOWER(name) LIKE $${i++}`);
+        params.push(`%${q}%`);
+      }
+      if (cols.has("email")) {
+        whereParts.push(`LOWER(email) LIKE $${i++}`);
+        params.push(`%${q}%`);
+      }
+
+      // If no searchable columns exist, just return all users
+      const where =
+        whereParts.length > 0 ? `WHERE (${whereParts.join(" OR ")})` : "";
+
+      result = await pool.query(
+        `
+        SELECT ${select}
+        FROM users
+        ${where}
+        ORDER BY id DESC
+        LIMIT 200
+        `,
+        params
+      );
+    } else {
+      result = await pool.query(
+        `
+        SELECT ${select}
+        FROM users
+        ORDER BY id DESC
+        LIMIT 200
+        `
+      );
+    }
+
+    res.json(result.rows.map(normalizeUser));
   } catch (err) {
     console.error("GET /users ERROR:", err);
-    res.status(500).json({ error: "Failed to load users" });
+    res.status(500).json({ error: err.message || "Failed to load users" });
   }
 });
 
 /* =========================
-   GET /users/me
-   - Logged-in user's profile
+   GET /users/me  (My profile)
 ========================= */
-router.get("/me", auth, async (req, res) => {
+router.get("/me", authenticateToken, async (req, res) => {
   try {
-    const userId = req.user.id;
+    const userId = req.user?.id;
+    if (!userId) return res.status(401).json({ error: "Unauthorized" });
+
+    const cols = await detectUserColumns();
+    const select = [
+      "id",
+      cols.has("email") ? "email" : null,
+      cols.has("created_at") ? "created_at" : null,
+      cols.has("display_name") ? "display_name" : null,
+      cols.has("bio") ? "bio" : null,
+      cols.has("avatar_url") ? "avatar_url" : null,
+      cols.has("username") ? "username" : null,
+      cols.has("name") ? "name" : null,
+    ]
+      .filter(Boolean)
+      .join(", ");
 
     const r = await pool.query(
-      `
-      SELECT
-        id,
-        email,
-        username,
-        name,
-        display_name,
-        bio,
-        avatar_url,
-        created_at
-      FROM users
-      WHERE id=$1
-      LIMIT 1
-      `,
+      `SELECT ${select} FROM users WHERE id=$1 LIMIT 1`,
       [userId]
     );
-
     if (!r.rows.length) return res.status(404).json({ error: "User not found" });
 
-    res.json(r.rows[0]);
+    res.json(normalizeUser(r.rows[0]));
   } catch (err) {
     console.error("GET /users/me ERROR:", err);
-    res.status(500).json({ error: "Failed to load profile" });
+    res.status(500).json({ error: err.message || "Failed to load profile" });
   }
 });
 
 /* =========================
    PATCH /users/me
-   - Update profile fields
+   Update: display_name, bio, avatar_url
 ========================= */
-router.patch("/me", auth, async (req, res) => {
+router.patch("/me", authenticateToken, async (req, res) => {
   try {
-    const userId = req.user.id;
+    const userId = req.user?.id;
+    if (!userId) return res.status(401).json({ error: "Unauthorized" });
 
-    const display_name =
-      req.body.display_name === undefined ? null : String(req.body.display_name).trim();
-    const bio = req.body.bio === undefined ? null : String(req.body.bio).trim();
-    const avatar_url =
-      req.body.avatar_url === undefined ? null : String(req.body.avatar_url).trim();
+    const { display_name, bio, avatar_url } = req.body || {};
+
+    const cols = await detectUserColumns();
+    if (!cols.has("display_name") && !cols.has("bio") && !cols.has("avatar_url")) {
+      return res.status(400).json({
+        error:
+          "Profile columns not found. Add display_name, bio, avatar_url to users table.",
+      });
+    }
+
+    const sets = [];
+    const vals = [];
+    let i = 1;
+
+    if (cols.has("display_name") && display_name !== undefined) {
+      sets.push(`display_name = $${i++}`);
+      vals.push(String(display_name).trim().slice(0, 80));
+    }
+    if (cols.has("bio") && bio !== undefined) {
+      sets.push(`bio = $${i++}`);
+      vals.push(String(bio).trim().slice(0, 500));
+    }
+    if (cols.has("avatar_url") && avatar_url !== undefined) {
+      sets.push(`avatar_url = $${i++}`);
+      vals.push(String(avatar_url).trim().slice(0, 500));
+    }
+
+    if (!sets.length) return res.json({ ok: true });
+
+    vals.push(userId);
+
+    const select = [
+      "id",
+      cols.has("email") ? "email" : null,
+      cols.has("created_at") ? "created_at" : null,
+      cols.has("display_name") ? "display_name" : null,
+      cols.has("bio") ? "bio" : null,
+      cols.has("avatar_url") ? "avatar_url" : null,
+      cols.has("username") ? "username" : null,
+      cols.has("name") ? "name" : null,
+    ]
+      .filter(Boolean)
+      .join(", ");
 
     const r = await pool.query(
       `
       UPDATE users
-      SET
-        display_name = COALESCE($2, display_name),
-        bio          = COALESCE($3, bio),
-        avatar_url   = COALESCE($4, avatar_url)
-      WHERE id=$1
-      RETURNING
-        id,
-        email,
-        username,
-        name,
-        display_name,
-        bio,
-        avatar_url,
-        created_at
+      SET ${sets.join(", ")}
+      WHERE id = $${i}
+      RETURNING ${select}
       `,
-      [userId, display_name, bio, avatar_url]
+      vals
     );
 
-    if (!r.rows.length) return res.status(404).json({ error: "User not found" });
-
-    res.json(r.rows[0]);
+    res.json(normalizeUser(r.rows[0]));
   } catch (err) {
     console.error("PATCH /users/me ERROR:", err);
-    res.status(500).json({ error: "Failed to update profile" });
+    res.status(500).json({ error: err.message || "Failed to update profile" });
   }
 });
 
 /* =========================
-   GET /users/:id
-   - Public profile info
+   GET /users/:id  (Public profile)
 ========================= */
-router.get("/:id", async (req, res) => {
+router.get("/:id", authenticateToken, async (req, res) => {
   try {
-    const userId = req.params.id;
+    const userId = Number(req.params.id);
+    if (!userId) return res.status(400).json({ error: "Invalid user id" });
+
+    const cols = await detectUserColumns();
+    const select = [
+      "id",
+      cols.has("created_at") ? "created_at" : null,
+      cols.has("display_name") ? "display_name" : null,
+      cols.has("bio") ? "bio" : null,
+      cols.has("avatar_url") ? "avatar_url" : null,
+      cols.has("username") ? "username" : null,
+      cols.has("name") ? "name" : null,
+    ]
+      .filter(Boolean)
+      .join(", ");
 
     const r = await pool.query(
-      `
-      SELECT
-        id,
-        COALESCE(display_name, username, name, split_part(email,'@',1)) AS display_name,
-        bio,
-        avatar_url,
-        created_at
-      FROM users
-      WHERE id=$1
-      LIMIT 1
-      `,
+      `SELECT ${select} FROM users WHERE id=$1 LIMIT 1`,
       [userId]
     );
-
     if (!r.rows.length) return res.status(404).json({ error: "User not found" });
 
-    res.json(r.rows[0]);
+    res.json(normalizeUser(r.rows[0]));
   } catch (err) {
     console.error("GET /users/:id ERROR:", err);
-    res.status(500).json({ error: "Failed to load user" });
-  }
-});
-
-/* =========================
-   GET /users/:id/posts
-   - For Profile grid/feed
-========================= */
-router.get("/:id/posts", async (req, res) => {
-  try {
-    const userId = req.params.id;
-
-    const r = await pool.query(
-      `
-      SELECT
-        id,
-        user_id,
-        caption,
-        image_url,
-        video_url,
-        created_at
-      FROM posts
-      WHERE user_id=$1
-      ORDER BY created_at DESC
-      `,
-      [userId]
-    );
-
-    res.json(r.rows);
-  } catch (err) {
-    console.error("GET /users/:id/posts ERROR:", err);
-    res.status(500).json({ error: "Failed to load posts" });
-  }
-});
-
-/* =========================
-   GET /users/:id/stats
-   - post count + likes received
-   - Supports likes table name: post_likes OR likes
-========================= */
-router.get("/:id/stats", async (req, res) => {
-  try {
-    const userId = req.params.id;
-
-    const postsCount = await pool.query(
-      `SELECT COUNT(*) FROM posts WHERE user_id=$1`,
-      [userId]
-    );
-
-    // try post_likes first, fallback to likes
-    let likes = 0;
-    try {
-      const lr = await pool.query(
-        `
-        SELECT COUNT(*)
-        FROM post_likes pl
-        JOIN posts p ON p.id = pl.post_id
-        WHERE p.user_id=$1
-        `,
-        [userId]
-      );
-      likes = Number(lr.rows[0].count);
-    } catch {
-      const lr2 = await pool.query(
-        `
-        SELECT COUNT(*)
-        FROM likes l
-        JOIN posts p ON p.id = l.post_id
-        WHERE p.user_id=$1
-        `,
-        [userId]
-      );
-      likes = Number(lr2.rows[0].count);
-    }
-
-    res.json({
-      posts: Number(postsCount.rows[0].count),
-      likes,
-    });
-  } catch (err) {
-    console.error("GET /users/:id/stats ERROR:", err);
-    res.status(500).json({ error: "Failed to load stats" });
+    res.status(500).json({ error: err.message || "Failed to load user" });
   }
 });
 
