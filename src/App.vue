@@ -8,22 +8,28 @@
     <router-view />
   </main>
 
+  <!-- ✅ Global toast host -->
+  <ToastHost />
+
   <!-- ✅ Screen reader live region (future: toast/notifications) -->
   <div class="sr-only" aria-live="polite" aria-atomic="true">
     {{ announcement }}
   </div>
 
-  <!-- ✅ Optional mobile bottom nav hook (add buttons later if you want) -->
-  <!-- <nav class="bottom-nav" aria-label="Primary">
+  <!-- ✅ Optional mobile bottom nav hook -->
+  <!--
+  <nav class="bottom-nav" aria-label="Primary">
     <button class="navbtn" aria-label="Feed">🏠</button>
     <button class="navbtn" aria-label="Live">🔴</button>
     <button class="navbtn" aria-label="Messages">💬</button>
     <button class="navbtn" aria-label="Profile">👤</button>
-  </nav> -->
+  </nav>
+  -->
 </template>
 
 <script setup>
 import { ref } from "vue";
+import ToastHost from "./components/ToastHost.vue";
 
 /**
  * You can update this later from anywhere (toast/notifications)
@@ -51,11 +57,3 @@ const announcement = ref("");
   border: 0 !important;
 }
 </style>
-<template>
-  <router-view />
-  <ToastHost />
-</template>
-
-<script setup>
-import ToastHost from "./components/ToastHost.vue";
-</script>
