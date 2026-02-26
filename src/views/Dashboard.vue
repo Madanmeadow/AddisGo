@@ -2,9 +2,9 @@
 <template>
   <Layout>
     <div class="wrap">
-      <!-- TOP BAR -->
+      <!-- Topbar -->
       <header class="topbar">
-        <div class="brand" @click="scrollToTop" title="Scroll to top">
+        <div class="brand" @click="scrollToTop" role="button" tabindex="0" title="Scroll to top">
           <div class="logo">🔥</div>
           <div class="brand-text">
             <div class="title">AddisGo</div>
@@ -13,34 +13,52 @@
         </div>
 
         <div class="top-actions">
-          <div class="status-pill" :class="{ ok: socketConnected }" title="Socket status">
-            <span class="dot" :class="{ on: socketConnected }"></span>
-            <span>{{ socketConnected ? "Connected" : "Connecting" }}</span>
-          </div>
-
-          <button class="chip" @click="fetchPosts" :disabled="loading">↻ Refresh</button>
+          <button class="chip" @click="fetchPosts" :disabled="loading">
+            <span class="chip-ic">↻</span>
+            <span>{{ loading ? "Loading…" : "Refresh" }}</span>
+          </button>
 
           <button class="chip ghost" @click="togglePeople">
-            {{ peopleOpen ? "Hide People" : "People" }}
+            <span class="chip-ic">👥</span>
+            <span>{{ peopleOpen ? "Hide People" : "People" }}</span>
           </button>
 
           <button class="chip ghost" @click="toggleChat">
-            {{ chatOpen ? "Close Chat" : "Chat" }}
+            <span class="chip-ic">💬</span>
+            <span>{{ chatOpen ? "Close Chat" : "Chat" }}</span>
           </button>
 
-          <button class="chip danger" @click="logout">Logout</button>
+          <button class="chip danger" @click="logout">
+            <span class="chip-ic">⎋</span>
+            <span>Logout</span>
+          </button>
         </div>
       </header>
 
-      <!-- GRID -->
+      <!-- Global status banner -->
+      <transition name="fade">
+        <div v-if="globalError" class="banner error">
+          <strong>Something went wrong:</strong> {{ globalError }}
+          <button class="banner-x" @click="globalError = ''">✕</button>
+        </div>
+      </transition>
+
+      <transition name="fade">
+        <div v-if="globalInfo" class="banner info">
+          {{ globalInfo }}
+          <button class="banner-x" @click="globalInfo = ''">✕</button>
+        </div>
+      </transition>
+
+      <!-- Layout grid -->
       <div class="page">
         <!-- LEFT -->
         <aside class="left" :class="{ open: peopleOpen }">
-          <!-- LIVE -->
+          <!-- Live -->
           <section class="panel">
             <div class="panel-head">
               <div class="panel-title">🔴 Live Now</div>
-              <button class="btn btn-primary" @click="startLive" :disabled="!socketConnected">
+              <button class="btn btn-primary" @click="startLive" :disabled="!token">
                 Go Live
               </button>
             </div>
@@ -54,7 +72,7 @@
               @click="joinLive(stream)"
               title="Tap to watch"
             >
-              <span class="dot-live"></span>
+              <span class="dot"></span>
               <div class="live-meta">
                 <div class="live-name">{{ stream }}</div>
                 <div class="live-sub">Tap to watch</div>
@@ -63,60 +81,48 @@
             </div>
           </section>
 
-          <!-- PEOPLE -->
+          <!-- People -->
           <section class="panel">
             <div class="panel-head">
               <div class="panel-title">👥 People</div>
-
-              <div class="row-actions">
-                <button class="btn" @click="fetchPeople" :disabled="peopleLoading || !token">
-                  {{ peopleLoading ? "Loading…" : "Refresh" }}
-                </button>
-              </div>
+              <button class="btn" @click="fetchPeople" :disabled="peopleLoading || !token">
+                {{ peopleLoading ? "Loading…" : "Refresh" }}
+              </button>
             </div>
 
             <div v-if="!token" class="alert soft">
-              Login again to see people and call buttons.
+              Login again to see people & calling buttons.
             </div>
 
             <div v-else class="people">
-              <div class="people-tools">
-              <!-- People skeleton -->
-                    <div v-if="peopleLoading" class="sklist">
-                      <div v-for="i in 6" :key="i" class="skrow">
-                        <Skeleton variant="shimmer" width="40px" height="40px" radius="14px" />
-                        <div class="skcol">
-                          <Skeleton variant="shimmer" width="70%" height="14px" />
-                          <Skeleton variant="shimmer" width="45%" height="12px" />
-                        </div>
-                        <div class="skbtns">
-                          <Skeleton variant="shimmer" width="40px" height="40px" radius="14px" />
-                          <Skeleton variant="shimmer" width="40px" height="40px" radius="14px" />
-                        </div>
-                      </div>
-                    </div>
-                                    <input
-                  v-model="peopleSearch"
-                  class="search small"
-                  placeholder="Search users…"
-                />
-                <label class="toggle">
-                  <input type="checkbox" v-model="onlineFirst" />
-                  <span>Online first</span>
-                </label>
-              </div>
-
               <div v-if="peopleError" class="alert">{{ peopleError }}</div>
-              <div v-else-if="sortedPeople.length === 0" class="hint">No users found.</div>
 
-              <div v-else v-for="u in sortedPeople" :key="u.id" class="person">
-                <div class="avatar small">{{ (u.display_name || u.username || "U")[0]?.toUpperCase() }}</div>
+              <!-- Skeleton people while loading -->
+              <template v-else-if="peopleLoading">
+                <div v-for="n in 6" :key="'p-skel-'+n" class="person skeleton">
+                  <div class="avatar small skel-box"></div>
+                  <div class="person-meta">
+                    <div class="skel-line w70"></div>
+                    <div class="skel-line w45 mt6"></div>
+                  </div>
+                  <div class="person-actions">
+                    <div class="iconbtn skel-btn"></div>
+                    <div class="iconbtn skel-btn"></div>
+                  </div>
+                </div>
+              </template>
+
+              <div v-else-if="people.length === 0" class="hint">No users found.</div>
+
+              <div v-else v-for="u in people" :key="u.id" class="person">
+                <div class="avatar small">
+                  {{ (u.display_name || u.username || "U")[0]?.toUpperCase() }}
+                </div>
 
                 <div class="person-meta">
                   <div class="person-name">
                     {{ u.display_name || u.username || ("User #" + u.id) }}
                   </div>
-
                   <div class="person-sub">
                     <span class="status" :class="{ on: isOnline(u.id) }"></span>
                     <span class="status-text">{{ isOnline(u.id) ? "Online" : "Offline" }}</span>
@@ -129,7 +135,7 @@
                   <button
                     class="iconbtn"
                     title="Audio Call"
-                    :disabled="!isOnline(u.id) || callBusy || !socketConnected"
+                    :disabled="!isOnline(u.id) || callBusy"
                     @click="startCall(u, 'audio')"
                   >
                     📞
@@ -137,7 +143,7 @@
                   <button
                     class="iconbtn"
                     title="Video Call"
-                    :disabled="!isOnline(u.id) || callBusy || !socketConnected"
+                    :disabled="!isOnline(u.id) || callBusy"
                     @click="startCall(u, 'video')"
                   >
                     🎥
@@ -145,16 +151,14 @@
                 </div>
               </div>
 
-              <div class="hint mt10">
-                Tip: calls require both users to be online (green).
-              </div>
+              <div class="hint mt10">Tip: calls require both users online (green).</div>
             </div>
           </section>
 
-          <!-- QUICK ACTIONS -->
+          <!-- Quick actions -->
           <section class="panel">
             <div class="panel-title">⚡ Quick Actions</div>
-            <div class="stack mt10">
+            <div class="stack">
               <button class="btn w100" @click="scrollToTop">Scroll Top</button>
               <button class="btn w100" @click="togglePeople">
                 {{ peopleOpen ? "Collapse Sidebar" : "Open Sidebar" }}
@@ -165,17 +169,23 @@
 
         <!-- CENTER -->
         <main class="center">
-          <!-- COMPOSER -->
+          <!-- Composer -->
           <section class="composer">
             <div class="composer-head">
               <div class="avatar big">{{ myInitial }}</div>
-              <div class="mebox">
-                <div class="me">{{ me?.username || me?.name || "You" }}</div>
+
+              <div class="composer-meta">
+                <div class="me">{{ me?.username || "You" }}</div>
                 <div class="small muted">Share something with the world</div>
+              </div>
+
+              <div class="composer-actions">
+                <button class="pill-btn" @click="focusComposer">Create</button>
               </div>
             </div>
 
             <textarea
+              ref="composerRef"
               v-model="caption"
               class="input"
               placeholder="What's happening?"
@@ -186,11 +196,13 @@
               <label class="file-pill">
                 <input type="file" accept="image/*" @change="onPickImage" />
                 📷 Image
+                <span v-if="imageFile" class="file-dot">•</span>
               </label>
 
               <label class="file-pill">
                 <input type="file" accept="video/*" @change="onPickVideo" />
                 🎥 Video
+                <span v-if="videoFile" class="file-dot">•</span>
               </label>
 
               <button class="btn btn-primary" :disabled="posting || !token" @click="submitPost">
@@ -198,49 +210,46 @@
               </button>
             </div>
 
-            <div v-if="pickedLabel" class="picked">
-              Selected: <strong>{{ pickedLabel }}</strong>
-              <button class="mini-x" @click="clearPicked">✕</button>
-            </div>
-
             <div v-if="error" class="alert">{{ error }}</div>
           </section>
 
-          <!-- FEED HEAD -->
+          <!-- Feed header -->
           <section class="feed-head">
             <div class="feed-title">Feed</div>
-            <input v-model="search" class="search" placeholder="Search posts…" />
+            <div class="feed-tools">
+              <input v-model="search" class="search" placeholder="Search posts…" />
+            </div>
           </section>
 
-          <!-- FEED -->
+          <!-- Feed -->
           <section class="feed">
-            <div v-if="loading" class="feed-skeleton">
-  <div v-for="i in 3" :key="i" class="post skpost">
-    <div class="post-head">
-      <Skeleton variant="shimmer" width="44px" height="44px" radius="999px" />
-      <div class="who" style="width:100%">
-        <Skeleton variant="shimmer" width="35%" height="14px" />
-        <div style="height:6px"></div>
-        <Skeleton variant="shimmer" width="22%" height="12px" />
-      </div>
-    </div>
+            <!-- Skeleton feed while loading -->
+            <template v-if="loading">
+              <article v-for="n in 4" :key="'f-skel-'+n" class="post skeleton">
+                <header class="post-head">
+                  <div class="avatar skel-box"></div>
+                  <div class="who">
+                    <div class="skel-line w40"></div>
+                    <div class="skel-line w25 mt6"></div>
+                  </div>
+                </header>
+                <div class="skel-line w90 mt10"></div>
+                <div class="skel-line w65 mt8"></div>
+                <div class="skel-media mt12"></div>
+                <div class="actions">
+                  <div class="skel-pill"></div>
+                  <div class="skel-pill"></div>
+                  <div class="spacer"></div>
+                  <div class="skel-pill w20"></div>
+                </div>
+              </article>
+            </template>
 
-    <Skeleton variant="shimmer" width="92%" height="14px" />
-    <div style="height:8px"></div>
-    <Skeleton variant="shimmer" width="80%" height="14px" />
-
-    <div style="height:12px"></div>
-    <Skeleton variant="shimmer" width="100%" height="360px" radius="16px" />
-
-    <div style="height:12px"></div>
-    <div class="skactions">
-      <Skeleton variant="shimmer" width="88px" height="40px" radius="999px" />
-      <Skeleton variant="shimmer" width="110px" height="40px" radius="999px" />
-      <Skeleton variant="shimmer" width="96px" height="40px" radius="999px" />
-    </div>
-  </div>
-</div>
-            <div v-else-if="filteredPosts.length === 0" class="state">No posts found.</div>
+            <div v-else-if="filteredPosts.length === 0" class="state">
+              <div class="state-emoji">🪩</div>
+              <div class="state-title">No posts yet</div>
+              <div class="state-sub">Be the first to post something.</div>
+            </div>
 
             <article
               v-else
@@ -275,12 +284,12 @@
                 preload="metadata"
               ></video>
 
-              <!-- ACTIONS -->
+              <!-- actions -->
               <div class="actions">
                 <button
                   class="action-btn"
                   :class="{ active: likesByPost[post.id]?.likedByMe }"
-                  :disabled="likeBusyByPost[post.id] || !token"
+                  :disabled="likeBusyByPost[post.id]"
                   @click="toggleLike(post)"
                   title="Like"
                 >
@@ -301,7 +310,7 @@
                 </button>
               </div>
 
-              <!-- COMMENTS PANEL -->
+              <!-- Comments -->
               <div v-if="commentsOpenByPost[post.id]" class="comments">
                 <div class="comments-head">
                   <div class="comments-title">Comments</div>
@@ -313,10 +322,7 @@
                 </div>
 
                 <div v-else class="comments-list">
-                  <div
-                    v-if="(commentsByPost[post.id] || []).length === 0"
-                    class="comments-empty"
-                  >
+                  <div v-if="(commentsByPost[post.id] || []).length === 0" class="comments-empty">
                     Be the first to comment.
                   </div>
 
@@ -339,11 +345,10 @@
                     class="comment-input"
                     placeholder="Write a comment…"
                     @keydown.enter.prevent="submitComment(post)"
-                    :disabled="!token"
                   />
                   <button
                     class="btn btn-primary"
-                    :disabled="commentBusyByPost[post.id] || !String(commentDraftByPost[post.id] || '').trim() || !token"
+                    :disabled="commentBusyByPost[post.id] || !String(commentDraftByPost[post.id] || '').trim()"
                     @click="submitComment(post)"
                   >
                     {{ commentBusyByPost[post.id] ? "Sending…" : "Send" }}
@@ -388,21 +393,23 @@
 
               <div class="chat-input">
                 <input v-model="chatText" placeholder="Type message…" @keydown.enter.prevent="sendChat" />
-                <button class="btn btn-primary" @click="sendChat" :disabled="!socketConnected">Send</button>
+                <button class="btn btn-primary" @click="sendChat">Send</button>
               </div>
             </div>
           </section>
         </aside>
       </div>
 
-      <!-- INCOMING CALL POPUP -->
+      <!-- Incoming call -->
       <div v-if="incomingCall" class="modal-backdrop" @click.self="rejectIncoming">
         <div class="modal">
-          <div class="modal-title">Incoming {{ incomingCall.kind === "video" ? "Video" : "Audio" }} Call</div>
+          <div class="modal-title">
+            Incoming {{ incomingCall.kind === "video" ? "Video" : "Audio" }} Call
+          </div>
           <div class="modal-sub">
             From
             <span class="pill">
-              {{ incomingCall.fromUser?.username || incomingCall.fromName || ("User #" + incomingCall.fromUserId) }}
+              {{ incomingCall.from?.username || incomingCall.fromName || ("User #" + incomingCall.fromUserId) }}
             </span>
           </div>
 
@@ -411,15 +418,14 @@
             <button class="btn btn-primary" @click="acceptIncoming">Accept</button>
           </div>
 
-          <div class="tiny muted mt10">
-            Tip: keep Dashboard open on both devices for best call reliability.
-          </div>
+          <div class="tiny muted mt10">Tip: keep Dashboard open on both devices for best reliability.</div>
         </div>
       </div>
 
-      <!-- CALLING TOAST -->
+      <!-- Calling toast -->
       <div v-if="callingToast" class="toast">
-        {{ callingToast }}
+        <span class="toast-dot"></span>
+        <span>{{ callingToast }}</span>
         <button class="mini-x" @click="cancelCall">✕</button>
       </div>
     </div>
@@ -432,7 +438,6 @@ import { useRouter } from "vue-router";
 import Layout from "../components/Layout.vue";
 import { io } from "socket.io-client";
 
-import Skeleton from "../components/Skeleton.vue";
 const router = useRouter();
 
 const apiUrl = import.meta.env.VITE_API_URL;
@@ -446,11 +451,13 @@ const me = (() => {
   }
 })();
 
+/* ---------- premium banners ---------- */
+const globalError = ref("");
+const globalInfo = ref("");
+
 /* ================= SOCKET ================= */
 let socket = null;
-const socketConnected = ref(false);
-
-const onlinePairs = ref([]); // [ [userId, socketId], ... ]
+const onlinePairs = ref([]); // server emits online-users: [ [userId, socketId], ... ]
 const liveStreams = ref([]);
 
 function isOnline(userId) {
@@ -463,8 +470,6 @@ const peopleOpen = ref(true);
 const people = ref([]);
 const peopleLoading = ref(false);
 const peopleError = ref("");
-const peopleSearch = ref("");
-const onlineFirst = ref(true);
 
 function togglePeople() {
   peopleOpen.value = !peopleOpen.value;
@@ -474,11 +479,13 @@ async function fetchPeople() {
   if (!token) return;
   peopleLoading.value = true;
   peopleError.value = "";
+
   try {
     const res = await fetch(`${apiUrl}/users`, {
       headers: { Authorization: `Bearer ${token}` },
     });
     const data = await res.json();
+
     if (!res.ok) {
       peopleError.value = data?.error || "Failed to load users";
       people.value = [];
@@ -492,24 +499,6 @@ async function fetchPeople() {
     peopleLoading.value = false;
   }
 }
-
-const sortedPeople = computed(() => {
-  const q = peopleSearch.value.trim().toLowerCase();
-  const list = (people.value || []).filter((u) => {
-    if (!q) return true;
-    const name = (u.display_name || u.username || u.name || "").toLowerCase();
-    return name.includes(q) || String(u.id).includes(q);
-  });
-
-  if (!onlineFirst.value) return list;
-
-  return [...list].sort((a, b) => {
-    const ao = isOnline(a.id) ? 1 : 0;
-    const bo = isOnline(b.id) ? 1 : 0;
-    if (bo !== ao) return bo - ao;
-    return String(a.id).localeCompare(String(b.id));
-  });
-});
 
 /* ================= CALLS ================= */
 const incomingCall = ref(null);
@@ -528,15 +517,16 @@ function startCall(user, kind = "audio") {
   callingToast.value = `Calling ${user.display_name || user.username || "user"}…`;
   pendingRoomId.value = "";
 
-  // server generates room + sends incoming to callee
-  const roomId = `call-${socket.id}-${Date.now()}`;
-  socket.emit("call:invite", { toUserId: user.id, kind, roomId });
+  socket.emit("call:request", { toUserId: user.id, kind });
 }
 
 function cancelCall() {
   callingToast.value = "";
   callBusy.value = false;
-  if (pendingRoomId.value) socket?.emit("call:end", { roomId: pendingRoomId.value });
+
+  if (pendingRoomId.value) {
+    socket?.emit("call:cancel", { roomId: pendingRoomId.value });
+  }
   pendingRoomId.value = "";
 }
 
@@ -547,9 +537,7 @@ function acceptIncoming() {
 
   socket.emit("call:accept", { roomId });
 
-  router.push(
-    `/call?roomId=${encodeURIComponent(roomId)}&role=callee&kind=${encodeURIComponent(kind)}`
-  );
+  router.push(`/call?roomId=${encodeURIComponent(roomId)}&role=callee&kind=${encodeURIComponent(kind)}`);
 
   incomingCall.value = null;
 }
@@ -571,10 +559,13 @@ const imageFile = ref(null);
 const videoFile = ref(null);
 const search = ref("");
 
-const myInitial = computed(() => {
-  const name = me?.username || me?.name || "A";
-  return String(name)[0]?.toUpperCase() || "A";
-});
+const composerRef = ref(null);
+
+const myInitial = computed(() => (me?.username ? me.username[0].toUpperCase() : "A"));
+
+function focusComposer() {
+  try { composerRef.value?.focus?.(); } catch {}
+}
 
 function formatDate(d) {
   if (!d) return "";
@@ -605,7 +596,7 @@ async function fetchPosts() {
     }
 
     posts.value = data;
-    await preloadLikesForPosts(data.slice(0, 30));
+    await preloadLikesForPosts(data.slice(0, 20));
   } catch {
     posts.value = [];
     error.value = "Failed to fetch posts";
@@ -615,7 +606,7 @@ async function fetchPosts() {
 }
 
 async function submitPost() {
-  if (!token) return alert("Login again.");
+  if (!token) return alert("Login again to post.");
   if (!caption.value.trim() && !imageFile.value && !videoFile.value) return;
 
   try {
@@ -645,6 +636,9 @@ async function submitPost() {
     caption.value = "";
     imageFile.value = null;
     videoFile.value = null;
+
+    globalInfo.value = "Posted ✅";
+    setTimeout(() => (globalInfo.value = ""), 1200);
   } catch {
     error.value = "Post failed";
   } finally {
@@ -658,16 +652,9 @@ function onPickImage(e) {
 function onPickVideo(e) {
   videoFile.value = e.target.files?.[0] || null;
 }
-function clearPicked() {
-  imageFile.value = null;
-  videoFile.value = null;
+function scrollToTop() {
+  window.scrollTo({ top: 0, behavior: "smooth" });
 }
-
-const pickedLabel = computed(() => {
-  if (imageFile.value) return imageFile.value.name;
-  if (videoFile.value) return videoFile.value.name;
-  return "";
-});
 
 /* ================= LIKES ================= */
 const likesByPost = ref({});
@@ -783,10 +770,7 @@ async function loadComments(postId, { force = false } = {}) {
     const items = Array.isArray(data) ? data : Array.isArray(data?.items) ? data.items : [];
     commentsByPost.value = { ...commentsByPost.value, [postId]: items };
   } catch {
-    commentErrorByPost.value = {
-      ...commentErrorByPost.value,
-      [postId]: "Failed to load comments",
-    };
+    commentErrorByPost.value = { ...commentErrorByPost.value, [postId]: "Failed to load comments" };
     commentsByPost.value = { ...commentsByPost.value, [postId]: [] };
   } finally {
     commentLoadingByPost.value = { ...commentLoadingByPost.value, [postId]: false };
@@ -847,10 +831,7 @@ async function submitComment(post) {
       ...commentsByPost.value,
       [postId]: (commentsByPost.value[postId] || []).filter((c) => c.id !== tempId),
     };
-    commentErrorByPost.value = {
-      ...commentErrorByPost.value,
-      [postId]: "Failed to send comment",
-    };
+    commentErrorByPost.value = { ...commentErrorByPost.value, [postId]: "Failed to send comment" };
   } finally {
     commentBusyByPost.value = { ...commentBusyByPost.value, [postId]: false };
   }
@@ -869,7 +850,8 @@ async function sharePost(post) {
 
   try {
     await navigator.clipboard.writeText(url);
-    alert("Link copied!");
+    globalInfo.value = "Link copied ✅";
+    setTimeout(() => (globalInfo.value = ""), 1200);
   } catch {
     alert(url);
   }
@@ -892,19 +874,21 @@ function selectChat(room) {
 }
 function sendChat() {
   if (!chatText.value.trim()) return;
+
+  // ✅ matches backend listener: "send-room-message"
   socket?.emit("send-room-message", {
     room: chatRoom.value,
     from: me?.username || "me",
     text: chatText.value,
   });
+
   chatText.value = "";
 }
 
 /* ================= LIVE ================= */
 function startLive() {
-  const liveId = `live-${me?.id || Math.random().toString(36).slice(2, 8)}-${Date.now()
-    .toString()
-    .slice(-4)}`;
+  if (!token) return alert("Login again to go live.");
+  const liveId = `live-${me?.id || Math.random().toString(36).slice(2, 8)}-${Date.now().toString().slice(-4)}`;
   socket?.emit("live:create", { liveId });
   router.push(`/live?mode=host&liveId=${encodeURIComponent(liveId)}`);
 }
@@ -926,11 +910,6 @@ const filteredPosts = computed(() => {
   return posts.value.filter((p) => (p.caption || "").toLowerCase().includes(q));
 });
 
-/* ================= UTIL ================= */
-function scrollToTop() {
-  window.scrollTo({ top: 0, behavior: "smooth" });
-}
-
 /* ================= INIT ================= */
 onMounted(async () => {
   await fetchPosts();
@@ -939,21 +918,12 @@ onMounted(async () => {
   socket = io(apiUrl, { transports: ["websocket", "polling"] });
 
   socket.on("connect", () => {
-    socketConnected.value = true;
+    if (me?.id) socket.emit("register-user", { id: me.id, username: me.username });
 
-    // REQUIRED: presence + calls routing
-    if (me?.id) socket.emit("register-user", { id: me.id, username: me.username || me.name });
-
-    // chat + live
     socket.emit("join-room", chatRoom.value);
     socket.emit("get-live-list");
   });
 
-  socket.on("disconnect", () => {
-    socketConnected.value = false;
-  });
-
-  // chat
   socket.on("receive-message", (msg) => {
     chatMessages.value.push(msg);
     nextTick(() => {
@@ -962,17 +932,15 @@ onMounted(async () => {
     });
   });
 
-  // live list
   socket.on("live-list", (streams) => {
     liveStreams.value = Array.isArray(streams) ? streams : [];
   });
 
-  // online users list (map entries)
   socket.on("online-users", (pairs) => {
     onlinePairs.value = Array.isArray(pairs) ? pairs : [];
   });
 
-  // calls
+  // Calls: keep your working flow
   socket.on("call:ringing", ({ roomId, kind }) => {
     pendingRoomId.value = roomId;
     callingToast.value = `Calling… (${kind || pendingKind.value})`;
@@ -983,13 +951,7 @@ onMounted(async () => {
   });
 
   socket.on("call:incoming", (p) => {
-    incomingCall.value = {
-      roomId: p.roomId,
-      kind: p.kind || "audio",
-      fromUser: p.fromUser,
-      fromUserId: p.fromUserId,
-      fromName: p.fromName,
-    };
+    incomingCall.value = p;
   });
 
   socket.on("call:accepted", () => {
@@ -997,11 +959,12 @@ onMounted(async () => {
     callBusy.value = false;
   });
 
-  socket.on("call:ended", () => {
+  socket.on("call:ended", ({ reason } = {}) => {
     callingToast.value = "";
     callBusy.value = false;
     incomingCall.value = null;
     pendingRoomId.value = "";
+    if (reason) console.log("Call ended:", reason);
   });
 
   socket.on("call:error", ({ message } = {}) => {
@@ -1022,15 +985,13 @@ onBeforeUnmount(() => {
 </script>
 
 <style scoped>
-/* =========================
-   POLISHED 3-COLUMN DASHBOARD
-========================= */
+/* ============== Premium Theme ============== */
 .wrap {
   min-height: 100vh;
-  padding-bottom: env(safe-area-inset-bottom);
   background:
-    radial-gradient(1200px 700px at 20% 0%, rgba(255,75,43,0.18), transparent),
-    radial-gradient(900px 600px at 80% 20%, rgba(255,65,108,0.16), transparent),
+    radial-gradient(1200px 700px at 15% 0%, rgba(255, 75, 43, 0.18), transparent),
+    radial-gradient(900px 600px at 85% 15%, rgba(255, 65, 108, 0.16), transparent),
+    radial-gradient(800px 500px at 50% 90%, rgba(120, 75, 255, 0.10), transparent),
     #0b1220;
   color: #fff;
 }
@@ -1040,110 +1001,112 @@ onBeforeUnmount(() => {
   position: sticky;
   top: 0;
   z-index: 60;
-  padding: 14px 16px;
+  padding: 14px 14px;
   display: flex;
   justify-content: space-between;
   align-items: center;
   gap: 12px;
-
-  background: rgba(8, 12, 20, 0.80);
-  backdrop-filter: blur(14px);
+  background: rgba(8, 12, 20, 0.72);
+  backdrop-filter: blur(12px);
   border-bottom: 1px solid rgba(255, 255, 255, 0.10);
 }
-
-.brand { display: flex; align-items: center; gap: 10px; cursor: pointer; user-select: none; }
+.brand { display: flex; align-items: center; gap: 10px; user-select: none; }
+.brand:active { transform: scale(0.99); }
 .logo {
-  width: 42px; height: 42px;
-  border-radius: 14px;
+  width: 44px; height: 44px; border-radius: 14px;
   display: grid; place-items: center;
-  background: rgba(255,255,255,0.10);
+  background: rgba(255, 255, 255, 0.10);
   border: 1px solid rgba(255,255,255,0.14);
+  box-shadow: 0 8px 28px rgba(0,0,0,0.22);
   font-size: 20px;
 }
-.brand-text { line-height: 1.05; }
-.title { font-weight: 900; font-size: 18px; letter-spacing: .2px; }
-.sub { opacity: .72; font-size: 12px; margin-top: 2px; }
+.title { font-weight: 950; font-size: 18px; letter-spacing: .2px; }
+.sub { opacity: .72; font-size: 12px; }
 
 .top-actions { display: flex; gap: 8px; flex-wrap: wrap; justify-content: flex-end; }
 
-.status-pill{
-  display:flex;
-  align-items:center;
-  gap:8px;
-  padding: 9px 12px;
-  border-radius: 999px;
+/* Banners */
+.banner {
+  position: sticky;
+  top: 70px;
+  z-index: 55;
+  margin: 10px auto 0;
+  max-width: 1200px;
+  border-radius: 14px;
+  padding: 10px 12px;
+  display: flex;
+  gap: 10px;
+  align-items: center;
+  justify-content: space-between;
   border: 1px solid rgba(255,255,255,0.12);
-  background: rgba(255,255,255,0.08);
-  font-size: 12px;
-  opacity: .92;
+  backdrop-filter: blur(10px);
 }
-.status-pill.ok { border-color: rgba(0,230,118,0.28); }
-.status-pill .dot {
-  width: 10px; height: 10px; border-radius: 999px;
-  background: rgba(255,255,255,0.25);
+.banner.error { background: rgba(255, 80, 80, 0.16); border-color: rgba(255,80,80,0.28); }
+.banner.info  { background: rgba(80, 200, 255, 0.12); border-color: rgba(80,200,255,0.22); }
+.banner-x {
+  border: none;
+  cursor: pointer;
+  background: rgba(255,255,255,0.10);
+  color: white;
+  border-radius: 10px;
+  padding: 6px 10px;
 }
-.status-pill .dot.on { background:#00e676; box-shadow: 0 0 0 3px rgba(0,230,118,0.12); }
 
-/* Layout */
+/* Layout grid */
 .page {
-  width: min(1280px, 100%);
-  margin: 0 auto;
-  padding: 18px 16px;
-
   display: grid;
-  grid-template-columns: 320px 1fr 360px;
+  grid-template-columns: 340px 1fr 360px;
   gap: 16px;
+  max-width: 1500px;
+  margin: 0 auto;
+  padding: 16px;
 }
-
-.left, .right { height: fit-content; position: sticky; top: 78px; }
+.left, .right { height: fit-content; position: sticky; top: 74px; }
 .center { min-width: 0; }
 
 /* Panels */
 .panel, .composer, .post {
-  background: rgba(255, 255, 255, 0.07);
+  background: rgba(255, 255, 255, 0.08);
   border: 1px solid rgba(255, 255, 255, 0.12);
   border-radius: 18px;
   padding: 14px;
-  box-shadow: 0 10px 30px rgba(0,0,0,0.22);
-  backdrop-filter: blur(10px);
+  backdrop-filter: blur(12px);
   margin-bottom: 14px;
+  box-shadow: 0 18px 60px rgba(0,0,0,0.18);
 }
 .panel-head {
   display: flex;
   align-items: center;
   justify-content: space-between;
-  gap: 12px;
-  margin-bottom: 12px;
+  gap: 10px;
+  margin-bottom: 10px;
 }
-.panel-title { font-weight: 900; letter-spacing: .2px; }
-.row-actions { display:flex; gap: 8px; }
+.panel-title { font-weight: 950; }
 
 /* Buttons */
 .btn, .chip {
-  border: 1px solid rgba(255,255,255,0.12);
-  background: rgba(255,255,255,0.10);
-  color: #fff;
+  border: none;
   border-radius: 999px;
   padding: 10px 14px;
   cursor: pointer;
-  transition: transform .06s ease, filter .15s ease, border-color .15s ease;
-  user-select: none;
+  background: rgba(255,255,255,0.12);
+  color: white;
+  transition: transform .08s ease, filter .15s ease, opacity .15s ease;
 }
-.btn:hover, .chip:hover { filter: brightness(1.06); border-color: rgba(255,255,255,0.18); }
-.btn:active, .chip:active { transform: scale(0.98); }
-.btn:disabled, .chip:disabled { opacity: .55; cursor: not-allowed; }
-
+.btn:hover, .chip:hover { filter: brightness(1.08); }
+.btn:active, .chip:active { transform: scale(0.99); }
 .btn-primary {
-  border: none;
   background: linear-gradient(45deg, #ff416c, #ff4b2b);
+  box-shadow: 0 14px 40px rgba(255, 65, 108, 0.16);
 }
 .danger {
-  background: rgba(255,80,80,0.18);
+  background: rgba(255,80,80,0.22);
   border: 1px solid rgba(255,80,80,0.35);
 }
 .ghost { opacity: .92; }
 .w100 { width: 100%; }
 .stack { display: grid; gap: 10px; }
+.chip-ic { margin-right: 6px; opacity: .9; }
 
 /* Live cards */
 .live-card {
@@ -1156,81 +1119,60 @@ onBeforeUnmount(() => {
   border-radius: 14px;
   margin-top: 10px;
   cursor: pointer;
+  transition: transform .10s ease, filter .15s ease;
 }
-.live-card:hover { filter: brightness(1.06); }
-.dot-live { width: 10px; height: 10px; border-radius: 50%; background: #ff3b30; }
+.live-card:hover { filter: brightness(1.05); }
+.live-card:active { transform: scale(0.99); }
+.dot { width: 10px; height: 10px; border-radius: 50%; background: #ff3b30; box-shadow: 0 0 0 6px rgba(255,59,48,0.14); }
 .live-meta { display: grid; }
-.live-name { font-weight: 900; }
+.live-name { font-weight: 950; }
 .live-sub { opacity: .75; font-size: 12px; }
 .chev { margin-left: auto; opacity: .7; font-size: 22px; }
 
 /* People */
 .people { display: grid; gap: 10px; }
-.people-tools{
-  display:flex;
-  gap: 10px;
-  align-items:center;
-  margin-bottom: 10px;
-}
-.toggle{
-  display:flex;
-  gap: 8px;
-  align-items:center;
-  font-size: 12px;
-  opacity: .85;
-}
-.toggle input{ transform: translateY(1px); }
-
 .person {
   display: flex;
-  gap: 12px;
+  gap: 10px;
   align-items: center;
-  padding: 10px 12px;
+  padding: 10px;
   border-radius: 16px;
   background: rgba(0,0,0,0.26);
   border: 1px solid rgba(255,255,255,0.10);
 }
-.person:hover {
-  border-color: rgba(255,75,43,0.22);
-  background: rgba(0,0,0,0.30);
-}
 .person-meta { flex: 1; min-width: 0; }
-.person-name {
-  font-weight: 900;
-  font-size: 14px;
-  overflow: hidden;
-  text-overflow: ellipsis;
-  white-space: nowrap;
-}
-.person-sub {
-  display: flex;
-  align-items: center;
-  gap: 8px;
-  opacity: .75;
-  font-size: 12px;
-  margin-top: 3px;
-}
-.status { width: 10px; height: 10px; border-radius: 50%; background: rgba(255,255,255,0.28); }
-.status.on { background: #00e676; box-shadow: 0 0 0 3px rgba(0,230,118,0.12); }
+.person-name { font-weight: 950; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.person-sub { display: flex; align-items: center; gap: 8px; opacity: .75; font-size: 12px; margin-top: 2px; }
+.status { width: 10px; height: 10px; border-radius: 50%; background: rgba(255,255,255,0.35); }
+.status.on { background: #00e676; box-shadow: 0 0 0 6px rgba(0,230,118,0.12); }
 .sep { opacity: .5; }
-
 .person-actions { display: flex; gap: 8px; }
+
 .iconbtn {
   width: 40px; height: 40px;
   border-radius: 14px;
   border: 1px solid rgba(255,255,255,0.14);
-  background: rgba(255,255,255,0.08);
+  background: rgba(255,255,255,0.10);
   cursor: pointer;
-  transition: filter .15s ease, transform .06s ease;
+  transition: transform .08s ease, filter .15s ease;
 }
 .iconbtn:hover { filter: brightness(1.08); }
 .iconbtn:active { transform: scale(0.98); }
-.iconbtn:disabled { opacity: .40; cursor: not-allowed; }
+.iconbtn:disabled { opacity: .45; cursor: not-allowed; }
 
 /* Composer */
 .composer-head { display: flex; gap: 10px; align-items: center; margin-bottom: 10px; }
-.mebox { display:grid; gap: 2px; }
-.me { font-weight: 900; }
+.composer-meta { flex: 1; }
+.composer-actions { display: flex; justify-content: flex-end; }
+.pill-btn {
+  border: 1px solid rgba(255,255,255,0.16);
+  background: rgba(255,255,255,0.10);
+  color: white;
+  padding: 10px 12px;
+  border-radius: 999px;
+  cursor: pointer;
+}
+.me { font-weight: 950; }
 .small { font-size: 12px; }
 .muted { opacity: .75; }
 
@@ -1238,93 +1180,82 @@ onBeforeUnmount(() => {
   width: 100%;
   border: 1px solid rgba(255,255,255,0.10);
   outline: none;
-  background: rgba(0, 0, 0, 0.35);
-  color: #fff;
-  border-radius: 14px;
-  padding: 12px;
+  background: rgba(0, 0, 0, 0.32);
+  color: white;
+  border-radius: 16px;
+  padding: 12px 12px;
   resize: none;
+  transition: border-color .15s ease, background .15s ease;
 }
-.input:focus { border-color: rgba(255,75,43,0.35); }
-
+.input:focus {
+  border-color: rgba(255,75,43,0.45);
+  background: rgba(0,0,0,0.38);
+}
 .upload-row { display: flex; gap: 10px; align-items: center; flex-wrap: wrap; margin-top: 10px; }
 .file-pill {
-  background: rgba(255, 255, 255, 0.10);
-  border: 1px solid rgba(255,255,255,0.12);
+  background: rgba(255, 255, 255, 0.12);
   border-radius: 999px;
   padding: 10px 12px;
   cursor: pointer;
+  border: 1px solid rgba(255,255,255,0.12);
 }
-.file-pill:hover { filter: brightness(1.06); }
 .file-pill input { display: none; }
+.file-dot { margin-left: 6px; opacity: .9; }
 
-.picked{
-  margin-top: 10px;
-  padding: 10px;
-  border-radius: 14px;
-  background: rgba(255,255,255,0.06);
-  border: 1px solid rgba(255,255,255,0.10);
-  display:flex;
-  align-items:center;
-  justify-content: space-between;
-  gap: 10px;
-}
-
-/* Feed */
+/* Feed header */
 .feed-head {
   display: flex;
   justify-content: space-between;
   align-items: center;
-  gap: 12px;
+  gap: 10px;
   margin-bottom: 10px;
 }
-.feed-title { font-weight: 900; font-size: 18px; }
-
+.feed-title { font-weight: 950; font-size: 18px; }
 .search {
-  width: min(360px, 100%);
-  background: rgba(0,0,0,0.35);
-  border: 1px solid rgba(255,255,255,0.12);
-  color: #fff;
+  background: rgba(0, 0, 0, 0.32);
+  border: 1px solid rgba(255, 255, 255, 0.12);
+  color: white;
   padding: 10px 12px;
   border-radius: 999px;
   outline: none;
 }
-.search.small{ width: 100%; padding: 9px 10px; }
-.search:focus { border-color: rgba(255,75,43,0.35); }
-
-.post { background: rgba(0,0,0,0.52); }
+.post { background: rgba(0, 0, 0, 0.52); }
 .post-head { display: flex; gap: 10px; align-items: center; margin-bottom: 10px; }
-.who .name { font-weight: 900; }
+.who .name { font-weight: 950; }
 .time { opacity: .75; font-size: 12px; }
-.text { margin: 6px 0 10px; line-height: 1.5; opacity: .98; }
+.text { margin: 6px 0 10px; line-height: 1.55; font-size: 15px; }
 
 .media {
   width: 100%;
   border-radius: 16px;
   background: #000;
   margin-top: 10px;
-  max-height: 700px;
+  max-height: 720px;
   object-fit: cover;
 }
-
 .state {
   text-align: center;
-  padding: 26px;
-  opacity: 0.85;
+  padding: 34px 18px;
+  opacity: 0.95;
   border-radius: 18px;
   background: rgba(255, 255, 255, 0.06);
   border: 1px solid rgba(255,255,255,0.10);
 }
-
+.state-emoji { font-size: 28px; margin-bottom: 8px; }
+.state-title { font-weight: 950; font-size: 18px; }
+.state-sub { opacity: .75; margin-top: 4px; }
 .hint { opacity: .75; font-size: 13px; }
 .mt10 { margin-top: 10px; }
+.mt6 { margin-top: 6px; }
+.mt12 { margin-top: 12px; }
 
 /* Avatars */
 .avatar {
-  width: 44px; height: 44px;
-  border-radius: 50%;
+  width: 44px; height: 44px; border-radius: 50%;
   background: linear-gradient(45deg, #ff416c, #ff4b2b);
   display: grid; place-items: center;
-  font-weight: 900;
+  font-weight: 950;
+  box-shadow: 0 12px 40px rgba(255,65,108,0.14);
 }
 .avatar.big { width: 52px; height: 52px; }
 .avatar.small {
@@ -1332,6 +1263,7 @@ onBeforeUnmount(() => {
   border-radius: 14px;
   background: rgba(255,255,255,0.10);
   border: 1px solid rgba(255,255,255,0.14);
+  box-shadow: none;
 }
 
 /* Actions */
@@ -1353,12 +1285,14 @@ onBeforeUnmount(() => {
   padding: 10px 12px;
   border-radius: 999px;
   cursor: pointer;
+  transition: transform .08s ease, filter .15s ease;
 }
 .action-btn:hover { filter: brightness(1.06); }
+.action-btn:active { transform: scale(0.99); }
 .action-btn:disabled { opacity: 0.6; cursor: not-allowed; }
-.action-btn .label { font-weight: 900; font-size: 13px; }
+.action-btn .label { font-weight: 950; font-size: 13px; }
 .action-btn.active {
-  border-color: rgba(255, 75, 43, 0.6);
+  border-color: rgba(255, 75, 43, 0.60);
   background: rgba(255, 75, 43, 0.18);
 }
 .spacer { flex: 1; }
@@ -1366,13 +1300,13 @@ onBeforeUnmount(() => {
 /* Comments */
 .comments {
   margin-top: 12px;
-  background: rgba(0, 0, 0, 0.35);
+  background: rgba(0, 0, 0, 0.32);
   border: 1px solid rgba(255, 255, 255, 0.12);
   border-radius: 16px;
   padding: 12px;
 }
 .comments-head { display:flex; align-items:center; justify-content:space-between; margin-bottom: 8px; }
-.comments-title { font-weight: 900; }
+.comments-title { font-weight: 950; }
 .x {
   border: none; cursor: pointer;
   background: rgba(255, 255, 255, 0.10);
@@ -1394,7 +1328,7 @@ onBeforeUnmount(() => {
   border: 1px solid rgba(255, 255, 255, 0.10);
 }
 .badge {
-  font-weight: 900;
+  font-weight: 950;
   font-size: 12px;
   padding: 6px 10px;
   border-radius: 999px;
@@ -1405,14 +1339,13 @@ onBeforeUnmount(() => {
 .comment-compose { display: flex; gap: 8px; margin-top: 10px; }
 .comment-input {
   flex: 1;
-  background: rgba(0, 0, 0, 0.35);
+  background: rgba(0, 0, 0, 0.32);
   border: 1px solid rgba(255, 255, 255, 0.12);
   color: white;
   padding: 10px 12px;
   border-radius: 12px;
   outline: none;
 }
-.comment-input:focus { border-color: rgba(255,75,43,0.35); }
 .comment-error {
   margin-top: 10px;
   padding: 10px;
@@ -1433,27 +1366,20 @@ onBeforeUnmount(() => {
   cursor: pointer;
   text-align: left;
 }
-.chat-item:hover { filter: brightness(1.06); }
 .chat-item.active { border-color: rgba(255,75,43,.5); background: rgba(255,75,43,.14); }
-.chat-box {
-  background: rgba(0, 0, 0, 0.35);
-  border-radius: 16px;
-  padding: 10px;
-  border: 1px solid rgba(255,255,255,0.10);
-}
+.chat-box { background: rgba(0, 0, 0, 0.32); border-radius: 16px; padding: 10px; border: 1px solid rgba(255,255,255,0.10); }
 .chat-messages { max-height: 320px; overflow: auto; display: grid; gap: 8px; padding: 6px; }
 .chat-msg { font-size: 13px; opacity: 0.95; }
 .chat-input { display:flex; gap: 8px; margin-top: 10px; }
 .chat-input input {
   flex: 1;
-  background: rgba(0, 0, 0, 0.35);
+  background: rgba(0, 0, 0, 0.32);
   border: 1px solid rgba(255, 255, 255, 0.12);
   color: white;
   padding: 10px 12px;
   border-radius: 12px;
   outline: none;
 }
-.chat-input input:focus { border-color: rgba(255,75,43,0.35); }
 
 /* Alerts */
 .alert {
@@ -1467,37 +1393,12 @@ onBeforeUnmount(() => {
   background: rgba(255,255,255,0.08);
   border: 1px solid rgba(255,255,255,0.12);
 }
-/* Skeleton layout helpers */
-.sklist { display: grid; gap: 10px; }
-.skrow {
-  display: flex;
-  align-items: center;
-  gap: 12px;
-  padding: 10px 12px;
-  border-radius: 16px;
-  background: rgba(0,0,0,0.22);
-  border: 1px solid rgba(255,255,255,0.08);
-}
-.skcol { flex: 1; display: grid; gap: 8px; }
-.skbtns { display: flex; gap: 8px; }
 
-.feed-skeleton { display: grid; gap: 14px; }
-.skpost { background: rgba(0,0,0,0.46) !important; }
-
-.skactions { display: flex; gap: 10px; }
-
-.chat-skeleton { display: grid; gap: 10px; padding: 8px 6px; }
-.chat-bub {
-  padding: 10px 10px;
-  border-radius: 14px;
-  background: rgba(255,255,255,0.06);
-  border: 1px solid rgba(255,255,255,0.08);
-}
 /* Incoming modal */
 .modal-backdrop {
   position: fixed;
   inset: 0;
-  z-index: 90;
+  z-index: 80;
   background: rgba(0,0,0,0.58);
   display: grid;
   place-items: center;
@@ -1505,13 +1406,13 @@ onBeforeUnmount(() => {
 }
 .modal {
   width: min(520px, 100%);
-  background: rgba(12, 18, 32, 0.96);
+  background: rgba(12, 18, 32, 0.95);
   border: 1px solid rgba(255,255,255,0.14);
   border-radius: 18px;
   padding: 16px;
   box-shadow: 0 12px 40px rgba(0,0,0,0.45);
 }
-.modal-title { font-weight: 900; font-size: 18px; }
+.modal-title { font-weight: 950; font-size: 18px; }
 .modal-sub { margin-top: 8px; opacity: .9; }
 .pill {
   display: inline-block;
@@ -1520,7 +1421,7 @@ onBeforeUnmount(() => {
   border-radius: 999px;
   background: rgba(255,255,255,0.10);
   border: 1px solid rgba(255,255,255,0.14);
-  font-weight: 900;
+  font-weight: 950;
   font-size: 12px;
 }
 .modal-actions { display: flex; gap: 10px; justify-content: flex-end; margin-top: 14px; }
@@ -1532,15 +1433,20 @@ onBeforeUnmount(() => {
   left: 50%;
   bottom: 18px;
   transform: translateX(-50%);
-  z-index: 95;
-  background: rgba(12, 18, 32, 0.96);
+  z-index: 90;
+  background: rgba(12, 18, 32, 0.95);
   border: 1px solid rgba(255,255,255,0.14);
   padding: 10px 12px;
   border-radius: 999px;
   display: flex;
   align-items: center;
   gap: 10px;
-  box-shadow: 0 12px 40px rgba(0,0,0,0.35);
+  box-shadow: 0 18px 50px rgba(0,0,0,0.35);
+}
+.toast-dot {
+  width: 10px; height: 10px; border-radius: 50%;
+  background: #00e676;
+  box-shadow: 0 0 0 6px rgba(0,230,118,0.12);
 }
 .mini-x {
   border: none;
@@ -1551,17 +1457,61 @@ onBeforeUnmount(() => {
   padding: 4px 8px;
 }
 
+/* ===== Skeletons ===== */
+.skeleton { position: relative; overflow: hidden; }
+.skeleton::after{
+  content:"";
+  position:absolute;
+  inset:-40%;
+  background: linear-gradient(90deg, transparent, rgba(255,255,255,0.10), transparent);
+  transform: translateX(-40%);
+  animation: shimmer 1.25s infinite;
+}
+@keyframes shimmer {
+  0% { transform: translateX(-60%); }
+  100% { transform: translateX(60%); }
+}
+.skel-box { background: rgba(255,255,255,0.08); border: 1px solid rgba(255,255,255,0.10); }
+.skel-line {
+  height: 12px;
+  border-radius: 999px;
+  background: rgba(255,255,255,0.08);
+  border: 1px solid rgba(255,255,255,0.10);
+}
+.skel-media {
+  height: 300px;
+  border-radius: 16px;
+  background: rgba(255,255,255,0.06);
+  border: 1px solid rgba(255,255,255,0.10);
+}
+.skel-pill {
+  height: 38px;
+  width: 110px;
+  border-radius: 999px;
+  background: rgba(255,255,255,0.08);
+  border: 1px solid rgba(255,255,255,0.10);
+}
+.skel-btn { background: rgba(255,255,255,0.08); border: 1px solid rgba(255,255,255,0.10); }
+.w90 { width: 90%; }
+.w70 { width: 70%; }
+.w65 { width: 65%; }
+.w45 { width: 45%; }
+.w40 { width: 40%; }
+.w25 { width: 25%; }
+.w20 { width: 20%; }
+
+/* Transitions */
+.fade-enter-active, .fade-leave-active { transition: opacity .15s ease; }
+.fade-enter-from, .fade-leave-to { opacity: 0; }
+
 /* Responsive drawers */
 @media (max-width: 1100px) {
-  .page { grid-template-columns: 1fr; width: 100%; }
+  .page { grid-template-columns: 1fr; }
   .left, .right {
-    position: fixed;
-    top: 74px;
-    bottom: 0;
+    position: fixed; top: 74px; bottom: 0;
     width: min(420px, 92vw);
-    z-index: 70;
+    z-index: 65;
     overflow: auto;
-    padding-bottom: 18px;
   }
   .left { left: 0; transform: translateX(-105%); transition: transform .25s ease; }
   .left.open { transform: translateX(0); }
