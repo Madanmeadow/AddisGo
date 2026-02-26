@@ -43,31 +43,16 @@ const ORIGINS =
 /* =========================
    MIDDLEWARE
 ========================= */
-app.set("trust proxy", 1); // ✅ Railway / proxy awareness
+app.use(
+  cors({
+    origin: ORIGINS,
+    credentials: true,
+    methods: ["GET", "POST", "PUT", "PATCH", "DELETE", "OPTIONS"],
+  })
+);
 
-const corsOptions = {
-  origin: (origin, cb) => {
-    // Allow non-browser tools (Postman, curl)
-    if (!origin) return cb(null, true);
-
-    // If CLIENT_ORIGIN="*" allow all (but must NOT return "*" when credentials=true)
-    if (CLIENT_ORIGIN === "*" || ORIGINS === "*") return cb(null, true);
-
-    // Otherwise allow only configured origins
-    if (Array.isArray(ORIGINS) && ORIGINS.includes(origin)) return cb(null, true);
-
-    return cb(new Error(`CORS blocked for origin: ${origin}`));
-  },
-  credentials: true,
-  methods: ["GET", "POST", "PUT", "PATCH", "DELETE", "OPTIONS"],
-  allowedHeaders: ["Content-Type", "Authorization"],
-};
-
-app.use(cors(corsOptions));
-app.options("*", cors(corsOptions)); // ✅ Safari/preflight friendly
-
-app.use(express.json({ limit: "50mb" }));
-app.use(express.urlencoded({ extended: true, limit: "50mb" }));
+app.use(express.json({ limit: "15mb" }));
+app.use(express.urlencoded({ extended: true }));
 
 /* =========================
    STATIC UPLOADS + ROUTES
