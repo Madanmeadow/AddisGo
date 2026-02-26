@@ -59,15 +59,15 @@ app.use(express.urlencoded({ extended: true }));
 ========================= */
 app.use("/uploads", express.static(path.join(__dirname, "uploads")));
 
-// ✅ “no /api” — mount clean paths:
-app.use("/upload", uploadRoutes); // POST /upload
-app.use("/likes", likesRoutes); // /likes/:postId etc
+// ✅ no /api
+app.use("/upload", uploadRoutes);
+app.use("/likes", likesRoutes);
 app.use("/posts", postsRoutes);
 app.use("/users", usersRoutes);
 app.use("/conversations", conversationsRoutes);
 app.use("/messages", messagesRoutes);
 
-// (Optional backwards compat if anything still uses /api/upload)
+// Optional backwards compat
 app.use("/api/upload", uploadRoutes);
 
 /* =========================
@@ -92,9 +92,7 @@ function signToken(user) {
 app.post("/auth/register", async (req, res) => {
   try {
     const { username, name, email, password } = req.body;
-    if (!email || !password) {
-      return res.status(400).json({ error: "Email and password required" });
-    }
+    if (!email || !password) return res.status(400).json({ error: "Email and password required" });
 
     const display = username || name || email.split("@")[0];
     const hashed = await bcrypt.hash(password, 10);
@@ -130,9 +128,7 @@ app.post("/auth/register", async (req, res) => {
 app.post("/auth/login", async (req, res) => {
   try {
     const { email, password } = req.body;
-    if (!email || !password) {
-      return res.status(400).json({ error: "Email and password required" });
-    }
+    if (!email || !password) return res.status(400).json({ error: "Email and password required" });
 
     const found = await pool.query(`SELECT * FROM users WHERE email=$1 LIMIT 1`, [email]);
     if (!found.rows.length) return res.status(400).json({ error: "User not found" });
@@ -225,8 +221,7 @@ const io = new Server(server, {
 });
 
 /* ---------- PRESENCE ---------- */
-// userId -> socketId (supports BOTH old + new presence)
-const onlineUsers = new Map();
+const onlineUsers = new Map(); // userId -> socketId
 
 function emitOnlineUsersLegacy() {
   io.emit("online-users", Array.from(onlineUsers.entries()));
@@ -243,6 +238,7 @@ function broadcastPresenceUpdate(userId, online) {
 /* ---------- LIVE ---------- */
 const liveStreams = new Set();
 const liveHosts = new Map(); // liveId -> hostSocketId
+
 function emitLiveList() {
   io.emit("live-list", Array.from(liveStreams));
 }
@@ -253,21 +249,185 @@ function emitLivePresence(liveId) {
 }
 
 /* ---------- CALLS ---------- */
+/**
+ * callSessions (memory)
+ * roomId -> {
+ *   roomId, kind,
+ *   hostUserId,
+ *   invitedUserIds: Set<string>,
+ *   joinedUserIds: Set<string>,
+ *   createdAt,
+ *   dbCallId: number|null,
+ *   ringTimer: Timeout|null
+ * }
+ */
 const callSessions = new Map();
+const RING_TIMEOUT_MS = 30_000;
 
 function makeCallRoomId(socket) {
   return `call-${socket.id}-${Date.now()}`;
 }
 
-function endCall(roomId, reason = "ended") {
+function emitCallParticipants(roomId) {
   const sess = callSessions.get(String(roomId));
   if (!sess) return;
 
-  io.to(sess.caller.socketId).emit("call:ended", { roomId: String(roomId), reason });
-  if (sess.callee.socketId) io.to(sess.callee.socketId).emit("call:ended", { roomId: String(roomId), reason });
-  io.to(`call:${roomId}`).emit("call:ended", { roomId: String(roomId), reason });
+  const invited = Array.from(sess.invitedUserIds || []);
+  const joined = Array.from(sess.joinedUserIds || []);
 
-  callSessions.delete(String(roomId));
+  io.to(`call:${roomId}`).emit("call:participants", {
+    roomId: String(roomId),
+    hostUserId: sess.hostUserId,
+    kind: sess.kind,
+    invitedUserIds: invited,
+    joinedUserIds: joined,
+  });
+}
+
+async function dbEnsureCall(roomId, kind, hostUserId) {
+  // returns dbCallId or null
+  try {
+    const r = await pool.query(`SELECT id FROM calls WHERE room_id=$1 LIMIT 1`, [String(roomId)]);
+    if (r.rows?.[0]?.id) return r.rows[0].id;
+
+    const created = await pool.query(
+      `INSERT INTO calls (room_id, kind, created_by, status)
+       VALUES ($1,$2,$3,'ringing')
+       RETURNING id`,
+      [String(roomId), String(kind), hostUserId ? Number(hostUserId) : null]
+    );
+    return created.rows[0].id;
+  } catch (e) {
+    console.error("DB ensure call error:", e);
+    return null;
+  }
+}
+
+async function dbUpsertParticipant(callId, userId, role = "member", status = "invited") {
+  try {
+    await pool.query(
+      `INSERT INTO call_participants (call_id, user_id, role, status)
+       VALUES ($1,$2,$3,$4)
+       ON CONFLICT (call_id, user_id)
+       DO UPDATE SET role=EXCLUDED.role, status=EXCLUDED.status`,
+      [Number(callId), Number(userId), String(role), String(status)]
+    );
+  } catch (e) {
+    console.error("DB upsert participant error:", e);
+  }
+}
+
+async function dbMarkJoined(callId, userId) {
+  try {
+    await pool.query(
+      `UPDATE call_participants
+       SET status='joined', joined_at=COALESCE(joined_at, NOW())
+       WHERE call_id=$1 AND user_id=$2`,
+      [Number(callId), Number(userId)]
+    );
+  } catch (e) {
+    console.error("DB mark joined error:", e);
+  }
+}
+
+async function dbMarkMissedAndNotify(callId, roomId, hostUserId, kind, userId) {
+  try {
+    await pool.query(
+      `UPDATE call_participants
+       SET status='missed'
+       WHERE call_id=$1 AND user_id=$2 AND status IN ('invited')`,
+      [Number(callId), Number(userId)]
+    );
+
+    await pool.query(
+      `INSERT INTO notifications (user_id, type, payload)
+       VALUES ($1, 'missed_call', $2::jsonb)`,
+      [Number(userId), JSON.stringify({ roomId: String(roomId), fromUserId: String(hostUserId), kind: String(kind) })]
+    );
+
+    // realtime push if online
+    io.to(`user:${userId}`).emit("notification:new", {
+      type: "missed_call",
+      payload: { roomId: String(roomId), fromUserId: String(hostUserId), kind: String(kind) },
+    });
+  } catch (e) {
+    console.error("DB missed notify error:", e);
+  }
+}
+
+async function dbActivateIfTwoJoined(callId) {
+  try {
+    const j = await pool.query(
+      `SELECT COUNT(*)::int AS n FROM call_participants WHERE call_id=$1 AND status='joined'`,
+      [Number(callId)]
+    );
+    if ((j.rows?.[0]?.n || 0) >= 2) {
+      await pool.query(
+        `UPDATE calls
+         SET status='active', started_at=COALESCE(started_at, NOW())
+         WHERE id=$1`,
+        [Number(callId)]
+      );
+    }
+  } catch (e) {
+    console.error("DB activate error:", e);
+  }
+}
+
+async function dbEndCall(roomId) {
+  try {
+    await pool.query(
+      `UPDATE calls
+       SET status='ended', ended_at=NOW()
+       WHERE room_id=$1 AND status <> 'ended'`,
+      [String(roomId)]
+    );
+  } catch (e) {
+    console.error("DB end call error:", e);
+  }
+}
+
+function scheduleMissedTimer(roomId) {
+  const sess = callSessions.get(String(roomId));
+  if (!sess) return;
+
+  if (sess.ringTimer) clearTimeout(sess.ringTimer);
+
+  sess.ringTimer = setTimeout(async () => {
+    const s = callSessions.get(String(roomId));
+    if (!s) return;
+
+    // if nobody joined besides host, or some invited never joined -> mark missed
+    const callId = s.dbCallId;
+    if (!callId) return;
+
+    for (const uid of s.invitedUserIds) {
+      if (uid === s.hostUserId) continue;
+      if (s.joinedUserIds.has(uid)) continue;
+
+      await dbMarkMissedAndNotify(callId, roomId, s.hostUserId, s.kind, uid);
+    }
+
+    // if call never became active, mark call status missed (optional)
+    try {
+      await pool.query(
+        `UPDATE calls
+         SET status=CASE WHEN status='ringing' THEN 'missed' ELSE status END,
+             ended_at=CASE WHEN ended_at IS NULL AND status='ringing' THEN NOW() ELSE ended_at END
+         WHERE id=$1`,
+        [Number(callId)]
+      );
+    } catch {}
+
+    // keep session in memory or delete it; we’ll delete if not active
+    const room = io.sockets.adapter.rooms.get(`call:${roomId}`);
+    const count = room ? room.size : 0;
+    if (count < 2) {
+      callSessions.delete(String(roomId));
+    }
+  }, RING_TIMEOUT_MS);
+
+  callSessions.set(String(roomId), sess);
 }
 
 io.on("connection", (socket) => {
@@ -281,14 +441,11 @@ io.on("connection", (socket) => {
     if (!userId) return;
 
     socket.data.user = socket.data.user || { id: String(userId), username: `User${userId}` };
-
     onlineUsers.set(String(userId), socket.id);
     socket.join(`user:${userId}`);
 
     emitPresenceList(socket);
     broadcastPresenceUpdate(userId, true);
-
-    // old compatibility
     emitOnlineUsersLegacy();
   });
 
@@ -311,12 +468,11 @@ io.on("connection", (socket) => {
 
     emitPresenceList(socket);
     broadcastPresenceUpdate(userId, true);
-
     emitOnlineUsersLegacy();
   });
 
   /* =========================
-     CHAT (works with your Dashboard)
+     CHAT
   ========================= */
   socket.on("join-room", (room) => room && socket.join(String(room)));
 
@@ -332,7 +488,7 @@ io.on("connection", (socket) => {
     });
   });
 
-  // Keep old event name too
+  // older chat event support
   socket.on("send-room-message", (data) => {
     const room = data?.room;
     const text = data?.text?.trim();
@@ -347,16 +503,13 @@ io.on("connection", (socket) => {
   });
 
   /* =========================
-     ✅ CALLS (works with your Dashboard + Call.vue)
+     ✅ CALLS: 1:1 (kept working)
   ========================= */
 
-  // Dashboard caller -> request
-  socket.on("call:request", ({ toUserId, kind = "audio" }) => {
+  // 1:1 dashboard caller
+  socket.on("call:request", async ({ toUserId, kind = "audio" }) => {
     const from = socket.data.user;
-    if (!from?.id) {
-      socket.emit("call:error", { message: "Not online. Emit user:online first." });
-      return;
-    }
+    if (!from?.id) return socket.emit("call:error", { message: "Not online. Emit user:online first." });
 
     const calleeUserId = String(toUserId);
     const calleeSocketId = onlineUsers.get(calleeUserId);
@@ -369,121 +522,311 @@ io.on("connection", (socket) => {
     const roomId = makeCallRoomId(socket);
     const callKind = kind === "video" ? "video" : "audio";
 
+    const invitedUserIds = new Set([String(from.id), calleeUserId]);
+    const joinedUserIds = new Set([String(from.id)]);
+
+    const dbCallId = await dbEnsureCall(roomId, callKind, from.id);
+
+    // host joins as joined
+    if (dbCallId) {
+      await dbUpsertParticipant(dbCallId, from.id, "host", "joined");
+      await dbUpsertParticipant(dbCallId, calleeUserId, "member", "invited");
+    }
+
     callSessions.set(String(roomId), {
       roomId: String(roomId),
       kind: callKind,
-      caller: { userId: String(from.id), socketId: socket.id },
-      callee: { userId: calleeUserId, socketId: calleeSocketId },
+      hostUserId: String(from.id),
+      invitedUserIds,
+      joinedUserIds,
       createdAt: Date.now(),
+      dbCallId: dbCallId || null,
+      ringTimer: null,
     });
 
-    // Caller navigates immediately
+    scheduleMissedTimer(roomId);
+
     socket.emit("call:ringing", { roomId: String(roomId), kind: callKind });
 
-    // Callee sees popup (personal room)
     io.to(`user:${calleeUserId}`).emit("call:incoming", {
       roomId: String(roomId),
       kind: callKind,
       fromUserId: String(from.id),
       fromName: from.username || `User${from.id}`,
+      isGroup: false,
     });
   });
 
-  // Optional: support old clients that emit call:invite
-  socket.on("call:invite", ({ toUserId, kind = "audio", roomId }) => {
+  /* =========================
+     ✅ CALLS: GROUP (NEW)
+     - call:group:create
+     - call:group:invite
+  ========================= */
+
+  socket.on("call:group:create", async ({ toUserIds = [], kind = "video" }) => {
+    const from = socket.data.user;
+    if (!from?.id) return socket.emit("call:error", { message: "Not online." });
+
+    const roomId = makeCallRoomId(socket);
+    const callKind = kind === "audio" ? "audio" : "video";
+
+    const all = Array.from(new Set([String(from.id), ...toUserIds.map((x) => String(x))]));
+    const invitedUserIds = new Set(all);
+    const joinedUserIds = new Set([String(from.id)]);
+
+    const dbCallId = await dbEnsureCall(roomId, callKind, from.id);
+
+    if (dbCallId) {
+      // host is joined
+      await dbUpsertParticipant(dbCallId, from.id, "host", "joined");
+      // invite others
+      for (const uid of all) {
+        if (uid === String(from.id)) continue;
+        await dbUpsertParticipant(dbCallId, uid, "member", "invited");
+      }
+    }
+
+    callSessions.set(String(roomId), {
+      roomId: String(roomId),
+      kind: callKind,
+      hostUserId: String(from.id),
+      invitedUserIds,
+      joinedUserIds,
+      createdAt: Date.now(),
+      dbCallId: dbCallId || null,
+      ringTimer: null,
+    });
+
+    scheduleMissedTimer(roomId);
+
+    // host navigates immediately
+    socket.emit("call:ringing", { roomId: String(roomId), kind: callKind, isGroup: true });
+
+    // invite each callee (only if online)
+    for (const uid of all) {
+      if (uid === String(from.id)) continue;
+
+      const targetSocketId = onlineUsers.get(uid);
+      if (!targetSocketId) continue;
+
+      io.to(`user:${uid}`).emit("call:incoming", {
+        roomId: String(roomId),
+        kind: callKind,
+        fromUserId: String(from.id),
+        fromName: from.username || `User${from.id}`,
+        isGroup: true,
+      });
+    }
+  });
+
+  // invite more people mid-call
+  socket.on("call:group:invite", async ({ roomId, toUserIds = [] }) => {
     const from = socket.data.user;
     if (!from?.id) return;
 
-    const calleeUserId = String(toUserId);
-    const calleeSocketId = onlineUsers.get(calleeUserId);
-    const finalRoomId = String(roomId || makeCallRoomId(socket));
-    const callKind = kind === "video" ? "video" : "audio";
+    const sess = callSessions.get(String(roomId));
+    if (!sess) return socket.emit("call:error", { message: "Call session not found." });
 
-    callSessions.set(finalRoomId, {
-      roomId: finalRoomId,
-      kind: callKind,
-      caller: { userId: String(from.id), socketId: socket.id },
-      callee: { userId: calleeUserId, socketId: calleeSocketId || null },
-      createdAt: Date.now(),
-    });
-
-    if (!calleeSocketId) {
-      socket.emit("call:error", { roomId: finalRoomId, message: "User is offline." });
+    // only host can invite
+    if (String(from.id) !== String(sess.hostUserId)) {
+      socket.emit("call:error", { message: "Only host can invite." });
       return;
     }
 
-    socket.emit("call:ringing", { roomId: finalRoomId, kind: callKind });
+    const add = toUserIds.map((x) => String(x));
+    const newIds = [];
 
-    io.to(`user:${calleeUserId}`).emit("call:incoming", {
-      roomId: finalRoomId,
-      kind: callKind,
-      fromUserId: String(from.id),
-      fromName: from.username || `User${from.id}`,
-    });
+    for (const uid of add) {
+      if (!uid) continue;
+      if (sess.invitedUserIds.has(uid)) continue;
+      sess.invitedUserIds.add(uid);
+      newIds.push(uid);
+    }
+
+    callSessions.set(String(roomId), sess);
+    scheduleMissedTimer(roomId);
+
+    // DB add invited
+    if (sess.dbCallId) {
+      for (const uid of newIds) {
+        await dbUpsertParticipant(sess.dbCallId, uid, "member", "invited");
+      }
+    }
+
+    // push incoming call popup
+    for (const uid of newIds) {
+      const targetSocketId = onlineUsers.get(uid);
+      if (!targetSocketId) continue;
+
+      io.to(`user:${uid}`).emit("call:incoming", {
+        roomId: String(roomId),
+        kind: sess.kind,
+        fromUserId: String(sess.hostUserId),
+        fromName: `User${sess.hostUserId}`,
+        isGroup: true,
+      });
+    }
+
+    // update participants list to the call room
+    emitCallParticipants(roomId);
   });
 
-  socket.on("call:cancel", ({ roomId }) => endCall(roomId, "canceled"));
-  socket.on("call:reject", ({ roomId }) => endCall(roomId, "rejected"));
-  socket.on("call:end", ({ roomId }) => endCall(roomId, "ended"));
+  /* =========================
+     ✅ CALLS: ACCEPT / JOIN / END
+  ========================= */
 
-  socket.on("call:accept", ({ roomId }) => {
+  socket.on("call:accept", async ({ roomId }) => {
     const sess = callSessions.get(String(roomId));
     if (!sess) return;
 
-    // callee may have navigated; update socket id
-    sess.callee.socketId = socket.id;
-    callSessions.set(String(roomId), sess);
-
-    // just UI info
-    io.to(sess.caller.socketId).emit("call:accepted", { roomId: String(roomId), kind: sess.kind });
-    io.to(sess.callee.socketId).emit("call:accepted", { roomId: String(roomId), kind: sess.kind });
+    // accept is UI-level, we keep it as a signal to caller/room
+    io.to(`call:${roomId}`).emit("call:accepted", { roomId: String(roomId), kind: sess.kind });
   });
 
-  // Call.vue joins room
-  socket.on("call:join", ({ roomId }) => {
+  socket.on("call:reject", async ({ roomId }) => {
+    const sess = callSessions.get(String(roomId));
+    if (!sess) return;
+
+    const myId = socket.data.user?.id ? String(socket.data.user.id) : null;
+
+    // mark rejected in DB (optional)
+    if (sess.dbCallId && myId) {
+      try {
+        await pool.query(
+          `UPDATE call_participants
+           SET status='rejected'
+           WHERE call_id=$1 AND user_id=$2 AND status IN ('invited')`,
+          [Number(sess.dbCallId), Number(myId)]
+        );
+      } catch {}
+    }
+
+    // tell call room
+    io.to(`call:${roomId}`).emit("call:ended", { roomId: String(roomId), reason: "rejected" });
+  });
+
+  // call page joins the call room (both sides + group members)
+  socket.on("call:join", async ({ roomId }) => {
     const sess = callSessions.get(String(roomId));
     if (!sess) {
       socket.emit("call:error", { message: "Call session not found." });
       return;
     }
 
+    const meId = socket.data.user?.id ? String(socket.data.user.id) : null;
     socket.join(`call:${roomId}`);
 
-    // update socket ids
-    const meId = socket.data.user?.id;
-    if (meId && meId === sess.caller.userId) sess.caller.socketId = socket.id;
-    if (meId && meId === sess.callee.userId) sess.callee.socketId = socket.id;
-    callSessions.set(String(roomId), sess);
+    if (meId) {
+      sess.joinedUserIds.add(meId);
+      callSessions.set(String(roomId), sess);
 
+      // DB joined
+      if (sess.dbCallId) {
+        await dbMarkJoined(sess.dbCallId, meId);
+        await dbActivateIfTwoJoined(sess.dbCallId);
+      }
+    }
+
+    // presence
     const room = io.sockets.adapter.rooms.get(`call:${roomId}`);
     const count = room ? room.size : 0;
 
     io.to(`call:${roomId}`).emit("call:presence", { roomId: String(roomId), count });
 
-    // When both joined, Call.vue starts offer as caller
+    // ✅ Mesh handshake trigger: tell existing peers someone joined
+    socket.to(`call:${roomId}`).emit("call:peer-joined", {
+      roomId: String(roomId),
+      peerSocketId: socket.id,
+      peerUserId: meId,
+    });
+
+    // broadcast participants
+    emitCallParticipants(roomId);
+
+    // if 2+ joined, ready (your Call.vue uses this)
     if (count >= 2) {
       io.to(`call:${roomId}`).emit("call:ready", {
         roomId: String(roomId),
         kind: sess.kind,
-        callerUserId: sess.caller.userId,
-        calleeUserId: sess.callee.userId,
       });
     }
   });
 
-  // WebRTC relay for calls
-  socket.on("call:webrtc:offer", ({ roomId, offer }) => {
+  socket.on("call:end", async ({ roomId }) => {
+    const sess = callSessions.get(String(roomId));
+
+    // DB end call
+    await dbEndCall(roomId);
+
+    // end for everyone
+    io.to(`call:${roomId}`).emit("call:ended", { roomId: String(roomId), reason: "ended" });
+
+    if (sess?.ringTimer) clearTimeout(sess.ringTimer);
+    callSessions.delete(String(roomId));
+  });
+
+  socket.on("call:cancel", async ({ roomId }) => {
+    const sess = callSessions.get(String(roomId));
+    if (!sess) return;
+
+    // end + mark ended
+    await dbEndCall(roomId);
+    io.to(`call:${roomId}`).emit("call:ended", { roomId: String(roomId), reason: "canceled" });
+
+    if (sess.ringTimer) clearTimeout(sess.ringTimer);
+    callSessions.delete(String(roomId));
+  });
+
+  /* =========================
+     ✅ CALLS: WebRTC RELAY
+     - Now supports {to} for group mesh
+     - Still supports old broadcast (no to)
+  ========================= */
+
+  socket.on("call:webrtc:offer", ({ roomId, offer, to }) => {
     if (!roomId || !offer) return;
+
+    // NEW: targeted signaling
+    if (to) {
+      io.to(String(to)).emit("call:webrtc:offer", {
+        roomId: String(roomId),
+        offer,
+        from: socket.id,
+      });
+      return;
+    }
+
+    // OLD: broadcast to room (1:1 still works)
     socket.to(`call:${roomId}`).emit("call:webrtc:offer", { roomId: String(roomId), offer });
   });
 
-  socket.on("call:webrtc:answer", ({ roomId, answer }) => {
+  socket.on("call:webrtc:answer", ({ roomId, answer, to }) => {
     if (!roomId || !answer) return;
+
+    if (to) {
+      io.to(String(to)).emit("call:webrtc:answer", {
+        roomId: String(roomId),
+        answer,
+        from: socket.id,
+      });
+      return;
+    }
+
     socket.to(`call:${roomId}`).emit("call:webrtc:answer", { roomId: String(roomId), answer });
   });
 
-  socket.on("call:webrtc:ice", ({ roomId, candidate }) => {
+  socket.on("call:webrtc:ice", ({ roomId, candidate, to }) => {
     if (!roomId || !candidate) return;
+
+    if (to) {
+      io.to(String(to)).emit("call:webrtc:ice", {
+        roomId: String(roomId),
+        candidate,
+        from: socket.id,
+      });
+      return;
+    }
+
     socket.to(`call:${roomId}`).emit("call:webrtc:ice", { roomId: String(roomId), candidate });
   });
 
@@ -534,7 +877,7 @@ io.on("connection", (socket) => {
 
   socket.on("get-live-list", () => socket.emit("live-list", Array.from(liveStreams)));
 
-  // live relay (kept)
+  // existing live relay (kept)
   socket.on("webrtc:offer", ({ liveId, to, offer }) => {
     if (!to || !offer) return;
     io.to(to).emit("webrtc:offer", { liveId, from: socket.id, offer });
@@ -552,7 +895,7 @@ io.on("connection", (socket) => {
      DISCONNECT CLEANUP
   ========================= */
   socket.on("disconnect", () => {
-    // find userId for this socket
+    // presence cleanup
     let offlineUserId = null;
     for (const [uid, sid] of onlineUsers.entries()) {
       if (sid === socket.id) {
@@ -572,11 +915,11 @@ io.on("connection", (socket) => {
       }
     }
 
-    // presence broadcasts
     if (offlineUserId) {
       broadcastPresenceUpdate(offlineUserId, false);
     }
-    emitPresenceList(); // broadcast list to all
+
+    emitPresenceList();
     emitOnlineUsersLegacy();
 
     console.log("❌ Socket disconnected:", socket.id);

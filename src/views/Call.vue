@@ -27,6 +27,11 @@
       <button class="btn" v-if="kind === 'video'" @click="toggleCamera">
         {{ camOff ? "Camera On" : "Camera Off" }}
       </button>
+
+      <!-- ✅ Screen Share (NEW) -->
+      <button class="btn" v-if="kind === 'video'" @click="toggleShare">
+        {{ sharing ? "Stop Share" : "Share Screen" }}
+      </button>
     </div>
 
     <div class="status">{{ status }}</div>
@@ -43,7 +48,6 @@ const router = useRouter();
 
 const apiUrl = import.meta.env.VITE_API_URL;
 
-// ✅ room-based id from dashboard/incoming popup
 const roomId = String(route.query.roomId || route.query.callId || "");
 const role = String(route.query.role || "caller"); // caller | callee
 const kind = String(route.query.kind || "audio");  // audio | video
@@ -54,17 +58,28 @@ const remoteVideo = ref(null);
 const status = ref("Initializing…");
 const muted = ref(false);
 const camOff = ref(false);
+const sharing = ref(false);
 
 let socket = null;
-let pc = null;
-let localStream = null;
+
+// ✅ MULTI PEER: socketId -> RTCPeerConnection
+const pcs = new Map(); // peerSocketId -> RTCPeerConnection
+
+// streams
+let localStream = null;     // camera/mic
+let screenStream = null;    // display media (when sharing)
+
+// cache latest peer shown in remoteVideo (since UI has 1 remote)
+let lastRemotePeer = null;
 
 function safeJsonParse(str) {
   try { return JSON.parse(str); } catch { return null; }
 }
-
 const me = safeJsonParse(localStorage.getItem("user") || "null");
 
+/* =========================
+   ICE SERVERS
+========================= */
 async function getIceServers() {
   try {
     const r = await fetch(`${apiUrl}/turn`);
@@ -74,6 +89,9 @@ async function getIceServers() {
   return [{ urls: "stun:stun.l.google.com:19302" }];
 }
 
+/* =========================
+   MEDIA
+========================= */
 async function initMedia() {
   const constraints =
     kind === "video"
@@ -88,68 +106,98 @@ async function initMedia() {
   }
 }
 
-async function initPeer() {
+/* =========================
+   PEER CONNECTION (per peer)
+========================= */
+async function ensurePC(peerSocketId) {
+  if (!peerSocketId) return null;
+  if (pcs.has(peerSocketId)) return pcs.get(peerSocketId);
+
   const iceServers = await getIceServers();
-  pc = new RTCPeerConnection({ iceServers });
+  const pc = new RTCPeerConnection({ iceServers });
 
   pc.onicecandidate = (event) => {
     if (!event.candidate) return;
-
-    // ✅ ROOM relay (no "to")
     socket?.emit("call:webrtc:ice", {
       roomId,
+      to: peerSocketId,
       candidate: event.candidate,
     });
   };
 
   pc.ontrack = async (event) => {
+    // Since UI has 1 remote video, we show the most recent peer stream
+    lastRemotePeer = peerSocketId;
+
     if (remoteVideo.value) {
       remoteVideo.value.srcObject = event.streams[0];
       try { await remoteVideo.value.play?.(); } catch {}
     }
   };
 
-  // add local tracks
-  for (const track of localStream.getTracks()) {
-    pc.addTrack(track, localStream);
+  pc.onconnectionstatechange = () => {
+    const st = pc.connectionState;
+    if (st === "connected") status.value = "Connected ✅";
+    if (st === "failed") status.value = "Connection failed (try again)";
+  };
+
+  // Add local tracks
+  if (localStream) {
+    for (const track of localStream.getTracks()) {
+      pc.addTrack(track, localStream);
+    }
   }
+
+  pcs.set(peerSocketId, pc);
+  return pc;
 }
 
-async function makeOffer() {
+async function createOfferTo(peerSocketId) {
+  const pc = await ensurePC(peerSocketId);
+  if (!pc) return;
+
   status.value = "Creating offer…";
   const offer = await pc.createOffer();
   await pc.setLocalDescription(offer);
 
-  // ✅ ROOM relay
-  socket?.emit("call:webrtc:offer", { roomId, offer });
-
+  socket?.emit("call:webrtc:offer", { roomId, to: peerSocketId, offer });
   status.value = "Offer sent. Waiting for answer…";
 }
 
-async function handleOffer(offer) {
+async function handleOffer(fromPeerSocketId, offer) {
+  const pc = await ensurePC(fromPeerSocketId);
+  if (!pc) return;
+
   status.value = "Received offer…";
   await pc.setRemoteDescription(new RTCSessionDescription(offer));
 
   const answer = await pc.createAnswer();
   await pc.setLocalDescription(answer);
 
-  // ✅ ROOM relay
-  socket?.emit("call:webrtc:answer", { roomId, answer });
-
+  socket?.emit("call:webrtc:answer", { roomId, to: fromPeerSocketId, answer });
   status.value = "Answered. Connecting…";
 }
 
-async function handleAnswer(answer) {
+async function handleAnswer(fromPeerSocketId, answer) {
+  const pc = await ensurePC(fromPeerSocketId);
+  if (!pc) return;
+
   await pc.setRemoteDescription(new RTCSessionDescription(answer));
   status.value = "Connected ✅";
 }
 
-async function handleIce(candidate) {
+async function handleIce(fromPeerSocketId, candidate) {
+  const pc = await ensurePC(fromPeerSocketId);
+  if (!pc) return;
+
   try {
     await pc.addIceCandidate(new RTCIceCandidate(candidate));
   } catch {}
 }
 
+/* =========================
+   CONTROLS
+========================= */
 function toggleMute() {
   muted.value = !muted.value;
   localStream?.getAudioTracks()?.forEach((t) => (t.enabled = !muted.value));
@@ -160,12 +208,86 @@ function toggleCamera() {
   localStream?.getVideoTracks()?.forEach((t) => (t.enabled = !camOff.value));
 }
 
+/* =========================
+   SCREEN SHARE (NEW)
+   - replace outgoing video track for ALL PCs
+========================= */
+async function toggleShare() {
+  if (kind !== "video") return;
+
+  if (!sharing.value) {
+    try {
+      // start screen share
+      screenStream = await navigator.mediaDevices.getDisplayMedia({
+        video: true,
+        audio: false,
+      });
+
+      const screenTrack = screenStream.getVideoTracks()[0];
+      if (!screenTrack) return;
+
+      // replace sender track on all peer connections
+      for (const pc of pcs.values()) {
+        const sender = pc.getSenders().find((s) => s.track && s.track.kind === "video");
+        if (sender) await sender.replaceTrack(screenTrack);
+      }
+
+      // show your own screen locally
+      if (localVideo.value) {
+        localVideo.value.srcObject = screenStream;
+        try { await localVideo.value.play?.(); } catch {}
+      }
+
+      sharing.value = true;
+
+      // if user stops via browser UI
+      screenTrack.onended = () => {
+        if (sharing.value) toggleShare();
+      };
+    } catch (e) {
+      status.value = "Screen share blocked/canceled";
+    }
+  } else {
+    // stop share, return to camera
+    try {
+      const camTrack = localStream?.getVideoTracks()?.[0] || null;
+
+      for (const pc of pcs.values()) {
+        const sender = pc.getSenders().find((s) => s.track && s.track.kind === "video");
+        if (sender && camTrack) await sender.replaceTrack(camTrack);
+      }
+
+      // restore local preview to camera
+      if (localVideo.value) {
+        localVideo.value.srcObject = localStream;
+        try { await localVideo.value.play?.(); } catch {}
+      }
+
+      try { screenStream?.getTracks()?.forEach((t) => t.stop()); } catch {}
+      screenStream = null;
+      sharing.value = false;
+    } catch {
+      sharing.value = false;
+    }
+  }
+}
+
+/* =========================
+   CLEANUP
+========================= */
 function cleanup() {
-  try { pc?.close(); } catch {}
-  pc = null;
+  try {
+    for (const pc of pcs.values()) {
+      try { pc.close(); } catch {}
+    }
+  } catch {}
+  pcs.clear();
 
   try { localStream?.getTracks()?.forEach((t) => t.stop()); } catch {}
   localStream = null;
+
+  try { screenStream?.getTracks()?.forEach((t) => t.stop()); } catch {}
+  screenStream = null;
 
   try { socket?.disconnect(); } catch {}
   socket = null;
@@ -179,19 +301,21 @@ function endCall() {
   router.push("/dashboard");
 }
 
+/* =========================
+   INIT
+========================= */
 onMounted(async () => {
   if (!roomId) return router.push("/dashboard");
 
-  // ✅ Important: iOS needs media started ASAP (and accept click helps)
+  // ✅ iOS: start media ASAP
   await initMedia();
 
   socket = io(apiUrl, { transports: ["websocket", "polling"] });
 
-  socket.on("connect", async () => {
-    // ✅ register user so server can map userId->socket
+  socket.on("connect", () => {
+    // ✅ register presence
+    if (me?.id) socket.emit("user:online", { userId: me.id });
     if (me?.id) socket.emit("register-user", { id: me.id, username: me.username });
-
-    await initPeer();
 
     // ✅ join call room
     socket.emit("call:join", { roomId });
@@ -199,36 +323,54 @@ onMounted(async () => {
     status.value = role === "caller" ? "Joining call…" : "Waiting…";
   });
 
-  // ✅ When both sides are in the room, server emits call:ready
-  socket.on("call:ready", async ({ kind: k }) => {
-    // (optional) trust server kind if you want
-    // kind = k
+  // server says call is ready when >=2 in room
+  socket.on("call:ready", async () => {
+    // In group mesh, we DO NOT auto-offer to everyone here.
+    // Offers are created when we hear "call:peer-joined"
+    if (role === "caller") status.value = "Ready. Waiting for peers…";
+    else status.value = "Ready. Waiting for peers…";
+  });
 
-    if (role === "caller") {
-      // caller starts negotiation after both joined
-      try {
-        await makeOffer();
-      } catch (e) {
-        status.value = "Failed to create offer";
-      }
-    } else {
-      status.value = "Waiting for offer…";
+  // ✅ NEW: mesh handshake trigger
+  // When someone joins, existing users should create an offer to that peer socketId
+  socket.on("call:peer-joined", async ({ peerSocketId }) => {
+    // Ignore invalid or myself
+    if (!peerSocketId || peerSocketId === socket.id) return;
+
+    // Make offer to the new peer
+    try {
+      await createOfferTo(peerSocketId);
+    } catch (e) {
+      // ignore
     }
   });
 
-  // ✅ ROOM signaling events
-  socket.on("call:webrtc:offer", async ({ offer }) => {
-    try { await handleOffer(offer); } catch { status.value = "Offer error"; }
+  // ✅ targeted signaling for mesh
+  socket.on("call:webrtc:offer", async ({ from, offer }) => {
+    try {
+      // Some servers might not send "from" (older). fallback: ignore.
+      if (!from) return;
+      await handleOffer(from, offer);
+    } catch {
+      status.value = "Offer error";
+    }
   });
 
-  socket.on("call:webrtc:answer", async ({ answer }) => {
-    try { await handleAnswer(answer); } catch { status.value = "Answer error"; }
+  socket.on("call:webrtc:answer", async ({ from, answer }) => {
+    try {
+      if (!from) return;
+      await handleAnswer(from, answer);
+    } catch {
+      status.value = "Answer error";
+    }
   });
 
-  socket.on("call:webrtc:ice", async ({ candidate }) => {
-    await handleIce(candidate);
+  socket.on("call:webrtc:ice", async ({ from, candidate }) => {
+    if (!from) return;
+    await handleIce(from, candidate);
   });
 
+  // if someone ends call
   socket.on("call:ended", () => {
     status.value = "Call ended";
     setTimeout(() => {
@@ -293,7 +435,7 @@ onBeforeUnmount(() => cleanup());
   background: #000;
   border: 1px solid rgba(255,255,255,0.18);
 }
-.controls { display: flex; gap: 10px; margin-top: 12px; }
+.controls { display: flex; gap: 10px; margin-top: 12px; flex-wrap: wrap; }
 .btn {
   border: none;
   border-radius: 999px;
