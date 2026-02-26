@@ -51,3 +51,11 @@ const announcement = ref("");
   border: 0 !important;
 }
 </style>
+<template>
+  <router-view />
+  <ToastHost />
+</template>
+
+<script setup>
+import ToastHost from "./components/ToastHost.vue";
+</script>
