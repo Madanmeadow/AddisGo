@@ -432,6 +432,7 @@ import { useRouter } from "vue-router";
 import Layout from "../components/Layout.vue";
 import { io } from "socket.io-client";
 
+import Skeleton from "../components/Skeleton.vue";
 const router = useRouter();
 
 const apiUrl = import.meta.env.VITE_API_URL;
