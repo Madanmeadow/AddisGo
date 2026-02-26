@@ -1466,7 +1466,32 @@ onBeforeUnmount(() => {
   background: rgba(255,255,255,0.08);
   border: 1px solid rgba(255,255,255,0.12);
 }
+/* Skeleton layout helpers */
+.sklist { display: grid; gap: 10px; }
+.skrow {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  padding: 10px 12px;
+  border-radius: 16px;
+  background: rgba(0,0,0,0.22);
+  border: 1px solid rgba(255,255,255,0.08);
+}
+.skcol { flex: 1; display: grid; gap: 8px; }
+.skbtns { display: flex; gap: 8px; }
 
+.feed-skeleton { display: grid; gap: 14px; }
+.skpost { background: rgba(0,0,0,0.46) !important; }
+
+.skactions { display: flex; gap: 10px; }
+
+.chat-skeleton { display: grid; gap: 10px; padding: 8px 6px; }
+.chat-bub {
+  padding: 10px 10px;
+  border-radius: 14px;
+  background: rgba(255,255,255,0.06);
+  border: 1px solid rgba(255,255,255,0.08);
+}
 /* Incoming modal */
 .modal-backdrop {
   position: fixed;
