@@ -81,7 +81,21 @@
 
             <div v-else class="people">
               <div class="people-tools">
-                <input
+              <!-- People skeleton -->
+                    <div v-if="peopleLoading" class="sklist">
+                      <div v-for="i in 6" :key="i" class="skrow">
+                        <Skeleton variant="shimmer" width="40px" height="40px" radius="14px" />
+                        <div class="skcol">
+                          <Skeleton variant="shimmer" width="70%" height="14px" />
+                          <Skeleton variant="shimmer" width="45%" height="12px" />
+                        </div>
+                        <div class="skbtns">
+                          <Skeleton variant="shimmer" width="40px" height="40px" radius="14px" />
+                          <Skeleton variant="shimmer" width="40px" height="40px" radius="14px" />
+                        </div>
+                      </div>
+                    </div>
+                                    <input
                   v-model="peopleSearch"
                   class="search small"
                   placeholder="Search users…"
@@ -200,7 +214,32 @@
 
           <!-- FEED -->
           <section class="feed">
-            <div v-if="loading" class="state">Loading posts…</div>
+            <div v-if="loading" class="feed-skeleton">
+  <div v-for="i in 3" :key="i" class="post skpost">
+    <div class="post-head">
+      <Skeleton variant="shimmer" width="44px" height="44px" radius="999px" />
+      <div class="who" style="width:100%">
+        <Skeleton variant="shimmer" width="35%" height="14px" />
+        <div style="height:6px"></div>
+        <Skeleton variant="shimmer" width="22%" height="12px" />
+      </div>
+    </div>
+
+    <Skeleton variant="shimmer" width="92%" height="14px" />
+    <div style="height:8px"></div>
+    <Skeleton variant="shimmer" width="80%" height="14px" />
+
+    <div style="height:12px"></div>
+    <Skeleton variant="shimmer" width="100%" height="360px" radius="16px" />
+
+    <div style="height:12px"></div>
+    <div class="skactions">
+      <Skeleton variant="shimmer" width="88px" height="40px" radius="999px" />
+      <Skeleton variant="shimmer" width="110px" height="40px" radius="999px" />
+      <Skeleton variant="shimmer" width="96px" height="40px" radius="999px" />
+    </div>
+  </div>
+</div>
             <div v-else-if="filteredPosts.length === 0" class="state">No posts found.</div>
 
             <article
