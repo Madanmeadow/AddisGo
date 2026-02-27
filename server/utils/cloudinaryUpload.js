@@ -1,11 +1,10 @@
+// server/utils/cloudinaryUpload.js
 import multer from "multer";
 import { CloudinaryStorage } from "multer-storage-cloudinary";
 import cloudinary from "./cloudinary.js";
 
 function safeBaseName(name = "file") {
-  // remove extension
-  const base = name.replace(/\.[^/.]+$/, "");
-  // keep letters/numbers/-/_ only
+  const base = String(name).replace(/\.[^/.]+$/, "");
   return base
     .toLowerCase()
     .replace(/\s+/g, "-")
@@ -26,21 +25,9 @@ const storage = new CloudinaryStorage({
     return {
       folder,
       resource_type: isVideo ? "video" : "image",
-
-      // Cloudinary will create something like: addisgo/170...-abc123-filename
-      public_id: `${unique}-${cleanName}`,
-
-      // Optional (recommended):
-      // If you want consistent web playback, Cloudinary can deliver mp4/webm transforms anyway.
-      // format: isVideo ? "mp4" : "jpg",
-
-      // Optional: better caching/versioning behavior
-      overwrite: false,
+      public_id: `${cleanName}-${unique}`,
     };
   },
 });
 
-export const uploadToCloudinary = multer({
-  storage,
-  limits: { fileSize: 60 * 1024 * 1024 }, // 60MB
-});
+export const uploadToCloudinary = multer({ storage });

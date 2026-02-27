@@ -14,14 +14,30 @@ router.post(
         return res.status(400).json({ ok: false, message: "No file uploaded" });
       }
 
-      const url = (req.file.path || "").replace("http://", "https://");
+      // ✅ Cloudinary middleware can return different fields depending on version/config.
+      const urlRaw =
+        req.file?.path ||
+        req.file?.secure_url ||
+        req.file?.url ||
+        req.file?.location ||
+        "";
+
+      const url = String(urlRaw).replace("http://", "https://");
+
+      if (!url || !url.startsWith("http")) {
+        // This is the exact scenario that causes iPhone "pattern" error later.
+        console.error("Upload: invalid url from req.file =", req.file);
+        return res.status(500).json({ ok: false, message: "Upload returned invalid URL" });
+      }
+
       const type = req.file.mimetype?.startsWith("video/") ? "video" : "image";
 
       return res.json({
         ok: true,
         url,
         type,
-        publicId: req.file.filename,
+        // Cloudinary often provides public_id; filename may be undefined
+        publicId: req.file?.filename || req.file?.public_id || null,
       });
     } catch (err) {
       console.error("Upload error:", err);
@@ -31,6 +47,4 @@ router.post(
 );
 
 export default router;
-
-
 
