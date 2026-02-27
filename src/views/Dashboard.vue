@@ -16,12 +16,15 @@
           <button class="chip" @click="fetchPosts" :disabled="loading">
             ↻ {{ loading ? "Loading…" : "Refresh" }}
           </button>
+
           <button class="chip ghost" @click="togglePeople">
             {{ peopleOpen ? "Hide People" : "People" }}
           </button>
+
           <button class="chip ghost" @click="toggleChat">
             {{ chatOpen ? "Close Chat" : "Chat" }}
           </button>
+
           <button class="chip danger" @click="logout">Logout</button>
         </div>
       </header>
@@ -42,12 +45,12 @@
         </div>
       </div>
 
-      <!-- ONE SCREEN (everything inside main) -->
+      <!-- SINGLE SCREEN CONTENT -->
       <main class="main">
-        <!-- TOP PANELS (above feed) -->
-        <section class="top-panels">
-          <!-- Live Now (always visible at top) -->
-          <div class="panel">
+        <!-- TOP DOCK (ABOVE FEED) -->
+        <section class="dock">
+          <!-- Live compact -->
+          <div class="panel dockCard">
             <div class="panel-head">
               <div class="panel-title">🔴 Live Now</div>
               <button class="btn btn-primary" @click="startLive" :disabled="!token">Go Live</button>
@@ -55,95 +58,98 @@
 
             <div v-if="liveStreams.length === 0" class="hint mt10">No one live right now</div>
 
-            <div
-              v-for="stream in liveStreams"
-              :key="'live-top-' + stream"
-              class="live-card"
-              @click="joinLive(stream)"
-              title="Tap to watch"
-            >
-              <span class="dot"></span>
-              <div class="live-meta">
-                <div class="live-name">{{ stream }}</div>
-                <div class="live-sub">Tap to watch</div>
+            <div v-else class="live-strip">
+              <div
+                v-for="stream in liveStreams.slice(0, 6)"
+                :key="'live-mini-' + stream"
+                class="live-pill"
+                @click="joinLive(stream)"
+                title="Tap to watch"
+              >
+                <span class="dot"></span>
+                <span class="live-pill-name">{{ stream }}</span>
+                <span class="chev">›</span>
               </div>
-              <span class="chev">›</span>
+
+              <button v-if="liveStreams.length > 6" class="chip ghost mini" @click="setFeedMode('live')">
+                View all
+              </button>
             </div>
           </div>
 
-          <!-- People (toggle button controls this) -->
-          <div class="panel" v-if="peopleOpen">
+          <!-- People small + Chat toggle next to it -->
+          <div class="panel dockCard">
             <div class="panel-head">
               <div class="panel-title">👥 People</div>
-              <button class="btn" @click="fetchPeople" :disabled="peopleLoading || !token">
-                {{ peopleLoading ? "Loading…" : "Refresh" }}
-              </button>
+              <div class="dockActions">
+                <button class="btn" @click="fetchPeople" :disabled="peopleLoading || !token">
+                  {{ peopleLoading ? "Loading…" : "Refresh" }}
+                </button>
+                <button class="btn ghostBtn" @click="toggleChat">
+                  {{ chatOpen ? "Close Chat" : "Open Chat" }}
+                </button>
+              </div>
             </div>
 
-            <div v-if="!token" class="alert soft">
-              Login again to see people & call buttons.
-            </div>
+            <div v-if="!token" class="alert soft">Login again to see people & call buttons.</div>
 
-            <div v-else class="people">
-              <div v-if="peopleError" class="alert">{{ peopleError }}</div>
-              <div v-else-if="peopleLoading" class="hint">Loading people…</div>
-              <div v-else-if="people.length === 0" class="hint">No users found.</div>
+            <template v-else>
+              <!-- Always show small strip (this is what you want on login) -->
+              <div class="miniAvatars">
+                <div
+                  v-for="u in people.slice(0, 14)"
+                  :key="'pmini-' + u.id"
+                  class="miniAvatarWrap"
+                  :title="u.display_name || u.username || ('User #' + u.id)"
+                  @click="peopleOpen ? null : startCall(u,'audio')"
+                >
+                  <div class="miniAvatar">
+                    {{ (u.display_name || u.username || "U")[0]?.toUpperCase() }}
+                  </div>
+                  <span class="miniDot" :class="{ on: isOnline(u.id) }"></span>
+                </div>
 
-              <div v-else v-for="u in people" :key="u.id" class="person">
-                <div class="avatar small">{{ (u.display_name || u.username || "U")[0]?.toUpperCase() }}</div>
+                <button class="chip ghost mini" @click="togglePeople">
+                  {{ peopleOpen ? "Hide list" : "Show list" }}
+                </button>
+              </div>
 
-                <div class="person-meta">
-                  <div class="person-name">{{ u.display_name || u.username || ("User #" + u.id) }}</div>
-                  <div class="person-sub">
-                    <span class="status" :class="{ on: isOnline(u.id) }"></span>
-                    <span class="status-text">{{ isOnline(u.id) ? "Online" : "Offline" }}</span>
-                    <span class="sep">•</span>
-                    <span class="id">ID {{ u.id }}</span>
+              <!-- Optional compact list (only when opened) -->
+              <div v-if="peopleOpen" class="peopleCompact">
+                <div v-if="peopleError" class="alert">{{ peopleError }}</div>
+                <div v-else-if="peopleLoading" class="hint">Loading people…</div>
+                <div v-else-if="people.length === 0" class="hint">No users found.</div>
+
+                <div v-else class="peopleList">
+                  <div v-for="u in people" :key="'plist-' + u.id" class="person compact">
+                    <div class="avatar small">
+                      {{ (u.display_name || u.username || "U")[0]?.toUpperCase() }}
+                    </div>
+
+                    <div class="person-meta">
+                      <div class="person-name">{{ u.display_name || u.username || ("User #" + u.id) }}</div>
+                      <div class="person-sub">
+                        <span class="status" :class="{ on: isOnline(u.id) }"></span>
+                        <span class="status-text">{{ isOnline(u.id) ? "Online" : "Offline" }}</span>
+                        <span class="sep">•</span>
+                        <span class="id">ID {{ u.id }}</span>
+                      </div>
+                    </div>
+
+                    <div class="person-actions">
+                      <button class="iconbtn" title="Audio Call" :disabled="!isOnline(u.id) || callBusy" @click="startCall(u,'audio')">📞</button>
+                      <button class="iconbtn" title="Video Call" :disabled="!isOnline(u.id) || callBusy" @click="startCall(u,'video')">🎥</button>
+                    </div>
                   </div>
                 </div>
 
-                <div class="person-actions">
-                  <button class="iconbtn" title="Audio Call" :disabled="!isOnline(u.id) || callBusy" @click="startCall(u,'audio')">📞</button>
-                  <button class="iconbtn" title="Video Call" :disabled="!isOnline(u.id) || callBusy" @click="startCall(u,'video')">🎥</button>
-                </div>
+                <div class="hint mt10">Calls require both users online (green).</div>
               </div>
-
-              <div class="hint mt10">Tip: calls require both users online (green).</div>
-            </div>
-          </div>
-
-          <!-- Chat (toggle button controls this) -->
-          <div class="panel" v-if="chatOpen">
-            <div class="panel-head">
-              <div class="panel-title">💬 Chat</div>
-              <button class="btn" @click="toggleChat">Close</button>
-            </div>
-
-            <div class="chat-hint">Quick room chat. Rooms tab is full Discord-style.</div>
-
-            <div class="chat-list">
-              <button class="chat-item" :class="{ active: chatRoom === 'global' }" @click="selectChat('global')">🌍 Global</button>
-              <button class="chat-item" :class="{ active: chatRoom === 'support' }" @click="selectChat('support')">🛠 Support</button>
-              <button class="chat-item" :class="{ active: chatRoom === 'dev' }" @click="selectChat('dev')">💻 Dev</button>
-              <button class="chat-item" :class="{ active: chatRoom === 'random' }" @click="selectChat('random')">🎲 Random</button>
-            </div>
-
-            <div class="chat-box">
-              <div class="chat-messages" ref="chatBoxRef">
-                <div v-for="(m, i) in chatMessages" :key="'cm-'+i" class="chat-msg">
-                  <strong>{{ m.from }}:</strong> {{ m.text }}
-                </div>
-              </div>
-
-              <div class="chat-input">
-                <input v-model="chatText" placeholder="Type message…" @keydown.enter.prevent="sendChat" />
-                <button class="btn btn-primary" @click="sendChat">Send</button>
-              </div>
-            </div>
+            </template>
           </div>
         </section>
 
-        <!-- Composer always available -->
+        <!-- COMPOSER -->
         <section class="composer">
           <div class="composer-head">
             <div class="avatar big">{{ myInitial }}</div>
@@ -177,7 +183,7 @@
           <div v-if="error" class="alert">{{ error }}</div>
         </section>
 
-        <!-- MODE CONTENT (unchanged, just moved into one main column) -->
+        <!-- MODE CONTENT -->
         <!-- LIVE MODE -->
         <section v-if="feedMode === 'live'" class="panel">
           <div class="panel-head">
@@ -220,7 +226,7 @@
           <div class="rooms-main">
             <div class="rooms-top">
               <div class="rooms-title"># {{ chatRoom }}</div>
-              <button class="chip ghost" @click="toggleChat">Toggle Top Chat</button>
+              <button class="chip ghost" @click="toggleChat">Toggle Chat Drawer</button>
             </div>
 
             <div class="rooms-messages" ref="chatBoxRef">
@@ -298,7 +304,7 @@
               <button class="action-btn ghost" @click="sharePost(post)">🔗 <span class="label">Share</span></button>
             </div>
 
-            <!-- comments unchanged -->
+            <!-- COMMENTS -->
             <div v-if="commentsOpenByPost[post.id]" class="comments">
               <div class="comments-head">
                 <div class="comments-title">Comments</div>
@@ -397,7 +403,7 @@
               <button class="action-btn ghost" @click="sharePost(post)">🔗 <span class="label">Share</span></button>
             </div>
 
-            <!-- comments unchanged -->
+            <!-- COMMENTS -->
             <div v-if="commentsOpenByPost[post.id]" class="comments">
               <div class="comments-head">
                 <div class="comments-title">Comments</div>
@@ -477,7 +483,6 @@
             </header>
 
             <div v-if="post.caption" class="text">{{ post.caption }}</div>
-
             <img v-if="post.image_url" class="media" :src="getMedia(post.image_url)" loading="lazy" />
 
             <div v-if="post.video_url" class="tt-video-wrap">
@@ -513,12 +518,10 @@
               </button>
 
               <div class="spacer"></div>
-              <button class="action-btn ghost" @click="sharePost(post)">
-                🔗 <span class="label">Share</span>
-              </button>
+              <button class="action-btn ghost" @click="sharePost(post)">🔗 <span class="label">Share</span></button>
             </div>
 
-            <!-- comments unchanged -->
+            <!-- COMMENTS -->
             <div v-if="commentsOpenByPost[post.id]" class="comments">
               <div class="comments-head">
                 <div class="comments-title">Comments</div>
@@ -565,7 +568,6 @@
             </div>
           </article>
 
-          <!-- Infinite scroll sentinel -->
           <div ref="loadMoreRef" class="load-more">
             <span v-if="infiniteLoading">Loading more…</span>
             <span v-else-if="canLoadMore">Scroll for more</span>
@@ -573,6 +575,38 @@
           </div>
         </section>
       </main>
+
+      <!-- CHAT DRAWER (bottom sheet on mobile, side card on desktop) -->
+      <aside class="chatDrawer" :class="{ open: chatOpen }">
+        <section class="panel chatPanel">
+          <div class="panel-head">
+            <div class="panel-title">💬 Chat</div>
+            <button class="btn" @click="toggleChat">{{ chatOpen ? "Close" : "Open" }}</button>
+          </div>
+
+          <div class="chat-hint">Quick room chat. Rooms tab is full Discord-style.</div>
+
+          <div class="chat-list">
+            <button class="chat-item" :class="{ active: chatRoom === 'global' }" @click="selectChat('global')">🌍 Global</button>
+            <button class="chat-item" :class="{ active: chatRoom === 'support' }" @click="selectChat('support')">🛠 Support</button>
+            <button class="chat-item" :class="{ active: chatRoom === 'dev' }" @click="selectChat('dev')">💻 Dev</button>
+            <button class="chat-item" :class="{ active: chatRoom === 'random' }" @click="selectChat('random')">🎲 Random</button>
+          </div>
+
+          <div class="chat-box">
+            <div class="chat-messages" ref="chatBoxRef">
+              <div v-for="(m, i) in chatMessages" :key="'cm-'+i" class="chat-msg">
+                <strong>{{ m.from }}:</strong> {{ m.text }}
+              </div>
+            </div>
+
+            <div class="chat-input">
+              <input v-model="chatText" placeholder="Type message…" @keydown.enter.prevent="sendChat" />
+              <button class="btn btn-primary" @click="sendChat">Send</button>
+            </div>
+          </div>
+        </section>
+      </aside>
 
       <!-- INCOMING CALL POPUP -->
       <div v-if="incomingCall" class="modal-backdrop" @click.self="rejectIncoming">
@@ -600,12 +634,34 @@
         {{ callingToast }}
         <button class="mini-x" @click="cancelCall">✕</button>
       </div>
+
+      <!-- BOTTOM NAV -->
+      <nav class="bottomNav">
+        <button class="bn" :class="{ on: isHomeActive }" @click="goHome">
+          <span class="bnI">🏠</span>
+          <span class="bnT">Home</span>
+        </button>
+
+        <button class="bn" @click="goInbox">
+          <span class="bnI">💬</span>
+          <span class="bnT">Inbox</span>
+        </button>
+
+        <button class="bn" :class="{ on: feedMode === 'live' }" @click="goLiveTab">
+          <span class="bnI">🔴</span>
+          <span class="bnT">Live</span>
+        </button>
+
+        <button class="bn" @click="goProfile">
+          <span class="bnI">👤</span>
+          <span class="bnT">Profile</span>
+        </button>
+      </nav>
     </div>
   </Layout>
 </template>
 
 <script setup>
-/* ✅ SCRIPT UNCHANGED (your original, 그대로) */
 import { ref, computed, onMounted, onBeforeUnmount, nextTick } from "vue";
 import { useRouter } from "vue-router";
 import Layout from "../components/Layout.vue";
@@ -648,7 +704,7 @@ function isOnline(userId) {
 }
 
 /* ================= PEOPLE ================= */
-const peopleOpen = ref(true);
+const peopleOpen = ref(false); // ✅ default closed (no big people on login)
 const people = ref([]);
 const peopleLoading = ref(false);
 const peopleError = ref("");
@@ -732,13 +788,11 @@ const videoFile = ref(null);
 const search = ref("");
 
 const composerRef = ref(null);
-
 const myInitial = computed(() => (me?.username ? me.username[0].toUpperCase() : "A"));
 
 function focusComposer() {
   try { composerRef.value?.focus?.(); } catch {}
 }
-
 function formatDate(d) {
   if (!d) return "";
   const date = new Date(d);
@@ -840,7 +894,6 @@ const baseFiltered = computed(() => {
   return posts.value.filter((p) => (p.caption || "").toLowerCase().includes(q));
 });
 
-/* ================= FOLLOWING / THREADS LISTS ================= */
 const followingPosts = computed(() => baseFiltered.value.slice(0, 40));
 const threadsPosts = computed(() => baseFiltered.value.slice(0, 60));
 
@@ -1017,7 +1070,7 @@ async function sharePost(post) {
 }
 
 /* ================= CHAT ================= */
-const chatOpen = ref(false);
+const chatOpen = ref(false); // ✅ default closed
 const chatRoom = ref("global");
 const chatText = ref("");
 const chatMessages = ref([]);
@@ -1050,13 +1103,34 @@ function startLive() {
   socket?.emit("live:create", { liveId });
   router.push(`/live?mode=host&liveId=${encodeURIComponent(liveId)}`);
 }
-function joinLive(liveId) { router.push(`/live?mode=watch&liveId=${encodeURIComponent(liveId)}`); }
+function joinLive(liveId) {
+  router.push(`/live?mode=watch&liveId=${encodeURIComponent(liveId)}`);
+}
 
 /* ================= AUTH ================= */
 function logout() {
   localStorage.removeItem("token");
   localStorage.removeItem("user");
   router.push("/login");
+}
+
+/* ================= BOTTOM NAV ACTIONS ================= */
+const isHomeActive = computed(() => ["foryou", "following", "threads", "rooms"].includes(feedMode.value));
+
+function goHome() {
+  setFeedMode("foryou");
+  scrollToTop();
+}
+function goInbox() {
+  router.push("/messages"); // your existing route
+}
+function goLiveTab() {
+  setFeedMode("live");
+  scrollToTop();
+}
+function goProfile() {
+  const id = me?.id ? String(me.id) : "";
+  router.push(id ? `/profile/${id}` : "/profile");
 }
 
 /* ================= FOR YOU Infinite + Autoplay ================= */
@@ -1093,30 +1167,26 @@ function setupLoadMoreObserver() {
 /* Video autoplay */
 const activePostId = ref(null);
 const globalMuted = ref(true);
-const videoMutedByPost = ref({});
+const videoMutedByPost = ref({}); // {postId: true}
 
 function isVideoMuted(postId) {
   return globalMuted.value || !!videoMutedByPost.value[postId];
 }
-
 function toggleGlobalMute() {
   globalMuted.value = !globalMuted.value;
   applyMuteToAllVideos();
 }
-
 function toggleVideoMute(postId) {
   const prev = !!videoMutedByPost.value[postId];
   videoMutedByPost.value = { ...videoMutedByPost.value, [postId]: !prev };
   applyMuteToVideo(postId);
 }
-
 function applyMuteToVideo(postId) {
   const v = document.querySelector(`video.tt-video[data-post-id="${postId}"]`);
   if (!v) return;
   v.muted = isVideoMuted(postId);
   v.volume = v.muted ? 0 : 1;
 }
-
 function applyMuteToAllVideos() {
   const vids = document.querySelectorAll("video.tt-video");
   vids.forEach((v) => {
@@ -1229,9 +1299,20 @@ onBeforeUnmount(() => {
 </script>
 
 <style scoped>
+/* ✅ Remove left menu/sidebar coming from Layout.vue (no Layout edits needed) */
+:deep(.sidebar),
+:deep(.layout-sidebar),
+:deep(.left-menu),
+:deep(.sidemenu),
+:deep(aside.sidebar),
+:deep(nav.sidebar) {
+  display: none !important;
+}
+
 /* Background */
 .wrap {
   min-height: 100vh;
+  padding-bottom: 88px; /* space for bottom nav */
   background:
     radial-gradient(1200px 700px at 20% 0%, rgba(255,75,43,0.18), transparent),
     radial-gradient(900px 600px at 80% 20%, rgba(255,65,108,0.16), transparent),
@@ -1306,17 +1387,17 @@ onBeforeUnmount(() => {
   outline: none;
 }
 
-/* ONE main column */
+/* Main */
 .main{
   max-width: 1100px;
   margin: 0 auto;
   padding: 16px;
 }
 
-/* Top panels section */
-.top-panels{
+/* Dock (People + Chat side-by-side) */
+.dock{
   display: grid;
-  grid-template-columns: 1fr;
+  grid-template-columns: 1fr 1fr;
   gap: 14px;
   margin-bottom: 14px;
 }
@@ -1332,6 +1413,7 @@ onBeforeUnmount(() => {
 }
 .panel-head { display:flex; align-items:center; justify-content:space-between; gap:10px; margin-bottom:10px; }
 .panel-title { font-weight: 950; }
+.dockActions{ display:flex; gap:8px; align-items:center; }
 
 /* Buttons */
 .btn, .chip {
@@ -1345,42 +1427,68 @@ onBeforeUnmount(() => {
 .btn-primary { background: linear-gradient(45deg, #ff416c, #ff4b2b); }
 .danger { background: rgba(255,80,80,0.22); border: 1px solid rgba(255,80,80,0.35); }
 .ghost { opacity: .92; }
+.ghostBtn{ opacity:.92; background: rgba(255,255,255,0.10); }
+.chip.mini{ padding: 8px 10px; font-size: 12px; }
 
-/* Live cards */
-.live-card {
-  display: flex;
-  align-items: center;
-  gap: 10px;
-  background: rgba(255, 0, 0, 0.12);
-  border: 1px solid rgba(255, 0, 0, 0.18);
+/* Live pills */
+.live-strip{ display: grid; gap: 10px; }
+.live-pill{
+  display:flex;
+  align-items:center;
+  gap:10px;
   padding: 10px 12px;
   border-radius: 14px;
-  margin-top: 10px;
-  cursor: pointer;
+  background: rgba(255, 0, 0, 0.10);
+  border: 1px solid rgba(255, 0, 0, 0.18);
+  cursor:pointer;
 }
 .dot { width: 10px; height: 10px; border-radius: 50%; background: red; }
-.live-meta { display: grid; }
-.live-name { font-weight: 950; }
-.live-sub { opacity: .75; font-size: 12px; }
-.chev { margin-left: auto; opacity: .7; font-size: 22px; }
-.live-grid { display:grid; gap:12px; margin-top:12px; }
-.live-big{
-  background: rgba(0,0,0,0.35);
-  border: 1px solid rgba(255,255,255,0.12);
-  border-radius: 16px;
-  padding: 14px;
-  cursor: pointer;
-}
-.live-big-top{ display:flex; align-items:center; gap:10px; }
-.live-big-title{ font-weight:950; }
-.live-big-sub{ opacity:.75; margin-top:8px; font-size:12px; }
+.live-pill-name{ font-weight: 950; overflow:hidden; text-overflow:ellipsis; white-space:nowrap; }
+.chev { margin-left:auto; opacity:.7; font-size: 22px; }
 
-/* People */
-.people { display: grid; gap: 10px; }
-.person {
-  display: flex;
+/* People mini avatars row */
+.miniAvatars{
+  display:flex;
   gap: 10px;
-  align-items: center;
+  align-items:center;
+  overflow-x:auto;
+  padding-bottom: 6px;
+}
+.miniAvatarWrap{ position: relative; flex: 0 0 auto; cursor: pointer; }
+.miniAvatar{
+  width: 48px; height: 48px;
+  border-radius: 16px;
+  background: rgba(255,255,255,0.10);
+  border: 1px solid rgba(255,255,255,0.14);
+  display:grid;
+  place-items:center;
+  font-weight: 950;
+}
+.miniDot{
+  position:absolute;
+  right: 4px;
+  bottom: 4px;
+  width: 12px;
+  height: 12px;
+  border-radius: 50%;
+  background: rgba(255,255,255,0.35);
+  border: 2px solid #0b1220;
+}
+.miniDot.on{ background:#00e676; }
+
+/* People list compact */
+.peopleCompact{ margin-top: 12px; display:grid; gap: 10px; }
+.peopleList{
+  display:grid;
+  gap: 10px;
+  max-height: 240px;
+  overflow:auto;
+  padding-right: 4px;
+}
+.person.compact{
+  display:flex;
+  gap: 10px;
+  align-items:center;
   padding: 10px;
   border-radius: 16px;
   background: rgba(0,0,0,0.28);
@@ -1392,7 +1500,7 @@ onBeforeUnmount(() => {
 .status { width: 10px; height: 10px; border-radius: 50%; background: rgba(255,255,255,0.35); }
 .status.on { background: #00e676; }
 .sep { opacity: .5; }
-.person-actions { display: flex; gap: 8px; }
+.person-actions { display:flex; gap: 8px; }
 .iconbtn {
   width: 40px; height: 40px;
   border-radius: 14px;
@@ -1519,9 +1627,65 @@ onBeforeUnmount(() => {
 
 /* Rooms */
 .rooms { display:grid; grid-template-columns: 220px 1fr; gap: 12px; }
-@media (max-width: 900px) { .rooms { grid-template-columns: 1fr; } }
+.rooms-left {
+  background: rgba(255,255,255,0.06);
+  border: 1px solid rgba(255,255,255,0.12);
+  border-radius: 18px;
+  padding: 12px;
+}
+.rooms-head { font-weight: 950; margin-bottom: 10px; }
+.room{
+  width: 100%;
+  text-align: left;
+  border: 1px solid rgba(255,255,255,0.12);
+  background: rgba(0,0,0,0.30);
+  color: white;
+  padding: 10px 12px;
+  border-radius: 14px;
+  cursor: pointer;
+  margin-bottom: 8px;
+}
+.room.on{ background: rgba(255,75,43,0.16); border-color: rgba(255,75,43,0.30); }
+.rooms-hint{ opacity:.75; font-size: 12px; margin-top: 10px; }
 
-/* TikTok mode */
+.rooms-main{
+  background: rgba(255,255,255,0.06);
+  border: 1px solid rgba(255,255,255,0.12);
+  border-radius: 18px;
+  padding: 12px;
+  display:flex;
+  flex-direction: column;
+  min-height: 520px;
+}
+.rooms-top{ display:flex; align-items:center; justify-content:space-between; gap:10px; margin-bottom: 10px; }
+.rooms-title{ font-weight: 950; }
+.rooms-messages{
+  flex: 1;
+  overflow:auto;
+  display:grid;
+  gap: 10px;
+  padding: 8px;
+  background: rgba(0,0,0,0.25);
+  border-radius: 14px;
+  border: 1px solid rgba(255,255,255,0.10);
+}
+.rm{ padding: 10px; border-radius: 14px; background: rgba(255,255,255,0.06); border: 1px solid rgba(255,255,255,0.10); }
+.rm-top{ display:flex; justify-content:space-between; gap:10px; }
+.rm-user{ font-weight: 950; }
+.rm-time{ opacity:.7; font-size: 12px; }
+.rm-text{ margin-top: 6px; line-height: 1.45; }
+.rooms-input{ display:flex; gap: 8px; margin-top: 10px; }
+.rooms-input input{
+  flex: 1;
+  background: rgba(0,0,0,0.35);
+  border: 1px solid rgba(255,255,255,0.12);
+  color: white;
+  padding: 10px 12px;
+  border-radius: 12px;
+  outline: none;
+}
+
+/* TikTok */
 .feed.tiktok { scroll-snap-type: y mandatory; }
 .tt-card { scroll-snap-align: start; scroll-margin-top: 140px; }
 .tt-video-wrap { position: relative; }
@@ -1554,7 +1718,19 @@ onBeforeUnmount(() => {
   cursor: pointer;
 }
 
-/* Chat */
+/* Chat drawer */
+.chatDrawer{
+  position: fixed;
+  right: 16px;
+  top: 120px;
+  width: min(420px, 92vw);
+  z-index: 70;
+  transform: translateX(110%);
+  transition: transform .25s ease;
+}
+.chatDrawer.open{ transform: translateX(0); }
+
+.chatPanel{ margin-bottom: 0; }
 .chat-hint { opacity:.7; font-size: 12px; margin-bottom: 10px; }
 .chat-list { display:grid; gap:8px; margin-bottom: 12px; }
 .chat-item{
@@ -1607,10 +1783,57 @@ onBeforeUnmount(() => {
 .tiny { font-size: 12px; }
 
 /* Calling toast */
-.toast { position: fixed; left: 50%; bottom: 18px; transform: translateX(-50%); z-index: 90; background: rgba(12, 18, 32, 0.95); border: 1px solid rgba(255,255,255,0.14); padding: 10px 12px; border-radius: 999px; display:flex; align-items:center; gap:10px; }
+.toast { position: fixed; left: 50%; bottom: 92px; transform: translateX(-50%); z-index: 90; background: rgba(12, 18, 32, 0.95); border: 1px solid rgba(255,255,255,0.14); padding: 10px 12px; border-radius: 999px; display:flex; align-items:center; gap:10px; }
 .toast-dot { width: 10px; height: 10px; border-radius: 50%; background: #00e676; }
 .mini-x { border:none; cursor:pointer; background: rgba(255,255,255,0.10); color:white; border-radius: 10px; padding: 4px 8px; }
 
 /* Infinite sentinel */
 .load-more{ text-align:center; padding: 18px 10px; opacity: .75; }
+
+/* Bottom nav */
+.bottomNav{
+  position: fixed;
+  left: 0;
+  right: 0;
+  bottom: 0;
+  z-index: 95;
+  display: grid;
+  grid-template-columns: repeat(4, 1fr);
+  gap: 0;
+  padding: 10px 10px 14px;
+  background: rgba(8, 12, 20, 0.82);
+  backdrop-filter: blur(10px);
+  border-top: 1px solid rgba(255,255,255,0.10);
+}
+.bn{
+  border: none;
+  background: transparent;
+  color: rgba(255,255,255,0.80);
+  display: grid;
+  place-items: center;
+  gap: 4px;
+  padding: 8px 6px;
+  cursor: pointer;
+}
+.bn.on{ color: #fff; }
+.bnI{ font-size: 18px; }
+.bnT{ font-size: 12px; font-weight: 850; }
+
+/* Mobile behavior */
+@media (max-width: 900px) {
+  .dock{ grid-template-columns: 1fr; }
+
+  /* Chat drawer becomes bottom sheet on phone */
+  .chatDrawer{
+    right: 0;
+    left: 0;
+    top: auto;
+    bottom: 0;
+    width: 100%;
+    transform: translateY(110%);
+  }
+  .chatDrawer.open{ transform: translateY(0); }
+
+  .rooms { grid-template-columns: 1fr; }
+}
 </style>
