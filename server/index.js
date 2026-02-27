@@ -94,7 +94,8 @@ function signToken(user) {
 app.post("/auth/register", async (req, res) => {
   try {
     const { username, name, email, password } = req.body;
-    if (!email || !password) return res.status(400).json({ error: "Email and password required" });
+    if (!email || !password)
+      return res.status(400).json({ error: "Email and password required" });
 
     const display = username || name || email.split("@")[0];
     const hashed = await bcrypt.hash(password, 10);
@@ -130,7 +131,8 @@ app.post("/auth/register", async (req, res) => {
 app.post("/auth/login", async (req, res) => {
   try {
     const { email, password } = req.body;
-    if (!email || !password) return res.status(400).json({ error: "Email and password required" });
+    if (!email || !password)
+      return res.status(400).json({ error: "Email and password required" });
 
     const found = await pool.query(`SELECT * FROM users WHERE email=$1 LIMIT 1`, [email]);
     if (!found.rows.length) return res.status(400).json({ error: "User not found" });
@@ -221,117 +223,6 @@ app.get("/api/turn", async (req, res) => {
 const io = new Server(server, {
   cors: { origin: ORIGINS, credentials: true, methods: ["GET", "POST"] },
 });
-// In-memory online map: userId -> socketId
-const onlineUsers = new Map();
-
-// helper: insert call invite
-async function createCallInvite(pool, { roomId, fromUserId, toUserId, kind }) {
-  const q = `
-    INSERT INTO call_invites (room_id, from_user_id, to_user_id, kind, status)
-    VALUES ($1,$2,$3,$4,'pending')
-    RETURNING *;
-  `;
-  const { rows } = await pool.query(q, [roomId, fromUserId, toUserId, kind]);
-  return rows[0];
-}
-
-async function markInviteStatus(pool, roomId, status) {
-  await pool.query(`UPDATE call_invites SET status=$2 WHERE room_id=$1`, [roomId, status]);
-}
-
-async function getPendingInvites(pool, userId) {
-  const { rows } = await pool.query(
-    `SELECT * FROM call_invites WHERE to_user_id=$1 AND status='pending' ORDER BY created_at DESC LIMIT 5`,
-    [userId]
-  );
-  return rows;
-}
-
-io.on("connection", (socket) => {
-  socket.on("register-user", ({ id, username }) => {
-    if (!id) return;
-    onlineUsers.set(String(id), socket.id);
-    socket.data.userId = String(id);
-    socket.data.username = username || "";
-  });
-
-  // ✅ caller requests call (online OR offline)
-  socket.on("call:request", async ({ toUserId, kind = "audio" }, cb) => {
-    try {
-      const fromUserId = socket.data.userId;
-      if (!fromUserId) return cb?.({ error: "Not registered" });
-
-      const roomId = `call-${fromUserId}-${toUserId}-${Date.now()}`;
-      const invite = await createCallInvite(pool, { roomId, fromUserId, toUserId, kind });
-
-      const targetSocketId = onlineUsers.get(String(toUserId));
-
-      if (targetSocketId) {
-        // ✅ user online -> ring them now
-        io.to(targetSocketId).emit("call:incoming", {
-          roomId,
-          kind,
-          fromUserId: Number(fromUserId),
-          fromName: socket.data.username || "User",
-        });
-
-        // tell caller to open call page
-        socket.emit("call:ringing", { roomId, kind });
-        cb?.({ ok: true, roomId });
-      } else {
-        // ✅ user offline -> keep invite pending (app will sync later)
-        cb?.({ ok: true, queued: true, roomId });
-        socket.emit("call:queued", { roomId, kind });
-      }
-    } catch (e) {
-      cb?.({ error: e.message || "call request failed" });
-    }
-  });
-
-  // ✅ callee (or reconnect) asks for pending invites
-  socket.on("call:sync", async () => {
-    try {
-      const userId = socket.data.userId;
-      if (!userId) return;
-
-      const pending = await getPendingInvites(pool, Number(userId));
-      for (const inv of pending) {
-        socket.emit("call:incoming", {
-          roomId: inv.room_id,
-          kind: inv.kind,
-          fromUserId: inv.from_user_id,
-          fromName: `User #${inv.from_user_id}`,
-        });
-      }
-    } catch {}
-  });
-
-  socket.on("call:accept", async ({ roomId }) => {
-    try {
-      await markInviteStatus(pool, roomId, "accepted");
-      // broadcast accepted to caller if connected (you likely already do this)
-      io.emit("call:accepted", { roomId });
-    } catch {}
-  });
-
-  socket.on("call:reject", async ({ roomId }) => {
-    try {
-      await markInviteStatus(pool, roomId, "rejected");
-      io.emit("call:rejected", { roomId });
-    } catch {}
-  });
-
-  socket.on("call:cancel", async ({ roomId }) => {
-    try {
-      await markInviteStatus(pool, roomId, "canceled");
-      io.emit("call:ended", { roomId });
-    } catch {}
-  });
-
-  socket.on("disconnect", () => {
-    const userId = socket.data.userId;
-    if (userId) onlineUsers.delete(String(userId));
-  });
 
 /* ---------- PRESENCE ---------- */
 const onlineUsers = new Map(); // userId -> socketId
@@ -359,6 +250,41 @@ function emitLivePresence(liveId) {
   const room = io.sockets.adapter.rooms.get(`live:${liveId}`);
   const count = room ? room.size : 0;
   io.to(`live:${liveId}`).emit("live:presence", { liveId, viewerCount: count });
+}
+
+/* ---------- CALLS: OFFLINE QUEUE + BUSY ---------- */
+const pendingIncomingCalls = new Map(); // userId -> Map(roomId -> payload)
+const userBusyRoom = new Map(); // userId -> roomId
+
+function queueIncomingCall(userId, payload) {
+  const uid = String(userId);
+  const rid = String(payload.roomId);
+  if (!pendingIncomingCalls.has(uid)) pendingIncomingCalls.set(uid, new Map());
+  pendingIncomingCalls.get(uid).set(rid, payload);
+}
+
+function removeQueuedIncomingCall(userId, roomId) {
+  const uid = String(userId);
+  const rid = String(roomId);
+  const m = pendingIncomingCalls.get(uid);
+  if (!m) return;
+  m.delete(rid);
+  if (m.size === 0) pendingIncomingCalls.delete(uid);
+}
+
+function flushQueuedIncomingCallsToUser(userId) {
+  const uid = String(userId);
+  const m = pendingIncomingCalls.get(uid);
+  if (!m || m.size === 0) return;
+
+  for (const payload of m.values()) {
+    io.to(`user:${uid}`).emit("call:incoming", { ...payload, queued: true });
+    io.to(`user:${uid}`).emit("call:ring", {
+      roomId: String(payload.roomId),
+      kind: payload.kind,
+      side: "callee",
+    });
+  }
 }
 
 /* ---------- CALLS ---------- */
@@ -395,6 +321,53 @@ function emitCallParticipants(roomId) {
     invitedUserIds: invited,
     joinedUserIds: joined,
   });
+}
+
+/* ======= RING HELPERS (server signals; client plays audio) ======= */
+function ringToUser(userId, roomId, kind, side) {
+  io.to(`user:${String(userId)}`).emit("call:ring", {
+    roomId: String(roomId),
+    kind: String(kind),
+    side: side || "unknown", // "caller" | "callee"
+  });
+}
+function stopRingToUser(userId, roomId) {
+  io.to(`user:${String(userId)}`).emit("call:stopRing", { roomId: String(roomId) });
+}
+function stopRingForSession(sess) {
+  if (!sess) return;
+  for (const uid of sess.invitedUserIds || []) stopRingToUser(uid, sess.roomId);
+}
+
+/* ======= BUSY HELPERS ======= */
+function isUserBusy(userId) {
+  return userBusyRoom.has(String(userId));
+}
+function setUserBusy(userId, roomId) {
+  userBusyRoom.set(String(userId), String(roomId));
+}
+function clearUserBusy(userId, roomId) {
+  const uid = String(userId);
+  const rid = String(roomId);
+  const cur = userBusyRoom.get(uid);
+  if (cur && cur === rid) userBusyRoom.delete(uid);
+}
+function clearBusyForSession(sess) {
+  if (!sess) return;
+  for (const uid of sess.invitedUserIds || []) clearUserBusy(uid, sess.roomId);
+}
+
+/* ======= OPTIONAL: DB "incoming call" notify (offline-friendly) ======= */
+async function dbNotifyIncomingCall(userId, payload) {
+  try {
+    await pool.query(
+      `INSERT INTO notifications (user_id, type, payload)
+       VALUES ($1, 'incoming_call', $2::jsonb)`,
+      [Number(userId), JSON.stringify(payload)]
+    );
+  } catch {
+    // ignore if table doesn't exist / schema differs
+  }
 }
 
 async function dbEnsureCall(roomId, kind, hostUserId) {
@@ -455,7 +428,14 @@ async function dbMarkMissedAndNotify(callId, roomId, hostUserId, kind, userId) {
     await pool.query(
       `INSERT INTO notifications (user_id, type, payload)
        VALUES ($1, 'missed_call', $2::jsonb)`,
-      [Number(userId), JSON.stringify({ roomId: String(roomId), fromUserId: String(hostUserId), kind: String(kind) })]
+      [
+        Number(userId),
+        JSON.stringify({
+          roomId: String(roomId),
+          fromUserId: String(hostUserId),
+          kind: String(kind),
+        }),
+      ]
     );
 
     // realtime push if online
@@ -510,34 +490,37 @@ function scheduleMissedTimer(roomId) {
     const s = callSessions.get(String(roomId));
     if (!s) return;
 
-    // if nobody joined besides host, or some invited never joined -> mark missed
     const callId = s.dbCallId;
-    if (!callId) return;
 
-    for (const uid of s.invitedUserIds) {
-      if (uid === s.hostUserId) continue;
-      if (s.joinedUserIds.has(uid)) continue;
+    if (callId) {
+      for (const uid of s.invitedUserIds) {
+        if (uid === s.hostUserId) continue;
+        if (s.joinedUserIds.has(uid)) continue;
+        await dbMarkMissedAndNotify(callId, roomId, s.hostUserId, s.kind, uid);
+      }
 
-      await dbMarkMissedAndNotify(callId, roomId, s.hostUserId, s.kind, uid);
+      try {
+        await pool.query(
+          `UPDATE calls
+           SET status=CASE WHEN status='ringing' THEN 'missed' ELSE status END,
+               ended_at=CASE WHEN ended_at IS NULL AND status='ringing' THEN NOW() ELSE ended_at END
+           WHERE id=$1`,
+          [Number(callId)]
+        );
+      } catch {}
     }
 
-    // if call never became active, mark call status missed (optional)
-    try {
-      await pool.query(
-        `UPDATE calls
-         SET status=CASE WHEN status='ringing' THEN 'missed' ELSE status END,
-             ended_at=CASE WHEN ended_at IS NULL AND status='ringing' THEN NOW() ELSE ended_at END
-         WHERE id=$1`,
-        [Number(callId)]
-      );
-    } catch {}
+    // stop ringing for everyone + unlock busy
+    stopRingForSession(s);
+    clearBusyForSession(s);
 
-    // keep session in memory or delete it; we’ll delete if not active
+    // cleanup queued incoming
+    for (const uid of s.invitedUserIds || []) removeQueuedIncomingCall(uid, s.roomId);
+
+    // delete session if never became active
     const room = io.sockets.adapter.rooms.get(`call:${roomId}`);
     const count = room ? room.size : 0;
-    if (count < 2) {
-      callSessions.delete(String(roomId));
-    }
+    if (count < 2) callSessions.delete(String(roomId));
   }, RING_TIMEOUT_MS);
 
   callSessions.set(String(roomId), sess);
@@ -560,6 +543,9 @@ io.on("connection", (socket) => {
     emitPresenceList(socket);
     broadcastPresenceUpdate(userId, true);
     emitOnlineUsersLegacy();
+
+    // ✅ deliver queued offline calls when user comes online
+    flushQueuedIncomingCallsToUser(userId);
   });
 
   socket.on("presence:get", () => {
@@ -582,6 +568,9 @@ io.on("connection", (socket) => {
     emitPresenceList(socket);
     broadcastPresenceUpdate(userId, true);
     emitOnlineUsersLegacy();
+
+    // ✅ deliver queued offline calls when user comes online
+    flushQueuedIncomingCallsToUser(userId);
   });
 
   /* =========================
@@ -616,24 +605,26 @@ io.on("connection", (socket) => {
   });
 
   /* =========================
-     ✅ CALLS: 1:1 (kept working)
+     ✅ CALLS: 1:1 (UPGRADED)
+     - ringtone events
+     - offline queue
+     - busy protection
   ========================= */
 
   // 1:1 dashboard caller
   socket.on("call:request", async ({ toUserId, kind = "audio" }) => {
     const from = socket.data.user;
-    if (!from?.id) return socket.emit("call:error", { message: "Not online. Emit user:online first." });
+    if (!from?.id)
+      return socket.emit("call:error", { message: "Not online. Emit user:online first." });
 
     const calleeUserId = String(toUserId);
-    const calleeSocketId = onlineUsers.get(calleeUserId);
+    const callKind = kind === "video" ? "video" : "audio";
 
-    if (!calleeSocketId) {
-      socket.emit("call:error", { message: "User is offline." });
-      return;
-    }
+    // busy checks
+    if (isUserBusy(from.id)) return socket.emit("call:error", { message: "You are already in a call." });
+    if (isUserBusy(calleeUserId)) return socket.emit("call:busy", { message: "User is busy." });
 
     const roomId = makeCallRoomId(socket);
-    const callKind = kind === "video" ? "video" : "audio";
 
     const invitedUserIds = new Set([String(from.id), calleeUserId]);
     const joinedUserIds = new Set([String(from.id)]);
@@ -646,6 +637,14 @@ io.on("connection", (socket) => {
       await dbUpsertParticipant(dbCallId, calleeUserId, "member", "invited");
     }
 
+    const incomingPayload = {
+      roomId: String(roomId),
+      kind: callKind,
+      fromUserId: String(from.id),
+      fromName: from.username || `User${from.id}`,
+      isGroup: false,
+    };
+
     callSessions.set(String(roomId), {
       roomId: String(roomId),
       kind: callKind,
@@ -657,28 +656,44 @@ io.on("connection", (socket) => {
       ringTimer: null,
     });
 
+    // lock busy for both users (even if callee offline: prevents spam)
+    setUserBusy(from.id, roomId);
+    setUserBusy(calleeUserId, roomId);
+
     scheduleMissedTimer(roomId);
 
+    // caller UI: start ringing tone
     socket.emit("call:ringing", { roomId: String(roomId), kind: callKind });
+    ringToUser(from.id, roomId, callKind, "caller");
 
-    io.to(`user:${calleeUserId}`).emit("call:incoming", {
-      roomId: String(roomId),
-      kind: callKind,
-      fromUserId: String(from.id),
-      fromName: from.username || `User${from.id}`,
-      isGroup: false,
-    });
+    const calleeSocketId = onlineUsers.get(calleeUserId);
+
+    if (!calleeSocketId) {
+      // ✅ OFFLINE: queue it + optional DB notification
+      queueIncomingCall(calleeUserId, incomingPayload);
+      await dbNotifyIncomingCall(calleeUserId, incomingPayload);
+
+      socket.emit("call:status", { roomId: String(roomId), calleeOnline: false });
+      return;
+    }
+
+    // ✅ ONLINE: deliver popup + ring callee
+    io.to(`user:${calleeUserId}`).emit("call:incoming", incomingPayload);
+    ringToUser(calleeUserId, roomId, callKind, "callee");
+
+    socket.emit("call:status", { roomId: String(roomId), calleeOnline: true });
   });
 
   /* =========================
-     ✅ CALLS: GROUP (NEW)
-     - call:group:create
-     - call:group:invite
+     ✅ CALLS: GROUP (UPGRADED)
+     - supports offline queue for invitees
   ========================= */
 
   socket.on("call:group:create", async ({ toUserIds = [], kind = "video" }) => {
     const from = socket.data.user;
     if (!from?.id) return socket.emit("call:error", { message: "Not online." });
+
+    if (isUserBusy(from.id)) return socket.emit("call:error", { message: "You are already in a call." });
 
     const roomId = makeCallRoomId(socket);
     const callKind = kind === "audio" ? "audio" : "video";
@@ -710,25 +725,36 @@ io.on("connection", (socket) => {
       ringTimer: null,
     });
 
+    // busy lock everyone invited (prevents double calls)
+    for (const uid of invitedUserIds) setUserBusy(uid, roomId);
+
     scheduleMissedTimer(roomId);
 
     // host navigates immediately
     socket.emit("call:ringing", { roomId: String(roomId), kind: callKind, isGroup: true });
+    ringToUser(from.id, roomId, callKind, "caller");
 
-    // invite each callee (only if online)
+    // invite each callee (online -> realtime, offline -> queue)
     for (const uid of all) {
       if (uid === String(from.id)) continue;
 
-      const targetSocketId = onlineUsers.get(uid);
-      if (!targetSocketId) continue;
-
-      io.to(`user:${uid}`).emit("call:incoming", {
+      const payload = {
         roomId: String(roomId),
         kind: callKind,
         fromUserId: String(from.id),
         fromName: from.username || `User${from.id}`,
         isGroup: true,
-      });
+      };
+
+      const targetSocketId = onlineUsers.get(uid);
+      if (!targetSocketId) {
+        queueIncomingCall(uid, payload);
+        await dbNotifyIncomingCall(uid, payload);
+        continue;
+      }
+
+      io.to(`user:${uid}`).emit("call:incoming", payload);
+      ringToUser(uid, roomId, callKind, "callee");
     }
   });
 
@@ -759,6 +785,9 @@ io.on("connection", (socket) => {
     callSessions.set(String(roomId), sess);
     scheduleMissedTimer(roomId);
 
+    // busy lock new invitees
+    for (const uid of newIds) setUserBusy(uid, roomId);
+
     // DB add invited
     if (sess.dbCallId) {
       for (const uid of newIds) {
@@ -766,18 +795,25 @@ io.on("connection", (socket) => {
       }
     }
 
-    // push incoming call popup
+    // push incoming call popup (online) or queue (offline)
     for (const uid of newIds) {
-      const targetSocketId = onlineUsers.get(uid);
-      if (!targetSocketId) continue;
-
-      io.to(`user:${uid}`).emit("call:incoming", {
+      const payload = {
         roomId: String(roomId),
         kind: sess.kind,
         fromUserId: String(sess.hostUserId),
         fromName: `User${sess.hostUserId}`,
         isGroup: true,
-      });
+      };
+
+      const targetSocketId = onlineUsers.get(uid);
+      if (!targetSocketId) {
+        queueIncomingCall(uid, payload);
+        await dbNotifyIncomingCall(uid, payload);
+        continue;
+      }
+
+      io.to(`user:${uid}`).emit("call:incoming", payload);
+      ringToUser(uid, roomId, sess.kind, "callee");
     }
 
     // update participants list to the call room
@@ -785,15 +821,21 @@ io.on("connection", (socket) => {
   });
 
   /* =========================
-     ✅ CALLS: ACCEPT / JOIN / END
+     ✅ CALLS: ACCEPT / JOIN / END (UPGRADED)
   ========================= */
 
   socket.on("call:accept", async ({ roomId }) => {
     const sess = callSessions.get(String(roomId));
     if (!sess) return;
 
+    // stop ringing for everyone on accept (UI will move to call screen)
+    stopRingForSession(sess);
+
     // accept is UI-level, we keep it as a signal to caller/room
     io.to(`call:${roomId}`).emit("call:accepted", { roomId: String(roomId), kind: sess.kind });
+
+    // also stop ring in user rooms (covers case they haven't joined call room yet)
+    for (const uid of sess.invitedUserIds || []) stopRingToUser(uid, roomId);
   });
 
   socket.on("call:reject", async ({ roomId }) => {
@@ -814,8 +856,16 @@ io.on("connection", (socket) => {
       } catch {}
     }
 
+    stopRingForSession(sess);
+    clearBusyForSession(sess);
+
+    for (const uid of sess.invitedUserIds || []) removeQueuedIncomingCall(uid, sess.roomId);
+
     // tell call room
     io.to(`call:${roomId}`).emit("call:ended", { roomId: String(roomId), reason: "rejected" });
+
+    if (sess?.ringTimer) clearTimeout(sess.ringTimer);
+    callSessions.delete(String(roomId));
   });
 
   // call page joins the call room (both sides + group members)
@@ -832,6 +882,9 @@ io.on("connection", (socket) => {
     if (meId) {
       sess.joinedUserIds.add(meId);
       callSessions.set(String(roomId), sess);
+
+      // once user joined, remove their queued version
+      removeQueuedIncomingCall(meId, roomId);
 
       // DB joined
       if (sess.dbCallId) {
@@ -858,6 +911,8 @@ io.on("connection", (socket) => {
 
     // if 2+ joined, ready (your Call.vue uses this)
     if (count >= 2) {
+      stopRingForSession(sess);
+
       io.to(`call:${roomId}`).emit("call:ready", {
         roomId: String(roomId),
         kind: sess.kind,
@@ -871,10 +926,15 @@ io.on("connection", (socket) => {
     // DB end call
     await dbEndCall(roomId);
 
+    if (sess) {
+      stopRingForSession(sess);
+      clearBusyForSession(sess);
+      for (const uid of sess.invitedUserIds || []) removeQueuedIncomingCall(uid, sess.roomId);
+      if (sess.ringTimer) clearTimeout(sess.ringTimer);
+    }
+
     // end for everyone
     io.to(`call:${roomId}`).emit("call:ended", { roomId: String(roomId), reason: "ended" });
-
-    if (sess?.ringTimer) clearTimeout(sess.ringTimer);
     callSessions.delete(String(roomId));
   });
 
@@ -884,6 +944,12 @@ io.on("connection", (socket) => {
 
     // end + mark ended
     await dbEndCall(roomId);
+
+    stopRingForSession(sess);
+    clearBusyForSession(sess);
+
+    for (const uid of sess.invitedUserIds || []) removeQueuedIncomingCall(uid, sess.roomId);
+
     io.to(`call:${roomId}`).emit("call:ended", { roomId: String(roomId), reason: "canceled" });
 
     if (sess.ringTimer) clearTimeout(sess.ringTimer);

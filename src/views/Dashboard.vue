@@ -535,7 +535,22 @@ const token = localStorage.getItem("token");
 const me = (() => {
   try { return JSON.parse(localStorage.getItem("user") || "null"); } catch { return null; }
 })();
+const ringAudio = new Audio("/sounds/ringtone.mp3"); // put file in /public/sounds/
+ringAudio.loop = true;
 
+function startRingtone() {
+  try {
+    ringAudio.currentTime = 0;
+    ringAudio.play();
+  } catch {}
+}
+
+function stopRingtone() {
+  try {
+    ringAudio.pause();
+    ringAudio.currentTime = 0;
+  } catch {}
+}
 /* ================== SAFETY: normalize posts (fix “dark/invisible cards”) ================== */
 function normalizePost(p) {
   // If backend returns {reel, post}, pick the post
@@ -625,28 +640,67 @@ async function fetchPeople() {
     peopleLoading.value = false;
   }
 }
-
-/* ================= CALLS ================= */
-const incomingCall = ref(null);
+/* ================= CALLS (BEST VERSION) ================= */
+const incomingCall = ref(null); // { roomId, kind, from, fromUserId, fromName }
 const callBusy = ref(false);
 const callingToast = ref("");
 const pendingRoomId = ref("");
 const pendingKind = ref("audio");
 
+/** RINGTONES (put mp3 in /public/sounds/) */
+const ringIn = new Audio("/sounds/ringtone.mp3");   // incoming ringtone
+ringIn.loop = true;
+
+const ringOut = new Audio("/sounds/ringback.mp3");  // optional ringback tone for caller
+ringOut.loop = true;
+
+function playRingIn() {
+  try { ringIn.currentTime = 0; ringIn.play(); } catch {}
+}
+function stopRingIn() {
+  try { ringIn.pause(); ringIn.currentTime = 0; } catch {}
+}
+function playRingOut() {
+  try { ringOut.currentTime = 0; ringOut.play(); } catch {}
+}
+function stopRingOut() {
+  try { ringOut.pause(); ringOut.currentTime = 0; } catch {}
+}
+
 function startCall(user, kind = "audio") {
   if (!socket) return;
   if (!token) return alert("Login again to call.");
-  if (!isOnline(user.id)) return alert("User is offline.");
+
+  // ✅ DO NOT block offline users anymore
+  // if (!isOnline(user.id)) return alert("User is offline.");
 
   callBusy.value = true;
   pendingKind.value = kind;
   callingToast.value = `Calling ${user.display_name || user.username || "user"}…`;
   pendingRoomId.value = "";
 
-  socket.emit("call:request", { toUserId: user.id, kind });
+  // Optional: ringback while waiting
+  playRingOut();
+
+  socket.emit("call:request", { toUserId: user.id, kind }, (ack) => {
+    // ack is optional if your backend sends it
+    if (ack?.error) {
+      stopRingOut();
+      callBusy.value = false;
+      callingToast.value = "";
+      alert(ack.error);
+    }
+    // if ack says queued, keep toast (callee will see when they come online)
+    if (ack?.queued) {
+      callingToast.value = `Queued… waiting for ${user.display_name || user.username || "user"} to come online`;
+    }
+  });
 }
 
 function cancelCall() {
+  stopRingOut();
+  stopRingIn();
+
   callingToast.value = "";
   callBusy.value = false;
   if (pendingRoomId.value) socket?.emit("call:cancel", { roomId: pendingRoomId.value });
