@@ -221,6 +221,117 @@ app.get("/api/turn", async (req, res) => {
 const io = new Server(server, {
   cors: { origin: ORIGINS, credentials: true, methods: ["GET", "POST"] },
 });
+// In-memory online map: userId -> socketId
+const onlineUsers = new Map();
+
+// helper: insert call invite
+async function createCallInvite(pool, { roomId, fromUserId, toUserId, kind }) {
+  const q = `
+    INSERT INTO call_invites (room_id, from_user_id, to_user_id, kind, status)
+    VALUES ($1,$2,$3,$4,'pending')
+    RETURNING *;
+  `;
+  const { rows } = await pool.query(q, [roomId, fromUserId, toUserId, kind]);
+  return rows[0];
+}
+
+async function markInviteStatus(pool, roomId, status) {
+  await pool.query(`UPDATE call_invites SET status=$2 WHERE room_id=$1`, [roomId, status]);
+}
+
+async function getPendingInvites(pool, userId) {
+  const { rows } = await pool.query(
+    `SELECT * FROM call_invites WHERE to_user_id=$1 AND status='pending' ORDER BY created_at DESC LIMIT 5`,
+    [userId]
+  );
+  return rows;
+}
+
+io.on("connection", (socket) => {
+  socket.on("register-user", ({ id, username }) => {
+    if (!id) return;
+    onlineUsers.set(String(id), socket.id);
+    socket.data.userId = String(id);
+    socket.data.username = username || "";
+  });
+
+  // ✅ caller requests call (online OR offline)
+  socket.on("call:request", async ({ toUserId, kind = "audio" }, cb) => {
+    try {
+      const fromUserId = socket.data.userId;
+      if (!fromUserId) return cb?.({ error: "Not registered" });
+
+      const roomId = `call-${fromUserId}-${toUserId}-${Date.now()}`;
+      const invite = await createCallInvite(pool, { roomId, fromUserId, toUserId, kind });
+
+      const targetSocketId = onlineUsers.get(String(toUserId));
+
+      if (targetSocketId) {
+        // ✅ user online -> ring them now
+        io.to(targetSocketId).emit("call:incoming", {
+          roomId,
+          kind,
+          fromUserId: Number(fromUserId),
+          fromName: socket.data.username || "User",
+        });
+
+        // tell caller to open call page
+        socket.emit("call:ringing", { roomId, kind });
+        cb?.({ ok: true, roomId });
+      } else {
+        // ✅ user offline -> keep invite pending (app will sync later)
+        cb?.({ ok: true, queued: true, roomId });
+        socket.emit("call:queued", { roomId, kind });
+      }
+    } catch (e) {
+      cb?.({ error: e.message || "call request failed" });
+    }
+  });
+
+  // ✅ callee (or reconnect) asks for pending invites
+  socket.on("call:sync", async () => {
+    try {
+      const userId = socket.data.userId;
+      if (!userId) return;
+
+      const pending = await getPendingInvites(pool, Number(userId));
+      for (const inv of pending) {
+        socket.emit("call:incoming", {
+          roomId: inv.room_id,
+          kind: inv.kind,
+          fromUserId: inv.from_user_id,
+          fromName: `User #${inv.from_user_id}`,
+        });
+      }
+    } catch {}
+  });
+
+  socket.on("call:accept", async ({ roomId }) => {
+    try {
+      await markInviteStatus(pool, roomId, "accepted");
+      // broadcast accepted to caller if connected (you likely already do this)
+      io.emit("call:accepted", { roomId });
+    } catch {}
+  });
+
+  socket.on("call:reject", async ({ roomId }) => {
+    try {
+      await markInviteStatus(pool, roomId, "rejected");
+      io.emit("call:rejected", { roomId });
+    } catch {}
+  });
+
+  socket.on("call:cancel", async ({ roomId }) => {
+    try {
+      await markInviteStatus(pool, roomId, "canceled");
+      io.emit("call:ended", { roomId });
+    } catch {}
+  });
+
+  socket.on("disconnect", () => {
+    const userId = socket.data.userId;
+    if (userId) onlineUsers.delete(String(userId));
+  });
 
 /* ---------- PRESENCE ---------- */
 const onlineUsers = new Map(); // userId -> socketId

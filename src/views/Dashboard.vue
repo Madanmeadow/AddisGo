@@ -655,6 +655,10 @@ function cancelCall() {
 
 function acceptIncoming() {
   if (!incomingCall.value || !socket) return;
+
+  stopRingIn();      // ✅ stop ringtone
+  stopRingOut();
+
   const roomId = incomingCall.value.roomId;
   const kind = incomingCall.value.kind || "audio";
 
@@ -665,8 +669,68 @@ function acceptIncoming() {
 
 function rejectIncoming() {
   if (!incomingCall.value || !socket) return;
+
+  stopRingIn();
+  stopRingOut();
+
   socket.emit("call:reject", { roomId: incomingCall.value.roomId });
   incomingCall.value = null;
+}
+
+/** Hook these into your existing socket.on handlers */
+function wireCallSocketHandlers() {
+  socket.on("call:incoming", (p) => {
+    incomingCall.value = p;
+    playRingIn(); // ✅ ringtone on incoming
+  });
+
+  socket.on("call:ringing", ({ roomId, kind }) => {
+    pendingRoomId.value = roomId;
+    callingToast.value = `Ringing… (${kind || pendingKind.value})`;
+    // keep ringOut playing until accepted/rejected/ended
+    router.push(`/call?roomId=${encodeURIComponent(roomId)}&role=caller&kind=${encodeURIComponent(kind || pendingKind.value)}`);
+  });
+
+  socket.on("call:accepted", () => {
+    stopRingOut();
+    stopRingIn();
+    callingToast.value = "";
+    callBusy.value = false;
+  });
+
+  socket.on("call:rejected", () => {
+    stopRingOut();
+    stopRingIn();
+    callingToast.value = "";
+    callBusy.value = false;
+    pendingRoomId.value = "";
+    alert("Call rejected.");
+  });
+
+  socket.on("call:ended", () => {
+    stopRingOut();
+    stopRingIn();
+    callingToast.value = "";
+    callBusy.value = false;
+    incomingCall.value = null;
+    pendingRoomId.value = "";
+  });
+
+  socket.on("call:error", ({ message } = {}) => {
+    stopRingOut();
+    stopRingIn();
+    callingToast.value = "";
+    callBusy.value = false;
+    incomingCall.value = null;
+    pendingRoomId.value = "";
+    alert(message || "Call error");
+  });
+
+  // ✅ When user connects/reconnects, ask server to resend pending call invites
+  socket.on("connect", () => {
+    if (me?.id) socket.emit("register-user", { id: me.id, username: me.username });
+    if (me?.id) socket.emit("call:sync"); // <— backend will send pending invites
+  });
 }
 
 /* ================= POSTS ================= */
