@@ -1836,4 +1836,62 @@ onBeforeUnmount(() => {
 
   .rooms { grid-template-columns: 1fr; }
 }
+/* ================== COMPACT TOP DOCK (PHONE-FIRST) ================== */
+@media (max-width: 900px) {
+  .main { padding: 12px; }
+  .panel, .composer, .post { padding: 12px; border-radius: 16px; }
+
+  /* modebar tighter */
+  .modebar { gap: 8px; }
+  .mode { padding: 8px 10px; font-size: 13px; }
+  .search { padding: 9px 10px; width: 100%; }
+
+  /* Live card smaller */
+  .live-pill { padding: 8px 10px; border-radius: 14px; }
+  .live-pill-name { font-size: 13px; }
+
+  /* People strip smaller */
+  .miniAvatars { gap: 8px; }
+  .miniAvatar { width: 40px; height: 40px; border-radius: 14px; font-size: 14px; }
+  .miniDot { width: 10px; height: 10px; right: 3px; bottom: 3px; }
+
+  /* Hide big people list by default on phone unless opened */
+  .peopleList { max-height: 180px; }
+
+  /* Composer tighter */
+  .composer-head .avatar.big { width: 44px; height: 44px; }
+  .input { padding: 10px; border-radius: 12px; }
+  .upload-row { gap: 8px; }
+  .file-pill { padding: 8px 10px; font-size: 13px; }
+
+  /* Post media looks better on phone */
+  .media { border-radius: 14px; max-height: 560px; }
+
+  /* Chat drawer bottom sheet nicer */
+  .chatDrawer { border-radius: 18px 18px 0 0; }
+  .chatPanel { border-radius: 18px 18px 0 0; }
+}
+
+/* ================== PEOPLE STRIP = “NEXT TO CHAT” FEEL ================== */
+/* Make People card act like a compact top-row tool area */
+.dockActions .btn,
+.dockActions .ghostBtn {
+  padding: 8px 10px;
+  border-radius: 999px;
+  font-size: 13px;
+}
+
+/* ================== BOTTOM NAV: iPhone SAFE AREA + ACTIVE GLOW ================== */
+.bottomNav{
+  padding-bottom: calc(14px + env(safe-area-inset-bottom));
+}
+
+.bn.on{
+  color: #fff;
+  text-shadow: 0 0 18px rgba(255,75,43,0.55);
+}
+
+.bn.on .bnI{
+  filter: drop-shadow(0 0 12px rgba(255,75,43,0.55));
+}
 </style>
