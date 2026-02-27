@@ -13,6 +13,7 @@ import twilio from "twilio";
 import { pool } from "./db.js";
 
 // Routes
+import reelsRoutes from "./routes/reels.routes.js";
 import postsRoutes from "./routes/posts.routes.js";
 import usersRoutes from "./routes/users.routes.js";
 import conversationsRoutes from "./routes/conversations.routes.js";
@@ -60,6 +61,7 @@ app.use(express.urlencoded({ extended: true }));
 app.use("/uploads", express.static(path.join(__dirname, "uploads")));
 
 // ✅ no /api
+app.use("/reels", reelsRoutes);
 app.use("/upload", uploadRoutes);
 app.use("/likes", likesRoutes);
 app.use("/posts", postsRoutes);
