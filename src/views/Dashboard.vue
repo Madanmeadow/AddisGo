@@ -85,7 +85,7 @@
                   v-for="u in people.slice(0, 14)"
                   :key="'pmini-' + u.id"
                   class="miniAvatarWrap"
-                  :title="u.display_name || u.username || ('User #' + u.id)"
+                  :title="(u.display_name || u.username || ('User #' + u.id)) + (isOnline(u.id) ? ' • Online' : ' • Offline')"
                   @click="peopleOpen ? null : startCall(u,'audio')"
                 >
                   <div class="miniAvatar">{{ (u.display_name || u.username || "U")[0]?.toUpperCase() }}</div>
@@ -108,20 +108,23 @@
                       <div class="person-name">{{ u.display_name || u.username || ("User #" + u.id) }}</div>
                       <div class="person-sub">
                         <span class="status" :class="{ on: isOnline(u.id) }"></span>
-                        <span class="status-text">{{ isOnline(u.id) ? "Online" : "Offline" }}</span>
+                        <span class="status-text">{{ isOnline(u.id) ? "Online" : "Offline (will queue)" }}</span>
                         <span class="sep">•</span>
                         <span class="id">ID {{ u.id }}</span>
                       </div>
                     </div>
 
                     <div class="person-actions">
-                      <button class="iconbtn" title="Audio Call" :disabled="!isOnline(u.id) || callBusy" @click="startCall(u,'audio')">📞</button>
-                      <button class="iconbtn" title="Video Call" :disabled="!isOnline(u.id) || callBusy" @click="startCall(u,'video')">🎥</button>
+                      <!-- ✅ allow calling even if offline (server queues) -->
+                      <button class="iconbtn" title="Audio Call" :disabled="callBusy" @click="startCall(u,'audio')">📞</button>
+                      <button class="iconbtn" title="Video Call" :disabled="callBusy" @click="startCall(u,'video')">🎥</button>
                     </div>
                   </div>
                 </div>
 
-                <div class="hint mt10">Calls require both users online (green).</div>
+                <div class="hint mt10">
+                  Calls work even if someone is offline — AddisGo will queue the call and ring them when they come online.
+                </div>
               </div>
             </template>
           </div>
@@ -267,7 +270,7 @@
           </article>
         </section>
 
-        <!-- REELS MODE (just a feed mode: videos only) -->
+        <!-- REELS MODE -->
         <section v-else-if="feedMode === 'reels'" class="feed reels">
           <template v-if="loading">
             <div class="state">Loading…</div>
@@ -279,12 +282,7 @@
             <div class="state-sub">Post a video and it will show here.</div>
           </div>
 
-          <article
-            v-else
-            v-for="post in reelsVisible"
-            :key="'r-'+post.id"
-            class="post tt-card"
-          >
+          <article v-else v-for="post in reelsVisible" :key="'r-'+post.id" class="post tt-card">
             <header class="post-head">
               <div class="avatar">{{ getInitial(post.user_id) }}</div>
               <div class="who">
@@ -474,14 +472,18 @@
       </aside>
 
       <!-- INCOMING CALL POPUP -->
-      <div v-if="incomingCall" class="modal-backdrop" @click.self="rejectIncoming">
-        <div class="modal">
-          <div class="modal-title">Incoming {{ incomingCall.kind === "video" ? "Video" : "Audio" }} Call</div>
+      <div v-if="incomingCall" class="modal-backdrop callBackdrop" @click.self="rejectIncoming">
+        <div class="modal callModal">
+          <div class="modal-title">
+            📞 Incoming {{ incomingCall.kind === "video" ? "Video" : "Audio" }} Call
+          </div>
+
           <div class="modal-sub">
             From
             <span class="pill">
               {{ incomingCall.from?.username || incomingCall.fromName || ("User #" + incomingCall.fromUserId) }}
             </span>
+            <span v-if="incomingCall.queued" class="queuedBadge">Queued</span>
           </div>
 
           <div class="modal-actions">
@@ -489,12 +491,18 @@
             <button class="btn btn-primary" @click="acceptIncoming">Accept</button>
           </div>
 
-          <div class="tiny muted mt10">Tip: keep Dashboard open on both devices for best reliability.</div>
+          <div class="tiny muted mt10">
+            Tip: On iPhone, tap once anywhere after login to enable ringtone audio.
+          </div>
+
+          <button v-if="soundLocked" class="chip ghost mt10" @click="unlockCallAudio">
+            🔊 Enable ringtone sound
+          </button>
         </div>
       </div>
 
       <!-- CALLING TOAST -->
-      <div v-if="callingToast" class="toast">
+      <div v-if="callingToast" class="toast callToast">
         <span class="toast-dot"></span>
         {{ callingToast }}
         <button class="mini-x" @click="cancelCall">✕</button>
@@ -535,25 +543,9 @@ const token = localStorage.getItem("token");
 const me = (() => {
   try { return JSON.parse(localStorage.getItem("user") || "null"); } catch { return null; }
 })();
-const ringAudio = new Audio("/sounds/ringtone.mp3"); // put file in /public/sounds/
-ringAudio.loop = true;
 
-function startRingtone() {
-  try {
-    ringAudio.currentTime = 0;
-    ringAudio.play();
-  } catch {}
-}
-
-function stopRingtone() {
-  try {
-    ringAudio.pause();
-    ringAudio.currentTime = 0;
-  } catch {}
-}
 /* ================== SAFETY: normalize posts (fix “dark/invisible cards”) ================== */
 function normalizePost(p) {
-  // If backend returns {reel, post}, pick the post
   const obj = p?.post && p?.reel ? p.post : p;
   if (!obj || typeof obj !== "object") return null;
 
@@ -577,7 +569,6 @@ function setFeedMode(mode) {
   feedMode.value = mode;
 
   nextTick(() => {
-    // ForYou + Reels use video observer
     if (feedMode.value === "foryou" || feedMode.value === "reels") {
       setupVideoObserver();
       applyMuteToAllVideos();
@@ -585,19 +576,11 @@ function setFeedMode(mode) {
       try { videoObserver?.disconnect(); } catch {}
     }
 
-    // ForYou infinite sentinel only
-    if (feedMode.value === "foryou") {
-      setupLoadMoreObserver();
-    } else {
-      try { loadMoreObserver?.disconnect(); } catch {}
-    }
+    if (feedMode.value === "foryou") setupLoadMoreObserver();
+    else { try { loadMoreObserver?.disconnect(); } catch {} }
 
-    // Reels infinite sentinel only
-    if (feedMode.value === "reels") {
-      setupReelsLoadMoreObserver();
-    } else {
-      try { reelsLoadMoreObserver?.disconnect(); } catch {}
-    }
+    if (feedMode.value === "reels") setupReelsLoadMoreObserver();
+    else { try { reelsLoadMoreObserver?.disconnect(); } catch {} }
   });
 }
 
@@ -640,67 +623,98 @@ async function fetchPeople() {
     peopleLoading.value = false;
   }
 }
-/* ================= CALLS (BEST VERSION) ================= */
-const incomingCall = ref(null); // { roomId, kind, from, fromUserId, fromName }
+
+/* ================= CALLS (UPGRADED: server-driven ringtone + offline queue) ================= */
+const incomingCall = ref(null); // { roomId, kind, fromUserId, fromName, queued? }
 const callBusy = ref(false);
 const callingToast = ref("");
 const pendingRoomId = ref("");
 const pendingKind = ref("audio");
 
+const soundLocked = ref(true);
+
 /** RINGTONES (put mp3 in /public/sounds/) */
 const ringIn = new Audio("/sounds/ringtone.mp3");   // incoming ringtone
 ringIn.loop = true;
 
-const ringOut = new Audio("/sounds/ringback.mp3");  // optional ringback tone for caller
+const ringOut = new Audio("/sounds/ringback.mp3");  // optional ringback for caller (you can use same ringtone if you want)
 ringOut.loop = true;
 
+/** iPhone/autoplay unlock — must be triggered by a user gesture */
+async function unlockCallAudio() {
+  try {
+    // "warm up" both audios in a muted play/pause cycle
+    ringIn.muted = true;
+    ringOut.muted = true;
+
+    await ringIn.play();
+    ringIn.pause();
+    ringIn.currentTime = 0;
+
+    await ringOut.play();
+    ringOut.pause();
+    ringOut.currentTime = 0;
+
+    ringIn.muted = false;
+    ringOut.muted = false;
+
+    soundLocked.value = false;
+  } catch {
+    // still locked until a gesture succeeds
+    soundLocked.value = true;
+  }
+}
+
 function playRingIn() {
-  try { ringIn.currentTime = 0; ringIn.play(); } catch {}
+  try {
+    ringIn.currentTime = 0;
+    ringIn.play();
+    soundLocked.value = false;
+  } catch {
+    soundLocked.value = true;
+  }
 }
 function stopRingIn() {
   try { ringIn.pause(); ringIn.currentTime = 0; } catch {}
 }
 function playRingOut() {
-  try { ringOut.currentTime = 0; ringOut.play(); } catch {}
+  try {
+    ringOut.currentTime = 0;
+    ringOut.play();
+    soundLocked.value = false;
+  } catch {
+    soundLocked.value = true;
+  }
 }
 function stopRingOut() {
   try { ringOut.pause(); ringOut.currentTime = 0; } catch {}
+}
+
+function stopAllRings() {
+  stopRingIn();
+  stopRingOut();
 }
 
 function startCall(user, kind = "audio") {
   if (!socket) return;
   if (!token) return alert("Login again to call.");
 
-  // ✅ DO NOT block offline users anymore
-  // if (!isOnline(user.id)) return alert("User is offline.");
+  // try unlock sound on the click gesture (helps iPhone)
+  unlockCallAudio();
 
   callBusy.value = true;
   pendingKind.value = kind;
   callingToast.value = `Calling ${user.display_name || user.username || "user"}…`;
   pendingRoomId.value = "";
 
-  // Optional: ringback while waiting
+  // caller ringback while waiting (server also sends call:ring side=caller)
   playRingOut();
 
-  socket.emit("call:request", { toUserId: user.id, kind }, (ack) => {
-    // ack is optional if your backend sends it
-    if (ack?.error) {
-      stopRingOut();
-      callBusy.value = false;
-      callingToast.value = "";
-      alert(ack.error);
-    }
-    // if ack says queued, keep toast (callee will see when they come online)
-    if (ack?.queued) {
-      callingToast.value = `Queued… waiting for ${user.display_name || user.username || "user"} to come online`;
-    }
-  });
+  socket.emit("call:request", { toUserId: user.id, kind });
 }
 
 function cancelCall() {
-  stopRingOut();
-  stopRingIn();
-
+  stopAllRings();
   callingToast.value = "";
   callBusy.value = false;
   if (pendingRoomId.value) socket?.emit("call:cancel", { roomId: pendingRoomId.value });
@@ -710,13 +724,15 @@ function cancelCall() {
 function acceptIncoming() {
   if (!incomingCall.value || !socket) return;
 
-  stopRingIn();      // ✅ stop ringtone
-  stopRingOut();
+  unlockCallAudio();
+  stopAllRings();
 
   const roomId = incomingCall.value.roomId;
   const kind = incomingCall.value.kind || "audio";
 
   socket.emit("call:accept", { roomId });
+
+  // your Call.vue should emit call:join when it loads
   router.push(`/call?roomId=${encodeURIComponent(roomId)}&role=callee&kind=${encodeURIComponent(kind)}`);
   incomingCall.value = null;
 }
@@ -724,37 +740,61 @@ function acceptIncoming() {
 function rejectIncoming() {
   if (!incomingCall.value || !socket) return;
 
-  stopRingIn();
-  stopRingOut();
-
+  stopAllRings();
   socket.emit("call:reject", { roomId: incomingCall.value.roomId });
   incomingCall.value = null;
 }
 
-/** Hook these into your existing socket.on handlers */
 function wireCallSocketHandlers() {
+  // ✅ server-driven ringtone events
+  socket.on("call:ring", ({ roomId, kind, side } = {}) => {
+    // side: "caller" => ringback, "callee" => ringtone
+    if (side === "callee") playRingIn();
+    else playRingOut();
+  });
+
+  socket.on("call:stopRing", () => {
+    stopAllRings();
+  });
+
   socket.on("call:incoming", (p) => {
     incomingCall.value = p;
-    playRingIn(); // ✅ ringtone on incoming
+
+    // server usually also sends call:ring side=callee, but keep fallback:
+    playRingIn();
   });
 
   socket.on("call:ringing", ({ roomId, kind }) => {
+    // caller gets roomId here
     pendingRoomId.value = roomId;
     callingToast.value = `Ringing… (${kind || pendingKind.value})`;
-    // keep ringOut playing until accepted/rejected/ended
+
+    // move to call screen (caller)
     router.push(`/call?roomId=${encodeURIComponent(roomId)}&role=caller&kind=${encodeURIComponent(kind || pendingKind.value)}`);
   });
 
+  socket.on("call:status", ({ calleeOnline } = {}) => {
+    if (calleeOnline === false) {
+      callingToast.value = "Queued… user is offline. We’ll ring them when they come online.";
+    }
+  });
+
+  socket.on("call:busy", ({ message } = {}) => {
+    stopAllRings();
+    callingToast.value = "";
+    callBusy.value = false;
+    pendingRoomId.value = "";
+    alert(message || "User is busy.");
+  });
+
   socket.on("call:accepted", () => {
-    stopRingOut();
-    stopRingIn();
+    stopAllRings();
     callingToast.value = "";
     callBusy.value = false;
   });
 
   socket.on("call:rejected", () => {
-    stopRingOut();
-    stopRingIn();
+    stopAllRings();
     callingToast.value = "";
     callBusy.value = false;
     pendingRoomId.value = "";
@@ -762,28 +802,29 @@ function wireCallSocketHandlers() {
   });
 
   socket.on("call:ended", () => {
-    stopRingOut();
-    stopRingIn();
+    stopAllRings();
     callingToast.value = "";
     callBusy.value = false;
     incomingCall.value = null;
     pendingRoomId.value = "";
   });
 
+  socket.on("call:timeout", () => {
+    stopAllRings();
+    callingToast.value = "";
+    callBusy.value = false;
+    incomingCall.value = null;
+    pendingRoomId.value = "";
+    alert("No answer.");
+  });
+
   socket.on("call:error", ({ message } = {}) => {
-    stopRingOut();
-    stopRingIn();
+    stopAllRings();
     callingToast.value = "";
     callBusy.value = false;
     incomingCall.value = null;
     pendingRoomId.value = "";
     alert(message || "Call error");
-  });
-
-  // ✅ When user connects/reconnects, ask server to resend pending call invites
-  socket.on("connect", () => {
-    if (me?.id) socket.emit("register-user", { id: me.id, username: me.username });
-    if (me?.id) socket.emit("call:sync"); // <— backend will send pending invites
   });
 }
 
@@ -862,7 +903,6 @@ async function submitPost() {
   if (!token) return alert("Login again to post.");
   if (!caption.value.trim() && !imageFile.value && !videoFile.value) return;
 
-  // ✅ Reels tab posts to /reels (and backend also creates /posts)
   if (feedMode.value === "reels") return await submitReel();
 
   try {
@@ -932,7 +972,6 @@ async function submitReel() {
       return;
     }
 
-    // backend should return { reel, post } — we add the post to the main posts feed
     const clean = normalizePost(data?.post || data);
     if (clean) {
       posts.value.unshift(clean);
@@ -967,7 +1006,6 @@ const baseFiltered = computed(() => {
 const followingPosts = computed(() => baseFiltered.value.slice(0, 40));
 const threadsPosts = computed(() => baseFiltered.value.slice(0, 60));
 
-/* Reels: video-only from posts (so it matches “Also show in For You”) */
 const reelsPosts = computed(() => baseFiltered.value.filter((p) => !!p.video_url));
 
 /* ================= THREADS MEDIA TOGGLE ================= */
@@ -1372,7 +1410,6 @@ function setupVideoObserver() {
       const postId = Number(video.getAttribute("data-post-id") || 0);
       applyMuteToVideo(postId);
 
-      // only play videos in foryou or reels
       if (feedMode.value !== "foryou" && feedMode.value !== "reels") {
         try { video.pause(); } catch {}
         continue;
@@ -1393,9 +1430,20 @@ function setupVideoObserver() {
 }
 
 /* ================= INIT ================= */
+function oneTapUnlockHandler() {
+  // one tap anywhere unlocks ringtone audio (best for iPhone)
+  unlockCallAudio();
+  window.removeEventListener("pointerdown", oneTapUnlockHandler);
+  window.removeEventListener("touchstart", oneTapUnlockHandler);
+}
+
 onMounted(async () => {
   await fetchPosts();
   if (token) await fetchPeople();
+
+  // set up one-tap audio unlock
+  window.addEventListener("pointerdown", oneTapUnlockHandler, { once: true });
+  window.addEventListener("touchstart", oneTapUnlockHandler, { once: true });
 
   socket = io(apiUrl, { transports: ["websocket", "polling"] });
 
@@ -1405,6 +1453,8 @@ onMounted(async () => {
     socket.emit("get-live-list");
   });
 
+  wireCallSocketHandlers();
+
   socket.on("receive-message", (msg) => {
     chatMessages.value.push(msg);
     nextTick(scrollChatToBottom);
@@ -1412,30 +1462,6 @@ onMounted(async () => {
 
   socket.on("live-list", (streams) => { liveStreams.value = Array.isArray(streams) ? streams : []; });
   socket.on("online-users", (pairs) => { onlinePairs.value = Array.isArray(pairs) ? pairs : []; });
-
-  socket.on("call:ringing", ({ roomId, kind }) => {
-    pendingRoomId.value = roomId;
-    callingToast.value = `Calling… (${kind || pendingKind.value})`;
-    router.push(`/call?roomId=${encodeURIComponent(roomId)}&role=caller&kind=${encodeURIComponent(kind || pendingKind.value)}`);
-  });
-
-  socket.on("call:incoming", (p) => { incomingCall.value = p; });
-  socket.on("call:accepted", () => { callingToast.value = ""; callBusy.value = false; });
-
-  socket.on("call:ended", () => {
-    callingToast.value = "";
-    callBusy.value = false;
-    incomingCall.value = null;
-    pendingRoomId.value = "";
-  });
-
-  socket.on("call:error", ({ message } = {}) => {
-    callingToast.value = "";
-    callBusy.value = false;
-    incomingCall.value = null;
-    pendingRoomId.value = "";
-    alert(message || "Call error");
-  });
 
   await nextTick();
   if (feedMode.value === "foryou") {
@@ -1446,6 +1472,8 @@ onMounted(async () => {
 });
 
 onBeforeUnmount(() => {
+  stopAllRings();
+
   try { socket?.disconnect(); } catch {}
   socket = null;
 
@@ -1455,6 +1483,9 @@ onBeforeUnmount(() => {
   loadMoreObserver = null;
   reelsLoadMoreObserver = null;
   videoObserver = null;
+
+  window.removeEventListener("pointerdown", oneTapUnlockHandler);
+  window.removeEventListener("touchstart", oneTapUnlockHandler);
 });
 </script>
 
@@ -1599,6 +1630,7 @@ onBeforeUnmount(() => {
 .ghost { opacity: .92; }
 .ghostBtn{ opacity:.92; background: rgba(255,255,255,0.10); }
 .chip.mini{ padding: 8px 10px; font-size: 12px; }
+.mt10 { margin-top: 10px; }
 
 /* Live pills */
 .live-strip{ display: grid; gap: 10px; }
@@ -1947,7 +1979,6 @@ onBeforeUnmount(() => {
 .state-title{ font-weight: 950; font-size: 18px; }
 .state-sub{ opacity:.75; margin-top: 4px; }
 .hint { opacity: .75; font-size: 13px; }
-.mt10 { margin-top: 10px; }
 
 /* Incoming modal */
 .modal-backdrop { position: fixed; inset: 0; z-index: 80; background: rgba(0,0,0,0.58); display: grid; place-items: center; padding: 16px; }
@@ -1958,10 +1989,34 @@ onBeforeUnmount(() => {
 .modal-actions { display:flex; gap:10px; justify-content:flex-end; margin-top: 14px; }
 .tiny { font-size: 12px; }
 
+/* Call modal extra color */
+.callBackdrop{
+  background:
+    radial-gradient(1200px 700px at 20% 0%, rgba(255,75,43,0.25), rgba(0,0,0,0.62)),
+    radial-gradient(900px 600px at 80% 20%, rgba(124,58,237,0.20), transparent);
+}
+.callModal{
+  border-color: rgba(255,75,43,0.30);
+  box-shadow: 0 18px 70px rgba(0,0,0,0.55);
+}
+.queuedBadge{
+  margin-left: 10px;
+  padding: 6px 10px;
+  border-radius: 999px;
+  background: rgba(124,58,237,0.18);
+  border: 1px solid rgba(124,58,237,0.35);
+  font-weight: 950;
+  font-size: 12px;
+}
+
 /* Calling toast */
 .toast { position: fixed; left: 50%; bottom: 92px; transform: translateX(-50%); z-index: 90; background: rgba(12, 18, 32, 0.95); border: 1px solid rgba(255,255,255,0.14); padding: 10px 12px; border-radius: 999px; display:flex; align-items:center; gap:10px; }
 .toast-dot { width: 10px; height: 10px; border-radius: 50%; background: #00e676; }
 .mini-x { border:none; cursor:pointer; background: rgba(255,255,255,0.10); color:white; border-radius: 10px; padding: 4px 8px; }
+.callToast{
+  border-color: rgba(255,75,43,0.30);
+  box-shadow: 0 10px 34px rgba(0,0,0,0.40);
+}
 
 /* Infinite sentinel */
 .load-more{ text-align:center; padding: 18px 10px; opacity: .75; }
