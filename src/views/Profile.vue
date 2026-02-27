@@ -3,10 +3,12 @@
     <div class="wrap">
       <header class="top">
         <button class="back" @click="router.back()">←</button>
-        <div>
+
+        <div class="hdr">
           <div class="h1">Profile</div>
           <div class="sub">Your account</div>
         </div>
+
         <button class="done" @click="save" :disabled="saving">
           {{ saving ? "Saving…" : "Done" }}
         </button>
@@ -54,18 +56,27 @@ import { useRouter } from "vue-router";
 import Layout from "../components/Layout.vue";
 
 const router = useRouter();
-const apiUrl = import.meta.env.VITE_API_URL;
+const apiUrl = import.meta.env.VITE_API_URL; // e.g. https://xxxx.up.railway.app
 const token = localStorage.getItem("token");
 
 const me = (() => {
-  try { return JSON.parse(localStorage.getItem("user") || "null"); } catch { return null; }
+  try {
+    return JSON.parse(localStorage.getItem("user") || "null");
+  } catch {
+    return null;
+  }
 })();
 
 const displayName = ref(me?.display_name || me?.username || "");
 const bio = ref(me?.bio || "");
-const avatarUrl = ref(me?.avatar_url || me?.photo_url || ""); // saved URL in DB
-const avatarPreview = ref(avatarUrl.value || ""); // what we show immediately on iPhone
 
+// saved avatar URL (from DB / localStorage)
+const avatarUrl = ref(me?.avatar_url || me?.photo_url || "");
+
+// what we show in UI (can be blob: for preview)
+const avatarPreview = ref(avatarUrl.value || "");
+
+// chosen file
 const pickedFile = ref(null);
 
 const saving = ref(false);
@@ -74,15 +85,23 @@ const ok = ref("");
 
 const initial = computed(() => (displayName.value?.[0] || "A").toUpperCase());
 
+function joinUrl(base, path) {
+  // Safari-safe absolute URL builder
+  const b = String(base || "").trim();
+  if (!b) return String(path || "");
+  return new URL(String(path || ""), b.endsWith("/") ? b : b + "/").toString();
+}
+
 function onPickAvatar(e) {
   err.value = "";
   ok.value = "";
+
   const file = e.target.files?.[0];
   if (!file) return;
 
   pickedFile.value = file;
 
-  // ✅ iPhone-safe preview
+  // iPhone-safe preview
   try {
     avatarPreview.value = URL.createObjectURL(file);
   } catch {
@@ -91,39 +110,53 @@ function onPickAvatar(e) {
 }
 
 async function uploadAvatarIfNeeded() {
-  if (!pickedFile.value) return avatarUrl.value; // no change
+  // If user did not pick new file, return current saved URL
+  if (!pickedFile.value) {
+    if (avatarUrl.value && String(avatarUrl.value).startsWith("http")) return avatarUrl.value;
+    return ""; // ok if empty
+  }
 
   if (!token) throw new Error("Login again to upload.");
 
   const form = new FormData();
-  // IMPORTANT: your backend may expect "file" or "image"
-  // Try "file" first (most common). If your upload route expects "image", change it.
+
+  // ✅ MUST match backend: uploadToCloudinary.single("file")
   form.append("file", pickedFile.value);
 
-  const res = await fetch(`${apiUrl}/upload`, {
+  const uploadEndpoint = joinUrl(apiUrl, "upload");
+
+  const res = await fetch(uploadEndpoint, {
     method: "POST",
     headers: { Authorization: `Bearer ${token}` },
     body: form,
   });
 
-  const data = await res.json();
-  if (!res.ok) throw new Error(data?.error || "Upload failed");
+  // safer parsing (backend should return JSON; this prevents crashes)
+  const ct = res.headers.get("content-type") || "";
+  const data = ct.includes("application/json") ? await res.json() : await res.text();
 
-  // Accept multiple possible response shapes:
-  const url =
-    data?.url ||
-    data?.secure_url ||
-    data?.fileUrl ||
-    data?.imageUrl ||
-    data?.path;
-
-  if (!url || typeof url !== "string") {
-    throw new Error("Upload succeeded but no URL returned.");
+  if (!res.ok) {
+    const msg = data?.message || data?.error || String(data) || "Upload failed";
+    throw new Error(msg);
   }
 
-  // Must be a valid http(s) url OR a server path like "/uploads/xxx.jpg"
-  avatarUrl.value = url.startsWith("http") ? url : `${apiUrl}${url}`;
-  return avatarUrl.value;
+  // ✅ Your backend returns: { ok:true, url, type, publicId }
+  const raw = data?.url;
+
+  if (!raw || typeof raw !== "string") {
+    throw new Error("Upload succeeded but backend returned no url");
+  }
+
+  // Convert relative paths (if any) to absolute URL
+  const finalUrl = raw.startsWith("http") ? raw : joinUrl(apiUrl, raw);
+
+  // Never allow blob: or empty to be saved
+  if (!finalUrl.startsWith("http")) {
+    throw new Error("Avatar URL is not a valid http(s) URL");
+  }
+
+  avatarUrl.value = finalUrl;
+  return finalUrl;
 }
 
 async function save() {
@@ -133,28 +166,48 @@ async function save() {
   try {
     saving.value = true;
 
+    // 1) upload if needed -> returns a REAL https url
     const finalAvatar = await uploadAvatarIfNeeded();
 
-    // ✅ Update profile in DB
-    // Change this endpoint if yours differs.
-    const res = await fetch(`${apiUrl}/users/me`, {
+    // 2) choose profile update endpoint
+    // Default: PUT /users/me
+    let updateEndpoint = joinUrl(apiUrl, "users/me");
+
+    // If your backend DOES NOT have /users/me, uncomment this instead:
+    // updateEndpoint = joinUrl(apiUrl, `users/${me?.id}`);
+
+    const payload = {
+      display_name: displayName.value,
+      bio: bio.value,
+      avatar_url: finalAvatar, // must be http(s) or ""
+    };
+
+    const res = await fetch(updateEndpoint, {
       method: "PUT",
       headers: {
         "Content-Type": "application/json",
         Authorization: `Bearer ${token}`,
       },
-      body: JSON.stringify({
-        display_name: displayName.value,
-        bio: bio.value,
-        avatar_url: finalAvatar,
-      }),
+      body: JSON.stringify(payload),
     });
 
-    const data = await res.json();
-    if (!res.ok) throw new Error(data?.error || "Failed to save profile");
+    const ct = res.headers.get("content-type") || "";
+    const body = ct.includes("application/json") ? await res.json() : await res.text();
 
-    // ✅ Update localStorage user so Dashboard shows it
-    const merged = { ...(me || {}), ...data, display_name: displayName.value, bio: bio.value, avatar_url: finalAvatar };
+    if (!res.ok) {
+      const msg = body?.message || body?.error || String(body) || "Failed to save profile";
+      throw new Error(msg);
+    }
+
+    // Update local storage user so Dashboard shows it immediately
+    const merged = {
+      ...(me || {}),
+      ...(typeof body === "object" && body ? body : {}),
+      display_name: displayName.value,
+      bio: bio.value,
+      avatar_url: finalAvatar || avatarUrl.value || "",
+    };
+
     localStorage.setItem("user", JSON.stringify(merged));
 
     ok.value = "Saved ✅";
@@ -167,6 +220,9 @@ async function save() {
 }
 
 async function copyLink() {
+  err.value = "";
+  ok.value = "";
+
   const url = `${window.location.origin}/profile/${me?.id || ""}`;
   try {
     await navigator.clipboard.writeText(url);
@@ -179,20 +235,34 @@ async function copyLink() {
 
 <style scoped>
 .wrap { padding: 16px; color: white; }
+
 .top{
-  display:flex; align-items:center; justify-content:space-between;
-  gap: 12px; margin-bottom: 12px;
+  display:flex;
+  align-items:center;
+  justify-content:space-between;
+  gap: 12px;
+  margin-bottom: 12px;
 }
+.hdr{ flex: 1; text-align:center; }
 .h1{ font-size: 22px; font-weight: 950; }
 .sub{ opacity:.7; font-size: 13px; }
+
 .back{
-  border:none; background: rgba(255,255,255,0.10); color:white;
-  padding: 10px 12px; border-radius: 14px; cursor:pointer;
+  border:none;
+  background: rgba(255,255,255,0.10);
+  color:white;
+  padding: 10px 12px;
+  border-radius: 14px;
+  cursor:pointer;
 }
+
 .done{
-  border:none; color:white; cursor:pointer;
+  border:none;
+  color:white;
+  cursor:pointer;
   background: linear-gradient(45deg, #ff416c, #ff4b2b);
-  padding: 10px 14px; border-radius: 999px;
+  padding: 10px 14px;
+  border-radius: 999px;
 }
 .done:disabled{ opacity:.6; }
 
@@ -204,22 +274,37 @@ async function copyLink() {
   backdrop-filter: blur(10px);
 }
 
-.avatarBox{ display:grid; justify-items:center; gap: 12px; margin-bottom: 14px; }
+.avatarBox{
+  display:grid;
+  justify-items:center;
+  gap: 12px;
+  margin-bottom: 14px;
+}
 .avatar{
-  width: 150px; height: 150px;
+  width: 150px;
+  height: 150px;
   border-radius: 28px;
   background: rgba(0,0,0,0.35);
   border: 1px solid rgba(255,255,255,0.14);
   overflow:hidden;
-  display:grid; place-items:center;
+  display:grid;
+  place-items:center;
 }
-.avatar img{ width:100%; height:100%; object-fit:cover; }
-.fallback{ font-size: 54px; font-weight: 950; }
+.avatar img{
+  width:100%;
+  height:100%;
+  object-fit:cover;
+}
+.fallback{
+  font-size: 54px;
+  font-weight: 950;
+}
 
 .changeBtn{
   background: rgba(255,255,255,0.10);
   border: 1px solid rgba(255,255,255,0.14);
-  padding: 10px 14px; border-radius: 999px;
+  padding: 10px 14px;
+  border-radius: 999px;
   cursor:pointer;
 }
 .changeBtn input{ display:none; }
@@ -250,22 +335,27 @@ async function copyLink() {
 }
 
 .row{ display:flex; gap: 10px; margin-top: 14px; }
+
 .ghost{
   flex:1;
-  border:none; cursor:pointer;
+  border:none;
+  cursor:pointer;
   background: rgba(255,255,255,0.10);
   color:white;
   padding: 12px;
   border-radius: 14px;
 }
+
 .save{
   flex:1;
-  border:none; cursor:pointer;
+  border:none;
+  cursor:pointer;
   background: linear-gradient(45deg, #ff416c, #ff4b2b);
   color:white;
   padding: 12px;
   border-radius: 14px;
 }
+
 .err{
   margin-top: 12px;
   padding: 12px;
@@ -273,6 +363,7 @@ async function copyLink() {
   background: rgba(255,80,80,0.18);
   border: 1px solid rgba(255,80,80,0.35);
 }
+
 .ok{
   margin-top: 12px;
   padding: 12px;
