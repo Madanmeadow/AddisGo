@@ -1,50 +1,57 @@
+// server/routes/upload.routes.js
 import express from "express";
 import { authenticateToken } from "../middleware/auth.middleware.js";
 import { uploadToCloudinary } from "../utils/cloudinaryUpload.js";
 
 const router = express.Router();
 
-router.post(
-  "/",
-  authenticateToken,
-  uploadToCloudinary.single("file"),
-  async (req, res) => {
+// Accept BOTH keys: "file" and "image"
+const uploadAny = uploadToCloudinary.fields([
+  { name: "file", maxCount: 1 },
+  { name: "image", maxCount: 1 },
+]);
+
+router.post("/", authenticateToken, (req, res) => {
+  uploadAny(req, res, (err) => {
+    // ✅ Multer errors become JSON (no more HTML Internal Server Error)
+    if (err) {
+      console.error("MULTER UPLOAD ERROR:", err);
+      return res.status(400).json({
+        ok: false,
+        message: err.message || "Upload error",
+        code: err.code || "UPLOAD_ERROR",
+      });
+    }
+
     try {
-      if (!req.file) {
+      // Pick whichever key user sent
+      const file =
+        req.files?.file?.[0] ||
+        req.files?.image?.[0] ||
+        req.file ||
+        null;
+
+      if (!file) {
         return res.status(400).json({ ok: false, message: "No file uploaded" });
       }
 
-      // ✅ Cloudinary middleware can return different fields depending on version/config.
-      const urlRaw =
-        req.file?.path ||
-        req.file?.secure_url ||
-        req.file?.url ||
-        req.file?.location ||
-        "";
+      // multer-storage-cloudinary usually gives .path as the URL
+      const url =
+        (file.path || file.secure_url || file.url || "").replace("http://", "https://");
 
-      const url = String(urlRaw).replace("http://", "https://");
-
-      if (!url || !url.startsWith("http")) {
-        // This is the exact scenario that causes iPhone "pattern" error later.
-        console.error("Upload: invalid url from req.file =", req.file);
-        return res.status(500).json({ ok: false, message: "Upload returned invalid URL" });
-      }
-
-      const type = req.file.mimetype?.startsWith("video/") ? "video" : "image";
+      const type = file.mimetype?.startsWith("video/") ? "video" : "image";
 
       return res.json({
         ok: true,
         url,
         type,
-        // Cloudinary often provides public_id; filename may be undefined
-        publicId: req.file?.filename || req.file?.public_id || null,
+        publicId: file.filename || file.public_id || null,
       });
-    } catch (err) {
-      console.error("Upload error:", err);
+    } catch (e) {
+      console.error("UPLOAD ROUTE ERROR:", e);
       return res.status(500).json({ ok: false, message: "Upload failed" });
     }
-  }
-);
+  });
+});
 
 export default router;
-
