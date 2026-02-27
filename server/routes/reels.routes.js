@@ -1,155 +1,337 @@
 import express from "express";
+import multer from "multer";
+import jwt from "jsonwebtoken";
+import { v2 as cloudinary } from "cloudinary";
+
 import { pool } from "../db.js";
 import { authenticateToken } from "../middleware/auth.middleware.js";
 
 const router = express.Router();
 
-/* =========================
-   GET /reels?cursor=ID&limit=10
-   Infinite scroll (newest first)
-========================= */
-router.get("/", authenticateToken, async (req, res) => {
+/* ---------------------------
+   Cloudinary config
+--------------------------- */
+if (!cloudinary.config().cloud_name) {
+  cloudinary.config({
+    cloud_name: process.env.CLOUDINARY_CLOUD_NAME,
+    api_key: process.env.CLOUDINARY_API_KEY,
+    api_secret: process.env.CLOUDINARY_API_SECRET,
+  });
+}
+
+/* ---------------------------
+   Multer (memory)
+--------------------------- */
+const upload = multer({
+  storage: multer.memoryStorage(),
+  limits: { fileSize: 60 * 1024 * 1024 }, // 60MB
+});
+
+/* ---------------------------
+   Helpers
+--------------------------- */
+function safeInt(v, fallback) {
+  const n = Number(v);
+  return Number.isFinite(n) && n > 0 ? n : fallback;
+}
+
+function getUserIdOptional(req) {
   try {
-    const limit = Math.min(Number(req.query.limit || 10), 30);
-    const cursor = Number(req.query.cursor || 0);
+    const h = req.headers.authorization || "";
+    if (!h.startsWith("Bearer ")) return null;
+    const token = h.slice(7);
+    const decoded = jwt.verify(token, process.env.JWT_SECRET);
+    return decoded?.id ?? decoded?.user?.id ?? null;
+  } catch {
+    return null;
+  }
+}
 
-    const where = cursor ? `WHERE r.id < $1` : "";
-    const params = cursor ? [cursor, limit] : [limit];
+function detectResourceType(mimetype = "") {
+  if (mimetype.startsWith("video/")) return "video";
+  if (mimetype.startsWith("image/")) return "image";
+  // fallback: treat unknown as "video" if extension is video-like (client sometimes omits mimetype)
+  return "video";
+}
 
-    const sql = `
+function uploadToCloudinaryBuffer(buffer, { folder = "addisgo/reels", resource_type = "video" } = {}) {
+  return new Promise((resolve, reject) => {
+    const stream = cloudinary.uploader.upload_stream(
+      {
+        folder,
+        resource_type, // "video" or "image"
+      },
+      (err, result) => {
+        if (err) return reject(err);
+        resolve(result);
+      }
+    );
+    stream.end(buffer);
+  });
+}
+
+/* =========================================================
+   GET /reels
+   - page, limit
+   - returns counts + liked_by_me (if auth provided)
+========================================================= */
+router.get("/", async (req, res) => {
+  const page = safeInt(req.query.page, 1);
+  const limit = safeInt(req.query.limit, 20);
+  const offset = (page - 1) * limit;
+
+  const meId = getUserIdOptional(req);
+
+  try {
+    const result = await pool.query(
+      `
       SELECT
         r.id,
         r.user_id,
         r.caption,
         r.video_url,
-        r.thumb_url,
-        r.duration_sec,
+        r.image_url,
+        r.media_url,
+        r.media_type,
         r.created_at,
-        COALESCE(u.display_name, u.name, u.email, 'User') AS author_name,
-        COALESCE(u.avatar_url, '') AS author_avatar,
-        (SELECT COUNT(*)::int FROM reel_likes rl WHERE rl.reel_id = r.id) AS like_count,
-        (SELECT COUNT(*)::int FROM reel_comments rc WHERE rc.reel_id = r.id) AS comment_count,
-        EXISTS (
-          SELECT 1 FROM reel_likes rl
-          WHERE rl.reel_id = r.id AND rl.user_id = $${cursor ? 3 : 2}
-        ) AS liked_by_me
+
+        u.username,
+        u.display_name,
+
+        (SELECT COUNT(*)::int FROM reel_likes rl WHERE rl.reel_id = r.id) AS likes_count,
+        (SELECT COUNT(*)::int FROM reel_comments rc WHERE rc.reel_id = r.id) AS comments_count,
+
+        CASE
+          WHEN $3::int IS NULL THEN false
+          ELSE EXISTS (
+            SELECT 1 FROM reel_likes rl2
+            WHERE rl2.reel_id = r.id AND rl2.user_id = $3
+          )
+        END AS liked_by_me
       FROM reels r
       LEFT JOIN users u ON u.id = r.user_id
-      ${where}
-      ORDER BY r.id DESC
-      LIMIT $${cursor ? 2 : 1}
-    `;
+      ORDER BY r.created_at DESC
+      LIMIT $1 OFFSET $2
+      `,
+      [limit, offset, meId]
+    );
 
-    const qparams = cursor ? [cursor, limit, req.user.id] : [limit, req.user.id];
-    const result = await pool.query(sql, qparams);
-
-    const nextCursor = result.rows.length ? result.rows[result.rows.length - 1].id : null;
-    res.json({ items: result.rows, nextCursor });
+    res.json(result.rows);
   } catch (err) {
     console.error("GET /reels ERROR:", err);
     res.status(500).json({ error: err.message });
   }
 });
 
-/* =========================
+/* =========================================================
    POST /reels
-   body: { caption, video_url, thumb_url, duration_sec }
-========================= */
-router.post("/", authenticateToken, async (req, res) => {
-  try {
-    const { caption = "", video_url, thumb_url = "", duration_sec = 0 } = req.body || {};
-    if (!video_url) return res.status(400).json({ error: "video_url required" });
+   - Auth required
+   - Accepts:
+     * file upload: fields: video | image | file
+     * OR body.media_url / body.video_url / body.image_url
+   - Uploads to Cloudinary if file provided
+   - Inserts into reels AND also into posts (so ForYou sees it)
+   - Returns: { reel, post }
+========================================================= */
+router.post(
+  "/",
+  authenticateToken,
+  upload.fields([
+    { name: "video", maxCount: 1 },
+    { name: "image", maxCount: 1 },
+    { name: "file", maxCount: 1 },
+  ]),
+  async (req, res) => {
+    const userId = req.user?.id;
+    const caption = String(req.body?.caption || "").trim();
 
-    const r = await pool.query(
-      `
-      INSERT INTO reels (user_id, caption, video_url, thumb_url, duration_sec)
-      VALUES ($1, $2, $3, $4, $5)
-      RETURNING *
-      `,
-      [req.user.id, String(caption).slice(0, 500), String(video_url), String(thumb_url), Number(duration_sec) || 0]
-    );
+    const file =
+      req.files?.video?.[0] ||
+      req.files?.file?.[0] ||
+      req.files?.image?.[0] ||
+      null;
 
-    res.json(r.rows[0]);
-  } catch (err) {
-    console.error("POST /reels ERROR:", err);
-    res.status(500).json({ error: err.message });
-  }
-});
+    let mediaUrl =
+      req.body?.media_url ||
+      req.body?.video_url ||
+      req.body?.image_url ||
+      null;
 
-/* =========================
-   POST /reels/:id/like  (toggle)
-========================= */
-router.post("/:id/like", authenticateToken, async (req, res) => {
-  try {
-    const reelId = Number(req.params.id);
-    if (!reelId) return res.status(400).json({ error: "Invalid reel id" });
+    let mediaType = String(req.body?.media_type || "").toLowerCase();
 
-    const existing = await pool.query(
-      `SELECT 1 FROM reel_likes WHERE reel_id=$1 AND user_id=$2`,
-      [reelId, req.user.id]
-    );
+    try {
+      // 1) If file exists, upload to Cloudinary
+      if (file?.buffer) {
+        const rt = detectResourceType(file.mimetype);
+        const uploaded = await uploadToCloudinaryBuffer(file.buffer, {
+          folder: "addisgo/reels",
+          resource_type: rt,
+        });
 
-    if (existing.rows.length) {
-      await pool.query(`DELETE FROM reel_likes WHERE reel_id=$1 AND user_id=$2`, [reelId, req.user.id]);
-      return res.json({ ok: true, liked: false });
-    } else {
-      await pool.query(
-        `INSERT INTO reel_likes (reel_id, user_id) VALUES ($1, $2) ON CONFLICT DO NOTHING`,
-        [reelId, req.user.id]
-      );
-      return res.json({ ok: true, liked: true });
+        mediaUrl = uploaded?.secure_url || uploaded?.url || null;
+        mediaType = rt;
+      }
+
+      if (!mediaUrl) {
+        return res.status(400).json({ error: "Reel media is required (upload a file or send media_url)." });
+      }
+
+      // Normalize type
+      if (!mediaType) {
+        // infer from URL if not provided
+        mediaType = /\.(png|jpg|jpeg|gif|webp)(\?|$)/i.test(mediaUrl) ? "image" : "video";
+      }
+
+      const video_url = mediaType === "video" ? mediaUrl : null;
+      const image_url = mediaType === "image" ? mediaUrl : null;
+
+      // 2) Insert into reels + posts in one transaction
+      const client = await pool.connect();
+      try {
+        await client.query("BEGIN");
+
+        const reelIns = await client.query(
+          `
+          INSERT INTO reels (user_id, caption, video_url, image_url, media_url, media_type)
+          VALUES ($1, $2, $3, $4, $5, $6)
+          RETURNING *
+          `,
+          [userId, caption, video_url, image_url, mediaUrl, mediaType]
+        );
+
+        const reel = reelIns.rows[0];
+
+        // ALSO create a normal post (For You feed)
+        const postIns = await client.query(
+          `
+          INSERT INTO posts (user_id, caption, video_url, image_url)
+          VALUES ($1, $2, $3, $4)
+          RETURNING *
+          `,
+          [userId, caption, video_url, image_url]
+        );
+
+        const post = postIns.rows[0];
+
+        await client.query("COMMIT");
+        return res.json({ reel, post });
+      } catch (err) {
+        await client.query("ROLLBACK");
+        throw err;
+      } finally {
+        client.release();
+      }
+    } catch (err) {
+      console.error("POST /reels ERROR:", err);
+      res.status(500).json({ error: err.message });
     }
+  }
+);
+
+/* =========================================================
+   POST /reels/:id/like  (toggle)
+   - returns { liked, likes_count }
+========================================================= */
+router.post("/:id/like", authenticateToken, async (req, res) => {
+  const reelId = Number(req.params.id);
+  const userId = req.user?.id;
+
+  if (!reelId) return res.status(400).json({ error: "Invalid reel id" });
+
+  const client = await pool.connect();
+  try {
+    await client.query("BEGIN");
+
+    const exists = await client.query(
+      `SELECT 1 FROM reel_likes WHERE reel_id = $1 AND user_id = $2 LIMIT 1`,
+      [reelId, userId]
+    );
+
+    let liked = false;
+
+    if (exists.rowCount > 0) {
+      await client.query(`DELETE FROM reel_likes WHERE reel_id = $1 AND user_id = $2`, [reelId, userId]);
+      liked = false;
+    } else {
+      await client.query(
+        `INSERT INTO reel_likes (reel_id, user_id) VALUES ($1, $2)`,
+        [reelId, userId]
+      );
+      liked = true;
+    }
+
+    const countRes = await client.query(
+      `SELECT COUNT(*)::int AS count FROM reel_likes WHERE reel_id = $1`,
+      [reelId]
+    );
+
+    await client.query("COMMIT");
+    res.json({ liked, likes_count: countRes.rows[0]?.count ?? 0 });
   } catch (err) {
+    await client.query("ROLLBACK");
     console.error("POST /reels/:id/like ERROR:", err);
     res.status(500).json({ error: err.message });
+  } finally {
+    client.release();
   }
 });
 
-/* =========================
+/* =========================================================
    GET /reels/:id/comments
-========================= */
-router.get("/:id/comments", authenticateToken, async (req, res) => {
+========================================================= */
+router.get("/:id/comments", async (req, res) => {
+  const reelId = Number(req.params.id);
+  if (!reelId) return res.status(400).json({ error: "Invalid reel id" });
+
   try {
-    const reelId = Number(req.params.id);
-    const r = await pool.query(
+    const result = await pool.query(
       `
-      SELECT rc.id, rc.text, rc.created_at, rc.user_id,
-             COALESCE(u.display_name, u.name, u.email, 'User') AS author_name,
-             COALESCE(u.avatar_url, '') AS author_avatar
-      FROM reel_comments rc
-      LEFT JOIN users u ON u.id = rc.user_id
-      WHERE rc.reel_id=$1
-      ORDER BY rc.id DESC
-      LIMIT 200
+      SELECT
+        c.id,
+        c.reel_id,
+        c.user_id,
+        c.text,
+        c.created_at,
+        u.username,
+        u.display_name
+      FROM reel_comments c
+      LEFT JOIN users u ON u.id = c.user_id
+      WHERE c.reel_id = $1
+      ORDER BY c.created_at DESC
       `,
       [reelId]
     );
-    res.json(r.rows);
+
+    res.json(result.rows);
   } catch (err) {
     console.error("GET /reels/:id/comments ERROR:", err);
     res.status(500).json({ error: err.message });
   }
 });
 
-/* =========================
+/* =========================================================
    POST /reels/:id/comments
-========================= */
+   body: { text }
+========================================================= */
 router.post("/:id/comments", authenticateToken, async (req, res) => {
-  try {
-    const reelId = Number(req.params.id);
-    const text = String(req.body?.text || "").trim();
-    if (!text) return res.status(400).json({ error: "Comment required" });
+  const reelId = Number(req.params.id);
+  const userId = req.user?.id;
+  const text = String(req.body?.text || "").trim();
 
-    const r = await pool.query(
+  if (!reelId) return res.status(400).json({ error: "Invalid reel id" });
+  if (!text) return res.status(400).json({ error: "Comment text is required" });
+
+  try {
+    const result = await pool.query(
       `
       INSERT INTO reel_comments (reel_id, user_id, text)
       VALUES ($1, $2, $3)
       RETURNING *
       `,
-      [reelId, req.user.id, text.slice(0, 500)]
+      [reelId, userId, text]
     );
 
-    res.json(r.rows[0]);
+    res.json(result.rows[0]);
   } catch (err) {
     console.error("POST /reels/:id/comments ERROR:", err);
     res.status(500).json({ error: err.message });
