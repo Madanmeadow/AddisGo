@@ -188,10 +188,10 @@
 
 <script setup>
 import { computed, nextTick, onBeforeUnmount, onMounted, ref } from "vue";
-import Layout from "@/components/Layout.vue";
+import Layout from "../components/Layout.vue";
 
 // If you have auth store:
-import { useAuthStore } from "@/stores/auth.store";
+import { useAuthStore } from "../stores/auth.store";
 
 const auth = useAuthStore();
 const token = computed(() => auth?.token || localStorage.getItem("token") || "");
