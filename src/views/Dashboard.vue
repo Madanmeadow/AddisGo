@@ -42,12 +42,12 @@
         </div>
       </div>
 
-      <!-- GRID -->
-      <div class="page">
-        <!-- LEFT: LIVE + PEOPLE + CALLS -->
-        <aside class="left" :class="{ open: peopleOpen }">
-          <!-- Live panel -->
-          <section class="panel">
+      <!-- ONE SCREEN (everything inside main) -->
+      <main class="main">
+        <!-- TOP PANELS (above feed) -->
+        <section class="top-panels">
+          <!-- Live Now (always visible at top) -->
+          <div class="panel">
             <div class="panel-head">
               <div class="panel-title">🔴 Live Now</div>
               <button class="btn btn-primary" @click="startLive" :disabled="!token">Go Live</button>
@@ -57,7 +57,7 @@
 
             <div
               v-for="stream in liveStreams"
-              :key="stream"
+              :key="'live-top-' + stream"
               class="live-card"
               @click="joinLive(stream)"
               title="Tap to watch"
@@ -69,10 +69,10 @@
               </div>
               <span class="chev">›</span>
             </div>
-          </section>
+          </div>
 
-          <!-- People panel -->
-          <section class="panel">
+          <!-- People (toggle button controls this) -->
+          <div class="panel" v-if="peopleOpen">
             <div class="panel-head">
               <div class="panel-title">👥 People</div>
               <button class="btn" @click="fetchPeople" :disabled="peopleLoading || !token">
@@ -110,462 +110,13 @@
 
               <div class="hint mt10">Tip: calls require both users online (green).</div>
             </div>
-          </section>
+          </div>
 
-          <!-- Quick actions -->
-          <section class="panel">
-            <div class="panel-title">⚡ Quick Actions</div>
-            <div class="stack">
-              <button class="btn w100" @click="scrollToTop">Scroll Top</button>
-              <button class="btn w100" @click="togglePeople">
-                {{ peopleOpen ? "Collapse Sidebar" : "Open Sidebar" }}
-              </button>
-            </div>
-          </section>
-        </aside>
-
-        <!-- CENTER -->
-        <main class="center">
-          <!-- Composer always available (super-app) -->
-          <section class="composer">
-            <div class="composer-head">
-              <div class="avatar big">{{ myInitial }}</div>
-              <div class="composer-meta">
-                <div class="me">{{ me?.username || "You" }}</div>
-                <div class="small muted">Post to the world (works everywhere)</div>
-              </div>
-              <div class="composer-actions">
-                <button class="pill-btn" @click="focusComposer">Create</button>
-              </div>
-            </div>
-
-            <textarea ref="composerRef" v-model="caption" class="input" placeholder="What's happening?" rows="3"></textarea>
-
-            <div class="upload-row">
-              <label class="file-pill">
-                <input type="file" accept="image/*" @change="onPickImage" />
-                📷 Image <span v-if="imageFile" class="file-dot">•</span>
-              </label>
-
-              <label class="file-pill">
-                <input type="file" accept="video/*" @change="onPickVideo" />
-                🎥 Video <span v-if="videoFile" class="file-dot">•</span>
-              </label>
-
-              <button class="btn btn-primary" :disabled="posting || !token" @click="submitPost">
-                {{ posting ? "Posting…" : "Post 🚀" }}
-              </button>
-            </div>
-
-            <div v-if="error" class="alert">{{ error }}</div>
-          </section>
-
-          <!-- MODE CONTENT -->
-          <!-- LIVE MODE -->
-          <section v-if="feedMode === 'live'" class="panel">
-            <div class="panel-head">
-              <div class="panel-title">🔴 Live</div>
-              <button class="btn btn-primary" @click="startLive" :disabled="!token">Go Live</button>
-            </div>
-
-            <div class="hint">Tap any live session below to watch.</div>
-
-            <div v-if="liveStreams.length === 0" class="state">
-              <div class="state-emoji">📡</div>
-              <div class="state-title">Nobody is live</div>
-              <div class="state-sub">Start the first stream.</div>
-            </div>
-
-            <div v-else class="live-grid">
-              <div v-for="stream in liveStreams" :key="'live-center-' + stream" class="live-big" @click="joinLive(stream)">
-                <div class="live-big-top">
-                  <span class="dot"></span>
-                  <span class="live-big-title">{{ stream }}</span>
-                </div>
-                <div class="live-big-sub">Tap to watch</div>
-              </div>
-            </div>
-          </section>
-
-          <!-- ROOMS MODE (Discord-style chat inside center) -->
-          <section v-else-if="feedMode === 'rooms'" class="rooms">
-            <aside class="rooms-left">
-              <div class="rooms-head">🎧 Rooms</div>
-
-              <button class="room" :class="{ on: chatRoom === 'global' }" @click="selectChat('global')">🌍 global</button>
-              <button class="room" :class="{ on: chatRoom === 'support' }" @click="selectChat('support')">🛠 support</button>
-              <button class="room" :class="{ on: chatRoom === 'dev' }" @click="selectChat('dev')">💻 dev</button>
-              <button class="room" :class="{ on: chatRoom === 'random' }" @click="selectChat('random')">🎲 random</button>
-
-              <div class="rooms-hint">Real-time chat via Socket.io</div>
-            </aside>
-
-            <div class="rooms-main">
-              <div class="rooms-top">
-                <div class="rooms-title"># {{ chatRoom }}</div>
-                <button class="chip ghost" @click="toggleChat">Open Right Chat</button>
-              </div>
-
-              <div class="rooms-messages" ref="chatBoxRef">
-                <div v-for="(m, i) in chatMessages" :key="'rm-'+i" class="rm">
-                  <div class="rm-top">
-                    <span class="rm-user">{{ m.from }}</span>
-                    <span class="rm-time">{{ m.created_at ? formatDate(m.created_at) : "" }}</span>
-                  </div>
-                  <div class="rm-text">{{ m.text }}</div>
-                </div>
-              </div>
-
-              <div class="rooms-input">
-                <input v-model="chatText" placeholder="Message #room…" @keydown.enter.prevent="sendChat" />
-                <button class="btn btn-primary" @click="sendChat">Send</button>
-              </div>
-            </div>
-          </section>
-
-          <!-- THREADS MODE (X text-first) -->
-          <section v-else-if="feedMode === 'threads'" class="feed threads">
-            <div v-if="loading" class="state">Loading…</div>
-            <div v-else-if="baseFiltered.length === 0" class="state">
-              <div class="state-emoji">✍️</div>
-              <div class="state-title">No threads yet</div>
-              <div class="state-sub">Write something to start the conversation.</div>
-            </div>
-
-            <article v-else v-for="post in threadsPosts" :key="'t-'+post.id" class="post thread">
-              <header class="post-head">
-                <div class="avatar">{{ getInitial(post.user_id) }}</div>
-                <div class="who">
-                  <div class="name">User #{{ post.user_id }}</div>
-                  <div class="time">{{ formatDate(post.created_at) }}</div>
-                </div>
-              </header>
-
-              <div v-if="post.caption" class="text thread-text">{{ post.caption }}</div>
-
-              <button
-                v-if="post.image_url || post.video_url"
-                class="chip ghost thread-media-toggle"
-                @click="toggleThreadMedia(post.id)"
-              >
-                {{ threadMediaOpen[post.id] ? "Hide media" : "View media" }}
-              </button>
-
-              <div v-if="threadMediaOpen[post.id]" class="thread-media">
-                <img v-if="post.image_url" class="media" :src="getMedia(post.image_url)" loading="lazy" />
-                <video
-                  v-if="post.video_url"
-                  class="media"
-                  :src="getMedia(post.video_url)"
-                  controls
-                  playsinline
-                  preload="metadata"
-                ></video>
-              </div>
-
-              <div class="actions">
-                <button
-                  class="action-btn"
-                  :class="{ active: likesByPost[post.id]?.likedByMe }"
-                  :disabled="likeBusyByPost[post.id]"
-                  @click="toggleLike(post)"
-                >
-                  ❤️ <span class="label">{{ likesByPost[post.id]?.count ?? 0 }}</span>
-                </button>
-
-                <button class="action-btn" @click="toggleComments(post)">
-                  💬 <span class="label">{{ commentCount(post.id) }}</span>
-                </button>
-
-                <div class="spacer"></div>
-
-                <button class="action-btn ghost" @click="sharePost(post)">🔗 <span class="label">Share</span></button>
-              </div>
-
-              <!-- comments unchanged -->
-              <div v-if="commentsOpenByPost[post.id]" class="comments">
-                <div class="comments-head">
-                  <div class="comments-title">Comments</div>
-                  <button class="x" @click="commentsOpenByPost[post.id] = false">✕</button>
-                </div>
-
-                <div v-if="commentLoadingByPost[post.id]" class="comments-state">Loading comments…</div>
-
-                <div v-else class="comments-list">
-                  <div v-if="(commentsByPost[post.id] || []).length === 0" class="comments-empty">
-                    Be the first to comment.
-                  </div>
-
-                  <div v-for="c in (commentsByPost[post.id] || [])" :key="c.id" class="comment">
-                    <div class="comment-top">
-                      <div class="comment-who">
-                        <span class="badge">{{ c.username || c.name || c.email || `User #${c.user_id}` }}</span>
-                        <span class="comment-time">{{ formatDate(c.created_at) }}</span>
-                      </div>
-                    </div>
-                    <div class="comment-text">{{ c.body }}</div>
-                  </div>
-                </div>
-
-                <div class="comment-compose">
-                  <input
-                    v-model="commentDraftByPost[post.id]"
-                    class="comment-input"
-                    placeholder="Write a comment…"
-                    @keydown.enter.prevent="submitComment(post)"
-                  />
-                  <button
-                    class="btn btn-primary"
-                    :disabled="commentBusyByPost[post.id] || !String(commentDraftByPost[post.id] || '').trim()"
-                    @click="submitComment(post)"
-                  >
-                    {{ commentBusyByPost[post.id] ? "Sending…" : "Send" }}
-                  </button>
-                </div>
-
-                <div v-if="commentErrorByPost[post.id]" class="comment-error">
-                  {{ commentErrorByPost[post.id] }}
-                </div>
-              </div>
-            </article>
-          </section>
-
-          <!-- FOLLOWING MODE (Instagram scroll) -->
-          <section v-else-if="feedMode === 'following'" class="feed following">
-            <template v-if="loading">
-              <div class="state">Loading…</div>
-            </template>
-
-            <div v-else-if="baseFiltered.length === 0" class="state">
-              <div class="state-emoji">📸</div>
-              <div class="state-title">No posts yet</div>
-              <div class="state-sub">Be the first to post.</div>
-            </div>
-
-            <article v-else v-for="post in followingPosts" :key="'f-'+post.id" class="post">
-              <header class="post-head">
-                <div class="avatar">{{ getInitial(post.user_id) }}</div>
-                <div class="who">
-                  <div class="name">User #{{ post.user_id }}</div>
-                  <div class="time">{{ formatDate(post.created_at) }}</div>
-                </div>
-              </header>
-
-              <div v-if="post.caption" class="text">{{ post.caption }}</div>
-
-              <img v-if="post.image_url" class="media" :src="getMedia(post.image_url)" loading="lazy" />
-              <video
-                v-if="post.video_url"
-                class="media"
-                :src="getMedia(post.video_url)"
-                controls
-                playsinline
-                preload="metadata"
-              ></video>
-
-              <div class="actions">
-                <button
-                  class="action-btn"
-                  :class="{ active: likesByPost[post.id]?.likedByMe }"
-                  :disabled="likeBusyByPost[post.id]"
-                  @click="toggleLike(post)"
-                >
-                  ❤️ <span class="label">{{ likesByPost[post.id]?.count ?? 0 }}</span>
-                </button>
-
-                <button class="action-btn" @click="toggleComments(post)">
-                  💬 <span class="label">{{ commentCount(post.id) }}</span>
-                </button>
-
-                <div class="spacer"></div>
-
-                <button class="action-btn ghost" @click="sharePost(post)">🔗 <span class="label">Share</span></button>
-              </div>
-
-              <!-- comments unchanged -->
-              <div v-if="commentsOpenByPost[post.id]" class="comments">
-                <div class="comments-head">
-                  <div class="comments-title">Comments</div>
-                  <button class="x" @click="commentsOpenByPost[post.id] = false">✕</button>
-                </div>
-
-                <div v-if="commentLoadingByPost[post.id]" class="comments-state">Loading comments…</div>
-
-                <div v-else class="comments-list">
-                  <div v-if="(commentsByPost[post.id] || []).length === 0" class="comments-empty">
-                    Be the first to comment.
-                  </div>
-
-                  <div v-for="c in (commentsByPost[post.id] || [])" :key="c.id" class="comment">
-                    <div class="comment-top">
-                      <div class="comment-who">
-                        <span class="badge">{{ c.username || c.name || c.email || `User #${c.user_id}` }}</span>
-                        <span class="comment-time">{{ formatDate(c.created_at) }}</span>
-                      </div>
-                    </div>
-                    <div class="comment-text">{{ c.body }}</div>
-                  </div>
-                </div>
-
-                <div class="comment-compose">
-                  <input
-                    v-model="commentDraftByPost[post.id]"
-                    class="comment-input"
-                    placeholder="Write a comment…"
-                    @keydown.enter.prevent="submitComment(post)"
-                  />
-                  <button
-                    class="btn btn-primary"
-                    :disabled="commentBusyByPost[post.id] || !String(commentDraftByPost[post.id] || '').trim()"
-                    @click="submitComment(post)"
-                  >
-                    {{ commentBusyByPost[post.id] ? "Sending…" : "Send" }}
-                  </button>
-                </div>
-
-                <div v-if="commentErrorByPost[post.id]" class="comment-error">
-                  {{ commentErrorByPost[post.id] }}
-                </div>
-              </div>
-            </article>
-          </section>
-
-          <!-- FOR YOU MODE (TikTok snap + autoplay) -->
-          <section v-else class="feed tiktok">
-            <template v-if="loading">
-              <div class="state">Loading…</div>
-            </template>
-
-            <div v-else-if="baseFiltered.length === 0" class="state">
-              <div class="state-emoji">🎬</div>
-              <div class="state-title">No videos yet</div>
-              <div class="state-sub">Post a video and it will autoplay here.</div>
-            </div>
-
-            <article
-              v-else
-              v-for="post in visiblePosts"
-              :key="'fy-'+post.id"
-              class="post tt-card"
-              :id="`post-${post.id}`"
-            >
-              <header class="post-head">
-                <div class="avatar">{{ getInitial(post.user_id) }}</div>
-                <div class="who">
-                  <div class="name">User #{{ post.user_id }}</div>
-                  <div class="time">{{ formatDate(post.created_at) }}</div>
-                </div>
-
-                <button class="tt-ic" title="Sound" @click="toggleGlobalMute">
-                  {{ globalMuted ? "🔇" : "🔊" }}
-                </button>
-              </header>
-
-              <div v-if="post.caption" class="text">{{ post.caption }}</div>
-
-              <img v-if="post.image_url" class="media" :src="getMedia(post.image_url)" loading="lazy" />
-
-              <div v-if="post.video_url" class="tt-video-wrap">
-                <video
-                  class="media tt-video"
-                  :data-post-id="post.id"
-                  :src="getMedia(post.video_url)"
-                  playsinline
-                  preload="metadata"
-                  loop
-                  muted
-                  @click="toggleVideoMute(post.id)"
-                ></video>
-
-                <div class="tt-overlay">
-                  <div class="tt-badge">{{ activePostId === post.id ? "FOR YOU" : "NEXT" }}</div>
-                  <div class="tt-mute">{{ isVideoMuted(post.id) ? "🔇 Muted" : "🔊 Sound" }}</div>
-                </div>
-              </div>
-
-              <div class="actions">
-                <button
-                  class="action-btn"
-                  :class="{ active: likesByPost[post.id]?.likedByMe }"
-                  :disabled="likeBusyByPost[post.id]"
-                  @click="toggleLike(post)"
-                >
-                  ❤️ <span class="label">{{ likesByPost[post.id]?.count ?? 0 }}</span>
-                </button>
-
-                <button class="action-btn" @click="toggleComments(post)">
-                  💬 <span class="label">{{ commentCount(post.id) }}</span>
-                </button>
-
-                <div class="spacer"></div>
-
-                <button class="action-btn ghost" @click="sharePost(post)">
-                  🔗 <span class="label">Share</span>
-                </button>
-              </div>
-
-              <!-- comments unchanged -->
-              <div v-if="commentsOpenByPost[post.id]" class="comments">
-                <div class="comments-head">
-                  <div class="comments-title">Comments</div>
-                  <button class="x" @click="commentsOpenByPost[post.id] = false">✕</button>
-                </div>
-
-                <div v-if="commentLoadingByPost[post.id]" class="comments-state">Loading comments…</div>
-
-                <div v-else class="comments-list">
-                  <div v-if="(commentsByPost[post.id] || []).length === 0" class="comments-empty">
-                    Be the first to comment.
-                  </div>
-
-                  <div v-for="c in (commentsByPost[post.id] || [])" :key="c.id" class="comment">
-                    <div class="comment-top">
-                      <div class="comment-who">
-                        <span class="badge">{{ c.username || c.name || c.email || `User #${c.user_id}` }}</span>
-                        <span class="comment-time">{{ formatDate(c.created_at) }}</span>
-                      </div>
-                    </div>
-                    <div class="comment-text">{{ c.body }}</div>
-                  </div>
-                </div>
-
-                <div class="comment-compose">
-                  <input
-                    v-model="commentDraftByPost[post.id]"
-                    class="comment-input"
-                    placeholder="Write a comment…"
-                    @keydown.enter.prevent="submitComment(post)"
-                  />
-                  <button
-                    class="btn btn-primary"
-                    :disabled="commentBusyByPost[post.id] || !String(commentDraftByPost[post.id] || '').trim()"
-                    @click="submitComment(post)"
-                  >
-                    {{ commentBusyByPost[post.id] ? "Sending…" : "Send" }}
-                  </button>
-                </div>
-
-                <div v-if="commentErrorByPost[post.id]" class="comment-error">
-                  {{ commentErrorByPost[post.id] }}
-                </div>
-              </div>
-            </article>
-
-            <!-- Infinite scroll sentinel -->
-            <div ref="loadMoreRef" class="load-more">
-              <span v-if="infiniteLoading">Loading more…</span>
-              <span v-else-if="canLoadMore">Scroll for more</span>
-              <span v-else>End</span>
-            </div>
-          </section>
-        </main>
-
-        <!-- RIGHT: Chat drawer (still available always) -->
-        <aside class="right" :class="{ open: chatOpen }">
-          <section class="panel">
+          <!-- Chat (toggle button controls this) -->
+          <div class="panel" v-if="chatOpen">
             <div class="panel-head">
               <div class="panel-title">💬 Chat</div>
-              <button class="btn" @click="toggleChat">{{ chatOpen ? "Close" : "Open" }}</button>
+              <button class="btn" @click="toggleChat">Close</button>
             </div>
 
             <div class="chat-hint">Quick room chat. Rooms tab is full Discord-style.</div>
@@ -589,9 +140,439 @@
                 <button class="btn btn-primary" @click="sendChat">Send</button>
               </div>
             </div>
-          </section>
-        </aside>
-      </div>
+          </div>
+        </section>
+
+        <!-- Composer always available -->
+        <section class="composer">
+          <div class="composer-head">
+            <div class="avatar big">{{ myInitial }}</div>
+            <div class="composer-meta">
+              <div class="me">{{ me?.username || "You" }}</div>
+              <div class="small muted">Post to the world (works everywhere)</div>
+            </div>
+            <div class="composer-actions">
+              <button class="pill-btn" @click="focusComposer">Create</button>
+            </div>
+          </div>
+
+          <textarea ref="composerRef" v-model="caption" class="input" placeholder="What's happening?" rows="3"></textarea>
+
+          <div class="upload-row">
+            <label class="file-pill">
+              <input type="file" accept="image/*" @change="onPickImage" />
+              📷 Image <span v-if="imageFile" class="file-dot">•</span>
+            </label>
+
+            <label class="file-pill">
+              <input type="file" accept="video/*" @change="onPickVideo" />
+              🎥 Video <span v-if="videoFile" class="file-dot">•</span>
+            </label>
+
+            <button class="btn btn-primary" :disabled="posting || !token" @click="submitPost">
+              {{ posting ? "Posting…" : "Post 🚀" }}
+            </button>
+          </div>
+
+          <div v-if="error" class="alert">{{ error }}</div>
+        </section>
+
+        <!-- MODE CONTENT (unchanged, just moved into one main column) -->
+        <!-- LIVE MODE -->
+        <section v-if="feedMode === 'live'" class="panel">
+          <div class="panel-head">
+            <div class="panel-title">🔴 Live</div>
+            <button class="btn btn-primary" @click="startLive" :disabled="!token">Go Live</button>
+          </div>
+
+          <div class="hint">Tap any live session below to watch.</div>
+
+          <div v-if="liveStreams.length === 0" class="state">
+            <div class="state-emoji">📡</div>
+            <div class="state-title">Nobody is live</div>
+            <div class="state-sub">Start the first stream.</div>
+          </div>
+
+          <div v-else class="live-grid">
+            <div v-for="stream in liveStreams" :key="'live-center-' + stream" class="live-big" @click="joinLive(stream)">
+              <div class="live-big-top">
+                <span class="dot"></span>
+                <span class="live-big-title">{{ stream }}</span>
+              </div>
+              <div class="live-big-sub">Tap to watch</div>
+            </div>
+          </div>
+        </section>
+
+        <!-- ROOMS MODE -->
+        <section v-else-if="feedMode === 'rooms'" class="rooms">
+          <aside class="rooms-left">
+            <div class="rooms-head">🎧 Rooms</div>
+
+            <button class="room" :class="{ on: chatRoom === 'global' }" @click="selectChat('global')">🌍 global</button>
+            <button class="room" :class="{ on: chatRoom === 'support' }" @click="selectChat('support')">🛠 support</button>
+            <button class="room" :class="{ on: chatRoom === 'dev' }" @click="selectChat('dev')">💻 dev</button>
+            <button class="room" :class="{ on: chatRoom === 'random' }" @click="selectChat('random')">🎲 random</button>
+
+            <div class="rooms-hint">Real-time chat via Socket.io</div>
+          </aside>
+
+          <div class="rooms-main">
+            <div class="rooms-top">
+              <div class="rooms-title"># {{ chatRoom }}</div>
+              <button class="chip ghost" @click="toggleChat">Toggle Top Chat</button>
+            </div>
+
+            <div class="rooms-messages" ref="chatBoxRef">
+              <div v-for="(m, i) in chatMessages" :key="'rm-'+i" class="rm">
+                <div class="rm-top">
+                  <span class="rm-user">{{ m.from }}</span>
+                  <span class="rm-time">{{ m.created_at ? formatDate(m.created_at) : "" }}</span>
+                </div>
+                <div class="rm-text">{{ m.text }}</div>
+              </div>
+            </div>
+
+            <div class="rooms-input">
+              <input v-model="chatText" placeholder="Message #room…" @keydown.enter.prevent="sendChat" />
+              <button class="btn btn-primary" @click="sendChat">Send</button>
+            </div>
+          </div>
+        </section>
+
+        <!-- THREADS MODE -->
+        <section v-else-if="feedMode === 'threads'" class="feed threads">
+          <div v-if="loading" class="state">Loading…</div>
+          <div v-else-if="baseFiltered.length === 0" class="state">
+            <div class="state-emoji">✍️</div>
+            <div class="state-title">No threads yet</div>
+            <div class="state-sub">Write something to start the conversation.</div>
+          </div>
+
+          <article v-else v-for="post in threadsPosts" :key="'t-'+post.id" class="post thread">
+            <header class="post-head">
+              <div class="avatar">{{ getInitial(post.user_id) }}</div>
+              <div class="who">
+                <div class="name">User #{{ post.user_id }}</div>
+                <div class="time">{{ formatDate(post.created_at) }}</div>
+              </div>
+            </header>
+
+            <div v-if="post.caption" class="text thread-text">{{ post.caption }}</div>
+
+            <button
+              v-if="post.image_url || post.video_url"
+              class="chip ghost thread-media-toggle"
+              @click="toggleThreadMedia(post.id)"
+            >
+              {{ threadMediaOpen[post.id] ? "Hide media" : "View media" }}
+            </button>
+
+            <div v-if="threadMediaOpen[post.id]" class="thread-media">
+              <img v-if="post.image_url" class="media" :src="getMedia(post.image_url)" loading="lazy" />
+              <video
+                v-if="post.video_url"
+                class="media"
+                :src="getMedia(post.video_url)"
+                controls
+                playsinline
+                preload="metadata"
+              ></video>
+            </div>
+
+            <div class="actions">
+              <button
+                class="action-btn"
+                :class="{ active: likesByPost[post.id]?.likedByMe }"
+                :disabled="likeBusyByPost[post.id]"
+                @click="toggleLike(post)"
+              >
+                ❤️ <span class="label">{{ likesByPost[post.id]?.count ?? 0 }}</span>
+              </button>
+
+              <button class="action-btn" @click="toggleComments(post)">
+                💬 <span class="label">{{ commentCount(post.id) }}</span>
+              </button>
+
+              <div class="spacer"></div>
+              <button class="action-btn ghost" @click="sharePost(post)">🔗 <span class="label">Share</span></button>
+            </div>
+
+            <!-- comments unchanged -->
+            <div v-if="commentsOpenByPost[post.id]" class="comments">
+              <div class="comments-head">
+                <div class="comments-title">Comments</div>
+                <button class="x" @click="commentsOpenByPost[post.id] = false">✕</button>
+              </div>
+
+              <div v-if="commentLoadingByPost[post.id]" class="comments-state">Loading comments…</div>
+
+              <div v-else class="comments-list">
+                <div v-if="(commentsByPost[post.id] || []).length === 0" class="comments-empty">
+                  Be the first to comment.
+                </div>
+
+                <div v-for="c in (commentsByPost[post.id] || [])" :key="c.id" class="comment">
+                  <div class="comment-top">
+                    <div class="comment-who">
+                      <span class="badge">{{ c.username || c.name || c.email || `User #${c.user_id}` }}</span>
+                      <span class="comment-time">{{ formatDate(c.created_at) }}</span>
+                    </div>
+                  </div>
+                  <div class="comment-text">{{ c.body }}</div>
+                </div>
+              </div>
+
+              <div class="comment-compose">
+                <input
+                  v-model="commentDraftByPost[post.id]"
+                  class="comment-input"
+                  placeholder="Write a comment…"
+                  @keydown.enter.prevent="submitComment(post)"
+                />
+                <button
+                  class="btn btn-primary"
+                  :disabled="commentBusyByPost[post.id] || !String(commentDraftByPost[post.id] || '').trim()"
+                  @click="submitComment(post)"
+                >
+                  {{ commentBusyByPost[post.id] ? "Sending…" : "Send" }}
+                </button>
+              </div>
+
+              <div v-if="commentErrorByPost[post.id]" class="comment-error">
+                {{ commentErrorByPost[post.id] }}
+              </div>
+            </div>
+          </article>
+        </section>
+
+        <!-- FOLLOWING MODE -->
+        <section v-else-if="feedMode === 'following'" class="feed following">
+          <template v-if="loading">
+            <div class="state">Loading…</div>
+          </template>
+
+          <div v-else-if="baseFiltered.length === 0" class="state">
+            <div class="state-emoji">📸</div>
+            <div class="state-title">No posts yet</div>
+            <div class="state-sub">Be the first to post.</div>
+          </div>
+
+          <article v-else v-for="post in followingPosts" :key="'f-'+post.id" class="post">
+            <header class="post-head">
+              <div class="avatar">{{ getInitial(post.user_id) }}</div>
+              <div class="who">
+                <div class="name">User #{{ post.user_id }}</div>
+                <div class="time">{{ formatDate(post.created_at) }}</div>
+              </div>
+            </header>
+
+            <div v-if="post.caption" class="text">{{ post.caption }}</div>
+
+            <img v-if="post.image_url" class="media" :src="getMedia(post.image_url)" loading="lazy" />
+            <video
+              v-if="post.video_url"
+              class="media"
+              :src="getMedia(post.video_url)"
+              controls
+              playsinline
+              preload="metadata"
+            ></video>
+
+            <div class="actions">
+              <button
+                class="action-btn"
+                :class="{ active: likesByPost[post.id]?.likedByMe }"
+                :disabled="likeBusyByPost[post.id]"
+                @click="toggleLike(post)"
+              >
+                ❤️ <span class="label">{{ likesByPost[post.id]?.count ?? 0 }}</span>
+              </button>
+
+              <button class="action-btn" @click="toggleComments(post)">
+                💬 <span class="label">{{ commentCount(post.id) }}</span>
+              </button>
+
+              <div class="spacer"></div>
+              <button class="action-btn ghost" @click="sharePost(post)">🔗 <span class="label">Share</span></button>
+            </div>
+
+            <!-- comments unchanged -->
+            <div v-if="commentsOpenByPost[post.id]" class="comments">
+              <div class="comments-head">
+                <div class="comments-title">Comments</div>
+                <button class="x" @click="commentsOpenByPost[post.id] = false">✕</button>
+              </div>
+
+              <div v-if="commentLoadingByPost[post.id]" class="comments-state">Loading comments…</div>
+
+              <div v-else class="comments-list">
+                <div v-if="(commentsByPost[post.id] || []).length === 0" class="comments-empty">
+                  Be the first to comment.
+                </div>
+
+                <div v-for="c in (commentsByPost[post.id] || [])" :key="c.id" class="comment">
+                  <div class="comment-top">
+                    <div class="comment-who">
+                      <span class="badge">{{ c.username || c.name || c.email || `User #${c.user_id}` }}</span>
+                      <span class="comment-time">{{ formatDate(c.created_at) }}</span>
+                    </div>
+                  </div>
+                  <div class="comment-text">{{ c.body }}</div>
+                </div>
+              </div>
+
+              <div class="comment-compose">
+                <input
+                  v-model="commentDraftByPost[post.id]"
+                  class="comment-input"
+                  placeholder="Write a comment…"
+                  @keydown.enter.prevent="submitComment(post)"
+                />
+                <button
+                  class="btn btn-primary"
+                  :disabled="commentBusyByPost[post.id] || !String(commentDraftByPost[post.id] || '').trim()"
+                  @click="submitComment(post)"
+                >
+                  {{ commentBusyByPost[post.id] ? "Sending…" : "Send" }}
+                </button>
+              </div>
+
+              <div v-if="commentErrorByPost[post.id]" class="comment-error">
+                {{ commentErrorByPost[post.id] }}
+              </div>
+            </div>
+          </article>
+        </section>
+
+        <!-- FOR YOU MODE -->
+        <section v-else class="feed tiktok">
+          <template v-if="loading">
+            <div class="state">Loading…</div>
+          </template>
+
+          <div v-else-if="baseFiltered.length === 0" class="state">
+            <div class="state-emoji">🎬</div>
+            <div class="state-title">No videos yet</div>
+            <div class="state-sub">Post a video and it will autoplay here.</div>
+          </div>
+
+          <article
+            v-else
+            v-for="post in visiblePosts"
+            :key="'fy-'+post.id"
+            class="post tt-card"
+            :id="`post-${post.id}`"
+          >
+            <header class="post-head">
+              <div class="avatar">{{ getInitial(post.user_id) }}</div>
+              <div class="who">
+                <div class="name">User #{{ post.user_id }}</div>
+                <div class="time">{{ formatDate(post.created_at) }}</div>
+              </div>
+
+              <button class="tt-ic" title="Sound" @click="toggleGlobalMute">
+                {{ globalMuted ? "🔇" : "🔊" }}
+              </button>
+            </header>
+
+            <div v-if="post.caption" class="text">{{ post.caption }}</div>
+
+            <img v-if="post.image_url" class="media" :src="getMedia(post.image_url)" loading="lazy" />
+
+            <div v-if="post.video_url" class="tt-video-wrap">
+              <video
+                class="media tt-video"
+                :data-post-id="post.id"
+                :src="getMedia(post.video_url)"
+                playsinline
+                preload="metadata"
+                loop
+                muted
+                @click="toggleVideoMute(post.id)"
+              ></video>
+
+              <div class="tt-overlay">
+                <div class="tt-badge">{{ activePostId === post.id ? "FOR YOU" : "NEXT" }}</div>
+                <div class="tt-mute">{{ isVideoMuted(post.id) ? "🔇 Muted" : "🔊 Sound" }}</div>
+              </div>
+            </div>
+
+            <div class="actions">
+              <button
+                class="action-btn"
+                :class="{ active: likesByPost[post.id]?.likedByMe }"
+                :disabled="likeBusyByPost[post.id]"
+                @click="toggleLike(post)"
+              >
+                ❤️ <span class="label">{{ likesByPost[post.id]?.count ?? 0 }}</span>
+              </button>
+
+              <button class="action-btn" @click="toggleComments(post)">
+                💬 <span class="label">{{ commentCount(post.id) }}</span>
+              </button>
+
+              <div class="spacer"></div>
+              <button class="action-btn ghost" @click="sharePost(post)">
+                🔗 <span class="label">Share</span>
+              </button>
+            </div>
+
+            <!-- comments unchanged -->
+            <div v-if="commentsOpenByPost[post.id]" class="comments">
+              <div class="comments-head">
+                <div class="comments-title">Comments</div>
+                <button class="x" @click="commentsOpenByPost[post.id] = false">✕</button>
+              </div>
+
+              <div v-if="commentLoadingByPost[post.id]" class="comments-state">Loading comments…</div>
+
+              <div v-else class="comments-list">
+                <div v-if="(commentsByPost[post.id] || []).length === 0" class="comments-empty">
+                  Be the first to comment.
+                </div>
+
+                <div v-for="c in (commentsByPost[post.id] || [])" :key="c.id" class="comment">
+                  <div class="comment-top">
+                    <div class="comment-who">
+                      <span class="badge">{{ c.username || c.name || c.email || `User #${c.user_id}` }}</span>
+                      <span class="comment-time">{{ formatDate(c.created_at) }}</span>
+                    </div>
+                  </div>
+                  <div class="comment-text">{{ c.body }}</div>
+                </div>
+              </div>
+
+              <div class="comment-compose">
+                <input
+                  v-model="commentDraftByPost[post.id]"
+                  class="comment-input"
+                  placeholder="Write a comment…"
+                  @keydown.enter.prevent="submitComment(post)"
+                />
+                <button
+                  class="btn btn-primary"
+                  :disabled="commentBusyByPost[post.id] || !String(commentDraftByPost[post.id] || '').trim()"
+                  @click="submitComment(post)"
+                >
+                  {{ commentBusyByPost[post.id] ? "Sending…" : "Send" }}
+                </button>
+              </div>
+
+              <div v-if="commentErrorByPost[post.id]" class="comment-error">
+                {{ commentErrorByPost[post.id] }}
+              </div>
+            </div>
+          </article>
+
+          <!-- Infinite scroll sentinel -->
+          <div ref="loadMoreRef" class="load-more">
+            <span v-if="infiniteLoading">Loading more…</span>
+            <span v-else-if="canLoadMore">Scroll for more</span>
+            <span v-else>End</span>
+          </div>
+        </section>
+      </main>
 
       <!-- INCOMING CALL POPUP -->
       <div v-if="incomingCall" class="modal-backdrop" @click.self="rejectIncoming">
@@ -624,6 +605,7 @@
 </template>
 
 <script setup>
+/* ✅ SCRIPT UNCHANGED (your original, 그대로) */
 import { ref, computed, onMounted, onBeforeUnmount, nextTick } from "vue";
 import { useRouter } from "vue-router";
 import Layout from "../components/Layout.vue";
@@ -790,7 +772,6 @@ async function fetchPosts() {
     await preloadLikesForPosts(data.slice(0, 20));
     await nextTick();
 
-    // observers only if For You
     if (feedMode.value === "foryou") {
       setupLoadMoreObserver();
       setupVideoObserver();
@@ -836,7 +817,6 @@ async function submitPost() {
     imageFile.value = null;
     videoFile.value = null;
 
-    // refresh observers if foryou
     await nextTick();
     if (feedMode.value === "foryou") {
       setupVideoObserver();
@@ -861,8 +841,8 @@ const baseFiltered = computed(() => {
 });
 
 /* ================= FOLLOWING / THREADS LISTS ================= */
-const followingPosts = computed(() => baseFiltered.value.slice(0, 40)); // nice normal feed cap
-const threadsPosts = computed(() => baseFiltered.value.slice(0, 60));   // more text items
+const followingPosts = computed(() => baseFiltered.value.slice(0, 40));
+const threadsPosts = computed(() => baseFiltered.value.slice(0, 60));
 
 /* ================= THREADS MEDIA TOGGLE ================= */
 const threadMediaOpen = ref({});
@@ -1036,7 +1016,7 @@ async function sharePost(post) {
   catch { alert(url); }
 }
 
-/* ================= CHAT (Rooms + Drawer) ================= */
+/* ================= CHAT ================= */
 const chatOpen = ref(false);
 const chatRoom = ref("global");
 const chatText = ref("");
@@ -1079,7 +1059,7 @@ function logout() {
   router.push("/login");
 }
 
-/* ================= FOR YOU (TikTok) Infinite + Autoplay ================= */
+/* ================= FOR YOU Infinite + Autoplay ================= */
 const pageSize = ref(8);
 const infiniteLoading = ref(false);
 const loadMoreRef = ref(null);
@@ -1113,7 +1093,7 @@ function setupLoadMoreObserver() {
 /* Video autoplay */
 const activePostId = ref(null);
 const globalMuted = ref(true);
-const videoMutedByPost = ref({}); // {postId: true}
+const videoMutedByPost = ref({});
 
 function isVideoMuted(postId) {
   return globalMuted.value || !!videoMutedByPost.value[postId];
@@ -1205,7 +1185,6 @@ onMounted(async () => {
   socket.on("live-list", (streams) => { liveStreams.value = Array.isArray(streams) ? streams : []; });
   socket.on("online-users", (pairs) => { onlinePairs.value = Array.isArray(pairs) ? pairs : []; });
 
-  // Calls (keep working)
   socket.on("call:ringing", ({ roomId, kind }) => {
     pendingRoomId.value = roomId;
     callingToast.value = `Calling… (${kind || pendingKind.value})`;
@@ -1288,7 +1267,7 @@ onBeforeUnmount(() => {
 
 /* Modebar */
 .modebar{
-  max-width: 1500px;
+  max-width: 1100px;
   margin: 10px auto 0;
   padding: 0 16px;
   display:flex;
@@ -1327,17 +1306,20 @@ onBeforeUnmount(() => {
   outline: none;
 }
 
-/* Layout */
-.page {
-  display: grid;
-  grid-template-columns: 320px 1fr 360px;
-  gap: 16px;
-  max-width: 1500px;
+/* ONE main column */
+.main{
+  max-width: 1100px;
   margin: 0 auto;
   padding: 16px;
 }
-.left, .right { height: fit-content; position: sticky; top: 118px; }
-.center { min-width: 0; }
+
+/* Top panels section */
+.top-panels{
+  display: grid;
+  grid-template-columns: 1fr;
+  gap: 14px;
+  margin-bottom: 14px;
+}
 
 /* Panels */
 .panel, .composer, .post {
@@ -1363,8 +1345,6 @@ onBeforeUnmount(() => {
 .btn-primary { background: linear-gradient(45deg, #ff416c, #ff4b2b); }
 .danger { background: rgba(255,80,80,0.22); border: 1px solid rgba(255,80,80,0.35); }
 .ghost { opacity: .92; }
-.w100 { width: 100%; }
-.stack { display: grid; gap: 10px; }
 
 /* Live cards */
 .live-card {
@@ -1413,7 +1393,6 @@ onBeforeUnmount(() => {
 .status.on { background: #00e676; }
 .sep { opacity: .5; }
 .person-actions { display: flex; gap: 8px; }
-
 .iconbtn {
   width: 40px; height: 40px;
   border-radius: 14px;
@@ -1538,70 +1517,9 @@ onBeforeUnmount(() => {
 .comment-input { flex:1; background: rgba(0,0,0,0.35); border: 1px solid rgba(255,255,255,0.12); color:white; padding:10px 12px; border-radius:12px; outline:none; }
 .comment-error { margin-top:10px; padding:10px; border-radius:14px; background: rgba(255, 80, 80, 0.18); border: 1px solid rgba(255, 80, 80, 0.35); }
 
-/* Rooms (Discord vibe) */
+/* Rooms */
 .rooms { display:grid; grid-template-columns: 220px 1fr; gap: 12px; }
-.rooms-left {
-  background: rgba(255,255,255,0.06);
-  border: 1px solid rgba(255,255,255,0.12);
-  border-radius: 18px;
-  padding: 12px;
-}
-.rooms-head { font-weight: 950; margin-bottom: 10px; }
-.room{
-  width: 100%;
-  text-align: left;
-  border: 1px solid rgba(255,255,255,0.12);
-  background: rgba(0,0,0,0.30);
-  color: white;
-  padding: 10px 12px;
-  border-radius: 14px;
-  cursor: pointer;
-  margin-bottom: 8px;
-}
-.room.on{ background: rgba(255,75,43,0.16); border-color: rgba(255,75,43,0.30); }
-.rooms-hint{ opacity:.75; font-size: 12px; margin-top: 10px; }
-
-.rooms-main{
-  background: rgba(255,255,255,0.06);
-  border: 1px solid rgba(255,255,255,0.12);
-  border-radius: 18px;
-  padding: 12px;
-  display:flex;
-  flex-direction: column;
-  min-height: 520px;
-}
-.rooms-top{ display:flex; align-items:center; justify-content:space-between; gap:10px; margin-bottom: 10px; }
-.rooms-title{ font-weight: 950; }
-.rooms-messages{
-  flex: 1;
-  overflow:auto;
-  display:grid;
-  gap: 10px;
-  padding: 8px;
-  background: rgba(0,0,0,0.25);
-  border-radius: 14px;
-  border: 1px solid rgba(255,255,255,0.10);
-}
-.rm{ padding: 10px; border-radius: 14px; background: rgba(255,255,255,0.06); border: 1px solid rgba(255,255,255,0.10); }
-.rm-top{ display:flex; justify-content:space-between; gap:10px; }
-.rm-user{ font-weight: 950; }
-.rm-time{ opacity:.7; font-size: 12px; }
-.rm-text{ margin-top: 6px; line-height: 1.45; }
-.rooms-input{ display:flex; gap: 8px; margin-top: 10px; }
-.rooms-input input{
-  flex: 1;
-  background: rgba(0,0,0,0.35);
-  border: 1px solid rgba(255,255,255,0.12);
-  color: white;
-  padding: 10px 12px;
-  border-radius: 12px;
-  outline: none;
-}
-
-/* Threads style */
-.thread-text { font-size: 16px; }
-.thread-media-toggle { margin-top: 8px; }
-.thread-media { margin-top: 10px; }
+@media (max-width: 900px) { .rooms { grid-template-columns: 1fr; } }
 
 /* TikTok mode */
 .feed.tiktok { scroll-snap-type: y mandatory; }
@@ -1636,7 +1554,7 @@ onBeforeUnmount(() => {
   cursor: pointer;
 }
 
-/* Chat drawer */
+/* Chat */
 .chat-hint { opacity:.7; font-size: 12px; margin-bottom: 10px; }
 .chat-list { display:grid; gap:8px; margin-bottom: 12px; }
 .chat-item{
@@ -1695,15 +1613,4 @@ onBeforeUnmount(() => {
 
 /* Infinite sentinel */
 .load-more{ text-align:center; padding: 18px 10px; opacity: .75; }
-
-/* Responsive: drawers on mobile */
-@media (max-width: 1100px) {
-  .page { grid-template-columns: 1fr; }
-  .left, .right { position: fixed; top: 118px; bottom: 0; width: min(420px, 92vw); z-index: 70; overflow: auto; }
-  .left { left: 0; transform: translateX(-105%); transition: transform .25s ease; }
-  .left.open { transform: translateX(0); }
-  .right { right: 0; transform: translateX(105%); transition: transform .25s ease; }
-  .right.open { transform: translateX(0); }
-  .rooms { grid-template-columns: 1fr; }
-}
 </style>
