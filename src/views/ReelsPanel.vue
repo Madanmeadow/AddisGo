@@ -27,9 +27,10 @@
       <!-- FEED -->
       <main class="feed" ref="feedRef">
         <section
-          v-for="(r, idx) in reels"
-          :key="r.id"
-          class="reel-card"
+           v-for="r in reels"
+            :key="r.id"
+             class="reel-card"
+            :data-reel-id="r.id"
         >
           <!-- MEDIA -->
           <div class="media">
@@ -188,7 +189,7 @@
 
 <script setup>
 import { computed, nextTick, onBeforeUnmount, onMounted, ref } from "vue";
-import Layout from "../components/Layout.vue";
+
 
 // If you have auth store:
 import { useAuthStore } from "../stores/auth.store";

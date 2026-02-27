@@ -707,7 +707,7 @@ import Layout from "../components/Layout.vue";
 import { io } from "socket.io-client";
 
 /* ✅ NEW: lazy-load Reels tab so it doesn't impact Dashboard startup */
-const Reels = defineAsyncComponent(() => import("./Reels.vue"));
+const Reels = defineAsyncComponent(() => import("./ReelsPanel.vue"));
 
 const router = useRouter();
 const route = useRoute();
