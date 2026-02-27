@@ -1,33 +1,26 @@
 // server/utils/cloudinaryUpload.js
 import multer from "multer";
+import { v2 as cloudinary } from "cloudinary";
 import { CloudinaryStorage } from "multer-storage-cloudinary";
-import cloudinary from "./cloudinary.js";
 
-function safeBaseName(name = "file") {
-  const base = String(name).replace(/\.[^/.]+$/, "");
-  return base
-    .toLowerCase()
-    .replace(/\s+/g, "-")
-    .replace(/[^a-z0-9-_]/g, "")
-    .slice(0, 60) || "upload";
-}
+// Cloudinary config (Railway env vars)
+cloudinary.config({
+  cloud_name: process.env.CLOUDINARY_CLOUD_NAME,
+  api_key: process.env.CLOUDINARY_API_KEY,
+  api_secret: process.env.CLOUDINARY_API_SECRET,
+});
 
+// Storage config
 const storage = new CloudinaryStorage({
   cloudinary,
   params: async (req, file) => {
-    const mime = file?.mimetype || "";
-    const isVideo = mime.startsWith("video/");
-    const folder = "addisgo";
-
-    const cleanName = safeBaseName(file?.originalname);
-    const unique = `${Date.now()}-${Math.random().toString(36).slice(2, 8)}`;
-
     return {
-      folder,
-      resource_type: isVideo ? "video" : "image",
-      public_id: `${cleanName}-${unique}`,
+      folder: "addisgo",
+      resource_type: "auto", // image or video
+      public_id: `img_${Date.now()}`,
     };
   },
 });
 
+// ✅ THIS is what gives you .single(), .fields(), etc.
 export const uploadToCloudinary = multer({ storage });
