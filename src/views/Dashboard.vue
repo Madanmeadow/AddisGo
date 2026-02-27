@@ -13,18 +13,9 @@
         </div>
 
         <div class="top-actions">
-          <button class="chip" @click="fetchPosts" :disabled="loading">
-            ↻ {{ loading ? "Loading…" : "Refresh" }}
-          </button>
-
-          <button class="chip ghost" @click="togglePeople">
-            {{ peopleOpen ? "Hide People" : "People" }}
-          </button>
-
-          <button class="chip ghost" @click="toggleChat">
-            {{ chatOpen ? "Close Chat" : "Chat" }}
-          </button>
-
+          <button class="chip" @click="fetchPosts" :disabled="loading">↻ {{ loading ? "Loading…" : "Refresh" }}</button>
+          <button class="chip ghost" @click="togglePeople">{{ peopleOpen ? "Hide People" : "People" }}</button>
+          <button class="chip ghost" @click="toggleChat">{{ chatOpen ? "Close Chat" : "Chat" }}</button>
           <button class="chip danger" @click="logout">Logout</button>
         </div>
       </header>
@@ -32,10 +23,7 @@
       <!-- MODEBAR -->
       <div class="modebar">
         <button class="mode" :class="{ on: feedMode === 'foryou' }" @click="setFeedMode('foryou')">🎬 For You</button>
-
-        <!-- ✅ NEW: REELS TAB -->
         <button class="mode reels" :class="{ on: feedMode === 'reels' }" @click="setFeedMode('reels')">🎞️ Reels</button>
-
         <button class="mode" :class="{ on: feedMode === 'following' }" @click="setFeedMode('following')">📸 Following</button>
         <button class="mode" :class="{ on: feedMode === 'threads' }" @click="setFeedMode('threads')">✍️ Threads</button>
         <button class="mode" :class="{ on: feedMode === 'rooms' }" @click="setFeedMode('rooms')">🎧 Rooms</button>
@@ -43,19 +31,15 @@
 
         <div class="mode-right">
           <input v-model="search" class="search" placeholder="Search…" />
-
-          <button v-if="feedMode === 'foryou'" class="chip ghost" @click="toggleGlobalMute">
+          <button v-if="feedMode === 'foryou' || feedMode === 'reels'" class="chip ghost" @click="toggleGlobalMute">
             {{ globalMuted ? "🔇 Muted" : "🔊 Sound" }}
           </button>
-
-          <!-- ✅ small pill hint when on Reels -->
-          <span v-if="feedMode === 'reels'" class="chip ghost mini softGlow">⚡ Fast Reels</span>
         </div>
       </div>
 
       <!-- SINGLE SCREEN CONTENT -->
       <main class="main">
-        <!-- TOP DOCK (ABOVE FEED) -->
+        <!-- TOP DOCK -->
         <section class="dock">
           <!-- Live compact -->
           <div class="panel dockCard">
@@ -79,30 +63,23 @@
                 <span class="chev">›</span>
               </div>
 
-              <button v-if="liveStreams.length > 6" class="chip ghost mini" @click="setFeedMode('live')">
-                View all
-              </button>
+              <button v-if="liveStreams.length > 6" class="chip ghost mini" @click="setFeedMode('live')">View all</button>
             </div>
           </div>
 
-          <!-- People small + Chat toggle next to it -->
+          <!-- People + Chat -->
           <div class="panel dockCard">
             <div class="panel-head">
               <div class="panel-title">👥 People</div>
               <div class="dockActions">
-                <button class="btn" @click="fetchPeople" :disabled="peopleLoading || !token">
-                  {{ peopleLoading ? "Loading…" : "Refresh" }}
-                </button>
-                <button class="btn ghostBtn" @click="toggleChat">
-                  {{ chatOpen ? "Close Chat" : "Open Chat" }}
-                </button>
+                <button class="btn" @click="fetchPeople" :disabled="peopleLoading || !token">{{ peopleLoading ? "Loading…" : "Refresh" }}</button>
+                <button class="btn ghostBtn" @click="toggleChat">{{ chatOpen ? "Close Chat" : "Open Chat" }}</button>
               </div>
             </div>
 
             <div v-if="!token" class="alert soft">Login again to see people & call buttons.</div>
 
             <template v-else>
-              <!-- Always show small strip -->
               <div class="miniAvatars">
                 <div
                   v-for="u in people.slice(0, 14)"
@@ -111,18 +88,13 @@
                   :title="u.display_name || u.username || ('User #' + u.id)"
                   @click="peopleOpen ? null : startCall(u,'audio')"
                 >
-                  <div class="miniAvatar">
-                    {{ (u.display_name || u.username || "U")[0]?.toUpperCase() }}
-                  </div>
+                  <div class="miniAvatar">{{ (u.display_name || u.username || "U")[0]?.toUpperCase() }}</div>
                   <span class="miniDot" :class="{ on: isOnline(u.id) }"></span>
                 </div>
 
-                <button class="chip ghost mini" @click="togglePeople">
-                  {{ peopleOpen ? "Hide list" : "Show list" }}
-                </button>
+                <button class="chip ghost mini" @click="togglePeople">{{ peopleOpen ? "Hide list" : "Show list" }}</button>
               </div>
 
-              <!-- Optional compact list (only when opened) -->
               <div v-if="peopleOpen" class="peopleCompact">
                 <div v-if="peopleError" class="alert">{{ peopleError }}</div>
                 <div v-else-if="peopleLoading" class="hint">Loading people…</div>
@@ -130,9 +102,7 @@
 
                 <div v-else class="peopleList">
                   <div v-for="u in people" :key="'plist-' + u.id" class="person compact">
-                    <div class="avatar small">
-                      {{ (u.display_name || u.username || "U")[0]?.toUpperCase() }}
-                    </div>
+                    <div class="avatar small">{{ (u.display_name || u.username || "U")[0]?.toUpperCase() }}</div>
 
                     <div class="person-meta">
                       <div class="person-name">{{ u.display_name || u.username || ("User #" + u.id) }}</div>
@@ -163,7 +133,10 @@
             <div class="avatar big">{{ myInitial }}</div>
             <div class="composer-meta">
               <div class="me">{{ me?.username || "You" }}</div>
-              <div class="small muted">Post to the world (works everywhere)</div>
+              <div class="small muted">
+                <span v-if="feedMode === 'reels'">Reels mode: upload a VIDEO → posts to Reels + For You</span>
+                <span v-else>Post to the world (works everywhere)</span>
+              </div>
             </div>
             <div class="composer-actions">
               <button class="pill-btn" @click="focusComposer">Create</button>
@@ -184,47 +157,15 @@
             </label>
 
             <button class="btn btn-primary" :disabled="posting || !token" @click="submitPost">
-              {{ posting ? "Posting…" : "Post 🚀" }}
+              {{ posting ? "Posting…" : (feedMode === 'reels' ? "Post Reel 🎬" : "Post 🚀") }}
             </button>
           </div>
 
           <div v-if="error" class="alert">{{ error }}</div>
         </section>
 
-        <!-- MODE CONTENT -->
-
-        <!-- ✅ NEW: REELS MODE (keeps your existing logic untouched) -->
-        <section v-if="feedMode === 'reels'" class="panel reelsShell">
-          <div class="panel-head">
-            <div class="panel-title">🎞️ Reels</div>
-            <div class="reelsHeadRight">
-              <button class="chip ghost mini" @click="setFeedMode('foryou')">Back to For You</button>
-              <button class="chip ghost mini" @click="scrollToTop">Top</button>
-            </div>
-          </div>
-
-          <div class="hint">
-            Your Reels screen is loaded as a tab (no route change). Existing Feed/Live/Chat logic stays the same.
-          </div>
-
-          <Suspense>
-            <template #default>
-              <!-- If your Reels.vue needs props, add them there.
-                   Leaving it clean avoids warnings if Reels doesn't define props. -->
-              <Reels />
-            </template>
-            <template #fallback>
-              <div class="state">
-                <div class="state-emoji">⚡</div>
-                <div class="state-title">Loading Reels…</div>
-                <div class="state-sub">One second</div>
-              </div>
-            </template>
-          </Suspense>
-        </section>
-
         <!-- LIVE MODE -->
-        <section v-else-if="feedMode === 'live'" class="panel">
+        <section v-if="feedMode === 'live'" class="panel">
           <div class="panel-head">
             <div class="panel-title">🔴 Live</div>
             <button class="btn btn-primary" @click="startLive" :disabled="!token">Go Live</button>
@@ -240,10 +181,7 @@
 
           <div v-else class="live-grid">
             <div v-for="stream in liveStreams" :key="'live-center-' + stream" class="live-big" @click="joinLive(stream)">
-              <div class="live-big-top">
-                <span class="dot"></span>
-                <span class="live-big-title">{{ stream }}</span>
-              </div>
+              <div class="live-big-top"><span class="dot"></span><span class="live-big-title">{{ stream }}</span></div>
               <div class="live-big-sub">Tap to watch</div>
             </div>
           </div>
@@ -253,12 +191,10 @@
         <section v-else-if="feedMode === 'rooms'" class="rooms">
           <aside class="rooms-left">
             <div class="rooms-head">🎧 Rooms</div>
-
             <button class="room" :class="{ on: chatRoom === 'global' }" @click="selectChat('global')">🌍 global</button>
             <button class="room" :class="{ on: chatRoom === 'support' }" @click="selectChat('support')">🛠 support</button>
             <button class="room" :class="{ on: chatRoom === 'dev' }" @click="selectChat('dev')">💻 dev</button>
             <button class="room" :class="{ on: chatRoom === 'random' }" @click="selectChat('random')">🎲 random</button>
-
             <div class="rooms-hint">Real-time chat via Socket.io</div>
           </aside>
 
@@ -315,80 +251,87 @@
 
             <div v-if="threadMediaOpen[post.id]" class="thread-media">
               <img v-if="post.image_url" class="media" :src="getMedia(post.image_url)" loading="lazy" />
-              <video
-                v-if="post.video_url"
-                class="media"
-                :src="getMedia(post.video_url)"
-                controls
-                playsinline
-                preload="metadata"
-              ></video>
+              <video v-if="post.video_url" class="media" :src="getMedia(post.video_url)" controls playsinline preload="metadata"></video>
             </div>
 
             <div class="actions">
-              <button
-                class="action-btn"
-                :class="{ active: likesByPost[post.id]?.likedByMe }"
-                :disabled="likeBusyByPost[post.id]"
-                @click="toggleLike(post)"
-              >
+              <button class="action-btn" :class="{ active: likesByPost[post.id]?.likedByMe }" :disabled="likeBusyByPost[post.id]" @click="toggleLike(post)">
                 ❤️ <span class="label">{{ likesByPost[post.id]?.count ?? 0 }}</span>
               </button>
-
-              <button class="action-btn" @click="toggleComments(post)">
-                💬 <span class="label">{{ commentCount(post.id) }}</span>
-              </button>
-
+              <button class="action-btn" @click="toggleComments(post)">💬 <span class="label">{{ commentCount(post.id) }}</span></button>
               <div class="spacer"></div>
               <button class="action-btn ghost" @click="sharePost(post)">🔗 <span class="label">Share</span></button>
             </div>
 
-            <!-- COMMENTS -->
-            <div v-if="commentsOpenByPost[post.id]" class="comments">
-              <div class="comments-head">
-                <div class="comments-title">Comments</div>
-                <button class="x" @click="commentsOpenByPost[post.id] = false">✕</button>
+            <CommentsBlock :post="post" />
+          </article>
+        </section>
+
+        <!-- REELS MODE (just a feed mode: videos only) -->
+        <section v-else-if="feedMode === 'reels'" class="feed reels">
+          <template v-if="loading">
+            <div class="state">Loading…</div>
+          </template>
+
+          <div v-else-if="reelsPosts.length === 0" class="state">
+            <div class="state-emoji">🎞️</div>
+            <div class="state-title">No reels yet</div>
+            <div class="state-sub">Post a video and it will show here.</div>
+          </div>
+
+          <article
+            v-else
+            v-for="post in reelsVisible"
+            :key="'r-'+post.id"
+            class="post tt-card"
+          >
+            <header class="post-head">
+              <div class="avatar">{{ getInitial(post.user_id) }}</div>
+              <div class="who">
+                <div class="name">User #{{ post.user_id }}</div>
+                <div class="time">{{ formatDate(post.created_at) }}</div>
               </div>
 
-              <div v-if="commentLoadingByPost[post.id]" class="comments-state">Loading comments…</div>
+              <button class="tt-ic" title="Sound" @click="toggleGlobalMute">{{ globalMuted ? "🔇" : "🔊" }}</button>
+            </header>
 
-              <div v-else class="comments-list">
-                <div v-if="(commentsByPost[post.id] || []).length === 0" class="comments-empty">
-                  Be the first to comment.
-                </div>
+            <div v-if="post.caption" class="text">{{ post.caption }}</div>
 
-                <div v-for="c in (commentsByPost[post.id] || [])" :key="c.id" class="comment">
-                  <div class="comment-top">
-                    <div class="comment-who">
-                      <span class="badge">{{ c.username || c.name || c.email || `User #${c.user_id}` }}</span>
-                      <span class="comment-time">{{ formatDate(c.created_at) }}</span>
-                    </div>
-                  </div>
-                  <div class="comment-text">{{ c.body }}</div>
-                </div>
-              </div>
+            <div class="tt-video-wrap">
+              <video
+                class="media tt-video"
+                :data-post-id="post.id"
+                :src="getMedia(post.video_url)"
+                playsinline
+                preload="metadata"
+                loop
+                muted
+                @click="toggleVideoMute(post.id)"
+              ></video>
 
-              <div class="comment-compose">
-                <input
-                  v-model="commentDraftByPost[post.id]"
-                  class="comment-input"
-                  placeholder="Write a comment…"
-                  @keydown.enter.prevent="submitComment(post)"
-                />
-                <button
-                  class="btn btn-primary"
-                  :disabled="commentBusyByPost[post.id] || !String(commentDraftByPost[post.id] || '').trim()"
-                  @click="submitComment(post)"
-                >
-                  {{ commentBusyByPost[post.id] ? "Sending…" : "Send" }}
-                </button>
-              </div>
-
-              <div v-if="commentErrorByPost[post.id]" class="comment-error">
-                {{ commentErrorByPost[post.id] }}
+              <div class="tt-overlay">
+                <div class="tt-badge">REELS</div>
+                <div class="tt-mute">{{ isVideoMuted(post.id) ? "🔇 Muted" : "🔊 Sound" }}</div>
               </div>
             </div>
+
+            <div class="actions">
+              <button class="action-btn" :class="{ active: likesByPost[post.id]?.likedByMe }" :disabled="likeBusyByPost[post.id]" @click="toggleLike(post)">
+                ❤️ <span class="label">{{ likesByPost[post.id]?.count ?? 0 }}</span>
+              </button>
+              <button class="action-btn" @click="toggleComments(post)">💬 <span class="label">{{ commentCount(post.id) }}</span></button>
+              <div class="spacer"></div>
+              <button class="action-btn ghost" @click="sharePost(post)">🔗 <span class="label">Share</span></button>
+            </div>
+
+            <CommentsBlock :post="post" />
           </article>
+
+          <div ref="reelsLoadMoreRef" class="load-more">
+            <span v-if="reelsInfiniteLoading">Loading more…</span>
+            <span v-else-if="reelsCanLoadMore">Scroll for more</span>
+            <span v-else>End</span>
+          </div>
         </section>
 
         <!-- FOLLOWING MODE -->
@@ -415,78 +358,18 @@
             <div v-if="post.caption" class="text">{{ post.caption }}</div>
 
             <img v-if="post.image_url" class="media" :src="getMedia(post.image_url)" loading="lazy" />
-            <video
-              v-if="post.video_url"
-              class="media"
-              :src="getMedia(post.video_url)"
-              controls
-              playsinline
-              preload="metadata"
-            ></video>
+            <video v-if="post.video_url" class="media" :src="getMedia(post.video_url)" controls playsinline preload="metadata"></video>
 
             <div class="actions">
-              <button
-                class="action-btn"
-                :class="{ active: likesByPost[post.id]?.likedByMe }"
-                :disabled="likeBusyByPost[post.id]"
-                @click="toggleLike(post)"
-              >
+              <button class="action-btn" :class="{ active: likesByPost[post.id]?.likedByMe }" :disabled="likeBusyByPost[post.id]" @click="toggleLike(post)">
                 ❤️ <span class="label">{{ likesByPost[post.id]?.count ?? 0 }}</span>
               </button>
-
-              <button class="action-btn" @click="toggleComments(post)">
-                💬 <span class="label">{{ commentCount(post.id) }}</span>
-              </button>
-
+              <button class="action-btn" @click="toggleComments(post)">💬 <span class="label">{{ commentCount(post.id) }}</span></button>
               <div class="spacer"></div>
               <button class="action-btn ghost" @click="sharePost(post)">🔗 <span class="label">Share</span></button>
             </div>
 
-            <!-- COMMENTS -->
-            <div v-if="commentsOpenByPost[post.id]" class="comments">
-              <div class="comments-head">
-                <div class="comments-title">Comments</div>
-                <button class="x" @click="commentsOpenByPost[post.id] = false">✕</button>
-              </div>
-
-              <div v-if="commentLoadingByPost[post.id]" class="comments-state">Loading comments…</div>
-
-              <div v-else class="comments-list">
-                <div v-if="(commentsByPost[post.id] || []).length === 0" class="comments-empty">
-                  Be the first to comment.
-                </div>
-
-                <div v-for="c in (commentsByPost[post.id] || [])" :key="c.id" class="comment">
-                  <div class="comment-top">
-                    <div class="comment-who">
-                      <span class="badge">{{ c.username || c.name || c.email || `User #${c.user_id}` }}</span>
-                      <span class="comment-time">{{ formatDate(c.created_at) }}</span>
-                    </div>
-                  </div>
-                  <div class="comment-text">{{ c.body }}</div>
-                </div>
-              </div>
-
-              <div class="comment-compose">
-                <input
-                  v-model="commentDraftByPost[post.id]"
-                  class="comment-input"
-                  placeholder="Write a comment…"
-                  @keydown.enter.prevent="submitComment(post)"
-                />
-                <button
-                  class="btn btn-primary"
-                  :disabled="commentBusyByPost[post.id] || !String(commentDraftByPost[post.id] || '').trim()"
-                  @click="submitComment(post)"
-                >
-                  {{ commentBusyByPost[post.id] ? "Sending…" : "Send" }}
-                </button>
-              </div>
-
-              <div v-if="commentErrorByPost[post.id]" class="comment-error">
-                {{ commentErrorByPost[post.id] }}
-              </div>
-            </div>
+            <CommentsBlock :post="post" />
           </article>
         </section>
 
@@ -516,9 +399,7 @@
                 <div class="time">{{ formatDate(post.created_at) }}</div>
               </div>
 
-              <button class="tt-ic" title="Sound" @click="toggleGlobalMute">
-                {{ globalMuted ? "🔇" : "🔊" }}
-              </button>
+              <button class="tt-ic" title="Sound" @click="toggleGlobalMute">{{ globalMuted ? "🔇" : "🔊" }}</button>
             </header>
 
             <div v-if="post.caption" class="text">{{ post.caption }}</div>
@@ -543,68 +424,15 @@
             </div>
 
             <div class="actions">
-              <button
-                class="action-btn"
-                :class="{ active: likesByPost[post.id]?.likedByMe }"
-                :disabled="likeBusyByPost[post.id]"
-                @click="toggleLike(post)"
-              >
+              <button class="action-btn" :class="{ active: likesByPost[post.id]?.likedByMe }" :disabled="likeBusyByPost[post.id]" @click="toggleLike(post)">
                 ❤️ <span class="label">{{ likesByPost[post.id]?.count ?? 0 }}</span>
               </button>
-
-              <button class="action-btn" @click="toggleComments(post)">
-                💬 <span class="label">{{ commentCount(post.id) }}</span>
-              </button>
-
+              <button class="action-btn" @click="toggleComments(post)">💬 <span class="label">{{ commentCount(post.id) }}</span></button>
               <div class="spacer"></div>
               <button class="action-btn ghost" @click="sharePost(post)">🔗 <span class="label">Share</span></button>
             </div>
 
-            <!-- COMMENTS -->
-            <div v-if="commentsOpenByPost[post.id]" class="comments">
-              <div class="comments-head">
-                <div class="comments-title">Comments</div>
-                <button class="x" @click="commentsOpenByPost[post.id] = false">✕</button>
-              </div>
-
-              <div v-if="commentLoadingByPost[post.id]" class="comments-state">Loading comments…</div>
-
-              <div v-else class="comments-list">
-                <div v-if="(commentsByPost[post.id] || []).length === 0" class="comments-empty">
-                  Be the first to comment.
-                </div>
-
-                <div v-for="c in (commentsByPost[post.id] || [])" :key="c.id" class="comment">
-                  <div class="comment-top">
-                    <div class="comment-who">
-                      <span class="badge">{{ c.username || c.name || c.email || `User #${c.user_id}` }}</span>
-                      <span class="comment-time">{{ formatDate(c.created_at) }}</span>
-                    </div>
-                  </div>
-                  <div class="comment-text">{{ c.body }}</div>
-                </div>
-              </div>
-
-              <div class="comment-compose">
-                <input
-                  v-model="commentDraftByPost[post.id]"
-                  class="comment-input"
-                  placeholder="Write a comment…"
-                  @keydown.enter.prevent="submitComment(post)"
-                />
-                <button
-                  class="btn btn-primary"
-                  :disabled="commentBusyByPost[post.id] || !String(commentDraftByPost[post.id] || '').trim()"
-                  @click="submitComment(post)"
-                >
-                  {{ commentBusyByPost[post.id] ? "Sending…" : "Send" }}
-                </button>
-              </div>
-
-              <div v-if="commentErrorByPost[post.id]" class="comment-error">
-                {{ commentErrorByPost[post.id] }}
-              </div>
-            </div>
+            <CommentsBlock :post="post" />
           </article>
 
           <div ref="loadMoreRef" class="load-more">
@@ -634,9 +462,7 @@
 
           <div class="chat-box">
             <div class="chat-messages" ref="chatBoxRef">
-              <div v-for="(m, i) in chatMessages" :key="'cm-'+i" class="chat-msg">
-                <strong>{{ m.from }}:</strong> {{ m.text }}
-              </div>
+              <div v-for="(m, i) in chatMessages" :key="'cm-'+i" class="chat-msg"><strong>{{ m.from }}:</strong> {{ m.text }}</div>
             </div>
 
             <div class="chat-input">
@@ -677,23 +503,19 @@
       <!-- BOTTOM NAV -->
       <nav class="bottomNav">
         <button class="bn" :class="{ on: isHomeActive }" @click="goHome">
-          <span class="bnI">🏠</span>
-          <span class="bnT">Home</span>
+          <span class="bnI">🏠</span><span class="bnT">Home</span>
         </button>
 
         <button class="bn" @click="goInbox">
-          <span class="bnI">💬</span>
-          <span class="bnT">Inbox</span>
+          <span class="bnI">💬</span><span class="bnT">Inbox</span>
         </button>
 
         <button class="bn" :class="{ on: feedMode === 'live' }" @click="goLiveTab">
-          <span class="bnI">🔴</span>
-          <span class="bnT">Live</span>
+          <span class="bnI">🔴</span><span class="bnT">Live</span>
         </button>
 
         <button class="bn" @click="goProfile">
-          <span class="bnI">👤</span>
-          <span class="bnT">Profile</span>
+          <span class="bnI">👤</span><span class="bnT">Profile</span>
         </button>
       </nav>
     </div>
@@ -701,17 +523,12 @@
 </template>
 
 <script setup>
-import { ref, computed, onMounted, onBeforeUnmount, nextTick, defineAsyncComponent } from "vue";
-import { useRouter, useRoute } from "vue-router";
+import { ref, computed, onMounted, onBeforeUnmount, nextTick, defineComponent, h } from "vue";
+import { useRouter } from "vue-router";
 import Layout from "../components/Layout.vue";
 import { io } from "socket.io-client";
 
-/* ✅ NEW: lazy-load Reels tab so it doesn't impact Dashboard startup */
-const Reels = defineAsyncComponent(() => import("./ReelsPanel.vue"));
-
 const router = useRouter();
-const route = useRoute();
-
 const apiUrl = import.meta.env.VITE_API_URL;
 const token = localStorage.getItem("token");
 
@@ -719,42 +536,52 @@ const me = (() => {
   try { return JSON.parse(localStorage.getItem("user") || "null"); } catch { return null; }
 })();
 
+/* ================== SAFETY: normalize posts (fix “dark/invisible cards”) ================== */
+function normalizePost(p) {
+  // If backend returns {reel, post}, pick the post
+  const obj = p?.post && p?.reel ? p.post : p;
+  if (!obj || typeof obj !== "object") return null;
+
+  const id = Number(obj.id);
+  if (!id) return null;
+
+  return {
+    id,
+    user_id: obj.user_id ?? obj.userId ?? obj.user?.id ?? 0,
+    caption: obj.caption ?? "",
+    image_url: obj.image_url ?? obj.imageUrl ?? null,
+    video_url: obj.video_url ?? obj.videoUrl ?? null,
+    created_at: obj.created_at ?? obj.createdAt ?? new Date().toISOString(),
+  };
+}
+
 /* ================= MODEBAR ================= */
-/** ✅ NEW: allow tab restore from URL (?tab=) or localStorage (no breaking changes) */
-const ALLOWED_TABS = new Set(["foryou", "reels", "following", "threads", "rooms", "live"]);
-function readInitialTab() {
-  const fromUrl = String(route.query.tab || "").toLowerCase();
-  if (ALLOWED_TABS.has(fromUrl)) return fromUrl;
-
-  const fromLs = String(localStorage.getItem("addisgo_tab") || "").toLowerCase();
-  if (ALLOWED_TABS.has(fromLs)) return fromLs;
-
-  return "foryou";
-}
-
-const feedMode = ref(readInitialTab()); // foryou | reels | following | threads | rooms | live
-
-function persistTab(mode) {
-  try { localStorage.setItem("addisgo_tab", mode); } catch {}
-  try {
-    router.replace({ query: { ...route.query, tab: mode } });
-  } catch {}
-}
+const feedMode = ref("foryou"); // foryou | reels | following | threads | rooms | live
 
 function setFeedMode(mode) {
-  if (!ALLOWED_TABS.has(mode)) mode = "foryou";
   feedMode.value = mode;
-  persistTab(mode);
 
   nextTick(() => {
-    // Only For You uses these observers
-    if (feedMode.value === "foryou") {
-      setupLoadMoreObserver();
+    // ForYou + Reels use video observer
+    if (feedMode.value === "foryou" || feedMode.value === "reels") {
       setupVideoObserver();
       applyMuteToAllVideos();
     } else {
-      try { loadMoreObserver?.disconnect(); } catch {}
       try { videoObserver?.disconnect(); } catch {}
+    }
+
+    // ForYou infinite sentinel only
+    if (feedMode.value === "foryou") {
+      setupLoadMoreObserver();
+    } else {
+      try { loadMoreObserver?.disconnect(); } catch {}
+    }
+
+    // Reels infinite sentinel only
+    if (feedMode.value === "reels") {
+      setupReelsLoadMoreObserver();
+    } else {
+      try { reelsLoadMoreObserver?.disconnect(); } catch {}
     }
   });
 }
@@ -856,19 +683,20 @@ const search = ref("");
 const composerRef = ref(null);
 const myInitial = computed(() => (me?.username ? me.username[0].toUpperCase() : "A"));
 
-function focusComposer() {
-  try { composerRef.value?.focus?.(); } catch {}
-}
+function focusComposer() { try { composerRef.value?.focus?.(); } catch {} }
+
 function formatDate(d) {
   if (!d) return "";
   const date = new Date(d);
   return Number.isNaN(date.getTime()) ? "" : date.toLocaleString();
 }
+
 function getMedia(url) {
   if (!url) return "";
   if (url.startsWith("http")) return url;
   return `${apiUrl}${url}`;
 }
+
 function getInitial(userId) {
   return String(userId || "?").slice(-1);
 }
@@ -886,14 +714,21 @@ async function fetchPosts() {
       return;
     }
 
-    posts.value = data;
-    pageSize.value = 8;
+    posts.value = data.map(normalizePost).filter(Boolean);
 
-    await preloadLikesForPosts(data.slice(0, 20));
+    pageSize.value = 8;
+    reelsPageSize.value = 8;
+
+    await preloadLikesForPosts(posts.value.slice(0, 24));
     await nextTick();
 
     if (feedMode.value === "foryou") {
       setupLoadMoreObserver();
+      setupVideoObserver();
+      applyMuteToAllVideos();
+    }
+    if (feedMode.value === "reels") {
+      setupReelsLoadMoreObserver();
       setupVideoObserver();
       applyMuteToAllVideos();
     }
@@ -908,6 +743,9 @@ async function fetchPosts() {
 async function submitPost() {
   if (!token) return alert("Login again to post.");
   if (!caption.value.trim() && !imageFile.value && !videoFile.value) return;
+
+  // ✅ Reels tab posts to /reels (and backend also creates /posts)
+  if (feedMode.value === "reels") return await submitReel();
 
   try {
     posting.value = true;
@@ -924,14 +762,17 @@ async function submitPost() {
       body: form,
     });
 
-    const newPost = await res.json();
+    const data = await res.json();
     if (!res.ok) {
-      error.value = newPost?.error || "Post failed";
+      error.value = data?.error || "Post failed";
       return;
     }
 
-    posts.value.unshift(newPost);
-    await ensureLikeState(newPost.id);
+    const clean = normalizePost(data);
+    if (clean) {
+      posts.value.unshift(clean);
+      await ensureLikeState(clean.id);
+    }
 
     caption.value = "";
     imageFile.value = null;
@@ -944,6 +785,51 @@ async function submitPost() {
     }
   } catch {
     error.value = "Post failed";
+  } finally {
+    posting.value = false;
+  }
+}
+
+async function submitReel() {
+  if (!token) return alert("Login again to post a reel.");
+  if (!videoFile.value) return alert("Reels require a VIDEO. Pick a video file.");
+
+  try {
+    posting.value = true;
+    error.value = "";
+
+    const form = new FormData();
+    form.append("caption", caption.value || "");
+    form.append("video", videoFile.value);
+
+    const res = await fetch(`${apiUrl}/reels`, {
+      method: "POST",
+      headers: { Authorization: `Bearer ${token}` },
+      body: form,
+    });
+
+    const data = await res.json();
+    if (!res.ok) {
+      error.value = data?.error || "Reel failed";
+      return;
+    }
+
+    // backend should return { reel, post } — we add the post to the main posts feed
+    const clean = normalizePost(data?.post || data);
+    if (clean) {
+      posts.value.unshift(clean);
+      await ensureLikeState(clean.id);
+    }
+
+    caption.value = "";
+    imageFile.value = null;
+    videoFile.value = null;
+
+    await nextTick();
+    setupVideoObserver();
+    applyMuteToAllVideos();
+  } catch {
+    error.value = "Reel failed";
   } finally {
     posting.value = false;
   }
@@ -962,6 +848,9 @@ const baseFiltered = computed(() => {
 
 const followingPosts = computed(() => baseFiltered.value.slice(0, 40));
 const threadsPosts = computed(() => baseFiltered.value.slice(0, 60));
+
+/* Reels: video-only from posts (so it matches “Also show in For You”) */
+const reelsPosts = computed(() => baseFiltered.value.filter((p) => !!p.video_url));
 
 /* ================= THREADS MEDIA TOGGLE ================= */
 const threadMediaOpen = ref({});
@@ -1105,10 +994,7 @@ async function submitComment(post) {
     const data = await res.json();
 
     if (!res.ok) {
-      commentsByPost.value = {
-        ...commentsByPost.value,
-        [postId]: (commentsByPost.value[postId] || []).filter((c) => c.id !== tempId),
-      };
+      commentsByPost.value = { ...commentsByPost.value, [postId]: (commentsByPost.value[postId] || []).filter((c) => c.id !== tempId) };
       commentErrorByPost.value = { ...commentErrorByPost.value, [postId]: data?.error || "Failed to send comment" };
       return;
     }
@@ -1118,15 +1004,76 @@ async function submitComment(post) {
       [postId]: (commentsByPost.value[postId] || []).map((c) => (c.id === tempId ? data : c)),
     };
   } catch {
-    commentsByPost.value = {
-      ...commentsByPost.value,
-      [postId]: (commentsByPost.value[postId] || []).filter((c) => c.id !== tempId),
-    };
+    commentsByPost.value = { ...commentsByPost.value, [postId]: (commentsByPost.value[postId] || []).filter((c) => c.id !== tempId) };
     commentErrorByPost.value = { ...commentErrorByPost.value, [postId]: "Failed to send comment" };
   } finally {
     commentBusyByPost.value = { ...commentBusyByPost.value, [postId]: false };
   }
 }
+
+/* Inline reusable comments component (keeps template clean and consistent) */
+const CommentsBlock = defineComponent({
+  name: "CommentsBlock",
+  props: { post: { type: Object, required: true } },
+  setup(props) {
+    return () => {
+      const postId = props.post.id;
+      if (!commentsOpenByPost.value[postId]) return null;
+
+      const list = commentsByPost.value[postId] || [];
+      const loadingC = !!commentLoadingByPost.value[postId];
+      const errC = commentErrorByPost.value[postId] || "";
+
+      return h("div", { class: "comments" }, [
+        h("div", { class: "comments-head" }, [
+          h("div", { class: "comments-title" }, "Comments"),
+          h("button", { class: "x", onClick: () => (commentsOpenByPost.value = { ...commentsOpenByPost.value, [postId]: false }) }, "✕"),
+        ]),
+        loadingC ? h("div", { class: "comments-state" }, "Loading comments…") : null,
+        !loadingC
+          ? h("div", { class: "comments-list" }, [
+              list.length === 0 ? h("div", { class: "comments-empty" }, "Be the first to comment.") : null,
+              ...list.map((c) =>
+                h("div", { class: "comment", key: c.id }, [
+                  h("div", { class: "comment-top" }, [
+                    h("div", { class: "comment-who" }, [
+                      h("span", { class: "badge" }, c.username || c.name || c.email || `User #${c.user_id}`),
+                      h("span", { class: "comment-time" }, formatDate(c.created_at)),
+                    ]),
+                  ]),
+                  h("div", { class: "comment-text" }, c.body),
+                ])
+              ),
+            ])
+          : null,
+        h("div", { class: "comment-compose" }, [
+          h("input", {
+            class: "comment-input",
+            value: commentDraftByPost.value[postId] || "",
+            placeholder: "Write a comment…",
+            onInput: (e) => (commentDraftByPost.value = { ...commentDraftByPost.value, [postId]: e.target.value }),
+            onKeydown: (e) => {
+              if (e.key === "Enter") {
+                e.preventDefault();
+                submitComment(props.post);
+              }
+            },
+          }),
+          h(
+            "button",
+            {
+              class: "btn btn-primary",
+              disabled: commentBusyByPost.value[postId] || !String(commentDraftByPost.value[postId] || "").trim(),
+              onClick: () => submitComment(props.post),
+            },
+            commentBusyByPost.value[postId] ? "Sending…" : "Send"
+          ),
+        ]),
+        errC ? h("div", { class: "comment-error" }, errC) : null,
+      ]);
+    };
+  },
+});
 
 /* ================= SHARE ================= */
 async function sharePost(post) {
@@ -1175,9 +1122,7 @@ function startLive() {
   socket?.emit("live:create", { liveId });
   router.push(`/live?mode=host&liveId=${encodeURIComponent(liveId)}`);
 }
-function joinLive(liveId) {
-  router.push(`/live?mode=watch&liveId=${encodeURIComponent(liveId)}`);
-}
+function joinLive(liveId) { router.push(`/live?mode=watch&liveId=${encodeURIComponent(liveId)}`); }
 
 /* ================= AUTH ================= */
 function logout() {
@@ -1188,18 +1133,9 @@ function logout() {
 
 /* ================= BOTTOM NAV ACTIONS ================= */
 const isHomeActive = computed(() => ["foryou", "reels", "following", "threads", "rooms"].includes(feedMode.value));
-
-function goHome() {
-  setFeedMode("foryou");
-  scrollToTop();
-}
-function goInbox() {
-  router.push("/messages");
-}
-function goLiveTab() {
-  setFeedMode("live");
-  scrollToTop();
-}
+function goHome() { setFeedMode("foryou"); scrollToTop(); }
+function goInbox() { router.push("/messages"); }
+function goLiveTab() { setFeedMode("live"); scrollToTop(); }
 function goProfile() {
   const id = me?.id ? String(me.id) : "";
   router.push(id ? `/profile/${id}` : "/profile");
@@ -1234,6 +1170,37 @@ function setupLoadMoreObserver() {
   }, { threshold: 0.15 });
 
   loadMoreObserver.observe(loadMoreRef.value);
+}
+
+/* ================= REELS Infinite (videos only) ================= */
+const reelsPageSize = ref(8);
+const reelsInfiniteLoading = ref(false);
+const reelsLoadMoreRef = ref(null);
+
+const reelsVisible = computed(() => reelsPosts.value.slice(0, reelsPageSize.value));
+const reelsCanLoadMore = computed(() => reelsPosts.value.length > reelsVisible.value.length);
+
+let reelsLoadMoreObserver = null;
+function setupReelsLoadMoreObserver() {
+  try { reelsLoadMoreObserver?.disconnect(); } catch {}
+  if (!reelsLoadMoreRef.value) return;
+
+  reelsLoadMoreObserver = new IntersectionObserver(async (entries) => {
+    const hit = entries.some((e) => e.isIntersecting);
+    if (!hit || !reelsCanLoadMore.value || reelsInfiniteLoading.value) return;
+
+    reelsInfiniteLoading.value = true;
+    await new Promise((r) => setTimeout(r, 160));
+    reelsPageSize.value += 6;
+    reelsInfiniteLoading.value = false;
+
+    await preloadLikesForPosts(reelsVisible.value.slice(-10));
+    await nextTick();
+    setupVideoObserver();
+    applyMuteToAllVideos();
+  }, { threshold: 0.15 });
+
+  reelsLoadMoreObserver.observe(reelsLoadMoreRef.value);
 }
 
 /* Video autoplay */
@@ -1287,7 +1254,8 @@ function setupVideoObserver() {
       const postId = Number(video.getAttribute("data-post-id") || 0);
       applyMuteToVideo(postId);
 
-      if (feedMode.value !== "foryou") {
+      // only play videos in foryou or reels
+      if (feedMode.value !== "foryou" && feedMode.value !== "reels") {
         try { video.pause(); } catch {}
         continue;
       }
@@ -1301,7 +1269,7 @@ function setupVideoObserver() {
   }, { threshold: [0.25, 0.6, 0.85] });
 
   nextTick(() => {
-    if (feedMode.value !== "foryou") return;
+    if (feedMode.value !== "foryou" && feedMode.value !== "reels") return;
     document.querySelectorAll("video.tt-video").forEach((v) => videoObserver.observe(v));
   });
 }
@@ -1364,8 +1332,10 @@ onBeforeUnmount(() => {
   socket = null;
 
   try { loadMoreObserver?.disconnect(); } catch {}
+  try { reelsLoadMoreObserver?.disconnect(); } catch {}
   try { videoObserver?.disconnect(); } catch {}
   loadMoreObserver = null;
+  reelsLoadMoreObserver = null;
   videoObserver = null;
 });
 </script>
@@ -1384,11 +1354,10 @@ onBeforeUnmount(() => {
 /* Background */
 .wrap {
   min-height: 100vh;
-  padding-bottom: 88px;
+  padding-bottom: 88px; /* space for bottom nav */
   background:
     radial-gradient(1200px 700px at 20% 0%, rgba(255,75,43,0.18), transparent),
     radial-gradient(900px 600px at 80% 20%, rgba(255,65,108,0.16), transparent),
-    radial-gradient(900px 500px at 50% 100%, rgba(111, 66, 193, 0.14), transparent),
     #0b1220;
   color: white;
 }
@@ -1414,8 +1383,9 @@ onBeforeUnmount(() => {
   background: rgba(255, 255, 255, 0.10);
   border: 1px solid rgba(255,255,255,0.14);
   font-size: 20px;
-  box-shadow: 0 0 0 1px rgba(255,255,255,0.06) inset;
+  animation: floatLogo 4s ease-in-out infinite;
 }
+@keyframes floatLogo { 0%{transform:translateY(0)} 50%{transform:translateY(-3px)} 100%{transform:translateY(0)} }
 .title { font-weight: 950; font-size: 18px; }
 .sub { opacity: .72; font-size: 12px; }
 .top-actions { display: flex; gap: 8px; flex-wrap: wrap; justify-content: flex-end; }
@@ -1439,23 +1409,20 @@ onBeforeUnmount(() => {
   cursor:pointer;
   font-weight:950;
   opacity:.92;
-  transition: transform .12s ease, filter .12s ease, opacity .12s ease;
+  transition: all .18s ease;
+  position: relative;
 }
-.mode:hover{ transform: translateY(-1px); filter: brightness(1.05); }
+.mode:hover { transform: translateY(-2px); box-shadow: 0 6px 18px rgba(255,75,43,0.18); }
 .mode.on{
   background: linear-gradient(45deg, #ff416c, #ff4b2b);
   border-color: rgba(255,75,43,0.6);
   opacity:1;
-  box-shadow: 0 0 24px rgba(255,75,43,0.18);
+  box-shadow: 0 0 25px rgba(255,75,43,0.35);
 }
-
-/* ✅ Reels styling: different gradient so it feels like a new product */
 .mode.reels.on{
   background: linear-gradient(45deg, #7c3aed, #22c55e);
-  border-color: rgba(124,58,237,0.55);
-  box-shadow: 0 0 26px rgba(124,58,237,0.18);
+  box-shadow: 0 0 30px rgba(124,58,237,0.45);
 }
-
 .mode-right{
   margin-left:auto;
   display:flex;
@@ -1499,19 +1466,6 @@ onBeforeUnmount(() => {
 .panel-head { display:flex; align-items:center; justify-content:space-between; gap:10px; margin-bottom:10px; }
 .panel-title { font-weight: 950; }
 .dockActions{ display:flex; gap:8px; align-items:center; }
-
-/* ✅ Reels container */
-.reelsShell{
-  background:
-    radial-gradient(700px 400px at 20% 0%, rgba(124,58,237,0.18), transparent),
-    radial-gradient(700px 400px at 80% 0%, rgba(34,197,94,0.14), transparent),
-    rgba(255,255,255,0.06);
-}
-.reelsHeadRight{ display:flex; gap:8px; align-items:center; }
-.softGlow{
-  background: rgba(124,58,237,0.14) !important;
-  border: 1px solid rgba(124,58,237,0.22) !important;
-}
 
 /* Buttons */
 .btn, .chip {
@@ -1609,6 +1563,12 @@ onBeforeUnmount(() => {
 .iconbtn:disabled { opacity: .45; cursor: not-allowed; }
 
 /* Composer */
+.composer{ transition: all .25s ease; }
+.composer:focus-within{
+  border: 1px solid rgba(255,75,43,0.6);
+  box-shadow: 0 0 30px rgba(255,75,43,0.25);
+  transform: translateY(-2px);
+}
 .composer-head { display:flex; gap:10px; align-items:center; margin-bottom:10px; }
 .composer-meta { flex: 1; }
 .composer-actions { display:flex; justify-content:flex-end; }
@@ -1783,7 +1743,7 @@ onBeforeUnmount(() => {
   outline: none;
 }
 
-/* TikTok */
+/* TikTok + Reels */
 .feed.tiktok { scroll-snap-type: y mandatory; }
 .tt-card { scroll-snap-align: start; scroll-margin-top: 140px; }
 .tt-video-wrap { position: relative; }
@@ -1898,7 +1858,7 @@ onBeforeUnmount(() => {
   display: grid;
   grid-template-columns: repeat(4, 1fr);
   gap: 0;
-  padding: 10px 10px 14px;
+  padding: 10px 10px calc(14px + env(safe-area-inset-bottom));
   background: rgba(8, 12, 20, 0.82);
   backdrop-filter: blur(10px);
   border-top: 1px solid rgba(255,255,255,0.10);
@@ -1913,73 +1873,27 @@ onBeforeUnmount(() => {
   padding: 8px 6px;
   cursor: pointer;
 }
-.bn.on{ color: #fff; }
+.bn.on{
+  color: #fff;
+  text-shadow: 0 0 18px rgba(255,75,43,0.55);
+}
+.bn.on .bnI{ filter: drop-shadow(0 0 12px rgba(255,75,43,0.55)); }
 .bnI{ font-size: 18px; }
 .bnT{ font-size: 12px; font-weight: 850; }
 
 /* Mobile behavior */
 @media (max-width: 900px) {
   .dock{ grid-template-columns: 1fr; }
-
   .chatDrawer{
-    right: 0;
-    left: 0;
-    top: auto;
-    bottom: 0;
-    width: 100%;
+    right: 0; left: 0; top: auto; bottom: 0; width: 100%;
     transform: translateY(110%);
+    border-radius: 18px 18px 0 0;
   }
   .chatDrawer.open{ transform: translateY(0); }
-
   .rooms { grid-template-columns: 1fr; }
 }
-
-/* Compact top dock */
-@media (max-width: 900px) {
-  .main { padding: 12px; }
-  .panel, .composer, .post { padding: 12px; border-radius: 16px; }
-
-  .modebar { gap: 8px; }
-  .mode { padding: 8px 10px; font-size: 13px; }
-  .search { padding: 9px 10px; width: 100%; }
-
-  .live-pill { padding: 8px 10px; border-radius: 14px; }
-  .live-pill-name { font-size: 13px; }
-
-  .miniAvatars { gap: 8px; }
-  .miniAvatar { width: 40px; height: 40px; border-radius: 14px; font-size: 14px; }
-  .miniDot { width: 10px; height: 10px; right: 3px; bottom: 3px; }
-
-  .peopleList { max-height: 180px; }
-
-  .composer-head .avatar.big { width: 44px; height: 44px; }
-  .input { padding: 10px; border-radius: 12px; }
-  .upload-row { gap: 8px; }
-  .file-pill { padding: 8px 10px; font-size: 13px; }
-
-  .media { border-radius: 14px; max-height: 560px; }
-
-  .chatDrawer { border-radius: 18px 18px 0 0; }
-  .chatPanel { border-radius: 18px 18px 0 0; }
-}
-
-/* Dock actions smaller */
-.dockActions .btn,
-.dockActions .ghostBtn {
-  padding: 8px 10px;
-  border-radius: 999px;
-  font-size: 13px;
-}
-
-/* Safe area + active glow */
-.bottomNav{
-  padding-bottom: calc(14px + env(safe-area-inset-bottom));
-}
-.bn.on{
-  color: #fff;
-  text-shadow: 0 0 18px rgba(255,75,43,0.55);
-}
-.bn.on .bnI{
-  filter: drop-shadow(0 0 12px rgba(255,75,43,0.55));
+@media (max-width: 500px) {
+  .modebar { overflow-x: auto; scrollbar-width: none; }
+  .modebar::-webkit-scrollbar { display: none; }
 }
 </style>
