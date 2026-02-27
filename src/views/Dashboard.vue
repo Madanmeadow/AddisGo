@@ -32,6 +32,10 @@
       <!-- MODEBAR -->
       <div class="modebar">
         <button class="mode" :class="{ on: feedMode === 'foryou' }" @click="setFeedMode('foryou')">🎬 For You</button>
+
+        <!-- ✅ NEW: REELS TAB -->
+        <button class="mode reels" :class="{ on: feedMode === 'reels' }" @click="setFeedMode('reels')">🎞️ Reels</button>
+
         <button class="mode" :class="{ on: feedMode === 'following' }" @click="setFeedMode('following')">📸 Following</button>
         <button class="mode" :class="{ on: feedMode === 'threads' }" @click="setFeedMode('threads')">✍️ Threads</button>
         <button class="mode" :class="{ on: feedMode === 'rooms' }" @click="setFeedMode('rooms')">🎧 Rooms</button>
@@ -39,9 +43,13 @@
 
         <div class="mode-right">
           <input v-model="search" class="search" placeholder="Search…" />
+
           <button v-if="feedMode === 'foryou'" class="chip ghost" @click="toggleGlobalMute">
             {{ globalMuted ? "🔇 Muted" : "🔊 Sound" }}
           </button>
+
+          <!-- ✅ small pill hint when on Reels -->
+          <span v-if="feedMode === 'reels'" class="chip ghost mini softGlow">⚡ Fast Reels</span>
         </div>
       </div>
 
@@ -94,7 +102,7 @@
             <div v-if="!token" class="alert soft">Login again to see people & call buttons.</div>
 
             <template v-else>
-              <!-- Always show small strip (this is what you want on login) -->
+              <!-- Always show small strip -->
               <div class="miniAvatars">
                 <div
                   v-for="u in people.slice(0, 14)"
@@ -184,8 +192,39 @@
         </section>
 
         <!-- MODE CONTENT -->
+
+        <!-- ✅ NEW: REELS MODE (keeps your existing logic untouched) -->
+        <section v-if="feedMode === 'reels'" class="panel reelsShell">
+          <div class="panel-head">
+            <div class="panel-title">🎞️ Reels</div>
+            <div class="reelsHeadRight">
+              <button class="chip ghost mini" @click="setFeedMode('foryou')">Back to For You</button>
+              <button class="chip ghost mini" @click="scrollToTop">Top</button>
+            </div>
+          </div>
+
+          <div class="hint">
+            Your Reels screen is loaded as a tab (no route change). Existing Feed/Live/Chat logic stays the same.
+          </div>
+
+          <Suspense>
+            <template #default>
+              <!-- If your Reels.vue needs props, add them there.
+                   Leaving it clean avoids warnings if Reels doesn't define props. -->
+              <Reels />
+            </template>
+            <template #fallback>
+              <div class="state">
+                <div class="state-emoji">⚡</div>
+                <div class="state-title">Loading Reels…</div>
+                <div class="state-sub">One second</div>
+              </div>
+            </template>
+          </Suspense>
+        </section>
+
         <!-- LIVE MODE -->
-        <section v-if="feedMode === 'live'" class="panel">
+        <section v-else-if="feedMode === 'live'" class="panel">
           <div class="panel-head">
             <div class="panel-title">🔴 Live</div>
             <button class="btn btn-primary" @click="startLive" :disabled="!token">Go Live</button>
@@ -576,7 +615,7 @@
         </section>
       </main>
 
-      <!-- CHAT DRAWER (bottom sheet on mobile, side card on desktop) -->
+      <!-- CHAT DRAWER -->
       <aside class="chatDrawer" :class="{ open: chatOpen }">
         <section class="panel chatPanel">
           <div class="panel-head">
@@ -662,12 +701,17 @@
 </template>
 
 <script setup>
-import { ref, computed, onMounted, onBeforeUnmount, nextTick } from "vue";
-import { useRouter } from "vue-router";
+import { ref, computed, onMounted, onBeforeUnmount, nextTick, defineAsyncComponent } from "vue";
+import { useRouter, useRoute } from "vue-router";
 import Layout from "../components/Layout.vue";
 import { io } from "socket.io-client";
 
+/* ✅ NEW: lazy-load Reels tab so it doesn't impact Dashboard startup */
+const Reels = defineAsyncComponent(() => import("./Reels.vue"));
+
 const router = useRouter();
+const route = useRoute();
+
 const apiUrl = import.meta.env.VITE_API_URL;
 const token = localStorage.getItem("token");
 
@@ -676,12 +720,34 @@ const me = (() => {
 })();
 
 /* ================= MODEBAR ================= */
-const feedMode = ref("foryou"); // foryou | following | threads | rooms | live
+/** ✅ NEW: allow tab restore from URL (?tab=) or localStorage (no breaking changes) */
+const ALLOWED_TABS = new Set(["foryou", "reels", "following", "threads", "rooms", "live"]);
+function readInitialTab() {
+  const fromUrl = String(route.query.tab || "").toLowerCase();
+  if (ALLOWED_TABS.has(fromUrl)) return fromUrl;
+
+  const fromLs = String(localStorage.getItem("addisgo_tab") || "").toLowerCase();
+  if (ALLOWED_TABS.has(fromLs)) return fromLs;
+
+  return "foryou";
+}
+
+const feedMode = ref(readInitialTab()); // foryou | reels | following | threads | rooms | live
+
+function persistTab(mode) {
+  try { localStorage.setItem("addisgo_tab", mode); } catch {}
+  try {
+    router.replace({ query: { ...route.query, tab: mode } });
+  } catch {}
+}
 
 function setFeedMode(mode) {
+  if (!ALLOWED_TABS.has(mode)) mode = "foryou";
   feedMode.value = mode;
+  persistTab(mode);
 
   nextTick(() => {
+    // Only For You uses these observers
     if (feedMode.value === "foryou") {
       setupLoadMoreObserver();
       setupVideoObserver();
@@ -704,7 +770,7 @@ function isOnline(userId) {
 }
 
 /* ================= PEOPLE ================= */
-const peopleOpen = ref(false); // ✅ default closed (no big people on login)
+const peopleOpen = ref(false);
 const people = ref([]);
 const peopleLoading = ref(false);
 const peopleError = ref("");
@@ -1039,7 +1105,10 @@ async function submitComment(post) {
     const data = await res.json();
 
     if (!res.ok) {
-      commentsByPost.value = { ...commentsByPost.value, [postId]: (commentsByPost.value[postId] || []).filter((c) => c.id !== tempId) };
+      commentsByPost.value = {
+        ...commentsByPost.value,
+        [postId]: (commentsByPost.value[postId] || []).filter((c) => c.id !== tempId),
+      };
       commentErrorByPost.value = { ...commentErrorByPost.value, [postId]: data?.error || "Failed to send comment" };
       return;
     }
@@ -1049,7 +1118,10 @@ async function submitComment(post) {
       [postId]: (commentsByPost.value[postId] || []).map((c) => (c.id === tempId ? data : c)),
     };
   } catch {
-    commentsByPost.value = { ...commentsByPost.value, [postId]: (commentsByPost.value[postId] || []).filter((c) => c.id !== tempId) };
+    commentsByPost.value = {
+      ...commentsByPost.value,
+      [postId]: (commentsByPost.value[postId] || []).filter((c) => c.id !== tempId),
+    };
     commentErrorByPost.value = { ...commentErrorByPost.value, [postId]: "Failed to send comment" };
   } finally {
     commentBusyByPost.value = { ...commentBusyByPost.value, [postId]: false };
@@ -1070,7 +1142,7 @@ async function sharePost(post) {
 }
 
 /* ================= CHAT ================= */
-const chatOpen = ref(false); // ✅ default closed
+const chatOpen = ref(false);
 const chatRoom = ref("global");
 const chatText = ref("");
 const chatMessages = ref([]);
@@ -1115,14 +1187,14 @@ function logout() {
 }
 
 /* ================= BOTTOM NAV ACTIONS ================= */
-const isHomeActive = computed(() => ["foryou", "following", "threads", "rooms"].includes(feedMode.value));
+const isHomeActive = computed(() => ["foryou", "reels", "following", "threads", "rooms"].includes(feedMode.value));
 
 function goHome() {
   setFeedMode("foryou");
   scrollToTop();
 }
 function goInbox() {
-  router.push("/messages"); // your existing route
+  router.push("/messages");
 }
 function goLiveTab() {
   setFeedMode("live");
@@ -1312,10 +1384,11 @@ onBeforeUnmount(() => {
 /* Background */
 .wrap {
   min-height: 100vh;
-  padding-bottom: 88px; /* space for bottom nav */
+  padding-bottom: 88px;
   background:
     radial-gradient(1200px 700px at 20% 0%, rgba(255,75,43,0.18), transparent),
     radial-gradient(900px 600px at 80% 20%, rgba(255,65,108,0.16), transparent),
+    radial-gradient(900px 500px at 50% 100%, rgba(111, 66, 193, 0.14), transparent),
     #0b1220;
   color: white;
 }
@@ -1341,6 +1414,7 @@ onBeforeUnmount(() => {
   background: rgba(255, 255, 255, 0.10);
   border: 1px solid rgba(255,255,255,0.14);
   font-size: 20px;
+  box-shadow: 0 0 0 1px rgba(255,255,255,0.06) inset;
 }
 .title { font-weight: 950; font-size: 18px; }
 .sub { opacity: .72; font-size: 12px; }
@@ -1365,12 +1439,23 @@ onBeforeUnmount(() => {
   cursor:pointer;
   font-weight:950;
   opacity:.92;
+  transition: transform .12s ease, filter .12s ease, opacity .12s ease;
 }
+.mode:hover{ transform: translateY(-1px); filter: brightness(1.05); }
 .mode.on{
   background: linear-gradient(45deg, #ff416c, #ff4b2b);
   border-color: rgba(255,75,43,0.6);
   opacity:1;
+  box-shadow: 0 0 24px rgba(255,75,43,0.18);
 }
+
+/* ✅ Reels styling: different gradient so it feels like a new product */
+.mode.reels.on{
+  background: linear-gradient(45deg, #7c3aed, #22c55e);
+  border-color: rgba(124,58,237,0.55);
+  box-shadow: 0 0 26px rgba(124,58,237,0.18);
+}
+
 .mode-right{
   margin-left:auto;
   display:flex;
@@ -1394,7 +1479,7 @@ onBeforeUnmount(() => {
   padding: 16px;
 }
 
-/* Dock (People + Chat side-by-side) */
+/* Dock */
 .dock{
   display: grid;
   grid-template-columns: 1fr 1fr;
@@ -1414,6 +1499,19 @@ onBeforeUnmount(() => {
 .panel-head { display:flex; align-items:center; justify-content:space-between; gap:10px; margin-bottom:10px; }
 .panel-title { font-weight: 950; }
 .dockActions{ display:flex; gap:8px; align-items:center; }
+
+/* ✅ Reels container */
+.reelsShell{
+  background:
+    radial-gradient(700px 400px at 20% 0%, rgba(124,58,237,0.18), transparent),
+    radial-gradient(700px 400px at 80% 0%, rgba(34,197,94,0.14), transparent),
+    rgba(255,255,255,0.06);
+}
+.reelsHeadRight{ display:flex; gap:8px; align-items:center; }
+.softGlow{
+  background: rgba(124,58,237,0.14) !important;
+  border: 1px solid rgba(124,58,237,0.22) !important;
+}
 
 /* Buttons */
 .btn, .chip {
@@ -1823,7 +1921,6 @@ onBeforeUnmount(() => {
 @media (max-width: 900px) {
   .dock{ grid-template-columns: 1fr; }
 
-  /* Chat drawer becomes bottom sheet on phone */
   .chatDrawer{
     right: 0;
     left: 0;
@@ -1836,44 +1933,37 @@ onBeforeUnmount(() => {
 
   .rooms { grid-template-columns: 1fr; }
 }
-/* ================== COMPACT TOP DOCK (PHONE-FIRST) ================== */
+
+/* Compact top dock */
 @media (max-width: 900px) {
   .main { padding: 12px; }
   .panel, .composer, .post { padding: 12px; border-radius: 16px; }
 
-  /* modebar tighter */
   .modebar { gap: 8px; }
   .mode { padding: 8px 10px; font-size: 13px; }
   .search { padding: 9px 10px; width: 100%; }
 
-  /* Live card smaller */
   .live-pill { padding: 8px 10px; border-radius: 14px; }
   .live-pill-name { font-size: 13px; }
 
-  /* People strip smaller */
   .miniAvatars { gap: 8px; }
   .miniAvatar { width: 40px; height: 40px; border-radius: 14px; font-size: 14px; }
   .miniDot { width: 10px; height: 10px; right: 3px; bottom: 3px; }
 
-  /* Hide big people list by default on phone unless opened */
   .peopleList { max-height: 180px; }
 
-  /* Composer tighter */
   .composer-head .avatar.big { width: 44px; height: 44px; }
   .input { padding: 10px; border-radius: 12px; }
   .upload-row { gap: 8px; }
   .file-pill { padding: 8px 10px; font-size: 13px; }
 
-  /* Post media looks better on phone */
   .media { border-radius: 14px; max-height: 560px; }
 
-  /* Chat drawer bottom sheet nicer */
   .chatDrawer { border-radius: 18px 18px 0 0; }
   .chatPanel { border-radius: 18px 18px 0 0; }
 }
 
-/* ================== PEOPLE STRIP = “NEXT TO CHAT” FEEL ================== */
-/* Make People card act like a compact top-row tool area */
+/* Dock actions smaller */
 .dockActions .btn,
 .dockActions .ghostBtn {
   padding: 8px 10px;
@@ -1881,16 +1971,14 @@ onBeforeUnmount(() => {
   font-size: 13px;
 }
 
-/* ================== BOTTOM NAV: iPhone SAFE AREA + ACTIVE GLOW ================== */
+/* Safe area + active glow */
 .bottomNav{
   padding-bottom: calc(14px + env(safe-area-inset-bottom));
 }
-
 .bn.on{
   color: #fff;
   text-shadow: 0 0 18px rgba(255,75,43,0.55);
 }
-
 .bn.on .bnI{
   filter: drop-shadow(0 0 12px rgba(255,75,43,0.55));
 }
