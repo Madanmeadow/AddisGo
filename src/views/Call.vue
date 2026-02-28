@@ -1,750 +1,706 @@
 <template>
-  <div class="callPage">
-    <!-- TOP BAR -->
-    <header class="topBar">
-      <div class="who">
-        <div class="name">
-          {{ displayName }}
-          <span class="pill">{{ kindLabel }}</span>
-        </div>
-        <div class="sub">
-          <span class="dot" :class="{ on: connected }"></span>
-          <span>{{ statusText }}</span>
-          <span class="sep">•</span>
-          <span class="timer">{{ callTime }}</span>
-        </div>
+  <div class="call-page">
+    <!-- Top bar -->
+    <header class="topbar">
+      <div class="brand">
+        <div class="dot"></div>
+        <div class="title">AddisGo Call</div>
+        <div class="sub">Room: <span class="mono">{{ roomId }}</span></div>
       </div>
 
-      <button class="miniBtn ghost" @click="toggleStats">
-        {{ showStats ? "Hide" : "Stats" }}
-      </button>
+      <div class="status">
+        <span class="pill" :class="statusClass">{{ statusText }}</span>
+      </div>
     </header>
 
-    <!-- STAGE -->
-    <main class="stage">
-      <div class="frame" :class="{ audioOnly: isAudioOnly }">
-        <div class="frameBorder"></div>
-
-        <!-- ✅ REMOTE AUDIO ALWAYS (fixes audio-only calls) -->
-        <audio ref="remoteAudio" autoplay playsinline></audio>
-
-        <!-- REMOTE VIDEO -->
-        <video
-          v-show="!isAudioOnly"
-          ref="remoteVideo"
-          class="remote"
-          autoplay
-          playsinline
-        ></video>
-
-        <!-- AUDIO-ONLY / AVATAR -->
-        <div v-if="isAudioOnly" class="audioCard">
-          <div class="avatar">{{ remoteInitial }}</div>
-          <div class="audioText">
-            <div class="big">{{ displayName }}</div>
-            <div class="small">{{ connected ? "Connected" : "Ringing…" }}</div>
-          </div>
+    <!-- Audio unlock overlay (needed on iOS / Chrome autoplay policy) -->
+    <div v-if="needsSoundUnlock" class="overlay">
+      <div class="card">
+        <div class="h">🔊 Enable Sound</div>
+        <div class="p">
+          Your browser blocks ringtone until you tap once.
+          Tap below to enable ringtone + call audio.
         </div>
-
-        <!-- LOCAL PIP (DRAGGABLE) -->
-        <div
-          class="pip"
-          v-show="!isAudioOnly"
-          :style="{ transform: `translate(${pip.x}px, ${pip.y}px)` }"
-          @pointerdown="pipPointerDown"
-        >
-          <video ref="localVideo" class="local" autoplay playsinline muted></video>
-
-          <div class="pipBadge">
-            <span class="tinyDot" :class="{ off: micMuted }"></span>
-            <span>{{ micMuted ? "Muted" : "Live" }}</span>
-          </div>
-        </div>
-
-        <!-- STATUS OVERLAY -->
-        <div class="overlay" v-if="!connected">
-          <div class="overlayTitle">{{ statusText }}</div>
-          <div class="overlaySub">Room: {{ roomId }}</div>
-
-          <button v-if="needsTapToStart" class="btnPrimary" @click="userTapStart">
-            Tap to start audio/video
-          </button>
-        </div>
+        <button class="btn primary" @click="unlockSound">Tap to Enable Sound</button>
+        <button class="btn ghost" @click="skipSound">Skip</button>
       </div>
+    </div>
 
-      <!-- STATS -->
-      <section v-if="showStats" class="stats">
-        <div class="stRow"><span>Peers</span><b>{{ peerCount }}</b></div>
-        <div class="stRow"><span>ICE</span><b>{{ iceState }}</b></div>
-        <div class="stRow"><span>Conn</span><b>{{ connState }}</b></div>
-        <div class="stRow"><span>Mic</span><b>{{ micMuted ? "Muted" : "On" }}</b></div>
-        <div class="stRow"><span>Cam</span><b>{{ camOff ? "Off" : "On" }}</b></div>
-        <div class="stRow"><span>Speaker</span><b>{{ speakerOn ? "On" : "Off" }}</b></div>
+    <!-- Main -->
+    <main class="main">
+      <!-- Remote -->
+      <section class="stage">
+        <div class="stage-inner">
+          <video
+            v-if="showRemoteVideo"
+            ref="remoteVideoEl"
+            class="video remote"
+            autoplay
+            playsinline
+          ></video>
+
+          <div v-else class="remote-placeholder">
+            <div class="avatar">👤</div>
+            <div class="who">
+              <div class="label">Remote</div>
+              <div class="mono">{{ remoteLabel }}</div>
+            </div>
+          </div>
+
+          <!-- Local preview (only if video) -->
+          <video
+            v-if="showLocalVideo"
+            ref="localVideoEl"
+            class="video local"
+            muted
+            autoplay
+            playsinline
+          ></video>
+        </div>
+
+        <!-- Incoming controls -->
+        <div v-if="isIncoming && !accepted && !ended" class="incoming-bar">
+          <div class="incoming-text">
+            📞 Incoming {{ kind }} call…
+          </div>
+          <div class="incoming-actions">
+            <button class="btn danger" @click="reject">Reject</button>
+            <button class="btn primary" @click="accept">Accept</button>
+          </div>
+        </div>
+
+        <!-- Active controls -->
+        <div v-else class="controls">
+          <button class="btn" :class="{ danger: micMuted }" @click="toggleMic">
+            {{ micMuted ? "Unmute" : "Mute" }}
+          </button>
+
+          <button v-if="kind === 'video'" class="btn" :class="{ danger: camOff }" @click="toggleCam">
+            {{ camOff ? "Camera On" : "Camera Off" }}
+          </button>
+
+          <button class="btn danger" @click="endCall">End Call</button>
+        </div>
       </section>
+
+      <!-- Debug / info (helpful while testing) -->
+      <aside class="side">
+        <div class="panel">
+          <div class="panel-title">Connection</div>
+          <div class="row"><span>ICE:</span><span class="mono">{{ iceMode }}</span></div>
+          <div class="row"><span>Peers:</span><span class="mono">{{ peersCount }}</span></div>
+          <div class="row"><span>Socket:</span><span class="mono">{{ socketIdShort }}</span></div>
+        </div>
+
+        <div class="panel">
+          <div class="panel-title">Tips</div>
+          <ul class="tips">
+            <li>If ringtone doesn’t play, tap “Enable Sound” once.</li>
+            <li>On iPhone, keep screen awake (low power mode can pause audio).</li>
+            <li>TURN is optional; STUN-only still works in many networks.</li>
+          </ul>
+        </div>
+      </aside>
     </main>
-
-    <!-- CONTROLS -->
-    <footer class="controls">
-      <button class="ctl" :class="{ on: !micMuted }" @click="toggleMic" title="Mic">
-        <span class="ic">🎙️</span>
-        <span class="tx">{{ micMuted ? "Unmute" : "Mute" }}</span>
-      </button>
-
-      <button class="ctl" :class="{ on: !camOff }" @click="toggleCamera" title="Camera" :disabled="isAudioOnly">
-        <span class="ic">🎥</span>
-        <span class="tx">{{ camOff ? "Cam On" : "Cam Off" }}</span>
-      </button>
-
-      <button class="ctl" :class="{ on: speakerOn }" @click="toggleSpeaker" title="Speaker">
-        <span class="ic">🔊</span>
-        <span class="tx">{{ speakerOn ? "Speaker" : "Earpiece" }}</span>
-      </button>
-
-      <button class="end" @click="endCall" title="End">
-        ⛔ End
-      </button>
-    </footer>
   </div>
 </template>
 
 <script setup>
-import { ref, computed, onMounted, onBeforeUnmount } from "vue";
-import { useRoute, useRouter } from "vue-router";
-import { io } from "socket.io-client";
+import { computed, onBeforeUnmount, onMounted, ref } from "vue"
+import { useRoute, useRouter } from "vue-router"
+import { io } from "socket.io-client"
 
-const route = useRoute();
-const router = useRouter();
+const route = useRoute()
+const router = useRouter()
 
-const apiUrl = import.meta.env.VITE_API_URL;
-const me = (() => { try { return JSON.parse(localStorage.getItem("user") || "null"); } catch { return null; } })();
+/* =========================
+   CONFIG
+========================= */
+const apiUrl = import.meta.env.VITE_API_URL?.replace(/\/$/, "") || "http://localhost:5000"
 
-const roomId = String(route.query.roomId || "");
-const role = String(route.query.role || "caller"); // caller | callee
-const kind = String(route.query.kind || "video");  // video | audio
-
-const isAudioOnly = computed(() => kind !== "video");
-
-const remoteVideo = ref(null);
-const remoteAudio = ref(null);
-const localVideo = ref(null);
-
-const socket = ref(null);
-const connected = ref(false);
-const statusText = ref(role === "caller" ? "Connecting…" : "Joining…");
-
-const showStats = ref(false);
-const peerCount = ref(0);
-const iceState = ref("-");
-const connState = ref("-");
-const needsTapToStart = ref(false);
-
-const micMuted = ref(false);
-const camOff = ref(false);
-const speakerOn = ref(true);
-
-const displayName = computed(() => {
-  // later you can pass real name in query or fetch it
-  return role === "caller" ? "Call" : "Incoming Call";
-});
-const remoteInitial = computed(() => (displayName.value?.[0] || "U").toUpperCase());
-const kindLabel = computed(() => (isAudioOnly.value ? "AUDIO" : "VIDEO"));
-
-/* ---------------- TIMER ---------------- */
-const seconds = ref(0);
-let timerInt = null;
-const callTime = computed(() => {
-  const s = seconds.value;
-  const mm = String(Math.floor(s / 60)).padStart(2, "0");
-  const ss = String(s % 60).padStart(2, "0");
-  return `${mm}:${ss}`;
-});
-function startTimer() {
-  if (timerInt) return;
-  timerInt = setInterval(() => (seconds.value += 1), 1000);
-}
-function stopTimer() {
-  if (timerInt) clearInterval(timerInt);
-  timerInt = null;
+/**
+ * We try to reuse an existing global socket if you already set one elsewhere.
+ * Otherwise we create one here (safe fallback).
+ */
+function getSocket() {
+  if (window.__ADDISGO_SOCKET__) return window.__ADDISGO_SOCKET__
+  const s = io(apiUrl, { transports: ["websocket"], withCredentials: true })
+  window.__ADDISGO_SOCKET__ = s
+  return s
 }
 
-/* ---------------- iOS AUDIO UNLOCK ---------------- */
-let audioCtx = null;
-async function unlockAudio() {
+const socket = getSocket()
+
+/* =========================
+   STATE
+========================= */
+const roomId = String(route.params.roomId || route.query.roomId || "")
+const kind = ref(String(route.query.kind || "audio")) // "audio" | "video"
+const isIncoming = ref(route.query.incoming === "1" || route.query.incoming === "true")
+
+const accepted = ref(false)
+const ended = ref(false)
+
+const localStream = ref(null)
+const remoteStream = ref(new MediaStream())
+
+const localVideoEl = ref(null)
+const remoteVideoEl = ref(null)
+
+const micMuted = ref(false)
+const camOff = ref(false)
+
+/* =========================
+   SOUND / RINGTONE (WebAudio)
+   Browsers block autoplay until user gesture.
+========================= */
+const needsSoundUnlock = ref(true)
+let audioCtx = null
+let ringOsc = null
+let ringGain = null
+let ringTimer = null
+
+async function unlockSound() {
   try {
-    audioCtx = audioCtx || new (window.AudioContext || window.webkitAudioContext)();
-    if (audioCtx.state !== "running") await audioCtx.resume();
-  } catch {}
+    if (!audioCtx) audioCtx = new (window.AudioContext || window.webkitAudioContext)()
+    if (audioCtx.state !== "running") await audioCtx.resume()
+    needsSoundUnlock.value = false
+    // If we are currently supposed to ring, start now.
+    if (isIncoming.value && !accepted.value && !ended.value) startRingtone()
+  } catch (e) {
+    console.error("unlockSound failed", e)
+    // keep overlay if it failed
+  }
 }
 
-/* ---------------- WEBRTC (mesh) ---------------- */
-let localStream = null;
-let remoteStream = null;
+function skipSound() {
+  needsSoundUnlock.value = false
+}
 
-const pcs = new Map(); // peerSocketId -> RTCPeerConnection
+function startRingtone() {
+  // Don’t start if user didn’t unlock sound yet
+  if (needsSoundUnlock.value) return
+  if (!audioCtx) return
+  stopRingtone()
+
+  // A simple “ring ring” pattern using oscillator
+  ringGain = audioCtx.createGain()
+  ringGain.gain.value = 0.0001
+  ringGain.connect(audioCtx.destination)
+
+  ringOsc = audioCtx.createOscillator()
+  ringOsc.type = "sine"
+  ringOsc.frequency.value = 880
+  ringOsc.connect(ringGain)
+  ringOsc.start()
+
+  let on = false
+  ringTimer = setInterval(() => {
+    on = !on
+    if (!ringGain) return
+    ringGain.gain.setTargetAtTime(on ? 0.12 : 0.0001, audioCtx.currentTime, 0.01)
+  }, 400)
+}
+
+function stopRingtone() {
+  if (ringTimer) clearInterval(ringTimer)
+  ringTimer = null
+  try { ringOsc?.stop() } catch {}
+  ringOsc = null
+  try { ringGain?.disconnect() } catch {}
+  ringGain = null
+}
+
+/* =========================
+   ICE SERVERS
+========================= */
+const iceMode = ref("loading…")
 
 async function getIceServers() {
   try {
-    const res = await fetch(`${apiUrl}/api/turn`);
-    const data = await res.json();
+    const res = await fetch(`${apiUrl}/api/turn`)
+    const data = await res.json()
+    const servers = data?.iceServers?.length
+      ? data.iceServers
+      : [{ urls: "stun:stun.l.google.com:19302" }]
 
-    if (data?.iceServers?.length) {
-      return data.iceServers;
-    }
+    iceMode.value = data?.note || (data?.iceServers?.length ? "TURN/STUN" : "STUN only")
+    return servers
   } catch (e) {
-    console.error("ICE fetch failed, fallback to STUN", e);
+    console.error("ICE fetch failed, fallback to STUN", e)
+    iceMode.value = "STUN only (fallback)"
+    return [{ urls: "stun:stun.l.google.com:19302" }]
   }
+}
 
-  return [{ urls: "stun:stun.l.google.com:19302" }];
+/* =========================
+   WEBRTC (mesh-capable)
+========================= */
+const pcs = new Map() // peerSocketId -> RTCPeerConnection
+
+const peersCount = computed(() => pcs.size)
+const socketIdShort = computed(() => (socket?.id ? socket.id.slice(0, 8) : "…"))
+
+function ensureRemoteStream() {
+  if (!remoteStream.value) remoteStream.value = new MediaStream()
 }
 
 async function ensureLocalStream() {
-  if (localStream) return localStream;
+  if (localStream.value) return localStream.value
 
-  const constraints = isAudioOnly.value
-    ? { audio: true, video: false }
-    : { audio: true, video: { facingMode: "user" } };
+  const wantVideo = kind.value === "video"
+  const constraints = wantVideo
+    ? { audio: true, video: { facingMode: "user" } }
+    : { audio: true, video: false }
 
-  localStream = await navigator.mediaDevices.getUserMedia(constraints);
+  const s = await navigator.mediaDevices.getUserMedia(constraints)
+  localStream.value = s
 
-  // local preview (video mode only)
-  if (!isAudioOnly.value && localVideo.value) {
-    localVideo.value.srcObject = localStream;
-    try { await localVideo.value.play(); }
-    catch { needsTapToStart.value = true; }
+  // attach preview
+  if (localVideoEl.value && wantVideo) {
+    localVideoEl.value.srcObject = s
   }
 
-  applyMicState();
-  applyCamState();
-
-  return localStream;
+  return s
 }
 
-function attachRemoteStream(stream) {
-  remoteStream = stream;
+async function createPC(peerSocketId, iceServers) {
+  if (pcs.has(peerSocketId)) return pcs.get(peerSocketId)
 
-  // ✅ Always attach audio (even in video mode)
-  if (remoteAudio.value) {
-    remoteAudio.value.srcObject = stream;
-    remoteAudio.value.muted = !speakerOn.value;
-    remoteAudio.value.volume = speakerOn.value ? 1 : 0;
-    remoteAudio.value.play?.().catch(() => { needsTapToStart.value = true; });
-  }
+  const pc = new RTCPeerConnection({ iceServers })
+  pcs.set(peerSocketId, pc)
 
-  // Attach video if this is a video call
-  if (remoteVideo.value && !isAudioOnly.value) {
-    remoteVideo.value.srcObject = stream;
-    remoteVideo.value.muted = !speakerOn.value; // optional (some prefer video not muted)
-    remoteVideo.value.volume = speakerOn.value ? 1 : 0;
-    remoteVideo.value.play?.().catch(() => { needsTapToStart.value = true; });
-  }
-}
+  // local tracks
+  const s = await ensureLocalStream()
+  for (const track of s.getTracks()) pc.addTrack(track, s)
 
-function createPC(peerId, iceServers) {
-  const pc = new RTCPeerConnection({ iceServers });
-
-  pc.onicecandidate = (ev) => {
-    if (ev.candidate) {
-      socket.value?.emit("call:webrtc:ice", { roomId, candidate: ev.candidate, to: peerId });
-    }
-  };
-
-  pc.onconnectionstatechange = () => {
-    connState.value = pc.connectionState || "-";
-    if (pc.connectionState === "connected") {
-      connected.value = true;
-      statusText.value = "Connected";
-      startTimer();
-    }
-  };
-
-  pc.oniceconnectionstatechange = () => {
-    iceState.value = pc.iceConnectionState || "-";
-  };
-
+  // remote tracks
   pc.ontrack = (ev) => {
-    const [stream] = ev.streams;
-    if (stream) attachRemoteStream(stream);
-  };
+    ensureRemoteStream()
+    ev.streams?.[0]?.getTracks()?.forEach((t) => {
+      // avoid duplicates
+      const exists = remoteStream.value.getTracks().some(x => x.id === t.id)
+      if (!exists) remoteStream.value.addTrack(t)
+    })
 
-  pcs.set(peerId, pc);
-  peerCount.value = pcs.size;
-  return pc;
-}
-
-async function addLocalTracks(pc) {
-  const s = await ensureLocalStream();
-  s.getTracks().forEach((t) => pc.addTrack(t, s));
-}
-
-async function makeOfferTo(peerId) {
-  const iceServers = await getIceServers();
-  const pc = pcs.get(peerId) || createPC(peerId, iceServers);
-
-  await addLocalTracks(pc);
-
-  const offer = await pc.createOffer({ offerToReceiveAudio: true, offerToReceiveVideo: !isAudioOnly.value });
-  await pc.setLocalDescription(offer);
-
-  socket.value?.emit("call:webrtc:offer", { roomId, offer, to: peerId });
-}
-
-async function handleOffer(fromPeerId, offer) {
-  const iceServers = await getIceServers();
-  const pc = pcs.get(fromPeerId) || createPC(fromPeerId, iceServers);
-
-  await addLocalTracks(pc);
-
-  await pc.setRemoteDescription(offer);
-  const answer = await pc.createAnswer();
-  await pc.setLocalDescription(answer);
-
-  socket.value?.emit("call:webrtc:answer", { roomId, answer, to: fromPeerId });
-}
-
-async function handleAnswer(fromPeerId, answer) {
-  const pc = pcs.get(fromPeerId);
-  if (!pc) return;
-  await pc.setRemoteDescription(answer);
-}
-
-async function handleIce(fromPeerId, candidate) {
-  const pc = pcs.get(fromPeerId);
-  if (!pc) return;
-  try { await pc.addIceCandidate(candidate); } catch {}
-}
-
-function closeAllPCs() {
-  for (const pc of pcs.values()) {
-    try { pc.close(); } catch {}
+    if (remoteVideoEl.value) {
+      remoteVideoEl.value.srcObject = remoteStream.value
+    }
   }
-  pcs.clear();
-  peerCount.value = 0;
-}
 
-/* ---------------- CONTROLS ---------------- */
-function applyMicState() {
-  if (!localStream) return;
-  localStream.getAudioTracks().forEach((t) => (t.enabled = !micMuted.value));
-}
-function applyCamState() {
-  if (!localStream) return;
-  localStream.getVideoTracks().forEach((t) => (t.enabled = !camOff.value));
-}
+  // ICE candidates
+  pc.onicecandidate = (ev) => {
+    if (!ev.candidate) return
+    socket.emit("call:webrtc:ice", { roomId, candidate: ev.candidate, to: peerSocketId })
+  }
 
-function toggleMic() {
-  micMuted.value = !micMuted.value;
-  applyMicState();
-}
-
-function toggleCamera() {
-  camOff.value = !camOff.value;
-  applyCamState();
-}
-
-async function toggleSpeaker() {
-  speakerOn.value = !speakerOn.value;
-
-  // best effort: mute/unmute remote elements
-  try {
-    if (remoteAudio.value) {
-      remoteAudio.value.muted = !speakerOn.value;
-      remoteAudio.value.volume = speakerOn.value ? 1 : 0;
+  // cleanup on close
+  pc.onconnectionstatechange = () => {
+    const st = pc.connectionState
+    if (st === "failed" || st === "disconnected" || st === "closed") {
+      // we keep it simple; you can be more aggressive later
     }
-    if (remoteVideo.value) {
-      remoteVideo.value.muted = !speakerOn.value;
-      remoteVideo.value.volume = speakerOn.value ? 1 : 0;
-    }
-  } catch {}
+  }
+
+  return pc
 }
 
-function toggleStats() {
-  showStats.value = !showStats.value;
+/* =========================
+   CALL FLOW
+========================= */
+const statusText = computed(() => {
+  if (ended.value) return "Ended"
+  if (isIncoming.value && !accepted.value) return "Incoming…"
+  if (!accepted.value) return "Connecting…"
+  return "In Call"
+})
+
+const statusClass = computed(() => {
+  if (ended.value) return "danger"
+  if (isIncoming.value && !accepted.value) return "warn"
+  if (!accepted.value) return "warn"
+  return "ok"
+})
+
+const showLocalVideo = computed(() => kind.value === "video" && !camOff.value)
+const showRemoteVideo = computed(() => kind.value === "video")
+const remoteLabel = computed(() => "Connected peer(s)")
+
+async function accept() {
+  // user gesture: unlock sound automatically if still locked
+  if (needsSoundUnlock.value) await unlockSound()
+  stopRingtone()
+
+  accepted.value = true
+  socket.emit("call:accept", { roomId })
+  // join the call room (required for peer events)
+  socket.emit("call:join", { roomId })
 }
 
-async function userTapStart() {
-  needsTapToStart.value = false;
-  await unlockAudio();
-
-  try { await ensureLocalStream(); } catch {}
-  try { await remoteAudio.value?.play?.(); } catch {}
-  try { await remoteVideo.value?.play?.(); } catch {}
-  try { await localVideo.value?.play?.(); } catch {}
+function reject() {
+  stopRingtone()
+  ended.value = true
+  socket.emit("call:reject", { roomId })
+  // go back to dashboard
+  router.push("/dashboard").catch(() => {})
 }
 
 function endCall() {
-  socket.value?.emit("call:end", { roomId });
-  cleanup({ navigate: true });
+  stopRingtone()
+  ended.value = true
+  socket.emit("call:end", { roomId })
+  cleanup()
+  router.push("/dashboard").catch(() => {})
 }
 
-/* ---------------- PIP DRAG ---------------- */
-const pip = ref({ x: 0, y: 0 });
-let pipDrag = null;
-
-function pipPointerDown(e) {
-  // only drag on pointer devices
-  try { e.currentTarget.setPointerCapture(e.pointerId); } catch {}
-  pipDrag = {
-    startX: e.clientX,
-    startY: e.clientY,
-    baseX: pip.value.x,
-    baseY: pip.value.y,
-  };
-  window.addEventListener("pointermove", pipPointerMove);
-  window.addEventListener("pointerup", pipPointerUp, { once: true });
+/* =========================
+   MEDIA TOGGLES
+========================= */
+function toggleMic() {
+  if (!localStream.value) return
+  micMuted.value = !micMuted.value
+  localStream.value.getAudioTracks().forEach((t) => (t.enabled = !micMuted.value))
 }
 
-function pipPointerMove(e) {
-  if (!pipDrag) return;
-  const dx = e.clientX - pipDrag.startX;
-  const dy = e.clientY - pipDrag.startY;
-  pip.value = { x: pipDrag.baseX + dx, y: pipDrag.baseY + dy };
+function toggleCam() {
+  if (!localStream.value) return
+  camOff.value = !camOff.value
+  localStream.value.getVideoTracks().forEach((t) => (t.enabled = !camOff.value))
 }
 
-function pipPointerUp() {
-  pipDrag = null;
-  window.removeEventListener("pointermove", pipPointerMove);
+/* =========================
+   SOCKET EVENTS
+========================= */
+let iceServersCache = null
+
+function onIncoming(payload) {
+  // If this Call.vue page is open for that room, show accept/reject here.
+  if (!payload?.roomId) return
+  if (String(payload.roomId) !== roomId) return
+
+  kind.value = payload.kind || kind.value
+  isIncoming.value = true
+  accepted.value = false
+  ended.value = false
+
+  // Start ringtone (if allowed)
+  startRingtone()
 }
 
-/* ---------------- CLEANUP ---------------- */
-let cleaning = false;
-function cleanup({ navigate } = { navigate: false }) {
-  if (cleaning) return;
-  cleaning = true;
+function onRing() {
+  // server says ring; if we are callee and incoming -> ring
+  if (isIncoming.value && !accepted.value && !ended.value) startRingtone()
+}
 
-  stopTimer();
-  closeAllPCs();
+function onStopRing() {
+  stopRingtone()
+}
 
-  try { socket.value?.emit("call:leave", { roomId }); } catch {}
-  try { socket.value?.disconnect?.(); } catch {}
-  socket.value = null;
+function onAccepted() {
+  stopRingtone()
+  accepted.value = true
+  // auto-join if not already
+  socket.emit("call:join", { roomId })
+}
+
+function onEnded() {
+  stopRingtone()
+  ended.value = true
+  cleanup()
+}
+
+async function onPeerJoined({ peerSocketId }) {
+  if (!peerSocketId) return
+  if (!iceServersCache) iceServersCache = await getIceServers()
+
+  // Existing peers create offer to the newcomer (mesh)
+  const pc = await createPC(peerSocketId, iceServersCache)
+  const offer = await pc.createOffer()
+  await pc.setLocalDescription(offer)
+
+  socket.emit("call:webrtc:offer", { roomId, offer, to: peerSocketId })
+}
+
+async function onOffer({ offer, from }) {
+  if (!offer || !from) return
+  if (!iceServersCache) iceServersCache = await getIceServers()
+
+  const pc = await createPC(from, iceServersCache)
+  await pc.setRemoteDescription(offer)
+
+  const answer = await pc.createAnswer()
+  await pc.setLocalDescription(answer)
+
+  socket.emit("call:webrtc:answer", { roomId, answer, to: from })
+}
+
+async function onAnswer({ answer, from }) {
+  if (!answer || !from) return
+  const pc = pcs.get(from)
+  if (!pc) return
+  await pc.setRemoteDescription(answer)
+}
+
+async function onIce({ candidate, from }) {
+  if (!candidate || !from) return
+  const pc = pcs.get(from)
+  if (!pc) return
+  try {
+    await pc.addIceCandidate(candidate)
+  } catch (e) {
+    console.warn("addIceCandidate failed", e)
+  }
+}
+
+/* =========================
+   CLEANUP
+========================= */
+function cleanup() {
+  // close pcs
+  for (const pc of pcs.values()) {
+    try { pc.close() } catch {}
+  }
+  pcs.clear()
+
+  // stop tracks
+  try {
+    localStream.value?.getTracks()?.forEach((t) => t.stop())
+  } catch {}
+  localStream.value = null
 
   try {
-    if (localStream) {
-      localStream.getTracks().forEach((t) => t.stop());
-      localStream = null;
-    }
+    remoteStream.value?.getTracks()?.forEach((t) => t.stop())
   } catch {}
+  remoteStream.value = new MediaStream()
 
-  // do NOT force route change on unmount
-  if (navigate) router.push("/dashboard");
+  stopRingtone()
 }
 
-/* ---------------- INIT ---------------- */
 onMounted(async () => {
   if (!roomId) {
-    alert("Missing roomId");
-    router.push("/dashboard");
-    return;
+    router.push("/dashboard").catch(() => {})
+    return
   }
 
-  // unlock attempt on first user interaction anywhere
-  window.addEventListener("pointerdown", unlockAudio, { once: true, passive: true });
+  // We show “Enable Sound” overlay first (safe default)
+  // But if user already interacted earlier, they can dismiss it quickly.
+  // If you hate this overlay later, we can auto-hide when audioCtx already running.
 
-  socket.value = io(apiUrl, { transports: ["websocket", "polling"] });
+  // Make sure user is registered online (your server listens to these)
+  const userRaw = localStorage.getItem("user")
+  let user = null
+  try { user = userRaw ? JSON.parse(userRaw) : null } catch {}
+  const userId = user?.id
 
-  socket.value.on("connect", async () => {
-    if (me?.id) socket.value.emit("register-user", { id: me.id, username: me.username });
+  if (userId) {
+    socket.emit("user:online", { userId })
+    socket.emit("register-user", { id: userId, username: user?.username })
+  }
 
-    socket.value.emit("call:join", { roomId });
-    statusText.value = "Joining…";
+  // cache ICE
+  iceServersCache = await getIceServers()
 
-    try { await ensureLocalStream(); }
-    catch { /* permission can fail; still allow listening */ }
-  });
+  // Attach remote stream
+  if (remoteVideoEl.value) remoteVideoEl.value.srcObject = remoteStream.value
 
-  socket.value.on("call:peer-joined", async ({ peerSocketId }) => {
-    if (!peerSocketId) return;
-    statusText.value = "Peer joined… negotiating";
-    await makeOfferTo(peerSocketId);
-  });
+  // If THIS page is opened for outgoing call, we immediately join.
+  // If incoming, we wait for Accept button.
+  if (!isIncoming.value) {
+    accepted.value = true
+    socket.emit("call:join", { roomId })
+    // ensure local stream starts so we can negotiate when peer joins
+    await ensureLocalStream()
+  } else {
+    // incoming: start ringtone if possible
+    startRingtone()
+  }
 
-  socket.value.on("call:ready", () => {
-    // call is ready for negotiation
-    if (!connected.value) statusText.value = "Connecting…";
-  });
+  // listeners
+  socket.on("call:incoming", onIncoming)
+  socket.on("call:ring", onRing)
+  socket.on("call:ringing", onRing)
+  socket.on("call:stopRing", onStopRing)
+  socket.on("call:accepted", onAccepted)
+  socket.on("call:ended", onEnded)
 
-  socket.value.on("call:webrtc:offer", async ({ offer, from }) => {
-    if (!from || !offer) return;
-    await handleOffer(from, offer);
-  });
-
-  socket.value.on("call:webrtc:answer", async ({ answer, from }) => {
-    if (!from || !answer) return;
-    await handleAnswer(from, answer);
-  });
-
-  socket.value.on("call:webrtc:ice", async ({ candidate, from }) => {
-    if (!from || !candidate) return;
-    await handleIce(from, candidate);
-  });
-
-  socket.value.on("call:ended", () => {
-    cleanup({ navigate: true });
-  });
-
-  socket.value.on("call:error", ({ message } = {}) => {
-    alert(message || "Call error");
-    cleanup({ navigate: true });
-  });
-});
+  socket.on("call:peer-joined", onPeerJoined)
+  socket.on("call:webrtc:offer", onOffer)
+  socket.on("call:webrtc:answer", onAnswer)
+  socket.on("call:webrtc:ice", onIce)
+})
 
 onBeforeUnmount(() => {
-  // no navigation on destroy
-  cleanup({ navigate: false });
-});
+  try {
+    socket.off("call:incoming", onIncoming)
+    socket.off("call:ring", onRing)
+    socket.off("call:ringing", onRing)
+    socket.off("call:stopRing", onStopRing)
+    socket.off("call:accepted", onAccepted)
+    socket.off("call:ended", onEnded)
+
+    socket.off("call:peer-joined", onPeerJoined)
+    socket.off("call:webrtc:offer", onOffer)
+    socket.off("call:webrtc:answer", onAnswer)
+    socket.off("call:webrtc:ice", onIce)
+  } catch {}
+
+  cleanup()
+})
 </script>
 
 <style scoped>
-.callPage{
+.call-page {
   min-height: 100vh;
-  background:
-    radial-gradient(1200px 700px at 20% 0%, rgba(255,75,43,0.18), transparent),
-    radial-gradient(900px 600px at 80% 20%, rgba(255,65,108,0.16), transparent),
-    #070b14;
-  color: #fff;
-  display:flex;
-  flex-direction: column;
+  background: radial-gradient(1200px 800px at 20% 0%, #1b2a4a 0%, #0b0f1a 55%, #070911 100%);
+  color: #e9eefc;
+  font-family: system-ui, -apple-system, Segoe UI, Roboto, Arial;
 }
 
-/* Top bar */
-.topBar{
-  position: sticky;
-  top:0;
-  z-index: 20;
-  padding: 14px 14px;
-  display:flex;
-  align-items:center;
+.topbar {
+  display: flex;
+  align-items: center;
   justify-content: space-between;
-  background: rgba(8, 12, 20, 0.72);
+  padding: 14px 16px;
+  border-bottom: 1px solid rgba(255,255,255,.08);
   backdrop-filter: blur(10px);
-  border-bottom: 1px solid rgba(255,255,255,0.10);
+  background: rgba(10, 14, 26, 0.55);
 }
-.who .name{ font-weight: 950; font-size: 16px; display:flex; align-items:center; gap:10px; }
-.pill{
+
+.brand { display: flex; align-items: center; gap: 12px; }
+.dot {
+  width: 10px; height: 10px; border-radius: 999px;
+  background: #3ef08a;
+  box-shadow: 0 0 20px rgba(62,240,138,.55);
+}
+.title { font-weight: 800; letter-spacing: .2px; }
+.sub { font-size: 12px; opacity: .8; margin-top: 2px; }
+
+.pill {
+  font-size: 12px;
   padding: 6px 10px;
   border-radius: 999px;
-  border: 1px solid rgba(255,255,255,0.14);
-  background: rgba(255,255,255,0.08);
-  font-size: 12px;
-  font-weight: 900;
+  border: 1px solid rgba(255,255,255,.15);
+  background: rgba(255,255,255,.06);
 }
-.sub{ margin-top: 4px; opacity: .85; font-size: 12px; display:flex; align-items:center; gap:8px; }
-.sep{ opacity:.5; }
-.timer{ font-variant-numeric: tabular-nums; }
+.pill.ok { border-color: rgba(62,240,138,.35); }
+.pill.warn { border-color: rgba(255,215,0,.35); }
+.pill.danger { border-color: rgba(255,80,80,.35); }
 
-.dot{
-  width: 10px; height: 10px; border-radius: 50%;
-  background: rgba(255,255,255,0.30);
-}
-.dot.on{ background: #00e676; box-shadow: 0 0 12px rgba(0,230,118,0.5); }
-
-.miniBtn{
-  border:none;
-  cursor:pointer;
-  padding: 10px 12px;
-  border-radius: 999px;
-  color:#fff;
-  background: rgba(255,255,255,0.10);
-  border: 1px solid rgba(255,255,255,0.12);
-}
-.miniBtn.ghost{ opacity:.92; }
-
-/* Stage */
-.stage{
-  flex:1;
-  display:grid;
-  place-items:center;
-  padding: 18px 14px 0;
-}
-
-.frame{
-  width: min(980px, 96vw);
-  aspect-ratio: 16 / 9;
-  border-radius: 26px;
-  position: relative;
-  overflow: hidden;
-  background: rgba(255,255,255,0.05);
-  border: 1px solid rgba(255,255,255,0.10);
-}
-
-/* Animated gradient border */
-.frameBorder{
-  position:absolute;
-  inset:-2px;
-  border-radius: 28px;
-  background: conic-gradient(from 180deg,
-    #ff416c, #ff4b2b, #7c3aed, #22c55e, #ff416c);
-  filter: blur(10px);
-  opacity: .55;
-  animation: spin 4s linear infinite;
-  pointer-events:none;
-}
-@keyframes spin { to { transform: rotate(360deg); } }
-
-.remote{
-  position:absolute;
-  inset:0;
-  width:100%;
-  height:100%;
-  object-fit: cover;
-}
-
-.pip{
-  position:absolute;
-  right: 14px;
-  bottom: 14px;
-  width: clamp(140px, 22vw, 280px);
-  aspect-ratio: 16 / 10;
-  border-radius: 18px;
-  overflow:hidden;
-  background: rgba(0,0,0,0.4);
-  border: 1px solid rgba(255,255,255,0.14);
-  box-shadow: 0 14px 40px rgba(0,0,0,0.45);
-  touch-action: none;
-  user-select: none;
-  cursor: grab;
-}
-.pip:active{ cursor: grabbing; }
-
-.local{
-  width:100%;
-  height:100%;
-  object-fit: cover;
-}
-.pipBadge{
-  position:absolute;
-  left: 10px;
-  top: 10px;
-  display:flex;
-  align-items:center;
-  gap:8px;
-  padding: 6px 10px;
-  border-radius: 999px;
-  background: rgba(0,0,0,0.45);
-  border: 1px solid rgba(255,255,255,0.12);
-  font-weight: 900;
-  font-size: 12px;
-}
-.tinyDot{
-  width:10px; height:10px; border-radius:50%;
-  background:#00e676;
-}
-.tinyDot.off{ background: rgba(255,255,255,0.35); }
-
-/* Audio-only card */
-.audioOnly{
-  aspect-ratio: 16 / 9;
-}
-.audioCard{
-  position:absolute;
-  inset:0;
-  display:grid;
-  place-items:center;
+.main {
+  display: grid;
+  grid-template-columns: 1fr 320px;
   gap: 14px;
-  text-align:center;
+  padding: 14px;
 }
-.avatar{
-  width: 120px; height: 120px;
-  border-radius: 34px;
-  display:grid;
-  place-items:center;
-  font-size: 54px;
-  font-weight: 950;
-  background: rgba(255,255,255,0.10);
-  border: 1px solid rgba(255,255,255,0.14);
-  box-shadow: 0 0 40px rgba(255,75,43,0.18);
-}
-.audioText .big{ font-weight: 950; font-size: 22px; }
-.audioText .small{ opacity:.75; margin-top: 6px; }
-
-/* Overlay (connecting) */
-.overlay{
-  position:absolute;
-  inset:0;
-  display:grid;
-  place-items:center;
-  text-align:center;
-  gap: 10px;
-  background: rgba(0,0,0,0.25);
-}
-.overlayTitle{ font-size: 22px; font-weight: 950; }
-.overlaySub{ opacity:.75; font-size: 12px; }
-.btnPrimary{
-  border:none;
-  cursor:pointer;
-  padding: 12px 14px;
-  border-radius: 999px;
-  color:#fff;
-  font-weight: 950;
-  background: linear-gradient(45deg, #ff416c, #ff4b2b);
+@media (max-width: 920px) {
+  .main { grid-template-columns: 1fr; }
 }
 
-/* Stats panel */
-.stats{
-  width: min(980px, 96vw);
-  margin-top: 12px;
+.stage {
+  border: 1px solid rgba(255,255,255,.10);
   border-radius: 18px;
-  padding: 12px;
-  background: rgba(255,255,255,0.06);
-  border: 1px solid rgba(255,255,255,0.10);
-  display:grid;
-  gap: 8px;
+  overflow: hidden;
+  background: rgba(255,255,255,.04);
 }
-.stRow{ display:flex; align-items:center; justify-content:space-between; opacity:.95; }
-.stRow span{ opacity:.75; }
-.stRow b{ font-variant-numeric: tabular-nums; }
-
-/* Controls */
-.controls{
-  padding: 12px 12px calc(16px + env(safe-area-inset-bottom));
-  display:flex;
-  gap: 10px;
+.stage-inner {
+  position: relative;
+  height: min(72vh, 620px);
+  display: flex;
+  align-items: center;
   justify-content: center;
-  background: rgba(8, 12, 20, 0.72);
-  backdrop-filter: blur(10px);
-  border-top: 1px solid rgba(255,255,255,0.10);
 }
-.ctl{
-  border:none;
-  cursor:pointer;
-  padding: 12px 14px;
-  border-radius: 18px;
-  color:#fff;
-  background: rgba(255,255,255,0.10);
-  border: 1px solid rgba(255,255,255,0.12);
-  display:flex;
+.video {
+  width: 100%;
+  height: 100%;
+  object-fit: cover;
+}
+.video.local {
+  position: absolute;
+  right: 12px;
+  bottom: 12px;
+  width: 160px;
+  height: 220px;
+  border-radius: 14px;
+  border: 1px solid rgba(255,255,255,.18);
+  box-shadow: 0 16px 40px rgba(0,0,0,.35);
+  background: #000;
+}
+
+.remote-placeholder {
+  display: flex;
   flex-direction: column;
-  align-items:center;
-  gap: 6px;
-  min-width: 92px;
-  transition: transform .12s ease;
+  align-items: center;
+  gap: 10px;
+  opacity: .95;
 }
-.ctl:hover{ transform: translateY(-2px); }
-.ctl:disabled{ opacity:.45; cursor:not-allowed; transform:none; }
-.ctl.on{
-  background: rgba(255,75,43,0.16);
-  border-color: rgba(255,75,43,0.35);
-  box-shadow: 0 0 24px rgba(255,75,43,0.18);
-}
-.ic{ font-size: 20px; }
-.tx{ font-weight: 900; font-size: 12px; opacity:.92; }
+.avatar { font-size: 52px; }
+.who .label { opacity: .7; font-size: 12px; }
+.mono { font-family: ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas, monospace; }
 
-.end{
-  border:none;
-  cursor:pointer;
-  padding: 12px 18px;
+.controls, .incoming-bar {
+  display: flex;
+  gap: 10px;
+  align-items: center;
+  justify-content: center;
+  padding: 14px;
+  border-top: 1px solid rgba(255,255,255,.08);
+  background: rgba(0,0,0,.20);
+}
+.incoming-bar { justify-content: space-between; padding: 14px 16px; }
+.incoming-text { font-weight: 700; }
+.incoming-actions { display: flex; gap: 10px; }
+
+.btn {
+  border: 1px solid rgba(255,255,255,.16);
+  background: rgba(255,255,255,.08);
+  color: #fff;
+  padding: 10px 14px;
+  border-radius: 12px;
+  cursor: pointer;
+  font-weight: 700;
+}
+.btn:hover { filter: brightness(1.08); }
+.btn.primary {
+  background: linear-gradient(135deg, rgba(62,240,138,.9), rgba(34,170,255,.75));
+  border-color: rgba(62,240,138,.35);
+  color: #04110a;
+}
+.btn.danger {
+  background: linear-gradient(135deg, rgba(255,80,80,.95), rgba(255,140,80,.7));
+  border-color: rgba(255,80,80,.35);
+}
+.btn.ghost {
+  background: transparent;
+}
+
+.side { display: flex; flex-direction: column; gap: 12px; }
+.panel {
+  border: 1px solid rgba(255,255,255,.10);
+  background: rgba(255,255,255,.04);
   border-radius: 18px;
-  font-weight: 950;
-  color:#fff;
-  background: rgba(255, 60, 60, 0.22);
-  border: 1px solid rgba(255, 80, 80, 0.45);
-  min-width: 120px;
-  box-shadow: 0 0 30px rgba(255,60,60,0.18);
+  padding: 14px;
 }
+.panel-title { font-weight: 900; margin-bottom: 10px; }
+.row { display: flex; justify-content: space-between; opacity: .9; margin: 6px 0; }
+.tips { margin: 0; padding-left: 18px; opacity: .85; }
+.tips li { margin: 6px 0; }
 
-@media (max-width: 720px){
-  .frame{ aspect-ratio: 9 / 16; }
-  .pip{ width: 34vw; }
-  .ctl{ min-width: 86px; }
+.overlay {
+  position: fixed;
+  inset: 0;
+  background: rgba(0,0,0,.55);
+  display: grid;
+  place-items: center;
+  z-index: 50;
 }
+.overlay .card {
+  width: min(520px, 92vw);
+  border: 1px solid rgba(255,255,255,.14);
+  background: rgba(10, 14, 26, 0.85);
+  border-radius: 18px;
+  padding: 16px;
+  box-shadow: 0 24px 80px rgba(0,0,0,.5);
+}
+.overlay .h { font-weight: 900; font-size: 18px; }
+.overlay .p { opacity: .9; margin: 10px 0 14px; line-height: 1.35; }
 </style>
