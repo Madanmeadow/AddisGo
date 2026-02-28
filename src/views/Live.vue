@@ -406,6 +406,7 @@ function closePeer(viewerSocketId) {
 }
 
 // Create host->viewer peer
+// Create host->viewer peer (LIVE VIDEO)
 async function createPeerForViewer(viewerSocketId) {
   const pc = new RTCPeerConnection({ iceServers: iceServers.value });
 
@@ -415,6 +416,7 @@ async function createPeerForViewer(viewerSocketId) {
         liveId: liveId.value,
         to: viewerSocketId,
         candidate: e.candidate,
+        kind: "live", // ✅ add this
       });
     }
   };
@@ -429,9 +431,9 @@ async function createPeerForViewer(viewerSocketId) {
     liveId: liveId.value,
     to: viewerSocketId,
     offer: pc.localDescription,
+    kind: "live", // ✅ add this
   });
 }
-
 // Host actions
 async function startHost() {
   if (busy.value || isLive.value) return;
