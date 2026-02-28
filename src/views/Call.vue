@@ -184,10 +184,16 @@ const pcs = new Map(); // peerSocketId -> RTCPeerConnection
 
 async function getIceServers() {
   try {
-    const res = await fetch(`${apiUrl}/turn`);
+    const res = await fetch(`${apiUrl}/api/turn`);
     const data = await res.json();
-    if (data?.iceServers?.length) return data.iceServers;
-  } catch {}
+
+    if (data?.iceServers?.length) {
+      return data.iceServers;
+    }
+  } catch (e) {
+    console.error("ICE fetch failed, fallback to STUN", e);
+  }
+
   return [{ urls: "stun:stun.l.google.com:19302" }];
 }
 
