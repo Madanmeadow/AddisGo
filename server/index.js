@@ -239,18 +239,230 @@ function broadcastPresenceUpdate(userId, online) {
   io.emit("presence:update", { userId: String(userId), online: !!online });
 }
 
-/* ---------- LIVE ---------- */
-const liveStreams = new Set();
-const liveHosts = new Map(); // liveId -> hostSocketId
+/* =========================
+   LIVE STREAMING (upgraded)
+========================= */
 
-function emitLiveList() {
-  io.emit("live-list", Array.from(liveStreams));
-}
-function emitLivePresence(liveId) {
-  const room = io.sockets.adapter.rooms.get(`live:${liveId}`);
-  const count = room ? room.size : 0;
-  io.to(`live:${liveId}`).emit("live:presence", { liveId, viewerCount: count });
-}
+// HOST starts live
+socket.on("live:create", ({ liveId }) => {
+  if (!liveId) return;
+
+  const id = String(liveId);
+  ensureLiveSets(id);
+
+  liveHosts.set(id, socket.id);
+  liveStreams.add(id);
+  emitLiveList();
+
+  // Host joins room
+  socket.join(`live:${id}`);
+
+  // Track host presence too (optional)
+  emitLivePresence(id);
+
+  // Tell room who the host is
+  io.to(`live:${id}`).emit("live:host", { liveId: id, hostSocketId: socket.id });
+});
+
+// VIEWER joins live
+socket.on("live:join", ({ liveId }) => {
+  if (!liveId) return;
+  const id = String(liveId);
+  ensureLiveSets(id);
+
+  socket.join(`live:${id}`);
+
+  // Track viewer list
+  liveViewers.get(id).add(socket.id);
+
+  // Save viewer meta (so host sees names in request list)
+  const u = socket.data.user || {};
+  liveViewerMeta.get(id).set(socket.id, {
+    userId: u.id ? String(u.id) : null,
+    username: u.username || (u.id ? `User${u.id}` : "Viewer"),
+  });
+
+  // Send host socket id back to this viewer
+  const hostSocketId = liveHosts.get(id) || null;
+  socket.emit("live:host", { liveId: id, hostSocketId });
+
+  // Notify host that a viewer joined (so host creates an offer)
+  if (hostSocketId) {
+    io.to(hostSocketId).emit("live:viewer-joined", {
+      liveId: id,
+      viewerSocketId: socket.id,
+      user: liveViewerMeta.get(id).get(socket.id),
+    });
+  }
+
+  emitLivePresence(id);
+  emitSpeakers(id);
+});
+
+// VIEWER leaves live (optional but recommended)
+socket.on("live:leave", ({ liveId }) => {
+  if (!liveId) return;
+  const id = String(liveId);
+  ensureLiveSets(id);
+
+  socket.leave(`live:${id}`);
+
+  // Remove from viewer list
+  liveViewers.get(id).delete(socket.id);
+  liveViewerMeta.get(id).delete(socket.id);
+
+  // If they were speaker, remove
+  liveSpeakers.get(id).delete(socket.id);
+
+  // Remove any pending request by this socket
+  liveSpeakRequests.set(
+    id,
+    (liveSpeakRequests.get(id) || []).filter((r) => r.socketId !== socket.id)
+  );
+
+  // Notify host
+  const hostSocketId = liveHosts.get(id);
+  if (hostSocketId) {
+    io.to(hostSocketId).emit("live:viewer-left", { liveId: id, viewerSocketId: socket.id });
+  }
+
+  emitLivePresence(id);
+  emitSpeakers(id);
+  emitSpeakRequestsToHost(id);
+});
+
+// HOST ends live
+socket.on("live:end", ({ liveId }) => {
+  if (!liveId) return;
+  const id = String(liveId);
+
+  const hostSocketId = liveHosts.get(id);
+  if (hostSocketId !== socket.id) return; // only host can end
+
+  io.to(`live:${id}`).emit("live:ended", { liveId: id });
+
+  // Cleanup
+  liveHosts.delete(id);
+  liveStreams.delete(id);
+  liveViewers.delete(id);
+  liveViewerMeta.delete(id);
+  liveSpeakers.delete(id);
+  liveSpeakRequests.delete(id);
+
+  emitLiveList();
+});
+
+/* ---------- LIVE CHAT ---------- */
+socket.on("live:chat", ({ liveId, message }) => {
+  const id = String(liveId || "");
+  const text = String(message || "").trim();
+  if (!id || !text) return;
+
+  const from = socket.data.user || { id: null, username: "Anon" };
+  io.to(`live:${id}`).emit("live:chat", {
+    liveId: id,
+    from: { id: from.id ? String(from.id) : null, username: from.username || "Anon" },
+    message: text,
+    at: new Date().toISOString(),
+  });
+});
+
+/* ---------- STAGE: Request to speak ---------- */
+
+// Viewer requests mic
+socket.on("live:speak:request", ({ liveId }) => {
+  const id = String(liveId || "");
+  if (!id) return;
+
+  ensureLiveSets(id);
+
+  const hostSid = liveHosts.get(id);
+  if (!hostSid) return; // no host
+
+  // Already allowed? ignore
+  if ((liveSpeakers.get(id) || new Set()).has(socket.id)) return;
+
+  const meta = liveViewerMeta.get(id).get(socket.id) || {
+    userId: socket.data.user?.id ? String(socket.data.user.id) : null,
+    username: socket.data.user?.username || "Viewer",
+  };
+
+  // Prevent duplicate requests
+  const cur = liveSpeakRequests.get(id) || [];
+  if (cur.some((r) => r.socketId === socket.id)) return;
+
+  cur.push({ socketId: socket.id, userId: meta.userId, username: meta.username, at: new Date().toISOString() });
+  liveSpeakRequests.set(id, cur);
+
+  // Send to host
+  io.to(hostSid).emit("live:speak:request", {
+    liveId: id,
+    viewerSocketId: socket.id,
+    user: { id: meta.userId, username: meta.username },
+  });
+
+  emitSpeakRequestsToHost(id);
+});
+
+// Host grants speaking permission
+socket.on("live:speak:grant", ({ liveId, viewerSocketId }) => {
+  const id = String(liveId || "");
+  const vid = String(viewerSocketId || "");
+  if (!id || !vid) return;
+
+  const hostSid = liveHosts.get(id);
+  if (hostSid !== socket.id) return; // only host
+
+  ensureLiveSets(id);
+
+  liveSpeakers.get(id).add(vid);
+
+  // remove from request queue
+  liveSpeakRequests.set(
+    id,
+    (liveSpeakRequests.get(id) || []).filter((r) => r.socketId !== vid)
+  );
+
+  // Tell viewer they can speak now
+  io.to(vid).emit("live:speak:granted", { liveId: id });
+
+  // OPTIONAL but important for WebRTC:
+  // Tell host to re-offer to viewer so mic track can be negotiated
+  io.to(hostSid).emit("live:viewer-joined", { liveId: id, viewerSocketId: vid });
+
+  emitSpeakers(id);
+  emitSpeakRequestsToHost(id);
+});
+
+// Host revokes speaking permission
+socket.on("live:speak:revoke", ({ liveId, viewerSocketId }) => {
+  const id = String(liveId || "");
+  const vid = String(viewerSocketId || "");
+  if (!id || !vid) return;
+
+  const hostSid = liveHosts.get(id);
+  if (hostSid !== socket.id) return;
+
+  ensureLiveSets(id);
+
+  liveSpeakers.get(id).delete(vid);
+
+  // Tell viewer to stop mic
+  io.to(vid).emit("live:speak:revoked", { liveId: id });
+
+  emitSpeakers(id);
+});
+
+// Viewer voluntarily stops speaking
+socket.on("live:speak:stop", ({ liveId }) => {
+  const id = String(liveId || "");
+  if (!id) return;
+
+  ensureLiveSets(id);
+  liveSpeakers.get(id).delete(socket.id);
+
+  emitSpeakers(id);
+});
 
 /* ---------- CALLS: OFFLINE QUEUE + BUSY ---------- */
 const pendingIncomingCalls = new Map(); // userId -> Map(roomId -> payload)
