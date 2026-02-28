@@ -201,34 +201,34 @@ app.get("/api/health", async (req, res) => {
    TURN (ICE servers)
 ========================= */
 async function buildIceServers() {
-  const sid = process.env.TWILIO_ACCOUNT_SID;
-  const auth = process.env.TWILIO_AUTH_TOKEN;
+  const sid = (process.env.TWILIO_ACCOUNT_SID || "").trim();
+  const auth = (process.env.TWILIO_AUTH_TOKEN || "").trim();
   const ttl = Number(process.env.TWILIO_TURN_TTL || 3600);
 
-  // ✅ Always return a shape that WebRTC clients like:
-  // { ok, iceServers }  (+ note)
-  if (!sid || !auth) {
+  // Always have a working fallback
+  const fallback = {
+    ok: true,
+    iceServers: [{ urls: "stun:stun.l.google.com:19302" }],
+    note: "STUN only (TURN not available)",
+  };
+
+  // If TURN not configured -> STUN only (ok:true)
+  if (!sid || !auth) return { ...fallback, note: "TURN not configured; STUN only" };
+
+  try {
+    const client = twilio(sid, auth);
+    const token = await client.tokens.create({ ttl });
+
     return {
       ok: true,
-      iceServers: [{ urls: "stun:stun.l.google.com:19302" }],
-      note: "TURN not configured; STUN only",
+      iceServers: token.iceServers,
+      note: "TURN via Twilio",
     };
-  }
-
-  const client = twilio(sid, auth);
-  const token = await client.tokens.create({ ttl });
-  return { ok: true, iceServers: token.iceServers };
-}
-
-app.get("/turn", async (req, res) => {
-  try {
-    res.json(await buildIceServers());
   } catch (e) {
-    logERR("TURN ERROR:", e);
-    res.status(500).json({ ok: false, message: "Failed to get TURN servers" });
+    console.error("TURN(Twilio) ERROR -> fallback to STUN:", e?.message || e);
+    return { ...fallback, error: "Twilio TURN failed; using STUN fallback" };
   }
-});
-
+}
 // Backwards compat
 app.get("/api/turn", async (req, res) => {
   try {
