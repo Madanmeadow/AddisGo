@@ -62,11 +62,16 @@ const ORIGINS =
     : CLIENT_ORIGIN.split(",").map((s) => s.trim()).filter(Boolean);
 
 /* =========================
-   MIDDLEWARE
+   CORS (FIXED FOR "*"+credentials)
 ========================= */
+const corsOrigin =
+  ORIGINS === "*"
+    ? (origin, cb) => cb(null, true) // reflect any origin
+    : ORIGINS;
+
 app.use(
   cors({
-    origin: ORIGINS,
+    origin: corsOrigin,
     credentials: true,
     methods: ["GET", "POST", "PUT", "PATCH", "DELETE", "OPTIONS"],
   })
@@ -199,37 +204,40 @@ app.get("/api/health", async (req, res) => {
 
 /* =========================
    TURN (ICE servers)
+   ✅ supports /turn and /api/turn
 ========================= */
 async function buildIceServers() {
   const sid = (process.env.TWILIO_ACCOUNT_SID || "").trim();
   const auth = (process.env.TWILIO_AUTH_TOKEN || "").trim();
   const ttl = Number(process.env.TWILIO_TURN_TTL || 3600);
 
-  // Always have a working fallback
   const fallback = {
     ok: true,
     iceServers: [{ urls: "stun:stun.l.google.com:19302" }],
     note: "STUN only (TURN not available)",
   };
 
-  // If TURN not configured -> STUN only (ok:true)
   if (!sid || !auth) return { ...fallback, note: "TURN not configured; STUN only" };
 
   try {
     const client = twilio(sid, auth);
     const token = await client.tokens.create({ ttl });
-
-    return {
-      ok: true,
-      iceServers: token.iceServers,
-      note: "TURN via Twilio",
-    };
+    return { ok: true, iceServers: token.iceServers, note: "TURN via Twilio" };
   } catch (e) {
     console.error("TURN(Twilio) ERROR -> fallback to STUN:", e?.message || e);
     return { ...fallback, error: "Twilio TURN failed; using STUN fallback" };
   }
 }
-// Backwards compat
+
+app.get("/turn", async (req, res) => {
+  try {
+    res.json(await buildIceServers());
+  } catch (e) {
+    logERR("TURN ERROR:", e);
+    res.status(500).json({ ok: false, message: "Failed to get TURN servers" });
+  }
+});
+
 app.get("/api/turn", async (req, res) => {
   try {
     res.json(await buildIceServers());
@@ -243,7 +251,11 @@ app.get("/api/turn", async (req, res) => {
    SOCKET.IO
 ========================= */
 const io = new Server(server, {
-  cors: { origin: ORIGINS, credentials: true, methods: ["GET", "POST"] },
+  cors: {
+    origin: ORIGINS === "*" ? true : ORIGINS,
+    credentials: true,
+    methods: ["GET", "POST"],
+  },
 });
 
 /* ---------- PRESENCE ---------- */
@@ -274,11 +286,9 @@ function emitLivePresence(liveId) {
   io.to(`live:${liveId}`).emit("live:presence", { liveId, viewerCount: count });
 }
 
-/* ✅ LIVE MIC CONTROL (NEW, NON-BREAKING)
-   - viewer asks mic -> host approves -> viewer becomes "speaker" (frontend uses this to enable publishing audio track)
-*/
-const liveSpeakers = new Map(); // liveId -> Set<userId>
-const liveMicRequests = new Map(); // liveId -> Map<userId -> requestPayload>
+/* ✅ LIVE MIC CONTROL */
+const liveSpeakers = new Map();     // liveId -> Set<userId>
+const liveMicRequests = new Map();  // liveId -> Map<userId -> payload>
 
 function ensureLiveSpeakerSet(liveId) {
   const id = String(liveId);
@@ -317,17 +327,12 @@ function flushQueuedIncomingCallsToUser(userId) {
   if (!m || m.size === 0) return;
 
   for (const payload of m.values()) {
-    // ✅ keep your existing incoming event
     io.to(`user:${uid}`).emit("call:incoming", { ...payload, queued: true });
-
-    // ✅ ring event (you already use this)
     io.to(`user:${uid}`).emit("call:ring", {
       roomId: String(payload.roomId),
       kind: payload.kind,
       side: "callee",
     });
-
-    // ✅ ALSO compatibility alias (some UIs listen to this)
     io.to(`user:${uid}`).emit("call:ringing", {
       roomId: String(payload.roomId),
       kind: payload.kind,
@@ -338,18 +343,6 @@ function flushQueuedIncomingCallsToUser(userId) {
 }
 
 /* ---------- CALLS ---------- */
-/**
- * callSessions (memory)
- * roomId -> {
- *   roomId, kind,
- *   hostUserId,
- *   invitedUserIds: Set<string>,
- *   joinedUserIds: Set<string>,
- *   createdAt,
- *   dbCallId: number|null,
- *   ringTimer: Timeout|null
- * }
- */
 const callSessions = new Map();
 const RING_TIMEOUT_MS = 30_000;
 
@@ -361,27 +354,21 @@ function emitCallParticipants(roomId) {
   const sess = callSessions.get(String(roomId));
   if (!sess) return;
 
-  const invited = Array.from(sess.invitedUserIds || []);
-  const joined = Array.from(sess.joinedUserIds || []);
-
   io.to(`call:${roomId}`).emit("call:participants", {
     roomId: String(roomId),
     hostUserId: sess.hostUserId,
     kind: sess.kind,
-    invitedUserIds: invited,
-    joinedUserIds: joined,
+    invitedUserIds: Array.from(sess.invitedUserIds || []),
+    joinedUserIds: Array.from(sess.joinedUserIds || []),
   });
 }
 
-/* ======= RING HELPERS (server signals; client plays audio) ======= */
 function ringToUser(userId, roomId, kind, side) {
   io.to(`user:${String(userId)}`).emit("call:ring", {
     roomId: String(roomId),
     kind: String(kind),
-    side: side || "unknown", // "caller" | "callee"
+    side: side || "unknown",
   });
-
-  // ✅ compatibility alias
   io.to(`user:${String(userId)}`).emit("call:ringing", {
     roomId: String(roomId),
     kind: String(kind),
@@ -396,7 +383,6 @@ function stopRingForSession(sess) {
   for (const uid of sess.invitedUserIds || []) stopRingToUser(uid, sess.roomId);
 }
 
-/* ======= BUSY HELPERS ======= */
 function isUserBusy(userId) {
   return userBusyRoom.has(String(userId));
 }
@@ -414,7 +400,7 @@ function clearBusyForSession(sess) {
   for (const uid of sess.invitedUserIds || []) clearUserBusy(uid, sess.roomId);
 }
 
-/* ======= OPTIONAL: DB "incoming call" notify (offline-friendly) ======= */
+/* ======= OPTIONAL DB helpers (kept) ======= */
 async function dbNotifyIncomingCall(userId, payload) {
   try {
     await pool.query(
@@ -422,13 +408,10 @@ async function dbNotifyIncomingCall(userId, payload) {
        VALUES ($1, 'incoming_call', $2::jsonb)`,
       [Number(userId), JSON.stringify(payload)]
     );
-  } catch {
-    // ignore if table doesn't exist / schema differs
-  }
+  } catch {}
 }
 
 async function dbEnsureCall(roomId, kind, hostUserId) {
-  // returns dbCallId or null
   try {
     const r = await pool.query(`SELECT id FROM calls WHERE room_id=$1 LIMIT 1`, [String(roomId)]);
     if (r.rows?.[0]?.id) return r.rows[0].id;
@@ -470,38 +453,6 @@ async function dbMarkJoined(callId, userId) {
     );
   } catch (e) {
     logERR("DB mark joined error:", e);
-  }
-}
-
-async function dbMarkMissedAndNotify(callId, roomId, hostUserId, kind, userId) {
-  try {
-    await pool.query(
-      `UPDATE call_participants
-       SET status='missed'
-       WHERE call_id=$1 AND user_id=$2 AND status IN ('invited')`,
-      [Number(callId), Number(userId)]
-    );
-
-    await pool.query(
-      `INSERT INTO notifications (user_id, type, payload)
-       VALUES ($1, 'missed_call', $2::jsonb)`,
-      [
-        Number(userId),
-        JSON.stringify({
-          roomId: String(roomId),
-          fromUserId: String(hostUserId),
-          kind: String(kind),
-        }),
-      ]
-    );
-
-    // realtime push if online
-    io.to(`user:${userId}`).emit("notification:new", {
-      type: "missed_call",
-      payload: { roomId: String(roomId), fromUserId: String(hostUserId), kind: String(kind) },
-    });
-  } catch (e) {
-    logERR("DB missed notify error:", e);
   }
 }
 
@@ -547,51 +498,30 @@ function scheduleMissedTimer(roomId) {
     const s = callSessions.get(String(roomId));
     if (!s) return;
 
-    const callId = s.dbCallId;
-
-    if (callId) {
-      for (const uid of s.invitedUserIds) {
-        if (uid === s.hostUserId) continue;
-        if (s.joinedUserIds.has(uid)) continue;
-        await dbMarkMissedAndNotify(callId, roomId, s.hostUserId, s.kind, uid);
-      }
-
-      try {
-        await pool.query(
-          `UPDATE calls
-           SET status=CASE WHEN status='ringing' THEN 'missed' ELSE status END,
-               ended_at=CASE WHEN ended_at IS NULL AND status='ringing' THEN NOW() ELSE ended_at END
-           WHERE id=$1`,
-          [Number(callId)]
-        );
-      } catch {}
-    }
-
-    // stop ringing for everyone + unlock busy
     stopRingForSession(s);
     clearBusyForSession(s);
 
-    // cleanup queued incoming
     for (const uid of s.invitedUserIds || []) removeQueuedIncomingCall(uid, s.roomId);
 
-    // delete session if never became active
     const room = io.sockets.adapter.rooms.get(`call:${roomId}`);
     const count = room ? room.size : 0;
     if (count < 2) callSessions.delete(String(roomId));
 
-    // ✅ tell UIs call ended (nice UX)
     io.to(`call:${roomId}`).emit("call:ended", { roomId: String(roomId), reason: "timeout" });
   }, RING_TIMEOUT_MS);
 
   callSessions.set(String(roomId), sess);
 }
 
+/* =========================
+   SOCKET HANDLERS
+========================= */
 io.on("connection", (socket) => {
   logSOCK("Socket connected:", socket.id);
   socket.data.user = null;
 
   /* =========================
-     ✅ PRESENCE (NEW)
+     ✅ PRESENCE
   ========================= */
   socket.on("user:online", ({ userId }) => {
     if (!userId) return;
@@ -604,24 +534,17 @@ io.on("connection", (socket) => {
     broadcastPresenceUpdate(userId, true);
     emitOnlineUsersLegacy();
 
-    // ✅ deliver queued offline calls when user comes online
     flushQueuedIncomingCallsToUser(userId);
   });
 
-  socket.on("presence:get", () => {
-    emitPresenceList(socket);
-  });
+  socket.on("presence:get", () => emitPresenceList(socket));
 
-  /* =========================
-     ✅ PRESENCE (OLD COMPAT)
-  ========================= */
   socket.on("register-user", (user) => {
     const userId = typeof user === "object" ? user?.id : user;
     const username = typeof user === "object" ? user?.username : null;
     if (!userId) return;
 
     socket.data.user = { id: String(userId), username: username || `User${userId}` };
-
     onlineUsers.set(String(userId), socket.id);
     socket.join(`user:${userId}`);
 
@@ -629,12 +552,11 @@ io.on("connection", (socket) => {
     broadcastPresenceUpdate(userId, true);
     emitOnlineUsersLegacy();
 
-    // ✅ deliver queued offline calls when user comes online
     flushQueuedIncomingCallsToUser(userId);
   });
 
   /* =========================
-     CHAT
+     CHAT (simple room chat)
   ========================= */
   socket.on("join-room", (room) => room && socket.join(String(room)));
 
@@ -650,7 +572,6 @@ io.on("connection", (socket) => {
     });
   });
 
-  // older chat event support
   socket.on("send-room-message", (data) => {
     const room = data?.room;
     const text = data?.text?.trim();
@@ -665,14 +586,8 @@ io.on("connection", (socket) => {
   });
 
   /* =========================
-     ✅ CALLS: 1:1 (UPGRADED)
-     - ringtone events (caller + callee)
-     - offline queue
-     - busy protection
-     - compatibility fields
+     ✅ CALLS: request/accept/join/end
   ========================= */
-
-  // 1:1 dashboard caller
   socket.on("call:request", async ({ toUserId, kind = "audio" }) => {
     const from = socket.data.user;
     if (!from?.id)
@@ -683,32 +598,25 @@ io.on("connection", (socket) => {
 
     logCALL("call:request", { from: from.id, to: calleeUserId, kind: callKind });
 
-    // busy checks
     if (isUserBusy(from.id)) return socket.emit("call:error", { message: "You are already in a call." });
     if (isUserBusy(calleeUserId)) return socket.emit("call:busy", { message: "User is busy." });
 
     const roomId = makeCallRoomId(socket);
-
     const invitedUserIds = new Set([String(from.id), calleeUserId]);
     const joinedUserIds = new Set([String(from.id)]);
 
     const dbCallId = await dbEnsureCall(roomId, callKind, from.id);
-
-    // host joins as joined
     if (dbCallId) {
       await dbUpsertParticipant(dbCallId, from.id, "host", "joined");
       await dbUpsertParticipant(dbCallId, calleeUserId, "member", "invited");
     }
 
-    // ✅ incoming payload (kept) + added compatibility fields
     const incomingPayload = {
       roomId: String(roomId),
       kind: callKind,
       fromUserId: String(from.id),
       fromName: from.username || `User${from.id}`,
       isGroup: false,
-
-      // ✅ compatibility fields many clients expect
       from: String(from.id),
       callerSocketId: socket.id,
     };
@@ -724,197 +632,35 @@ io.on("connection", (socket) => {
       ringTimer: null,
     });
 
-    // lock busy for both users (even if callee offline: prevents spam)
     setUserBusy(from.id, roomId);
     setUserBusy(calleeUserId, roomId);
 
     scheduleMissedTimer(roomId);
 
-    // caller UI: start ringing tone
     socket.emit("call:ringing", { roomId: String(roomId), kind: callKind });
     ringToUser(from.id, roomId, callKind, "caller");
 
     const calleeSocketId = onlineUsers.get(calleeUserId);
-
     if (!calleeSocketId) {
-      // ✅ OFFLINE: queue it + optional DB notification
       queueIncomingCall(calleeUserId, incomingPayload);
       await dbNotifyIncomingCall(calleeUserId, incomingPayload);
-
       socket.emit("call:status", { roomId: String(roomId), calleeOnline: false });
       return;
     }
 
-    // ✅ ONLINE: deliver popup + ring callee (to user room to cover multi-tabs)
     io.to(`user:${calleeUserId}`).emit("call:incoming", incomingPayload);
     ringToUser(calleeUserId, roomId, callKind, "callee");
-
     socket.emit("call:status", { roomId: String(roomId), calleeOnline: true });
   });
-
-  /* =========================
-     ✅ CALLS: GROUP (UPGRADED)
-  ========================= */
-
-  socket.on("call:group:create", async ({ toUserIds = [], kind = "video" }) => {
-    const from = socket.data.user;
-    if (!from?.id) return socket.emit("call:error", { message: "Not online." });
-
-    if (isUserBusy(from.id)) return socket.emit("call:error", { message: "You are already in a call." });
-
-    const roomId = makeCallRoomId(socket);
-    const callKind = kind === "audio" ? "audio" : "video";
-
-    const all = Array.from(new Set([String(from.id), ...toUserIds.map((x) => String(x))]));
-    const invitedUserIds = new Set(all);
-    const joinedUserIds = new Set([String(from.id)]);
-
-    const dbCallId = await dbEnsureCall(roomId, callKind, from.id);
-
-    if (dbCallId) {
-      // host is joined
-      await dbUpsertParticipant(dbCallId, from.id, "host", "joined");
-      // invite others
-      for (const uid of all) {
-        if (uid === String(from.id)) continue;
-        await dbUpsertParticipant(dbCallId, uid, "member", "invited");
-      }
-    }
-
-    callSessions.set(String(roomId), {
-      roomId: String(roomId),
-      kind: callKind,
-      hostUserId: String(from.id),
-      invitedUserIds,
-      joinedUserIds,
-      createdAt: Date.now(),
-      dbCallId: dbCallId || null,
-      ringTimer: null,
-    });
-
-    // busy lock everyone invited (prevents double calls)
-    for (const uid of invitedUserIds) setUserBusy(uid, roomId);
-
-    scheduleMissedTimer(roomId);
-
-    // host navigates immediately
-    socket.emit("call:ringing", { roomId: String(roomId), kind: callKind, isGroup: true });
-    ringToUser(from.id, roomId, callKind, "caller");
-
-    // invite each callee (online -> realtime, offline -> queue)
-    for (const uid of all) {
-      if (uid === String(from.id)) continue;
-
-      const payload = {
-        roomId: String(roomId),
-        kind: callKind,
-        fromUserId: String(from.id),
-        fromName: from.username || `User${from.id}`,
-        isGroup: true,
-
-        // compat
-        from: String(from.id),
-        callerSocketId: socket.id,
-      };
-
-      const targetSocketId = onlineUsers.get(uid);
-      if (!targetSocketId) {
-        queueIncomingCall(uid, payload);
-        await dbNotifyIncomingCall(uid, payload);
-        continue;
-      }
-
-      io.to(`user:${uid}`).emit("call:incoming", payload);
-      ringToUser(uid, roomId, callKind, "callee");
-    }
-  });
-
-  // invite more people mid-call
-  socket.on("call:group:invite", async ({ roomId, toUserIds = [] }) => {
-    const from = socket.data.user;
-    if (!from?.id) return;
-
-    const sess = callSessions.get(String(roomId));
-    if (!sess) return socket.emit("call:error", { message: "Call session not found." });
-
-    // only host can invite
-    if (String(from.id) !== String(sess.hostUserId)) {
-      socket.emit("call:error", { message: "Only host can invite." });
-      return;
-    }
-
-    const add = toUserIds.map((x) => String(x));
-    const newIds = [];
-
-    for (const uid of add) {
-      if (!uid) continue;
-      if (sess.invitedUserIds.has(uid)) continue;
-      sess.invitedUserIds.add(uid);
-      newIds.push(uid);
-    }
-
-    callSessions.set(String(roomId), sess);
-    scheduleMissedTimer(roomId);
-
-    // busy lock new invitees
-    for (const uid of newIds) setUserBusy(uid, roomId);
-
-    // DB add invited
-    if (sess.dbCallId) {
-      for (const uid of newIds) {
-        await dbUpsertParticipant(sess.dbCallId, uid, "member", "invited");
-      }
-    }
-
-    // push incoming call popup (online) or queue (offline)
-    for (const uid of newIds) {
-      const payload = {
-        roomId: String(roomId),
-        kind: sess.kind,
-        fromUserId: String(sess.hostUserId),
-        fromName: `User${sess.hostUserId}`,
-        isGroup: true,
-
-        // compat
-        from: String(sess.hostUserId),
-        callerSocketId: null,
-      };
-
-      const targetSocketId = onlineUsers.get(uid);
-      if (!targetSocketId) {
-        queueIncomingCall(uid, payload);
-        await dbNotifyIncomingCall(uid, payload);
-        continue;
-      }
-
-      io.to(`user:${uid}`).emit("call:incoming", payload);
-      ringToUser(uid, roomId, sess.kind, "callee");
-    }
-
-    // update participants list to the call room
-    emitCallParticipants(roomId);
-  });
-
-  /* =========================
-     ✅ CALLS: ACCEPT / JOIN / END (UPGRADED)
-     - now notifies BOTH sides via user rooms too
-  ========================= */
 
   socket.on("call:accept", async ({ roomId }) => {
     const sess = callSessions.get(String(roomId));
     if (!sess) return;
 
-    const meId = socket.data.user?.id ? String(socket.data.user.id) : null;
-
-    logCALL("call:accept", { roomId: String(roomId), by: meId });
-
-    // stop ringing for everyone on accept
     stopRingForSession(sess);
 
-    // ✅ notify call room (kept)
     io.to(`call:${roomId}`).emit("call:accepted", { roomId: String(roomId), kind: sess.kind });
 
-    // ✅ notify user rooms (helps Dashboard ringtone/UI)
     for (const uid of sess.invitedUserIds || []) {
       io.to(`user:${uid}`).emit("call:accepted", { roomId: String(roomId), kind: sess.kind });
       stopRingToUser(uid, roomId);
@@ -925,27 +671,10 @@ io.on("connection", (socket) => {
     const sess = callSessions.get(String(roomId));
     if (!sess) return;
 
-    const myId = socket.data.user?.id ? String(socket.data.user.id) : null;
-    logCALL("call:reject", { roomId: String(roomId), by: myId });
-
-    // mark rejected in DB (optional)
-    if (sess.dbCallId && myId) {
-      try {
-        await pool.query(
-          `UPDATE call_participants
-           SET status='rejected'
-           WHERE call_id=$1 AND user_id=$2 AND status IN ('invited')`,
-          [Number(sess.dbCallId), Number(myId)]
-        );
-      } catch {}
-    }
-
     stopRingForSession(sess);
     clearBusyForSession(sess);
-
     for (const uid of sess.invitedUserIds || []) removeQueuedIncomingCall(uid, sess.roomId);
 
-    // ✅ notify everyone
     io.to(`call:${roomId}`).emit("call:ended", { roomId: String(roomId), reason: "rejected" });
     for (const uid of sess.invitedUserIds || []) {
       io.to(`user:${uid}`).emit("call:rejected", { roomId: String(roomId) });
@@ -957,13 +686,9 @@ io.on("connection", (socket) => {
     callSessions.delete(String(roomId));
   });
 
-  // call page joins the call room (both sides + group members)
   socket.on("call:join", async ({ roomId }) => {
     const sess = callSessions.get(String(roomId));
-    if (!sess) {
-      socket.emit("call:error", { message: "Call session not found." });
-      return;
-    }
+    if (!sess) return socket.emit("call:error", { message: "Call session not found." });
 
     const meId = socket.data.user?.id ? String(socket.data.user.id) : null;
     socket.join(`call:${roomId}`);
@@ -971,41 +696,29 @@ io.on("connection", (socket) => {
     if (meId) {
       sess.joinedUserIds.add(meId);
       callSessions.set(String(roomId), sess);
-
-      // once user joined, remove their queued version
       removeQueuedIncomingCall(meId, roomId);
 
-      // DB joined
       if (sess.dbCallId) {
         await dbMarkJoined(sess.dbCallId, meId);
         await dbActivateIfTwoJoined(sess.dbCallId);
       }
     }
 
-    // presence
     const room = io.sockets.adapter.rooms.get(`call:${roomId}`);
     const count = room ? room.size : 0;
-
     io.to(`call:${roomId}`).emit("call:presence", { roomId: String(roomId), count });
 
-    // ✅ Mesh handshake trigger: tell existing peers someone joined
     socket.to(`call:${roomId}`).emit("call:peer-joined", {
       roomId: String(roomId),
       peerSocketId: socket.id,
       peerUserId: meId,
     });
 
-    // broadcast participants
     emitCallParticipants(roomId);
 
-    // if 2+ joined, ready
     if (count >= 2) {
       stopRingForSession(sess);
-
-      io.to(`call:${roomId}`).emit("call:ready", {
-        roomId: String(roomId),
-        kind: sess.kind,
-      });
+      io.to(`call:${roomId}`).emit("call:ready", { roomId: String(roomId), kind: sess.kind });
     }
   });
 
@@ -1021,7 +734,6 @@ io.on("connection", (socket) => {
       for (const uid of sess.invitedUserIds || []) removeQueuedIncomingCall(uid, sess.roomId);
       if (sess.ringTimer) clearTimeout(sess.ringTimer);
 
-      // notify user rooms too
       for (const uid of sess.invitedUserIds || []) {
         io.to(`user:${uid}`).emit("call:ended", { roomId: String(roomId), reason: "ended" });
         stopRingToUser(uid, roomId);
@@ -1036,18 +748,14 @@ io.on("connection", (socket) => {
     const sess = callSessions.get(String(roomId));
     if (!sess) return;
 
-    logCALL("call:cancel", { roomId: String(roomId) });
-
     await dbEndCall(roomId);
 
     stopRingForSession(sess);
     clearBusyForSession(sess);
-
     for (const uid of sess.invitedUserIds || []) removeQueuedIncomingCall(uid, sess.roomId);
 
     io.to(`call:${roomId}`).emit("call:ended", { roomId: String(roomId), reason: "canceled" });
 
-    // ✅ notify user rooms
     for (const uid of sess.invitedUserIds || []) {
       io.to(`user:${uid}`).emit("call:cancelled", { roomId: String(roomId) });
       io.to(`user:${uid}`).emit("call:ended", { roomId: String(roomId), reason: "canceled" });
@@ -1060,22 +768,14 @@ io.on("connection", (socket) => {
 
   /* =========================
      ✅ CALLS: WebRTC RELAY
-     - supports {to} for group mesh
-     - still supports old broadcast (no to)
   ========================= */
-
   socket.on("call:webrtc:offer", ({ roomId, offer, to }) => {
     if (!roomId || !offer) return;
 
     if (to) {
-      io.to(String(to)).emit("call:webrtc:offer", {
-        roomId: String(roomId),
-        offer,
-        from: socket.id,
-      });
+      io.to(String(to)).emit("call:webrtc:offer", { roomId: String(roomId), offer, from: socket.id });
       return;
     }
-
     socket.to(`call:${roomId}`).emit("call:webrtc:offer", { roomId: String(roomId), offer });
   });
 
@@ -1083,14 +783,9 @@ io.on("connection", (socket) => {
     if (!roomId || !answer) return;
 
     if (to) {
-      io.to(String(to)).emit("call:webrtc:answer", {
-        roomId: String(roomId),
-        answer,
-        from: socket.id,
-      });
+      io.to(String(to)).emit("call:webrtc:answer", { roomId: String(roomId), answer, from: socket.id });
       return;
     }
-
     socket.to(`call:${roomId}`).emit("call:webrtc:answer", { roomId: String(roomId), answer });
   });
 
@@ -1098,21 +793,17 @@ io.on("connection", (socket) => {
     if (!roomId || !candidate) return;
 
     if (to) {
-      io.to(String(to)).emit("call:webrtc:ice", {
-        roomId: String(roomId),
-        candidate,
-        from: socket.id,
-      });
+      io.to(String(to)).emit("call:webrtc:ice", { roomId: String(roomId), candidate, from: socket.id });
       return;
     }
-
     socket.to(`call:${roomId}`).emit("call:webrtc:ice", { roomId: String(roomId), candidate });
   });
-   /* =========================
-   ✅ LIVE: WebRTC RELAY (host<->viewer)
-   - required because Live.vue uses "webrtc:*"
-========================= */
 
+  /* =========================
+     ✅ LIVE: WebRTC RELAY (FIXED, SINGLE SOURCE OF TRUTH)
+     - This is what makes viewers SEE the host stream.
+     - DO NOT duplicate these handlers.
+  ========================= */
   socket.on("webrtc:offer", ({ liveId, to, offer }) => {
     if (!liveId || !to || !offer) return;
     io.to(String(to)).emit("webrtc:offer", {
@@ -1139,9 +830,9 @@ io.on("connection", (socket) => {
       candidate,
     });
   });
+
   /* =========================
-     LIVE STREAMING (kept)
-     + ✅ MIC REQUEST/APPROVE added (new)
+     ✅ LIVE STREAMING + MIC CONTROL
   ========================= */
   socket.on("live:create", ({ liveId }) => {
     if (!liveId) return;
@@ -1153,7 +844,6 @@ io.on("connection", (socket) => {
     socket.join(`live:${liveId}`);
     io.to(`live:${liveId}`).emit("live:host", { liveId: String(liveId), hostSocketId: socket.id });
 
-    // ✅ host is always a speaker
     const hostUserId = socket.data.user?.id ? String(socket.data.user.id) : null;
     if (hostUserId) ensureLiveSpeakerSet(liveId).add(hostUserId);
 
@@ -1169,6 +859,7 @@ io.on("connection", (socket) => {
     const hostSocketId = liveHosts.get(String(liveId)) || null;
     socket.emit("live:host", { liveId: String(liveId), hostSocketId });
 
+    // 🔥 This triggers host to create offer to viewer
     if (hostSocketId) {
       io.to(hostSocketId).emit("live:viewer-joined", {
         liveId: String(liveId),
@@ -1176,10 +867,24 @@ io.on("connection", (socket) => {
       });
     }
 
-    // ✅ tell viewer whether they are allowed to speak
     const meId = socket.data.user?.id ? String(socket.data.user.id) : null;
     const speakers = ensureLiveSpeakerSet(liveId);
     socket.emit("live:mic:status", { liveId: String(liveId), canSpeak: meId ? speakers.has(meId) : false });
+
+    emitLivePresence(String(liveId));
+  });
+
+  socket.on("live:leave", ({ liveId }) => {
+    if (!liveId) return;
+    socket.leave(`live:${liveId}`);
+
+    const hostSocketId = liveHosts.get(String(liveId));
+    if (hostSocketId) {
+      io.to(hostSocketId).emit("live:viewer-left", {
+        liveId: String(liveId),
+        viewerSocketId: socket.id,
+      });
+    }
 
     emitLivePresence(String(liveId));
   });
@@ -1193,7 +898,6 @@ io.on("connection", (socket) => {
       liveStreams.delete(String(liveId));
       emitLiveList();
 
-      // cleanup mic state
       liveSpeakers.delete(String(liveId));
       liveMicRequests.delete(String(liveId));
 
@@ -1203,7 +907,6 @@ io.on("connection", (socket) => {
 
   socket.on("get-live-list", () => socket.emit("live-list", Array.from(liveStreams)));
 
-  // ✅ NEW: viewer requests mic
   socket.on("live:mic:request", ({ liveId }) => {
     if (!liveId) return;
     const me = socket.data.user;
@@ -1223,21 +926,17 @@ io.on("connection", (socket) => {
     };
     reqMap.set(meId, payload);
 
-    // host gets request popup/list
     io.to(hostSocketId).emit("live:mic:requested", payload);
-
-    // viewer gets ack
     socket.emit("live:mic:requested:ack", { liveId: String(liveId), ok: true });
 
     logLIVE("live:mic:request", { liveId: String(liveId), userId: meId });
   });
 
-  // ✅ NEW: host approves mic
   socket.on("live:mic:approve", ({ liveId, userId }) => {
     if (!liveId || !userId) return;
 
     const hostSocketId = liveHosts.get(String(liveId));
-    if (hostSocketId !== socket.id) return; // only host
+    if (hostSocketId !== socket.id) return;
 
     const uid = String(userId);
     ensureLiveSpeakerSet(liveId).add(uid);
@@ -1245,11 +944,9 @@ io.on("connection", (socket) => {
     const reqMap = ensureLiveRequestMap(liveId);
     reqMap.delete(uid);
 
-    // notify user (all tabs)
     io.to(`user:${uid}`).emit("live:mic:approved", { liveId: String(liveId), ok: true });
     io.to(`user:${uid}`).emit("live:mic:status", { liveId: String(liveId), canSpeak: true });
 
-    // notify room (optional; helpful for UI)
     io.to(`live:${liveId}`).emit("live:mic:speakers", {
       liveId: String(liveId),
       speakerUserIds: Array.from(ensureLiveSpeakerSet(liveId)),
@@ -1258,12 +955,11 @@ io.on("connection", (socket) => {
     logLIVE("live:mic:approve", { liveId: String(liveId), userId: uid });
   });
 
-  // ✅ NEW: host denies mic
   socket.on("live:mic:deny", ({ liveId, userId, reason }) => {
     if (!liveId || !userId) return;
 
     const hostSocketId = liveHosts.get(String(liveId));
-    if (hostSocketId !== socket.id) return; // only host
+    if (hostSocketId !== socket.id) return;
 
     const uid = String(userId);
     const reqMap = ensureLiveRequestMap(liveId);
@@ -1278,25 +974,10 @@ io.on("connection", (socket) => {
     logLIVE("live:mic:deny", { liveId: String(liveId), userId: uid });
   });
 
-  // existing live relay (kept)
-  socket.on("webrtc:offer", ({ liveId, to, offer }) => {
-    if (!to || !offer) return;
-    io.to(to).emit("webrtc:offer", { liveId, from: socket.id, offer });
-  });
-  socket.on("webrtc:answer", ({ liveId, to, answer }) => {
-    if (!to || !answer) return;
-    io.to(to).emit("webrtc:answer", { liveId, from: socket.id, answer });
-  });
-  socket.on("webrtc:ice", ({ liveId, to, candidate }) => {
-    if (!to || !candidate) return;
-    io.to(to).emit("webrtc:ice", { liveId, from: socket.id, candidate });
-  });
-
   /* =========================
      DISCONNECT CLEANUP
   ========================= */
   socket.on("disconnect", () => {
-    // presence cleanup
     let offlineUserId = null;
     for (const [uid, sid] of onlineUsers.entries()) {
       if (sid === socket.id) {
@@ -1306,7 +987,6 @@ io.on("connection", (socket) => {
       }
     }
 
-    // live cleanup if host
     for (const [liveId, hostSocketId] of liveHosts.entries()) {
       if (hostSocketId === socket.id) {
         io.to(`live:${liveId}`).emit("live:ended", { liveId });
@@ -1314,15 +994,12 @@ io.on("connection", (socket) => {
         liveStreams.delete(liveId);
         emitLiveList();
 
-        // cleanup mic state
         liveSpeakers.delete(String(liveId));
         liveMicRequests.delete(String(liveId));
       }
     }
 
-    if (offlineUserId) {
-      broadcastPresenceUpdate(offlineUserId, false);
-    }
+    if (offlineUserId) broadcastPresenceUpdate(offlineUserId, false);
 
     emitPresenceList();
     emitOnlineUsersLegacy();
