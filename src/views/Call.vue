@@ -25,6 +25,9 @@
       <div class="frame" :class="{ audioOnly: isAudioOnly }">
         <div class="frameBorder"></div>
 
+        <!-- ✅ REMOTE AUDIO ALWAYS (fixes audio-only calls) -->
+        <audio ref="remoteAudio" autoplay playsinline></audio>
+
         <!-- REMOTE VIDEO -->
         <video
           v-show="!isAudioOnly"
@@ -43,15 +46,14 @@
           </div>
         </div>
 
-        <!-- LOCAL PIP -->
-        <div class="pip" v-show="!isAudioOnly">
-          <video
-            ref="localVideo"
-            class="local"
-            autoplay
-            playsinline
-            muted
-          ></video>
+        <!-- LOCAL PIP (DRAGGABLE) -->
+        <div
+          class="pip"
+          v-show="!isAudioOnly"
+          :style="{ transform: `translate(${pip.x}px, ${pip.y}px)` }"
+          @pointerdown="pipPointerDown"
+        >
+          <video ref="localVideo" class="local" autoplay playsinline muted></video>
 
           <div class="pipBadge">
             <span class="tinyDot" :class="{ off: micMuted }"></span>
@@ -114,7 +116,6 @@ const route = useRoute();
 const router = useRouter();
 
 const apiUrl = import.meta.env.VITE_API_URL;
-const token = localStorage.getItem("token");
 const me = (() => { try { return JSON.parse(localStorage.getItem("user") || "null"); } catch { return null; } })();
 
 const roomId = String(route.query.roomId || "");
@@ -124,6 +125,7 @@ const kind = String(route.query.kind || "video");  // video | audio
 const isAudioOnly = computed(() => kind !== "video");
 
 const remoteVideo = ref(null);
+const remoteAudio = ref(null);
 const localVideo = ref(null);
 
 const socket = ref(null);
@@ -141,7 +143,7 @@ const camOff = ref(false);
 const speakerOn = ref(true);
 
 const displayName = computed(() => {
-  // you can enhance this later by passing user name in query or fetching profile
+  // later you can pass real name in query or fetch it
   return role === "caller" ? "Call" : "Incoming Call";
 });
 const remoteInitial = computed(() => (displayName.value?.[0] || "U").toUpperCase());
@@ -156,9 +158,8 @@ const callTime = computed(() => {
   const ss = String(s % 60).padStart(2, "0");
   return `${mm}:${ss}`;
 });
-
 function startTimer() {
-  stopTimer();
+  if (timerInt) return;
   timerInt = setInterval(() => (seconds.value += 1), 1000);
 }
 function stopTimer() {
@@ -166,8 +167,19 @@ function stopTimer() {
   timerInt = null;
 }
 
+/* ---------------- iOS AUDIO UNLOCK ---------------- */
+let audioCtx = null;
+async function unlockAudio() {
+  try {
+    audioCtx = audioCtx || new (window.AudioContext || window.webkitAudioContext)();
+    if (audioCtx.state !== "running") await audioCtx.resume();
+  } catch {}
+}
+
 /* ---------------- WEBRTC (mesh) ---------------- */
 let localStream = null;
+let remoteStream = null;
+
 const pcs = new Map(); // peerSocketId -> RTCPeerConnection
 
 async function getIceServers() {
@@ -182,28 +194,42 @@ async function getIceServers() {
 async function ensureLocalStream() {
   if (localStream) return localStream;
 
-  try {
-    const constraints = isAudioOnly.value
-      ? { audio: true, video: false }
-      : { audio: true, video: { facingMode: "user" } };
+  const constraints = isAudioOnly.value
+    ? { audio: true, video: false }
+    : { audio: true, video: { facingMode: "user" } };
 
-    localStream = await navigator.mediaDevices.getUserMedia(constraints);
+  localStream = await navigator.mediaDevices.getUserMedia(constraints);
 
-    if (!isAudioOnly.value && localVideo.value) {
-      localVideo.value.srcObject = localStream;
-      // iOS sometimes needs user gesture before play
-      try { await localVideo.value.play(); } catch { needsTapToStart.value = true; }
-    }
+  // local preview (video mode only)
+  if (!isAudioOnly.value && localVideo.value) {
+    localVideo.value.srcObject = localStream;
+    try { await localVideo.value.play(); }
+    catch { needsTapToStart.value = true; }
+  }
 
-    // Apply initial toggles
-    applyMicState();
-    applyCamState();
+  applyMicState();
+  applyCamState();
 
-    return localStream;
-  } catch (e) {
-    console.error("getUserMedia failed:", e);
-    alert("Camera/Mic permission denied or not available.");
-    throw e;
+  return localStream;
+}
+
+function attachRemoteStream(stream) {
+  remoteStream = stream;
+
+  // ✅ Always attach audio (even in video mode)
+  if (remoteAudio.value) {
+    remoteAudio.value.srcObject = stream;
+    remoteAudio.value.muted = !speakerOn.value;
+    remoteAudio.value.volume = speakerOn.value ? 1 : 0;
+    remoteAudio.value.play?.().catch(() => { needsTapToStart.value = true; });
+  }
+
+  // Attach video if this is a video call
+  if (remoteVideo.value && !isAudioOnly.value) {
+    remoteVideo.value.srcObject = stream;
+    remoteVideo.value.muted = !speakerOn.value; // optional (some prefer video not muted)
+    remoteVideo.value.volume = speakerOn.value ? 1 : 0;
+    remoteVideo.value.play?.().catch(() => { needsTapToStart.value = true; });
   }
 }
 
@@ -218,9 +244,11 @@ function createPC(peerId, iceServers) {
 
   pc.onconnectionstatechange = () => {
     connState.value = pc.connectionState || "-";
-    connected.value = pc.connectionState === "connected";
-    statusText.value = connected.value ? "Connected" : statusText.value;
-    if (connected.value) startTimer();
+    if (pc.connectionState === "connected") {
+      connected.value = true;
+      statusText.value = "Connected";
+      startTimer();
+    }
   };
 
   pc.oniceconnectionstatechange = () => {
@@ -228,14 +256,8 @@ function createPC(peerId, iceServers) {
   };
 
   pc.ontrack = (ev) => {
-    // remote stream
     const [stream] = ev.streams;
-    if (!stream) return;
-
-    if (remoteVideo.value && !isAudioOnly.value) {
-      remoteVideo.value.srcObject = stream;
-      try { remoteVideo.value.play(); } catch { needsTapToStart.value = true; }
-    }
+    if (stream) attachRemoteStream(stream);
   };
 
   pcs.set(peerId, pc);
@@ -316,10 +338,12 @@ function toggleCamera() {
 async function toggleSpeaker() {
   speakerOn.value = !speakerOn.value;
 
-  // Best effort:
-  // 1) If browser supports setSinkId (mostly desktop Chrome/Edge), route to default device
-  // 2) Otherwise just adjust volume (mobile/iOS has limitations)
+  // best effort: mute/unmute remote elements
   try {
+    if (remoteAudio.value) {
+      remoteAudio.value.muted = !speakerOn.value;
+      remoteAudio.value.volume = speakerOn.value ? 1 : 0;
+    }
     if (remoteVideo.value) {
       remoteVideo.value.muted = !speakerOn.value;
       remoteVideo.value.volume = speakerOn.value ? 1 : 0;
@@ -333,17 +357,54 @@ function toggleStats() {
 
 async function userTapStart() {
   needsTapToStart.value = false;
+  await unlockAudio();
+
   try { await ensureLocalStream(); } catch {}
+  try { await remoteAudio.value?.play?.(); } catch {}
   try { await remoteVideo.value?.play?.(); } catch {}
   try { await localVideo.value?.play?.(); } catch {}
 }
 
 function endCall() {
   socket.value?.emit("call:end", { roomId });
-  cleanupAndExit();
+  cleanup({ navigate: true });
 }
 
-function cleanupAndExit() {
+/* ---------------- PIP DRAG ---------------- */
+const pip = ref({ x: 0, y: 0 });
+let pipDrag = null;
+
+function pipPointerDown(e) {
+  // only drag on pointer devices
+  try { e.currentTarget.setPointerCapture(e.pointerId); } catch {}
+  pipDrag = {
+    startX: e.clientX,
+    startY: e.clientY,
+    baseX: pip.value.x,
+    baseY: pip.value.y,
+  };
+  window.addEventListener("pointermove", pipPointerMove);
+  window.addEventListener("pointerup", pipPointerUp, { once: true });
+}
+
+function pipPointerMove(e) {
+  if (!pipDrag) return;
+  const dx = e.clientX - pipDrag.startX;
+  const dy = e.clientY - pipDrag.startY;
+  pip.value = { x: pipDrag.baseX + dx, y: pipDrag.baseY + dy };
+}
+
+function pipPointerUp() {
+  pipDrag = null;
+  window.removeEventListener("pointermove", pipPointerMove);
+}
+
+/* ---------------- CLEANUP ---------------- */
+let cleaning = false;
+function cleanup({ navigate } = { navigate: false }) {
+  if (cleaning) return;
+  cleaning = true;
+
   stopTimer();
   closeAllPCs();
 
@@ -358,46 +419,42 @@ function cleanupAndExit() {
     }
   } catch {}
 
-  router.push("/"); // or router.back()
+  // do NOT force route change on unmount
+  if (navigate) router.push("/dashboard");
 }
 
 /* ---------------- INIT ---------------- */
 onMounted(async () => {
   if (!roomId) {
     alert("Missing roomId");
-    router.push("/");
+    router.push("/dashboard");
     return;
   }
 
-  // socket
+  // unlock attempt on first user interaction anywhere
+  window.addEventListener("pointerdown", unlockAudio, { once: true, passive: true });
+
   socket.value = io(apiUrl, { transports: ["websocket", "polling"] });
 
   socket.value.on("connect", async () => {
-    // presence register (your server supports)
     if (me?.id) socket.value.emit("register-user", { id: me.id, username: me.username });
 
-    // join call room
     socket.value.emit("call:join", { roomId });
     statusText.value = "Joining…";
 
-    // prepare media early
-    try {
-      await ensureLocalStream();
-    } catch {
-      // if permission fails, you can still be in audio-only state
-    }
+    try { await ensureLocalStream(); }
+    catch { /* permission can fail; still allow listening */ }
   });
 
-  // server tells when peer joins so we can create offers (mesh)
   socket.value.on("call:peer-joined", async ({ peerSocketId }) => {
     if (!peerSocketId) return;
-    // caller or anyone: create offer to new peer
     statusText.value = "Peer joined… negotiating";
     await makeOfferTo(peerSocketId);
   });
 
   socket.value.on("call:ready", () => {
-    statusText.value = "Connecting…";
+    // call is ready for negotiation
+    if (!connected.value) statusText.value = "Connecting…";
   });
 
   socket.value.on("call:webrtc:offer", async ({ offer, from }) => {
@@ -416,17 +473,18 @@ onMounted(async () => {
   });
 
   socket.value.on("call:ended", () => {
-    cleanupAndExit();
+    cleanup({ navigate: true });
   });
 
   socket.value.on("call:error", ({ message } = {}) => {
     alert(message || "Call error");
-    cleanupAndExit();
+    cleanup({ navigate: true });
   });
 });
 
 onBeforeUnmount(() => {
-  cleanupAndExit();
+  // no navigation on destroy
+  cleanup({ navigate: false });
 });
 </script>
 
@@ -536,7 +594,12 @@ onBeforeUnmount(() => {
   background: rgba(0,0,0,0.4);
   border: 1px solid rgba(255,255,255,0.14);
   box-shadow: 0 14px 40px rgba(0,0,0,0.45);
+  touch-action: none;
+  user-select: none;
+  cursor: grab;
 }
+.pip:active{ cursor: grabbing; }
+
 .local{
   width:100%;
   height:100%;
