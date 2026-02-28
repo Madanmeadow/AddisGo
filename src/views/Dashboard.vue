@@ -746,52 +746,76 @@ function rejectIncoming() {
 }
 
 function wireCallSocketHandlers() {
-  // Incoming popup (callee)
-  socket.on("call:incoming", async (p) => {
+  // ✅ server-driven ringtone events
+  socket.on("call:ring", ({ roomId, kind, side } = {}) => {
+    // side: "caller" => ringback, "callee" => ringtone
+    if (side === "callee") playRingIn();
+    else playRingOut();
+  });
+
+  socket.on("call:stopRing", () => {
+    stopAllRings();
+  });
+
+  socket.on("call:incoming", (p) => {
     incomingCall.value = p;
 
-    // Try to unlock + play ringtone (works after any user gesture)
-    await unlockAudioOnce();
+    // server usually also sends call:ring side=callee, but keep fallback:
     playRingIn();
   });
 
-  // Caller receives roomId + goes to call screen
-  socket.on("call:ringing", async ({ roomId, kind }) => {
+  socket.on("call:ringing", ({ roomId, kind }) => {
+    // caller gets roomId here
     pendingRoomId.value = roomId;
     callingToast.value = `Ringing… (${kind || pendingKind.value})`;
 
-    // Caller ringback while waiting
-    await unlockAudioOnce();
-    playRingOut();
-
-    router.push({
-      name: "Call",
-      params: { roomId },
-      query: { role: "caller", kind: kind || pendingKind.value },
-    });
+    // move to call screen (caller)
+    router.push(`/call?roomId=${encodeURIComponent(roomId)}&role=caller&kind=${encodeURIComponent(kind || pendingKind.value)}`);
   });
 
-  // Stop rings when accepted
+  socket.on("call:status", ({ calleeOnline } = {}) => {
+    if (calleeOnline === false) {
+      callingToast.value = "Queued… user is offline. We’ll ring them when they come online.";
+    }
+  });
+
+  socket.on("call:busy", ({ message } = {}) => {
+    stopAllRings();
+    callingToast.value = "";
+    callBusy.value = false;
+    pendingRoomId.value = "";
+    alert(message || "User is busy.");
+  });
+
   socket.on("call:accepted", () => {
     stopAllRings();
     callingToast.value = "";
     callBusy.value = false;
   });
 
-  // Server ends for everyone (includes reject/cancel/end)
-  socket.on("call:ended", ({ reason } = {}) => {
+  socket.on("call:rejected", () => {
+    stopAllRings();
+    callingToast.value = "";
+    callBusy.value = false;
+    pendingRoomId.value = "";
+    alert("Call rejected.");
+  });
+
+  socket.on("call:ended", () => {
     stopAllRings();
     callingToast.value = "";
     callBusy.value = false;
     incomingCall.value = null;
     pendingRoomId.value = "";
+  });
 
-    if (reason === "rejected") {
-      alert("Call rejected.");
-    }
-    if (reason === "canceled") {
-      alert("Call canceled.");
-    }
+  socket.on("call:timeout", () => {
+    stopAllRings();
+    callingToast.value = "";
+    callBusy.value = false;
+    incomingCall.value = null;
+    pendingRoomId.value = "";
+    alert("No answer.");
   });
 
   socket.on("call:error", ({ message } = {}) => {
