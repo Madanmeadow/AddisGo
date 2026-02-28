@@ -61,6 +61,11 @@
             <div class="overlay" v-if="overlayText">
               <div class="overlayTitle">{{ overlayText }}</div>
               <div class="overlaySub">{{ overlaySub }}</div>
+
+              <!-- iOS: gesture is needed for audio sometimes -->
+              <button v-if="needsTapToPlay" class="btn primary" style="margin-top:12px" @click="userTapPlay">
+                Tap to start audio/video
+              </button>
             </div>
           </div>
 
@@ -86,6 +91,18 @@
               </button>
               <button class="btn ghost" @click="leaveViewer" :disabled="!joined || busy">
                 Leave
+              </button>
+
+              <button class="btn ghost" @click="requestToSpeak" :disabled="!joined || ended || requestedSpeak || canSpeak">
+                🎤 Request Mic
+              </button>
+
+              <button class="btn ghost" @click="startSpeaking" :disabled="!joined || ended || !canSpeak || speaking">
+                🎙️ Start Mic
+              </button>
+
+              <button class="btn danger" @click="stopSpeaking" :disabled="!speaking">
+                🛑 Stop Mic
               </button>
             </template>
 
@@ -143,6 +160,35 @@
             <li>For big audiences later: upgrade to <b>SFU</b> (LiveKit/mediasoup).</li>
           </ul>
 
+          <!-- HOST: requests to speak -->
+          <div v-if="isHost" class="divider"></div>
+          <div v-if="isHost" class="infoTitle">Requests to speak</div>
+
+          <div v-if="isHost && speakRequests.length === 0" class="small muted">
+            No requests
+          </div>
+
+          <div
+            v-if="isHost"
+            v-for="r in speakRequests"
+            :key="r.socketId"
+            class="reqRow"
+          >
+            <div class="reqLeft">
+              <b>{{ r.user?.username || "Viewer" }}</b>
+              <span class="mono small">({{ (r.socketId || '').slice(0,6) }})</span>
+            </div>
+
+            <div class="reqBtns">
+              <button class="btn primary" @click="allowSpeaker(r.socketId)">Allow</button>
+              <button class="btn danger" @click="removeSpeaker(r.socketId)">Remove</button>
+            </div>
+          </div>
+
+          <div v-if="isHost" class="small muted" style="margin-top:10px;">
+            Speakers: <b class="mono">{{ speakers.length }}</b>
+          </div>
+
           <div class="divider"></div>
 
           <div class="shareBlock">
@@ -199,7 +245,20 @@ let localStream = null;
 const micOn = ref(true);
 const camOn = ref(true);
 
-// ICE servers loaded from backend (Twilio TURN)
+// iOS autoplay helper
+const needsTapToPlay = ref(false);
+
+// ===== SPEAK MODE (viewer mic) =====
+const canSpeak = ref(false);
+const speaking = ref(false);
+const requestedSpeak = ref(false);
+let viewerMicStream = null;
+
+// Host: requests list + speakers list
+const speakRequests = ref([]); // [{ socketId, user, at }]
+const speakers = ref([]);      // [socketId...]
+
+// ICE servers loaded from backend (TURN)
 const iceServers = ref([{ urls: "stun:stun.l.google.com:19302" }]);
 const iceMode = computed(() => {
   const hasTurn = iceServers.value.some(s => String(s.urls || "").includes("turn:") || String(s.urls || "").includes("turns:"));
@@ -224,7 +283,7 @@ const shareUrl = computed(() =>
 const statusText = computed(() => {
   if (ended.value) return "ended";
   if (isHost.value) return isLive.value ? "broadcasting" : "ready";
-  return joined.value ? "watching" : "not joined";
+  return joined.value ? (speaking.value ? "speaking" : "watching") : "not joined";
 });
 
 const overlayText = computed(() => {
@@ -260,6 +319,11 @@ function scrollChat() {
   });
 }
 
+async function userTapPlay() {
+  needsTapToPlay.value = false;
+  try { await videoEl.value?.play?.(); } catch {}
+}
+
 // Clipboard
 async function copyShare() {
   if (!shareUrl.value) return;
@@ -275,12 +339,12 @@ async function copyShare() {
   }
 }
 
-// Load ICE from backend
+// Load ICE from backend  ✅ /turn (not /api/turn)
 async function loadIceServers() {
   try {
-    const r = await fetch(`${apiUrl}/api/turn`);
+    const r = await fetch(`${apiUrl}/turn`);
     const data = await r.json();
-    if (data?.ok && Array.isArray(data.iceServers) && data.iceServers.length) {
+    if ((data?.ok || data?.iceServers) && Array.isArray(data.iceServers) && data.iceServers.length) {
       iceServers.value = data.iceServers;
     }
   } catch {
@@ -288,7 +352,7 @@ async function loadIceServers() {
   }
 }
 
-// camera
+// camera (host)
 async function startCamera() {
   localStream = await navigator.mediaDevices.getUserMedia({
     video: { width: 1280, height: 720 },
@@ -296,7 +360,10 @@ async function startCamera() {
   });
   micOn.value = true;
   camOn.value = true;
-  if (videoEl.value) videoEl.value.srcObject = localStream;
+  if (videoEl.value) {
+    videoEl.value.srcObject = localStream;
+    try { await videoEl.value.play(); } catch { needsTapToPlay.value = true; }
+  }
 }
 function stopCamera() {
   if (!localStream) return;
@@ -333,10 +400,12 @@ function resetViewerPeer() {
 function closePeer(viewerSocketId) {
   const pc = peers.get(viewerSocketId);
   if (pc) {
-    pc.close();
+    try { pc.close(); } catch {}
     peers.delete(viewerSocketId);
   }
 }
+
+// Create host->viewer peer
 async function createPeerForViewer(viewerSocketId) {
   const pc = new RTCPeerConnection({ iceServers: iceServers.value });
 
@@ -416,6 +485,7 @@ function leaveViewer() {
   if (busy.value || !joined.value) return;
   busy.value = true;
 
+  stopSpeaking(); // ensure mic stopped
   socket.emit("live:leave", { liveId: liveId.value });
   joined.value = false;
   resetViewerPeer();
@@ -431,7 +501,60 @@ function sendChat() {
   chatText.value = "";
 }
 
-// SOCKET EVENTS
+/* ===================== SPEAK MODE (viewer) ===================== */
+function requestToSpeak() {
+  if (!liveId.value || !joined.value) return;
+  requestedSpeak.value = true;
+  socket.emit("live:speak:request", { liveId: liveId.value });
+}
+
+async function startSpeaking() {
+  if (!canSpeak.value || speaking.value) return;
+
+  try {
+    viewerMicStream = await navigator.mediaDevices.getUserMedia({ audio: true, video: false });
+    speaking.value = true;
+
+    // attach mic to existing pcViewer if present
+    if (pcViewer) {
+      const track = viewerMicStream.getAudioTracks()[0];
+      if (track) {
+        const sender = pcViewer.getSenders().find((s) => s.track?.kind === "audio");
+        if (sender) await sender.replaceTrack(track);
+        else pcViewer.addTrack(track, viewerMicStream);
+      }
+    }
+  } catch {
+    alert("Mic permission denied.");
+  }
+}
+
+function stopSpeaking() {
+  speaking.value = false;
+  canSpeak.value = false;
+  requestedSpeak.value = false;
+
+  try {
+    if (viewerMicStream) {
+      viewerMicStream.getTracks().forEach((t) => t.stop());
+      viewerMicStream = null;
+    }
+  } catch {}
+
+  if (liveId.value) socket.emit("live:speak:stop", { liveId: liveId.value });
+}
+
+/* ===================== SPEAK MODE (host) ===================== */
+function allowSpeaker(socketId) {
+  if (!liveId.value || !socketId) return;
+  socket.emit("live:speak:grant", { liveId: liveId.value, viewerSocketId: socketId });
+}
+function removeSpeaker(socketId) {
+  if (!liveId.value || !socketId) return;
+  socket.emit("live:speak:revoke", { liveId: liveId.value, viewerSocketId: socketId });
+}
+
+/* ===================== SOCKET EVENTS ===================== */
 socket.on("connect", () => {
   socketState.value = "connected";
   if (me?.id) socket.emit("register-user", { id: me.id, username: me.username });
@@ -457,6 +580,7 @@ socket.on("live:ended", ({ liveId: id }) => {
   isLive.value = false;
   joined.value = false;
 
+  stopSpeaking();
   resetViewerPeer();
   for (const [vid] of peers) closePeer(vid);
   stopCamera();
@@ -478,6 +602,27 @@ socket.on("live:viewer-left", ({ liveId: id, viewerSocketId }) => {
   closePeer(viewerSocketId);
 });
 
+/* ===== speak: host updates ===== */
+socket.on("live:speak:requests", ({ liveId: id, requests = [] }) => {
+  if (!isHost.value || id !== liveId.value) return;
+  speakRequests.value = Array.isArray(requests) ? requests : [];
+});
+socket.on("live:speakers", ({ liveId: id, speakers: list = [] }) => {
+  if (id !== liveId.value) return;
+  speakers.value = Array.isArray(list) ? list : [];
+});
+
+/* ===== speak: viewer permission ===== */
+socket.on("live:speak:granted", ({ liveId: id } = {}) => {
+  if (id !== liveId.value) return;
+  canSpeak.value = true;
+  // user must still tap Start Mic on iPhone
+});
+socket.on("live:speak:revoked", ({ liveId: id } = {}) => {
+  if (id !== liveId.value) return;
+  stopSpeaking();
+});
+
 // Viewer: offer from host
 socket.on("webrtc:offer", async ({ liveId: id, from, offer }) => {
   if (isHost.value || !joined.value) return;
@@ -488,7 +633,10 @@ socket.on("webrtc:offer", async ({ liveId: id, from, offer }) => {
     pcViewer = new RTCPeerConnection({ iceServers: iceServers.value });
 
     pcViewer.ontrack = (e) => {
-      if (videoEl.value) videoEl.value.srcObject = e.streams[0];
+      if (videoEl.value) {
+        videoEl.value.srcObject = e.streams[0];
+        try { videoEl.value.play(); } catch { needsTapToPlay.value = true; }
+      }
     };
 
     pcViewer.onicecandidate = (e) => {
@@ -500,6 +648,12 @@ socket.on("webrtc:offer", async ({ liveId: id, from, offer }) => {
         });
       }
     };
+
+    // ✅ if host granted speak AND mic already started, attach track BEFORE answer
+    if (canSpeak.value && viewerMicStream) {
+      const track = viewerMicStream.getAudioTracks()[0];
+      if (track) pcViewer.addTrack(track, viewerMicStream);
+    }
 
     await pcViewer.setRemoteDescription(offer);
     const answer = await pcViewer.createAnswer();
@@ -712,6 +866,19 @@ onBeforeUnmount(() => {
 .list { margin: 0; padding-left: 18px; opacity: .9; }
 .divider { height: 1px; background: rgba(255,255,255,.10); margin: 8px 0; }
 .shareBlock { display: grid; gap: 8px; }
+
+.reqRow{
+  display:flex;
+  justify-content: space-between;
+  gap: 10px;
+  align-items:center;
+  padding: 10px 12px;
+  border-radius: 14px;
+  background: rgba(0,0,0,.25);
+  border: 1px solid rgba(255,255,255,.10);
+}
+.reqBtns{ display:flex; gap: 10px; flex-wrap: wrap; }
+.reqLeft{ display:flex; gap: 10px; align-items:center; flex-wrap: wrap; }
 
 .btn, .chip {
   border: none;
