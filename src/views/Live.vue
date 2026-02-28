@@ -197,7 +197,7 @@ function shareLive() {
 ========================= */
 async function loadIceServers() {
   try {
-    const r = await fetch(`${apiUrl}/api/turn`)
+    const r = await fetch(`${apiUrl}/turn`)
     const data = await r.json()
     iceServers.value = data?.iceServers?.length
       ? data.iceServers
