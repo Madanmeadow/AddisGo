@@ -1,208 +1,151 @@
 <template>
   <Layout>
-    <div class="wrap">
-      <aside class="list">
-        <div class="head">
-          <h2>Inbox</h2>
-          <button class="btn" @click="loadUsers">+ New</button>
+    <div class="page">
+      <div class="head">
+        <div>
+          <div class="title">💬 Inbox</div>
+          <div class="sub">Your chats • Tap a person to open messages</div>
+        </div>
+        <button class="btn" @click="load">↻ Refresh</button>
+      </div>
+
+      <div v-if="loading" class="state">Loading…</div>
+      <div v-else-if="error" class="state err">{{ error }}</div>
+
+      <div v-else class="list">
+        <div v-if="convos.length === 0" class="empty">
+          <div class="big">No conversations yet</div>
+          <div class="small">Tip: open a Profile and tap “Message” (we can add that button next).</div>
         </div>
 
-        <div v-if="showUsers" class="panel">
-          <div class="panelTitle">Start a chat</div>
-          <button
-            v-for="u in users"
-            :key="u.id"
-            class="item"
-            @click="startChat(u.id)"
-          >
-            {{ u.display_name }} (#{{
-              u.id
-            }})
-          </button>
-        </div>
+        <button
+          v-for="c in convos"
+          :key="c.id"
+          class="row"
+          @click="openConversation(c)"
+        >
+          <div class="avatar">{{ initials(c.other_username || c.other_name || 'User') }}</div>
 
-        <div class="panel">
-          <div class="panelTitle">Conversations</div>
-
-          <button
-            v-for="c in conversations"
-            :key="c.id"
-            class="item"
-            :class="{ active: c.id === activeConvId }"
-            @click="openConversation(c.id)"
-          >
-            <div class="title">{{ c.title || "Conversation " + c.id }}</div>
-            <div class="sub">
-              <span class="last">{{ c.last_text || "No messages yet" }}</span>
-              <span class="time">{{ c.last_time ? new Date(c.last_time).toLocaleString() : "" }}</span>
+          <div class="info">
+            <div class="name">
+              {{ c.other_username || c.other_name || "User" }}
+              <span class="meta">#{{ c.id }}</span>
             </div>
-          </button>
-        </div>
-      </aside>
 
-      <main class="chat">
-        <div class="chatHead">
-          <div class="chatTitle">
-            {{ activeConvId ? "Conversation #" + activeConvId : "Select a conversation" }}
-          </div>
-        </div>
-
-        <div class="msgs" ref="msgsEl">
-          <div v-if="!activeConvId" class="empty">
-            Pick a conversation on the left 👈
-          </div>
-
-          <div
-            v-for="m in messages"
-            :key="m.id"
-            class="msg"
-            :class="{ mine: m.sender_id === me?.id }"
-          >
-            <div class="bubble">
-              <div class="text">{{ m.text }}</div>
-              <div class="meta">{{ new Date(m.created_at).toLocaleString() }}</div>
+            <div class="preview">
+              {{ c.last_message || "Say hi 👋" }}
             </div>
           </div>
-        </div>
 
-        <div class="composer" v-if="activeConvId">
-          <input
-            v-model="text"
-            placeholder="Type a message..."
-            @keydown.enter.prevent="send"
-          />
-          <button class="btn primary" @click="send">Send</button>
-        </div>
-      </main>
+          <div class="right">
+            <div class="time">{{ formatTime(c.updated_at || c.last_message_at || c.created_at) }}</div>
+            <div class="pill">Open</div>
+          </div>
+        </button>
+      </div>
     </div>
   </Layout>
 </template>
 
 <script setup>
-import { ref, onMounted, nextTick } from "vue"
-import Layout from "../components/Layout.vue"
-import { io } from "socket.io-client"
+import { ref, onMounted } from "vue";
+import { useRouter } from "vue-router";
+import Layout from "../components/Layout.vue";
+import apiFetch from "../apiFetch.js";
 
-const apiUrl = import.meta.env.VITE_API_URL
-const token = localStorage.getItem("token")
-const me = (() => {
-  try { return JSON.parse(localStorage.getItem("user") || "null") } catch { return null }
-})()
+const router = useRouter();
 
-const conversations = ref([])
-const users = ref([])
-const showUsers = ref(false)
+const loading = ref(false);
+const error = ref("");
+const convos = ref([]);
 
-const activeConvId = ref(null)
-const messages = ref([])
-const text = ref("")
-const msgsEl = ref(null)
-
-let socket = null
-
-async function loadConversations() {
-  const res = await fetch(`${apiUrl}/conversations`, {
-    headers: { Authorization: `Bearer ${token}` }
-  })
-  conversations.value = await res.json()
+function getMe() {
+  try { return JSON.parse(localStorage.getItem("user") || "null"); } catch { return null; }
 }
 
-async function loadUsers() {
-  showUsers.value = !showUsers.value
-  if (!showUsers.value) return
-  const res = await fetch(`${apiUrl}/users`, {
-    headers: { Authorization: `Bearer ${token}` }
-  })
-  users.value = await res.json()
+function initials(name) {
+  const s = String(name || "").trim();
+  if (!s) return "U";
+  const parts = s.split(" ").filter(Boolean);
+  return (parts[0]?.[0] || "U").toUpperCase() + (parts[1]?.[0] ? parts[1][0].toUpperCase() : "");
 }
 
-async function startChat(otherUserId) {
-  const res = await fetch(`${apiUrl}/conversations`, {
-    method: "POST",
-    headers: {
-      "Content-Type": "application/json",
-      Authorization: `Bearer ${token}`
+function formatTime(v) {
+  if (!v) return "";
+  const d = new Date(v);
+  if (isNaN(d.getTime())) return "";
+  return d.toLocaleString([], { month: "numeric", day: "numeric", hour: "2-digit", minute: "2-digit" });
+}
+
+async function load() {
+  const me = getMe();
+  if (!me?.id) {
+    error.value = "Login again (missing user).";
+    return;
+  }
+
+  loading.value = true;
+  error.value = "";
+
+  try {
+    // ✅ your backend is /conversations (no /api)
+    const data = await apiFetch(`/conversations?userId=${me.id}`);
+
+    // Accept either array OR {conversations:[...]}
+    const rows = Array.isArray(data) ? data : (data?.conversations || []);
+    convos.value = rows;
+  } catch (e) {
+    error.value = e?.message || "Failed to load conversations";
+  } finally {
+    loading.value = false;
+  }
+}
+
+function openConversation(c) {
+  router.push({
+    path: "/messages",
+    query: {
+      conversationId: c.id,
+      otherUserId: c.other_user_id || c.otherUserId || "",
+      name: c.other_username || c.other_name || "Chat",
     },
-    body: JSON.stringify({ otherUserId })
-  })
-  const data = await res.json()
-  showUsers.value = false
-  await loadConversations()
-  await openConversation(data.id)
+  });
 }
 
-async function openConversation(id) {
-  activeConvId.value = id
-  socket?.emit("join-conversation", id)
-
-  const res = await fetch(`${apiUrl}/messages/${id}`, {
-    headers: { Authorization: `Bearer ${token}` }
-  })
-  messages.value = await res.json()
-  await scrollBottom()
-}
-
-async function send() {
-  if (!text.value.trim() || !activeConvId.value) return
-
-  socket.emit("send-message", {
-    conversationId: activeConvId.value,
-    senderId: me?.id,
-    text: text.value
-  })
-
-  text.value = ""
-}
-
-async function scrollBottom() {
-  await nextTick()
-  if (msgsEl.value) msgsEl.value.scrollTop = msgsEl.value.scrollHeight
-}
-
-onMounted(async () => {
-  await loadConversations()
-
-  socket = io(apiUrl, { transports: ["websocket", "polling"] })
-  socket.on("connect", () => {
-    if (me?.id) socket.emit("register-user", me.id)
-  })
-
-  socket.on("receive-message", async (m) => {
-    if (Number(m.conversation_id) === Number(activeConvId.value)) {
-      messages.value.push(m)
-      await scrollBottom()
-    }
-    // refresh conversation list previews
-    await loadConversations()
-  })
-})
+onMounted(load);
 </script>
 
 <style scoped>
-.wrap{display:grid;grid-template-columns:360px 1fr;gap:16px;max-width:1200px;margin:0 auto;padding:18px}
-@media(max-width:900px){.wrap{grid-template-columns:1fr}}
-.list,.chat{background:rgba(255,255,255,.08);border:1px solid rgba(255,255,255,.12);border-radius:18px;backdrop-filter:blur(10px)}
-.list{padding:14px}
-.head{display:flex;justify-content:space-between;align-items:center;margin-bottom:10px}
-.panel{margin-top:12px;background:rgba(0,0,0,.35);border:1px solid rgba(255,255,255,.10);border-radius:14px;padding:10px}
-.panelTitle{font-weight:900;margin-bottom:8px}
-.item{width:100%;text-align:left;background:rgba(255,255,255,.10);border:1px solid rgba(255,255,255,.12);color:#fff;padding:10px;border-radius:12px;margin-bottom:8px;cursor:pointer}
-.item.active{border-color:rgba(255,80,80,.6)}
-.title{font-weight:800}
-.sub{display:flex;justify-content:space-between;gap:10px;font-size:12px;opacity:.8}
-.last{overflow:hidden;text-overflow:ellipsis;white-space:nowrap;max-width:210px}
-.chat{display:flex;flex-direction:column;min-height:70vh}
-.chatHead{padding:14px;border-bottom:1px solid rgba(255,255,255,.10)}
-.chatTitle{font-weight:900}
-.msgs{flex:1;overflow:auto;padding:14px;display:flex;flex-direction:column;gap:10px}
-.empty{opacity:.7}
-.msg{display:flex}
-.msg.mine{justify-content:flex-end}
-.bubble{max-width:75%;background:rgba(0,0,0,.45);border:1px solid rgba(255,255,255,.10);border-radius:14px;padding:10px}
-.msg.mine .bubble{background:rgba(255,65,108,.18);border-color:rgba(255,65,108,.25)}
-.meta{font-size:11px;opacity:.75;margin-top:6px}
-.composer{display:flex;gap:10px;padding:12px;border-top:1px solid rgba(255,255,255,.10)}
-.composer input{flex:1;background:rgba(0,0,0,.35);border:1px solid rgba(255,255,255,.12);color:#fff;border-radius:12px;padding:10px;outline:none}
-.btn{border:none;border-radius:999px;padding:10px 14px;background:rgba(255,255,255,.12);color:#fff;cursor:pointer}
-.btn.primary{background:linear-gradient(45deg,#ff416c,#ff4b2b)}
+.page{max-width:980px;margin:0 auto;padding:18px}
+.head{display:flex;align-items:center;justify-content:space-between;gap:12px;margin-bottom:14px}
+.title{font-size:26px;font-weight:900}
+.sub{opacity:.75;font-weight:600}
+.btn{border:none;border-radius:999px;padding:10px 14px;background:rgba(255,255,255,.12);color:#fff;font-weight:800}
+.state{padding:16px;border-radius:14px;background:rgba(255,255,255,.08)}
+.state.err{border:1px solid rgba(255,80,80,.35)}
+.list{display:flex;flex-direction:column;gap:10px}
+.row{
+  display:flex;gap:12px;align-items:center;
+  padding:12px;border-radius:16px;
+  background:rgba(255,255,255,.08);
+  border:1px solid rgba(255,255,255,.12);
+  cursor:pointer;color:#fff;text-align:left
+}
+.row:hover{background:rgba(255,255,255,.11)}
+.avatar{
+  width:44px;height:44px;border-radius:14px;
+  display:grid;place-items:center;
+  background:linear-gradient(45deg,#ff416c,#ff4b2b);
+  font-weight:900
+}
+.info{flex:1;min-width:0}
+.name{font-weight:900;display:flex;gap:10px;align-items:center}
+.meta{opacity:.6;font-weight:700;font-size:12px}
+.preview{opacity:.75;white-space:nowrap;overflow:hidden;text-overflow:ellipsis;margin-top:2px}
+.right{display:flex;flex-direction:column;align-items:flex-end;gap:6px}
+.time{opacity:.65;font-size:12px;font-weight:700}
+.pill{padding:6px 10px;border-radius:999px;background:rgba(0,255,170,.18);border:1px solid rgba(0,255,170,.25);font-weight:900}
+.empty{padding:18px;border-radius:16px;background:rgba(255,255,255,.07);border:1px dashed rgba(255,255,255,.18)}
+.big{font-weight:900;font-size:18px}
+.small{opacity:.75;margin-top:6px}
 </style>
