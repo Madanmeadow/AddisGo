@@ -28,7 +28,6 @@ dotenv.config();
 ========================= */
 const C = {
   reset: "\x1b[0m",
-  dim: "\x1b[2m",
   red: "\x1b[31m",
   green: "\x1b[32m",
   yellow: "\x1b[33m",
@@ -62,16 +61,11 @@ const ORIGINS =
     : CLIENT_ORIGIN.split(",").map((s) => s.trim()).filter(Boolean);
 
 /* =========================
-   CORS (FIXED FOR "*"+credentials)
+   MIDDLEWARE
 ========================= */
-const corsOrigin =
-  ORIGINS === "*"
-    ? (origin, cb) => cb(null, true) // reflect any origin
-    : ORIGINS;
-
 app.use(
   cors({
-    origin: corsOrigin,
+    origin: ORIGINS,
     credentials: true,
     methods: ["GET", "POST", "PUT", "PATCH", "DELETE", "OPTIONS"],
   })
@@ -204,7 +198,6 @@ app.get("/api/health", async (req, res) => {
 
 /* =========================
    TURN (ICE servers)
-   ✅ supports /turn and /api/turn
 ========================= */
 async function buildIceServers() {
   const sid = (process.env.TWILIO_ACCOUNT_SID || "").trim();
@@ -222,13 +215,19 @@ async function buildIceServers() {
   try {
     const client = twilio(sid, auth);
     const token = await client.tokens.create({ ttl });
-    return { ok: true, iceServers: token.iceServers, note: "TURN via Twilio" };
+
+    return {
+      ok: true,
+      iceServers: token.iceServers,
+      note: "TURN via Twilio",
+    };
   } catch (e) {
-    console.error("TURN(Twilio) ERROR -> fallback to STUN:", e?.message || e);
+    logERR("TURN(Twilio) ERROR:", e?.status, e?.code, e?.message || e);
     return { ...fallback, error: "Twilio TURN failed; using STUN fallback" };
   }
 }
 
+// ✅ NEW: /turn (your Call.vue uses /turn)
 app.get("/turn", async (req, res) => {
   try {
     res.json(await buildIceServers());
@@ -238,6 +237,7 @@ app.get("/turn", async (req, res) => {
   }
 });
 
+// Backwards compat: /api/turn (your Live.vue uses /api/turn)
 app.get("/api/turn", async (req, res) => {
   try {
     res.json(await buildIceServers());
@@ -251,11 +251,10 @@ app.get("/api/turn", async (req, res) => {
    SOCKET.IO
 ========================= */
 const io = new Server(server, {
-  cors: {
-    origin: ORIGINS === "*" ? true : ORIGINS,
-    credentials: true,
-    methods: ["GET", "POST"],
-  },
+  cors: { origin: ORIGINS, credentials: true, methods: ["GET", "POST"] },
+  transports: ["websocket", "polling"],
+  pingTimeout: 30000,
+  pingInterval: 25000,
 });
 
 /* ---------- PRESENCE ---------- */
@@ -287,8 +286,8 @@ function emitLivePresence(liveId) {
 }
 
 /* ✅ LIVE MIC CONTROL */
-const liveSpeakers = new Map();     // liveId -> Set<userId>
-const liveMicRequests = new Map();  // liveId -> Map<userId -> payload>
+const liveSpeakers = new Map(); // liveId -> Set<userId>
+const liveMicRequests = new Map(); // liveId -> Map<userId -> payload>
 
 function ensureLiveSpeakerSet(liveId) {
   const id = String(liveId);
@@ -311,7 +310,6 @@ function queueIncomingCall(userId, payload) {
   if (!pendingIncomingCalls.has(uid)) pendingIncomingCalls.set(uid, new Map());
   pendingIncomingCalls.get(uid).set(rid, payload);
 }
-
 function removeQueuedIncomingCall(userId, roomId) {
   const uid = String(userId);
   const rid = String(roomId);
@@ -320,7 +318,6 @@ function removeQueuedIncomingCall(userId, roomId) {
   m.delete(rid);
   if (m.size === 0) pendingIncomingCalls.delete(uid);
 }
-
 function flushQueuedIncomingCallsToUser(userId) {
   const uid = String(userId);
   const m = pendingIncomingCalls.get(uid);
@@ -350,19 +347,6 @@ function makeCallRoomId(socket) {
   return `call-${socket.id}-${Date.now()}`;
 }
 
-function emitCallParticipants(roomId) {
-  const sess = callSessions.get(String(roomId));
-  if (!sess) return;
-
-  io.to(`call:${roomId}`).emit("call:participants", {
-    roomId: String(roomId),
-    hostUserId: sess.hostUserId,
-    kind: sess.kind,
-    invitedUserIds: Array.from(sess.invitedUserIds || []),
-    joinedUserIds: Array.from(sess.joinedUserIds || []),
-  });
-}
-
 function ringToUser(userId, roomId, kind, side) {
   io.to(`user:${String(userId)}`).emit("call:ring", {
     roomId: String(roomId),
@@ -382,13 +366,8 @@ function stopRingForSession(sess) {
   if (!sess) return;
   for (const uid of sess.invitedUserIds || []) stopRingToUser(uid, sess.roomId);
 }
-
-function isUserBusy(userId) {
-  return userBusyRoom.has(String(userId));
-}
-function setUserBusy(userId, roomId) {
-  userBusyRoom.set(String(userId), String(roomId));
-}
+function isUserBusy(userId) { return userBusyRoom.has(String(userId)); }
+function setUserBusy(userId, roomId) { userBusyRoom.set(String(userId), String(roomId)); }
 function clearUserBusy(userId, roomId) {
   const uid = String(userId);
   const rid = String(roomId);
@@ -400,7 +379,6 @@ function clearBusyForSession(sess) {
   for (const uid of sess.invitedUserIds || []) clearUserBusy(uid, sess.roomId);
 }
 
-/* ======= OPTIONAL DB helpers (kept) ======= */
 async function dbNotifyIncomingCall(userId, payload) {
   try {
     await pool.query(
@@ -410,7 +388,6 @@ async function dbNotifyIncomingCall(userId, payload) {
     );
   } catch {}
 }
-
 async function dbEnsureCall(roomId, kind, hostUserId) {
   try {
     const r = await pool.query(`SELECT id FROM calls WHERE room_id=$1 LIMIT 1`, [String(roomId)]);
@@ -424,11 +401,10 @@ async function dbEnsureCall(roomId, kind, hostUserId) {
     );
     return created.rows[0].id;
   } catch (e) {
-    logERR("DB ensure call error:", e);
+    logERR("DB ensure call error:", e?.message || e);
     return null;
   }
 }
-
 async function dbUpsertParticipant(callId, userId, role = "member", status = "invited") {
   try {
     await pool.query(
@@ -438,11 +414,8 @@ async function dbUpsertParticipant(callId, userId, role = "member", status = "in
        DO UPDATE SET role=EXCLUDED.role, status=EXCLUDED.status`,
       [Number(callId), Number(userId), String(role), String(status)]
     );
-  } catch (e) {
-    logERR("DB upsert participant error:", e);
-  }
+  } catch {}
 }
-
 async function dbMarkJoined(callId, userId) {
   try {
     await pool.query(
@@ -451,11 +424,8 @@ async function dbMarkJoined(callId, userId) {
        WHERE call_id=$1 AND user_id=$2`,
       [Number(callId), Number(userId)]
     );
-  } catch (e) {
-    logERR("DB mark joined error:", e);
-  }
+  } catch {}
 }
-
 async function dbActivateIfTwoJoined(callId) {
   try {
     const j = await pool.query(
@@ -470,11 +440,8 @@ async function dbActivateIfTwoJoined(callId) {
         [Number(callId)]
       );
     }
-  } catch (e) {
-    logERR("DB activate error:", e);
-  }
+  } catch {}
 }
-
 async function dbEndCall(roomId) {
   try {
     await pool.query(
@@ -483,9 +450,7 @@ async function dbEndCall(roomId) {
        WHERE room_id=$1 AND status <> 'ended'`,
       [String(roomId)]
     );
-  } catch (e) {
-    logERR("DB end call error:", e);
-  }
+  } catch {}
 }
 
 function scheduleMissedTimer(roomId) {
@@ -503,25 +468,20 @@ function scheduleMissedTimer(roomId) {
 
     for (const uid of s.invitedUserIds || []) removeQueuedIncomingCall(uid, s.roomId);
 
-    const room = io.sockets.adapter.rooms.get(`call:${roomId}`);
-    const count = room ? room.size : 0;
-    if (count < 2) callSessions.delete(String(roomId));
-
     io.to(`call:${roomId}`).emit("call:ended", { roomId: String(roomId), reason: "timeout" });
+
+    callSessions.delete(String(roomId));
   }, RING_TIMEOUT_MS);
 
   callSessions.set(String(roomId), sess);
 }
 
-/* =========================
-   SOCKET HANDLERS
-========================= */
 io.on("connection", (socket) => {
   logSOCK("Socket connected:", socket.id);
   socket.data.user = null;
 
   /* =========================
-     ✅ PRESENCE
+     PRESENCE
   ========================= */
   socket.on("user:online", ({ userId }) => {
     if (!userId) return;
@@ -556,7 +516,7 @@ io.on("connection", (socket) => {
   });
 
   /* =========================
-     CHAT (simple room chat)
+     CHAT (simple rooms)
   ========================= */
   socket.on("join-room", (room) => room && socket.join(String(room)));
 
@@ -586,17 +546,14 @@ io.on("connection", (socket) => {
   });
 
   /* =========================
-     ✅ CALLS: request/accept/join/end
+     CALLS: request / join / end
   ========================= */
   socket.on("call:request", async ({ toUserId, kind = "audio" }) => {
     const from = socket.data.user;
-    if (!from?.id)
-      return socket.emit("call:error", { message: "Not online. Emit user:online first." });
+    if (!from?.id) return socket.emit("call:error", { message: "Not online. Emit user:online first." });
 
     const calleeUserId = String(toUserId);
     const callKind = kind === "video" ? "video" : "audio";
-
-    logCALL("call:request", { from: from.id, to: calleeUserId, kind: callKind });
 
     if (isUserBusy(from.id)) return socket.emit("call:error", { message: "You are already in a call." });
     if (isUserBusy(calleeUserId)) return socket.emit("call:busy", { message: "User is busy." });
@@ -650,40 +607,8 @@ io.on("connection", (socket) => {
 
     io.to(`user:${calleeUserId}`).emit("call:incoming", incomingPayload);
     ringToUser(calleeUserId, roomId, callKind, "callee");
+
     socket.emit("call:status", { roomId: String(roomId), calleeOnline: true });
-  });
-
-  socket.on("call:accept", async ({ roomId }) => {
-    const sess = callSessions.get(String(roomId));
-    if (!sess) return;
-
-    stopRingForSession(sess);
-
-    io.to(`call:${roomId}`).emit("call:accepted", { roomId: String(roomId), kind: sess.kind });
-
-    for (const uid of sess.invitedUserIds || []) {
-      io.to(`user:${uid}`).emit("call:accepted", { roomId: String(roomId), kind: sess.kind });
-      stopRingToUser(uid, roomId);
-    }
-  });
-
-  socket.on("call:reject", async ({ roomId }) => {
-    const sess = callSessions.get(String(roomId));
-    if (!sess) return;
-
-    stopRingForSession(sess);
-    clearBusyForSession(sess);
-    for (const uid of sess.invitedUserIds || []) removeQueuedIncomingCall(uid, sess.roomId);
-
-    io.to(`call:${roomId}`).emit("call:ended", { roomId: String(roomId), reason: "rejected" });
-    for (const uid of sess.invitedUserIds || []) {
-      io.to(`user:${uid}`).emit("call:rejected", { roomId: String(roomId) });
-      io.to(`user:${uid}`).emit("call:ended", { roomId: String(roomId), reason: "rejected" });
-      stopRingToUser(uid, roomId);
-    }
-
-    if (sess?.ringTimer) clearTimeout(sess.ringTimer);
-    callSessions.delete(String(roomId));
   });
 
   socket.on("call:join", async ({ roomId }) => {
@@ -691,6 +616,7 @@ io.on("connection", (socket) => {
     if (!sess) return socket.emit("call:error", { message: "Call session not found." });
 
     const meId = socket.data.user?.id ? String(socket.data.user.id) : null;
+
     socket.join(`call:${roomId}`);
 
     if (meId) {
@@ -706,6 +632,7 @@ io.on("connection", (socket) => {
 
     const room = io.sockets.adapter.rooms.get(`call:${roomId}`);
     const count = room ? room.size : 0;
+
     io.to(`call:${roomId}`).emit("call:presence", { roomId: String(roomId), count });
 
     socket.to(`call:${roomId}`).emit("call:peer-joined", {
@@ -713,8 +640,6 @@ io.on("connection", (socket) => {
       peerSocketId: socket.id,
       peerUserId: meId,
     });
-
-    emitCallParticipants(roomId);
 
     if (count >= 2) {
       stopRingForSession(sess);
@@ -724,8 +649,6 @@ io.on("connection", (socket) => {
 
   socket.on("call:end", async ({ roomId }) => {
     const sess = callSessions.get(String(roomId));
-    logCALL("call:end", { roomId: String(roomId) });
-
     await dbEndCall(roomId);
 
     if (sess) {
@@ -733,7 +656,6 @@ io.on("connection", (socket) => {
       clearBusyForSession(sess);
       for (const uid of sess.invitedUserIds || []) removeQueuedIncomingCall(uid, sess.roomId);
       if (sess.ringTimer) clearTimeout(sess.ringTimer);
-
       for (const uid of sess.invitedUserIds || []) {
         io.to(`user:${uid}`).emit("call:ended", { roomId: String(roomId), reason: "ended" });
         stopRingToUser(uid, roomId);
@@ -744,95 +666,46 @@ io.on("connection", (socket) => {
     callSessions.delete(String(roomId));
   });
 
-  socket.on("call:cancel", async ({ roomId }) => {
-    const sess = callSessions.get(String(roomId));
-    if (!sess) return;
-
-    await dbEndCall(roomId);
-
-    stopRingForSession(sess);
-    clearBusyForSession(sess);
-    for (const uid of sess.invitedUserIds || []) removeQueuedIncomingCall(uid, sess.roomId);
-
-    io.to(`call:${roomId}`).emit("call:ended", { roomId: String(roomId), reason: "canceled" });
-
-    for (const uid of sess.invitedUserIds || []) {
-      io.to(`user:${uid}`).emit("call:cancelled", { roomId: String(roomId) });
-      io.to(`user:${uid}`).emit("call:ended", { roomId: String(roomId), reason: "canceled" });
-      stopRingToUser(uid, roomId);
-    }
-
-    if (sess.ringTimer) clearTimeout(sess.ringTimer);
-    callSessions.delete(String(roomId));
-  });
-
   /* =========================
-     ✅ CALLS: WebRTC RELAY
+     CALLS: WebRTC RELAY (mesh)
   ========================= */
   socket.on("call:webrtc:offer", ({ roomId, offer, to }) => {
     if (!roomId || !offer) return;
-
-    if (to) {
-      io.to(String(to)).emit("call:webrtc:offer", { roomId: String(roomId), offer, from: socket.id });
-      return;
-    }
+    if (to) return io.to(String(to)).emit("call:webrtc:offer", { roomId: String(roomId), offer, from: socket.id });
     socket.to(`call:${roomId}`).emit("call:webrtc:offer", { roomId: String(roomId), offer });
   });
 
   socket.on("call:webrtc:answer", ({ roomId, answer, to }) => {
     if (!roomId || !answer) return;
-
-    if (to) {
-      io.to(String(to)).emit("call:webrtc:answer", { roomId: String(roomId), answer, from: socket.id });
-      return;
-    }
+    if (to) return io.to(String(to)).emit("call:webrtc:answer", { roomId: String(roomId), answer, from: socket.id });
     socket.to(`call:${roomId}`).emit("call:webrtc:answer", { roomId: String(roomId), answer });
   });
 
   socket.on("call:webrtc:ice", ({ roomId, candidate, to }) => {
     if (!roomId || !candidate) return;
-
-    if (to) {
-      io.to(String(to)).emit("call:webrtc:ice", { roomId: String(roomId), candidate, from: socket.id });
-      return;
-    }
+    if (to) return io.to(String(to)).emit("call:webrtc:ice", { roomId: String(roomId), candidate, from: socket.id });
     socket.to(`call:${roomId}`).emit("call:webrtc:ice", { roomId: String(roomId), candidate });
   });
 
   /* =========================
-     ✅ LIVE: WebRTC RELAY (FIXED, SINGLE SOURCE OF TRUTH)
-     - This is what makes viewers SEE the host stream.
-     - DO NOT duplicate these handlers.
+     ✅ LIVE: WebRTC RELAY (host <-> viewer)
+     (ONLY ONCE — no duplicates)
   ========================= */
   socket.on("webrtc:offer", ({ liveId, to, offer }) => {
     if (!liveId || !to || !offer) return;
-    io.to(String(to)).emit("webrtc:offer", {
-      liveId: String(liveId),
-      from: socket.id,
-      offer,
-    });
+    io.to(String(to)).emit("webrtc:offer", { liveId: String(liveId), from: socket.id, offer });
   });
-
   socket.on("webrtc:answer", ({ liveId, to, answer }) => {
     if (!liveId || !to || !answer) return;
-    io.to(String(to)).emit("webrtc:answer", {
-      liveId: String(liveId),
-      from: socket.id,
-      answer,
-    });
+    io.to(String(to)).emit("webrtc:answer", { liveId: String(liveId), from: socket.id, answer });
   });
-
   socket.on("webrtc:ice", ({ liveId, to, candidate }) => {
     if (!liveId || !to || !candidate) return;
-    io.to(String(to)).emit("webrtc:ice", {
-      liveId: String(liveId),
-      from: socket.id,
-      candidate,
-    });
+    io.to(String(to)).emit("webrtc:ice", { liveId: String(liveId), from: socket.id, candidate });
   });
 
   /* =========================
-     ✅ LIVE STREAMING + MIC CONTROL
+     LIVE STREAMING + MIC CONTROL
   ========================= */
   socket.on("live:create", ({ liveId }) => {
     if (!liveId) return;
@@ -859,32 +732,13 @@ io.on("connection", (socket) => {
     const hostSocketId = liveHosts.get(String(liveId)) || null;
     socket.emit("live:host", { liveId: String(liveId), hostSocketId });
 
-    // 🔥 This triggers host to create offer to viewer
     if (hostSocketId) {
-      io.to(hostSocketId).emit("live:viewer-joined", {
-        liveId: String(liveId),
-        viewerSocketId: socket.id,
-      });
+      io.to(hostSocketId).emit("live:viewer-joined", { liveId: String(liveId), viewerSocketId: socket.id });
     }
 
     const meId = socket.data.user?.id ? String(socket.data.user.id) : null;
     const speakers = ensureLiveSpeakerSet(liveId);
     socket.emit("live:mic:status", { liveId: String(liveId), canSpeak: meId ? speakers.has(meId) : false });
-
-    emitLivePresence(String(liveId));
-  });
-
-  socket.on("live:leave", ({ liveId }) => {
-    if (!liveId) return;
-    socket.leave(`live:${liveId}`);
-
-    const hostSocketId = liveHosts.get(String(liveId));
-    if (hostSocketId) {
-      io.to(hostSocketId).emit("live:viewer-left", {
-        liveId: String(liveId),
-        viewerSocketId: socket.id,
-      });
-    }
 
     emitLivePresence(String(liveId));
   });
@@ -897,10 +751,8 @@ io.on("connection", (socket) => {
       liveHosts.delete(String(liveId));
       liveStreams.delete(String(liveId));
       emitLiveList();
-
       liveSpeakers.delete(String(liveId));
       liveMicRequests.delete(String(liveId));
-
       logLIVE("live:end", { liveId: String(liveId) });
     }
   });
@@ -928,8 +780,6 @@ io.on("connection", (socket) => {
 
     io.to(hostSocketId).emit("live:mic:requested", payload);
     socket.emit("live:mic:requested:ack", { liveId: String(liveId), ok: true });
-
-    logLIVE("live:mic:request", { liveId: String(liveId), userId: meId });
   });
 
   socket.on("live:mic:approve", ({ liveId, userId }) => {
@@ -951,8 +801,6 @@ io.on("connection", (socket) => {
       liveId: String(liveId),
       speakerUserIds: Array.from(ensureLiveSpeakerSet(liveId)),
     });
-
-    logLIVE("live:mic:approve", { liveId: String(liveId), userId: uid });
   });
 
   socket.on("live:mic:deny", ({ liveId, userId, reason }) => {
@@ -965,13 +813,7 @@ io.on("connection", (socket) => {
     const reqMap = ensureLiveRequestMap(liveId);
     reqMap.delete(uid);
 
-    io.to(`user:${uid}`).emit("live:mic:denied", {
-      liveId: String(liveId),
-      ok: false,
-      reason: reason || "denied",
-    });
-
-    logLIVE("live:mic:deny", { liveId: String(liveId), userId: uid });
+    io.to(`user:${uid}`).emit("live:mic:denied", { liveId: String(liveId), ok: false, reason: reason || "denied" });
   });
 
   /* =========================
@@ -993,7 +835,6 @@ io.on("connection", (socket) => {
         liveHosts.delete(liveId);
         liveStreams.delete(liveId);
         emitLiveList();
-
         liveSpeakers.delete(String(liveId));
         liveMicRequests.delete(String(liveId));
       }
