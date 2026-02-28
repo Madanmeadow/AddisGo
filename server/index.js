@@ -1108,37 +1108,37 @@ io.on("connection", (socket) => {
 
     socket.to(`call:${roomId}`).emit("call:webrtc:ice", { roomId: String(roomId), candidate });
   });
-/* =========================
+   /* =========================
    ✅ LIVE: WebRTC RELAY (host<->viewer)
    - required because Live.vue uses "webrtc:*"
 ========================= */
 
-socket.on("webrtc:offer", ({ liveId, to, offer }) => {
-  if (!liveId || !to || !offer) return;
-  io.to(String(to)).emit("webrtc:offer", {
-    liveId: String(liveId),
-    from: socket.id,
-    offer,
+  socket.on("webrtc:offer", ({ liveId, to, offer }) => {
+    if (!liveId || !to || !offer) return;
+    io.to(String(to)).emit("webrtc:offer", {
+      liveId: String(liveId),
+      from: socket.id,
+      offer,
+    });
   });
-});
 
-socket.on("webrtc:answer", ({ liveId, to, answer }) => {
-  if (!liveId || !to || !answer) return;
-  io.to(String(to)).emit("webrtc:answer", {
-    liveId: String(liveId),
-    from: socket.id,
-    answer,
+  socket.on("webrtc:answer", ({ liveId, to, answer }) => {
+    if (!liveId || !to || !answer) return;
+    io.to(String(to)).emit("webrtc:answer", {
+      liveId: String(liveId),
+      from: socket.id,
+      answer,
+    });
   });
-});
 
-socket.on("webrtc:ice", ({ liveId, to, candidate }) => {
-  if (!liveId || !to || !candidate) return;
-  io.to(String(to)).emit("webrtc:ice", {
-    liveId: String(liveId),
-    from: socket.id,
-    candidate,
+  socket.on("webrtc:ice", ({ liveId, to, candidate }) => {
+    if (!liveId || !to || !candidate) return;
+    io.to(String(to)).emit("webrtc:ice", {
+      liveId: String(liveId),
+      from: socket.id,
+      candidate,
+    });
   });
-});
   /* =========================
      LIVE STREAMING (kept)
      + ✅ MIC REQUEST/APPROVE added (new)

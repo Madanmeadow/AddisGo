@@ -37,7 +37,7 @@
         </div>
       </div>
 
-      <!-- SINGLE SCREEN CONTENT -->
+      <!-- MAIN -->
       <main class="main">
         <!-- TOP DOCK -->
         <section class="dock">
@@ -85,7 +85,7 @@
                   v-for="u in people.slice(0, 14)"
                   :key="'pmini-' + u.id"
                   class="miniAvatarWrap"
-                  :title="(u.display_name || u.username || ('User #' + u.id)) + (isOnline(u.id) ? ' • Online' : ' • Offline')"
+                  :title="u.display_name || u.username || ('User #' + u.id)"
                   @click="peopleOpen ? null : startCall(u,'audio')"
                 >
                   <div class="miniAvatar">{{ (u.display_name || u.username || "U")[0]?.toUpperCase() }}</div>
@@ -108,23 +108,21 @@
                       <div class="person-name">{{ u.display_name || u.username || ("User #" + u.id) }}</div>
                       <div class="person-sub">
                         <span class="status" :class="{ on: isOnline(u.id) }"></span>
-                        <span class="status-text">{{ isOnline(u.id) ? "Online" : "Offline (will queue)" }}</span>
+                        <span class="status-text">{{ isOnline(u.id) ? "Online" : "Offline" }}</span>
                         <span class="sep">•</span>
                         <span class="id">ID {{ u.id }}</span>
                       </div>
                     </div>
 
                     <div class="person-actions">
-                      <!-- ✅ allow calling even if offline (server queues) -->
+                      <!-- ✅ You wanted offline calling later; UI stays enabled, backend decides -->
                       <button class="iconbtn" title="Audio Call" :disabled="callBusy" @click="startCall(u,'audio')">📞</button>
                       <button class="iconbtn" title="Video Call" :disabled="callBusy" @click="startCall(u,'video')">🎥</button>
                     </div>
                   </div>
                 </div>
 
-                <div class="hint mt10">
-                  Calls work even if someone is offline — AddisGo will queue the call and ring them when they come online.
-                </div>
+                <div class="hint mt10">Green dot = online. Calls work best when both are online.</div>
               </div>
             </template>
           </div>
@@ -252,9 +250,9 @@
               {{ threadMediaOpen[post.id] ? "Hide media" : "View media" }}
             </button>
 
-            <div v-if="threadMediaOpen[post.id]" class="thread-media">
-              <img v-if="post.image_url" class="media" :src="getMedia(post.image_url)" loading="lazy" />
-              <video v-if="post.video_url" class="media" :src="getMedia(post.video_url)" controls playsinline preload="metadata"></video>
+            <div v-if="threadMediaOpen[post.id]" class="mediaWrap">
+              <img v-if="post.image_url" class="media" :src="mediaUrl(post.image_url)" loading="lazy" />
+              <video v-if="post.video_url" class="media" :src="mediaUrl(post.video_url)" controls playsinline preload="metadata"></video>
             </div>
 
             <div class="actions">
@@ -295,11 +293,11 @@
 
             <div v-if="post.caption" class="text">{{ post.caption }}</div>
 
-            <div class="tt-video-wrap">
+            <div class="tt-video-wrap mediaWrap">
               <video
                 class="media tt-video"
                 :data-post-id="post.id"
-                :src="getMedia(post.video_url)"
+                :src="mediaUrl(post.video_url)"
                 playsinline
                 preload="metadata"
                 loop
@@ -355,8 +353,10 @@
 
             <div v-if="post.caption" class="text">{{ post.caption }}</div>
 
-            <img v-if="post.image_url" class="media" :src="getMedia(post.image_url)" loading="lazy" />
-            <video v-if="post.video_url" class="media" :src="getMedia(post.video_url)" controls playsinline preload="metadata"></video>
+            <div v-if="post.image_url || post.video_url" class="mediaWrap">
+              <img v-if="post.image_url" class="media" :src="mediaUrl(post.image_url)" loading="lazy" />
+              <video v-if="post.video_url" class="media" :src="mediaUrl(post.video_url)" controls playsinline preload="metadata"></video>
+            </div>
 
             <div class="actions">
               <button class="action-btn" :class="{ active: likesByPost[post.id]?.likedByMe }" :disabled="likeBusyByPost[post.id]" @click="toggleLike(post)">
@@ -383,13 +383,7 @@
             <div class="state-sub">Post a video and it will autoplay here.</div>
           </div>
 
-          <article
-            v-else
-            v-for="post in visiblePosts"
-            :key="'fy-'+post.id"
-            class="post tt-card"
-            :id="`post-${post.id}`"
-          >
+          <article v-else v-for="post in visiblePosts" :key="'fy-'+post.id" class="post tt-card" :id="`post-${post.id}`">
             <header class="post-head">
               <div class="avatar">{{ getInitial(post.user_id) }}</div>
               <div class="who">
@@ -401,13 +395,16 @@
             </header>
 
             <div v-if="post.caption" class="text">{{ post.caption }}</div>
-            <img v-if="post.image_url" class="media" :src="getMedia(post.image_url)" loading="lazy" />
 
-            <div v-if="post.video_url" class="tt-video-wrap">
+            <div v-if="post.image_url" class="mediaWrap">
+              <img class="media" :src="mediaUrl(post.image_url)" loading="lazy" />
+            </div>
+
+            <div v-if="post.video_url" class="tt-video-wrap mediaWrap">
               <video
                 class="media tt-video"
                 :data-post-id="post.id"
-                :src="getMedia(post.video_url)"
+                :src="mediaUrl(post.video_url)"
                 playsinline
                 preload="metadata"
                 loop
@@ -472,18 +469,14 @@
       </aside>
 
       <!-- INCOMING CALL POPUP -->
-      <div v-if="incomingCall" class="modal-backdrop callBackdrop" @click.self="rejectIncoming">
-        <div class="modal callModal">
-          <div class="modal-title">
-            📞 Incoming {{ incomingCall.kind === "video" ? "Video" : "Audio" }} Call
-          </div>
-
+      <div v-if="incomingCall" class="modal-backdrop" @click.self="rejectIncoming">
+        <div class="modal">
+          <div class="modal-title">Incoming {{ incomingCall.kind === "video" ? "Video" : "Audio" }} Call</div>
           <div class="modal-sub">
             From
             <span class="pill">
               {{ incomingCall.from?.username || incomingCall.fromName || ("User #" + incomingCall.fromUserId) }}
             </span>
-            <span v-if="incomingCall.queued" class="queuedBadge">Queued</span>
           </div>
 
           <div class="modal-actions">
@@ -491,18 +484,12 @@
             <button class="btn btn-primary" @click="acceptIncoming">Accept</button>
           </div>
 
-          <div class="tiny muted mt10">
-            Tip: On iPhone, tap once anywhere after login to enable ringtone audio.
-          </div>
-
-          <button v-if="soundLocked" class="chip ghost mt10" @click="unlockCallAudio">
-            🔊 Enable ringtone sound
-          </button>
+          <div class="tiny muted mt10">Tip: on iPhone, the first ring may require a tap to allow sound.</div>
         </div>
       </div>
 
       <!-- CALLING TOAST -->
-      <div v-if="callingToast" class="toast callToast">
+      <div v-if="callingToast" class="toast">
         <span class="toast-dot"></span>
         {{ callingToast }}
         <button class="mini-x" @click="cancelCall">✕</button>
@@ -544,7 +531,18 @@ const me = (() => {
   try { return JSON.parse(localStorage.getItem("user") || "null"); } catch { return null; }
 })();
 
-/* ================== SAFETY: normalize posts (fix “dark/invisible cards”) ================== */
+/* ================== MEDIA URL (FIX DARK/SMALL AFTER DEPLOY) ================== */
+function mediaUrl(u) {
+  if (!u) return "";
+  const s = String(u);
+  // already absolute (cloudinary, etc.)
+  if (/^https?:\/\//i.test(s)) return s;
+  // make sure relative paths resolve to BACKEND domain, not frontend domain
+  if (s.startsWith("/")) return `${apiUrl}${s}`;
+  return `${apiUrl}/${s}`;
+}
+
+/* ================== POSTS NORMALIZER ================== */
 function normalizePost(p) {
   const obj = p?.post && p?.reel ? p.post : p;
   if (!obj || typeof obj !== "object") return null;
@@ -564,7 +562,6 @@ function normalizePost(p) {
 
 /* ================= MODEBAR ================= */
 const feedMode = ref("foryou"); // foryou | reels | following | threads | rooms | live
-
 function setFeedMode(mode) {
   feedMode.value = mode;
 
@@ -624,92 +621,42 @@ async function fetchPeople() {
   }
 }
 
-/* ================= CALLS (UPGRADED: server-driven ringtone + offline queue) ================= */
-const incomingCall = ref(null); // { roomId, kind, fromUserId, fromName, queued? }
+/* ================= CALLS (RINGTONE FIX + CLEAN) ================= */
+const incomingCall = ref(null);
 const callBusy = ref(false);
 const callingToast = ref("");
 const pendingRoomId = ref("");
 const pendingKind = ref("audio");
 
-const soundLocked = ref(true);
-
-/** RINGTONES (put mp3 in /public/sounds/) */
-const ringIn = new Audio("/sounds/ringtone.mp3");   // incoming ringtone
+// Put files in /public/sounds/
+const ringIn = new Audio("/sounds/ringtone.mp3");  // incoming ringtone
 ringIn.loop = true;
-
-const ringOut = new Audio("/sounds/ringback.mp3");  // optional ringback for caller (you can use same ringtone if you want)
+const ringOut = new Audio("/sounds/ringback.mp3"); // caller ringback
 ringOut.loop = true;
 
-/** iPhone/autoplay unlock — must be triggered by a user gesture */
-async function unlockCallAudio() {
-  try {
-    // "warm up" both audios in a muted play/pause cycle
-    ringIn.muted = true;
-    ringOut.muted = true;
-
-    await ringIn.play();
-    ringIn.pause();
-    ringIn.currentTime = 0;
-
-    await ringOut.play();
-    ringOut.pause();
-    ringOut.currentTime = 0;
-
-    ringIn.muted = false;
-    ringOut.muted = false;
-
-    soundLocked.value = false;
-  } catch {
-    // still locked until a gesture succeeds
-    soundLocked.value = true;
-  }
-}
-
-function playRingIn() {
-  try {
-    ringIn.currentTime = 0;
-    ringIn.play();
-    soundLocked.value = false;
-  } catch {
-    soundLocked.value = true;
-  }
-}
-function stopRingIn() {
+function stopAllRings() {
   try { ringIn.pause(); ringIn.currentTime = 0; } catch {}
-}
-function playRingOut() {
-  try {
-    ringOut.currentTime = 0;
-    ringOut.play();
-    soundLocked.value = false;
-  } catch {
-    soundLocked.value = true;
-  }
-}
-function stopRingOut() {
   try { ringOut.pause(); ringOut.currentTime = 0; } catch {}
 }
 
-function stopAllRings() {
-  stopRingIn();
-  stopRingOut();
+async function safePlay(audio) {
+  // iOS may block until user gesture; we try anyway
+  try { audio.currentTime = 0; await audio.play(); } catch {}
 }
+
+function playRingIn() { safePlay(ringIn); }
+function playRingOut() { safePlay(ringOut); }
 
 function startCall(user, kind = "audio") {
   if (!socket) return;
   if (!token) return alert("Login again to call.");
-
-  // try unlock sound on the click gesture (helps iPhone)
-  unlockCallAudio();
 
   callBusy.value = true;
   pendingKind.value = kind;
   callingToast.value = `Calling ${user.display_name || user.username || "user"}…`;
   pendingRoomId.value = "";
 
-  // caller ringback while waiting (server also sends call:ring side=caller)
   playRingOut();
-
   socket.emit("call:request", { toUserId: user.id, kind });
 }
 
@@ -724,108 +671,20 @@ function cancelCall() {
 function acceptIncoming() {
   if (!incomingCall.value || !socket) return;
 
-  unlockCallAudio();
   stopAllRings();
-
   const roomId = incomingCall.value.roomId;
   const kind = incomingCall.value.kind || "audio";
 
   socket.emit("call:accept", { roomId });
-
-  // your Call.vue should emit call:join when it loads
   router.push(`/call?roomId=${encodeURIComponent(roomId)}&role=callee&kind=${encodeURIComponent(kind)}`);
   incomingCall.value = null;
 }
 
 function rejectIncoming() {
   if (!incomingCall.value || !socket) return;
-
   stopAllRings();
   socket.emit("call:reject", { roomId: incomingCall.value.roomId });
   incomingCall.value = null;
-}
-
-function wireCallSocketHandlers() {
-  // ✅ server-driven ringtone events
-  socket.on("call:ring", ({ roomId, kind, side } = {}) => {
-    // side: "caller" => ringback, "callee" => ringtone
-    if (side === "callee") playRingIn();
-    else playRingOut();
-  });
-
-  socket.on("call:stopRing", () => {
-    stopAllRings();
-  });
-
-  socket.on("call:incoming", (p) => {
-    incomingCall.value = p;
-
-    // server usually also sends call:ring side=callee, but keep fallback:
-    playRingIn();
-  });
-
-  socket.on("call:ringing", ({ roomId, kind }) => {
-    // caller gets roomId here
-    pendingRoomId.value = roomId;
-    callingToast.value = `Ringing… (${kind || pendingKind.value})`;
-
-    // move to call screen (caller)
-    router.push(`/call?roomId=${encodeURIComponent(roomId)}&role=caller&kind=${encodeURIComponent(kind || pendingKind.value)}`);
-  });
-
-  socket.on("call:status", ({ calleeOnline } = {}) => {
-    if (calleeOnline === false) {
-      callingToast.value = "Queued… user is offline. We’ll ring them when they come online.";
-    }
-  });
-
-  socket.on("call:busy", ({ message } = {}) => {
-    stopAllRings();
-    callingToast.value = "";
-    callBusy.value = false;
-    pendingRoomId.value = "";
-    alert(message || "User is busy.");
-  });
-
-  socket.on("call:accepted", () => {
-    stopAllRings();
-    callingToast.value = "";
-    callBusy.value = false;
-  });
-
-  socket.on("call:rejected", () => {
-    stopAllRings();
-    callingToast.value = "";
-    callBusy.value = false;
-    pendingRoomId.value = "";
-    alert("Call rejected.");
-  });
-
-  socket.on("call:ended", () => {
-    stopAllRings();
-    callingToast.value = "";
-    callBusy.value = false;
-    incomingCall.value = null;
-    pendingRoomId.value = "";
-  });
-
-  socket.on("call:timeout", () => {
-    stopAllRings();
-    callingToast.value = "";
-    callBusy.value = false;
-    incomingCall.value = null;
-    pendingRoomId.value = "";
-    alert("No answer.");
-  });
-
-  socket.on("call:error", ({ message } = {}) => {
-    stopAllRings();
-    callingToast.value = "";
-    callBusy.value = false;
-    incomingCall.value = null;
-    pendingRoomId.value = "";
-    alert(message || "Call error");
-  });
 }
 
 /* ================= POSTS ================= */
@@ -843,27 +702,18 @@ const composerRef = ref(null);
 const myInitial = computed(() => (me?.username ? me.username[0].toUpperCase() : "A"));
 
 function focusComposer() { try { composerRef.value?.focus?.(); } catch {} }
-
 function formatDate(d) {
   if (!d) return "";
   const date = new Date(d);
   return Number.isNaN(date.getTime()) ? "" : date.toLocaleString();
 }
-
-function getMedia(url) {
-  if (!url) return "";
-  if (url.startsWith("http")) return url;
-  return `${apiUrl}${url}`;
-}
-
-function getInitial(userId) {
-  return String(userId || "?").slice(-1);
-}
+function getInitial(userId) { return String(userId || "?").slice(-1); }
 
 async function fetchPosts() {
   try {
     loading.value = true;
     error.value = "";
+
     const res = await fetch(`${apiUrl}/posts`);
     const data = await res.json();
 
@@ -1005,7 +855,6 @@ const baseFiltered = computed(() => {
 
 const followingPosts = computed(() => baseFiltered.value.slice(0, 40));
 const threadsPosts = computed(() => baseFiltered.value.slice(0, 60));
-
 const reelsPosts = computed(() => baseFiltered.value.filter((p) => !!p.video_url));
 
 /* ================= THREADS MEDIA TOGGLE ================= */
@@ -1167,7 +1016,7 @@ async function submitComment(post) {
   }
 }
 
-/* Inline reusable comments component (keeps template clean and consistent) */
+/* Inline reusable comments component */
 const CommentsBlock = defineComponent({
   name: "CommentsBlock",
   props: { post: { type: Object, required: true } },
@@ -1328,7 +1177,7 @@ function setupLoadMoreObserver() {
   loadMoreObserver.observe(loadMoreRef.value);
 }
 
-/* ================= REELS Infinite (videos only) ================= */
+/* ================= REELS Infinite ================= */
 const reelsPageSize = ref(8);
 const reelsInfiniteLoading = ref(false);
 const reelsLoadMoreRef = ref(null);
@@ -1362,7 +1211,7 @@ function setupReelsLoadMoreObserver() {
 /* Video autoplay */
 const activePostId = ref(null);
 const globalMuted = ref(true);
-const videoMutedByPost = ref({}); // {postId: true}
+const videoMutedByPost = ref({});
 
 function isVideoMuted(postId) {
   return globalMuted.value || !!videoMutedByPost.value[postId];
@@ -1430,20 +1279,9 @@ function setupVideoObserver() {
 }
 
 /* ================= INIT ================= */
-function oneTapUnlockHandler() {
-  // one tap anywhere unlocks ringtone audio (best for iPhone)
-  unlockCallAudio();
-  window.removeEventListener("pointerdown", oneTapUnlockHandler);
-  window.removeEventListener("touchstart", oneTapUnlockHandler);
-}
-
 onMounted(async () => {
   await fetchPosts();
   if (token) await fetchPeople();
-
-  // set up one-tap audio unlock
-  window.addEventListener("pointerdown", oneTapUnlockHandler, { once: true });
-  window.addEventListener("touchstart", oneTapUnlockHandler, { once: true });
 
   socket = io(apiUrl, { transports: ["websocket", "polling"] });
 
@@ -1453,8 +1291,6 @@ onMounted(async () => {
     socket.emit("get-live-list");
   });
 
-  wireCallSocketHandlers();
-
   socket.on("receive-message", (msg) => {
     chatMessages.value.push(msg);
     nextTick(scrollChatToBottom);
@@ -1462,6 +1298,42 @@ onMounted(async () => {
 
   socket.on("live-list", (streams) => { liveStreams.value = Array.isArray(streams) ? streams : []; });
   socket.on("online-users", (pairs) => { onlinePairs.value = Array.isArray(pairs) ? pairs : []; });
+
+  // CALLS
+  socket.on("call:ringing", ({ roomId, kind }) => {
+    pendingRoomId.value = roomId;
+    callingToast.value = `Calling… (${kind || pendingKind.value})`;
+    router.push(`/call?roomId=${encodeURIComponent(roomId)}&role=caller&kind=${encodeURIComponent(kind || pendingKind.value)}`);
+  });
+
+  socket.on("call:incoming", (p) => {
+    incomingCall.value = p;
+    // try ring; iOS may require tap (handled by safePlay)
+    playRingIn();
+  });
+
+  socket.on("call:accepted", () => {
+    stopAllRings();
+    callingToast.value = "";
+    callBusy.value = false;
+  });
+
+  socket.on("call:ended", () => {
+    stopAllRings();
+    callingToast.value = "";
+    callBusy.value = false;
+    incomingCall.value = null;
+    pendingRoomId.value = "";
+  });
+
+  socket.on("call:error", ({ message } = {}) => {
+    stopAllRings();
+    callingToast.value = "";
+    callBusy.value = false;
+    incomingCall.value = null;
+    pendingRoomId.value = "";
+    alert(message || "Call error");
+  });
 
   await nextTick();
   if (feedMode.value === "foryou") {
@@ -1473,7 +1345,6 @@ onMounted(async () => {
 
 onBeforeUnmount(() => {
   stopAllRings();
-
   try { socket?.disconnect(); } catch {}
   socket = null;
 
@@ -1483,9 +1354,6 @@ onBeforeUnmount(() => {
   loadMoreObserver = null;
   reelsLoadMoreObserver = null;
   videoObserver = null;
-
-  window.removeEventListener("pointerdown", oneTapUnlockHandler);
-  window.removeEventListener("touchstart", oneTapUnlockHandler);
 });
 </script>
 
@@ -1503,10 +1371,11 @@ onBeforeUnmount(() => {
 /* Background */
 .wrap {
   min-height: 100vh;
-  padding-bottom: 88px; /* space for bottom nav */
+  padding-bottom: 88px;
   background:
     radial-gradient(1200px 700px at 20% 0%, rgba(255,75,43,0.18), transparent),
     radial-gradient(900px 600px at 80% 20%, rgba(255,65,108,0.16), transparent),
+    radial-gradient(900px 600px at 50% 100%, rgba(124,58,237,0.10), transparent),
     #0b1220;
   color: white;
 }
@@ -1559,7 +1428,6 @@ onBeforeUnmount(() => {
   font-weight:950;
   opacity:.92;
   transition: all .18s ease;
-  position: relative;
 }
 .mode:hover { transform: translateY(-2px); box-shadow: 0 6px 18px rgba(255,75,43,0.18); }
 .mode.on{
@@ -1630,7 +1498,6 @@ onBeforeUnmount(() => {
 .ghost { opacity: .92; }
 .ghostBtn{ opacity:.92; background: rgba(255,255,255,0.10); }
 .chip.mini{ padding: 8px 10px; font-size: 12px; }
-.mt10 { margin-top: 10px; }
 
 /* Live pills */
 .live-strip{ display: grid; gap: 10px; }
@@ -1761,13 +1628,23 @@ onBeforeUnmount(() => {
 .who .name { font-weight: 950; }
 .time { opacity: .75; font-size: 12px; }
 .text { margin: 6px 0 10px; line-height: 1.55; }
+
+/* ✅ MEDIA WRAPPER = no more “dark/small” collapse */
+.mediaWrap{
+  width: 100%;
+  margin-top: 10px;
+  border-radius: 16px;
+  overflow: hidden;
+  background: rgba(0,0,0,0.55);
+  border: 1px solid rgba(255,255,255,0.10);
+}
 .media {
   width: 100%;
-  border-radius: 16px;
-  background: #000;
-  margin-top: 10px;
-  max-height: 720px;
+  height: auto;
+  display: block;
+  max-height: 72vh;
   object-fit: cover;
+  background: #000;
 }
 
 /* Avatars */
@@ -1979,6 +1856,7 @@ onBeforeUnmount(() => {
 .state-title{ font-weight: 950; font-size: 18px; }
 .state-sub{ opacity:.75; margin-top: 4px; }
 .hint { opacity: .75; font-size: 13px; }
+.mt10 { margin-top: 10px; }
 
 /* Incoming modal */
 .modal-backdrop { position: fixed; inset: 0; z-index: 80; background: rgba(0,0,0,0.58); display: grid; place-items: center; padding: 16px; }
@@ -1989,34 +1867,10 @@ onBeforeUnmount(() => {
 .modal-actions { display:flex; gap:10px; justify-content:flex-end; margin-top: 14px; }
 .tiny { font-size: 12px; }
 
-/* Call modal extra color */
-.callBackdrop{
-  background:
-    radial-gradient(1200px 700px at 20% 0%, rgba(255,75,43,0.25), rgba(0,0,0,0.62)),
-    radial-gradient(900px 600px at 80% 20%, rgba(124,58,237,0.20), transparent);
-}
-.callModal{
-  border-color: rgba(255,75,43,0.30);
-  box-shadow: 0 18px 70px rgba(0,0,0,0.55);
-}
-.queuedBadge{
-  margin-left: 10px;
-  padding: 6px 10px;
-  border-radius: 999px;
-  background: rgba(124,58,237,0.18);
-  border: 1px solid rgba(124,58,237,0.35);
-  font-weight: 950;
-  font-size: 12px;
-}
-
 /* Calling toast */
 .toast { position: fixed; left: 50%; bottom: 92px; transform: translateX(-50%); z-index: 90; background: rgba(12, 18, 32, 0.95); border: 1px solid rgba(255,255,255,0.14); padding: 10px 12px; border-radius: 999px; display:flex; align-items:center; gap:10px; }
 .toast-dot { width: 10px; height: 10px; border-radius: 50%; background: #00e676; }
 .mini-x { border:none; cursor:pointer; background: rgba(255,255,255,0.10); color:white; border-radius: 10px; padding: 4px 8px; }
-.callToast{
-  border-color: rgba(255,75,43,0.30);
-  box-shadow: 0 10px 34px rgba(0,0,0,0.40);
-}
 
 /* Infinite sentinel */
 .load-more{ text-align:center; padding: 18px 10px; opacity: .75; }
