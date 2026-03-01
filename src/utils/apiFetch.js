@@ -1,27 +1,24 @@
-// src/utils/apiFetch.js
 const API_URL = import.meta.env.VITE_API_URL;
 
-export default async function apiFetch(path, options = {}) {
+async function apiFetch(path, options = {}) {
   const token = localStorage.getItem("token");
 
-  const res = await fetch(`${API_URL}${path.startsWith("/") ? path : `/${path}`}`, {
-    ...options,
+  const res = await fetch(`${API_URL}${path}`, {
     headers: {
       "Content-Type": "application/json",
-      ...(options.headers || {}),
       ...(token ? { Authorization: `Bearer ${token}` } : {}),
+      ...options.headers,
     },
+    ...options,
   });
 
-  // optional: auto-handle non-json errors
-  const text = await res.text();
-  let data;
-  try { data = text ? JSON.parse(text) : null; } catch { data = text; }
-
   if (!res.ok) {
-    const msg = (data && data.error) ? data.error : `Request failed (${res.status})`;
-    throw new Error(msg);
+    const text = await res.text();
+    throw new Error(text || "Request failed");
   }
 
-  return data;
+  return res.json();
 }
+
+// 👇👇👇 THIS LINE GOES AT THE VERY END
+export default apiFetch;
