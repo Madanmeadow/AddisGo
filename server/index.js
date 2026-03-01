@@ -36,24 +36,12 @@ const C = {
   magenta: "\x1b[35m",
   cyan: "\x1b[36m",
 };
-function logOK(...a) {
-  console.log(`${C.green}✅${C.reset}`, ...a);
-}
-function logWARN(...a) {
-  console.log(`${C.yellow}⚠️${C.reset}`, ...a);
-}
-function logERR(...a) {
-  console.log(`${C.red}❌${C.reset}`, ...a);
-}
-function logSOCK(...a) {
-  console.log(`${C.cyan}🔌${C.reset}`, ...a);
-}
-function logLIVE(...a) {
-  console.log(`${C.magenta}🔴${C.reset}`, ...a);
-}
-function logCALL(...a) {
-  console.log(`${C.blue}📞${C.reset}`, ...a);
-}
+function logOK(...a) { console.log(`${C.green}✅${C.reset}`, ...a); }
+function logWARN(...a) { console.log(`${C.yellow}⚠️${C.reset}`, ...a); }
+function logERR(...a) { console.log(`${C.red}❌${C.reset}`, ...a); }
+function logSOCK(...a) { console.log(`${C.cyan}🔌${C.reset}`, ...a); }
+function logLIVE(...a) { console.log(`${C.magenta}🔴${C.reset}`, ...a); }
+function logCALL(...a) { console.log(`${C.blue}📞${C.reset}`, ...a); }
 
 /* =========================
    APP + SERVER
@@ -66,7 +54,7 @@ const __dirname = path.dirname(__filename);
 
 const PORT = process.env.PORT || 5000;
 const CLIENT_ORIGIN = process.env.CLIENT_ORIGIN || "*";
-const JWT_SECRET = process.env.JWT_SECRET || process.env.JWT_SECRET || "dev_secret_change_me";
+const JWT_SECRET = process.env.JWT_SECRET || "dev_secret_change_me";
 
 const ORIGINS =
   CLIENT_ORIGIN === "*"
@@ -209,16 +197,11 @@ app.get("/api/health", async (req, res) => {
 
 /* =========================
    TURN (ICE servers) ✅ UPGRADED
-   - keeps /api/turn (existing)
-   - adds /ice (simple)
-   - adds /turn (alias)
-   - adds caching (pro)
 ========================= */
 let ICE_CACHE = null; // { iceServers, expiresAt }
 const ICE_CACHE_MS = Number(process.env.TWILIO_ICE_CACHE_MS || 60_000);
 
 async function buildIceServers() {
-  // ✅ Cache (avoid calling Twilio on every request)
   if (ICE_CACHE && Date.now() < ICE_CACHE.expiresAt) {
     return { ok: true, iceServers: ICE_CACHE.iceServers, note: "cached" };
   }
@@ -239,24 +222,18 @@ async function buildIceServers() {
     const client = twilio(sid, auth);
     const token = await client.tokens.create({ ttl });
 
-    // ✅ Store cache
     ICE_CACHE = {
       iceServers: token.iceServers,
       expiresAt: Date.now() + ICE_CACHE_MS,
     };
 
-    return {
-      ok: true,
-      iceServers: token.iceServers,
-      note: "TURN via Twilio",
-    };
+    return { ok: true, iceServers: token.iceServers, note: "TURN via Twilio" };
   } catch (e) {
     console.error("TURN(Twilio) ERROR -> fallback to STUN:", e?.message || e);
     return { ...fallback, error: "Twilio TURN failed; using STUN fallback" };
   }
 }
 
-// ✅ Existing (keep)
 app.get("/api/turn", async (req, res) => {
   try {
     res.json(await buildIceServers());
@@ -266,8 +243,6 @@ app.get("/api/turn", async (req, res) => {
   }
 });
 
-// ✅ NEW: Clean endpoint for frontend WebRTC
-// returns { iceServers: [...] }
 app.get("/ice", async (req, res) => {
   try {
     const data = await buildIceServers();
@@ -278,7 +253,6 @@ app.get("/ice", async (req, res) => {
   }
 });
 
-// ✅ NEW: Alias without /api
 app.get("/turn", async (req, res) => {
   try {
     res.json(await buildIceServers());
@@ -338,6 +312,19 @@ function ensureLiveRequestMap(liveId) {
   return liveMicRequests.get(id);
 }
 
+// ✅ helper: resend pending mic requests when host is active
+function resendPendingMicRequestsToHost(liveId) {
+  const hostSocketId = liveHosts.get(String(liveId));
+  if (!hostSocketId) return;
+
+  const reqMap = liveMicRequests.get(String(liveId));
+  if (!reqMap || reqMap.size === 0) return;
+
+  for (const payload of reqMap.values()) {
+    io.to(hostSocketId).emit("live:mic:requested", payload);
+  }
+}
+
 /* ---------- CALLS: OFFLINE QUEUE + BUSY ---------- */
 const pendingIncomingCalls = new Map(); // userId -> Map(roomId -> payload)
 const userBusyRoom = new Map(); // userId -> roomId
@@ -348,7 +335,6 @@ function queueIncomingCall(userId, payload) {
   if (!pendingIncomingCalls.has(uid)) pendingIncomingCalls.set(uid, new Map());
   pendingIncomingCalls.get(uid).set(rid, payload);
 }
-
 function removeQueuedIncomingCall(userId, roomId) {
   const uid = String(userId);
   const rid = String(roomId);
@@ -357,7 +343,6 @@ function removeQueuedIncomingCall(userId, roomId) {
   m.delete(rid);
   if (m.size === 0) pendingIncomingCalls.delete(uid);
 }
-
 function flushQueuedIncomingCallsToUser(userId) {
   const uid = String(userId);
   const m = pendingIncomingCalls.get(uid);
@@ -365,11 +350,7 @@ function flushQueuedIncomingCallsToUser(userId) {
 
   for (const payload of m.values()) {
     io.to(`user:${uid}`).emit("call:incoming", { ...payload, queued: true });
-    io.to(`user:${uid}`).emit("call:ring", {
-      roomId: String(payload.roomId),
-      kind: payload.kind,
-      side: "callee",
-    });
+    io.to(`user:${uid}`).emit("call:ring", { roomId: String(payload.roomId), kind: payload.kind, side: "callee" });
     io.to(`user:${uid}`).emit("call:ringing", {
       roomId: String(payload.roomId),
       kind: payload.kind,
@@ -402,16 +383,8 @@ function emitCallParticipants(roomId) {
 
 /* ======= RING HELPERS ======= */
 function ringToUser(userId, roomId, kind, side) {
-  io.to(`user:${String(userId)}`).emit("call:ring", {
-    roomId: String(roomId),
-    kind: String(kind),
-    side: side || "unknown",
-  });
-  io.to(`user:${String(userId)}`).emit("call:ringing", {
-    roomId: String(roomId),
-    kind: String(kind),
-    side: side || "unknown",
-  });
+  io.to(`user:${String(userId)}`).emit("call:ring", { roomId: String(roomId), kind: String(kind), side: side || "unknown" });
+  io.to(`user:${String(userId)}`).emit("call:ringing", { roomId: String(roomId), kind: String(kind), side: side || "unknown" });
 }
 function stopRingToUser(userId, roomId) {
   io.to(`user:${String(userId)}`).emit("call:stopRing", { roomId: String(roomId) });
@@ -775,10 +748,7 @@ io.on("connection", (socket) => {
 
     if (count >= 2) {
       stopRingForSession(sess);
-      io.to(`call:${roomId}`).emit("call:ready", {
-        roomId: String(roomId),
-        kind: sess.kind,
-      });
+      io.to(`call:${roomId}`).emit("call:ready", { roomId: String(roomId), kind: sess.kind });
     }
   });
 
@@ -832,62 +802,57 @@ io.on("connection", (socket) => {
   /* =========================
      ✅ CALLS: WebRTC RELAY
   ========================= */
-  socket.on("call:webrtc:offer", ({ roomId, offer, to }) => {
+  socket.on("call:webrtc:offer", (payload) => {
+    const { roomId, offer, to, ...rest } = payload || {};
     if (!roomId || !offer) return;
     if (to) {
-      io.to(String(to)).emit("call:webrtc:offer", { roomId: String(roomId), offer, from: socket.id });
+      io.to(String(to)).emit("call:webrtc:offer", { roomId: String(roomId), offer, from: socket.id, ...rest });
       return;
     }
-    socket.to(`call:${roomId}`).emit("call:webrtc:offer", { roomId: String(roomId), offer });
+    socket.to(`call:${roomId}`).emit("call:webrtc:offer", { roomId: String(roomId), offer, ...rest });
   });
 
-  socket.on("call:webrtc:answer", ({ roomId, answer, to }) => {
+  socket.on("call:webrtc:answer", (payload) => {
+    const { roomId, answer, to, ...rest } = payload || {};
     if (!roomId || !answer) return;
     if (to) {
-      io.to(String(to)).emit("call:webrtc:answer", { roomId: String(roomId), answer, from: socket.id });
+      io.to(String(to)).emit("call:webrtc:answer", { roomId: String(roomId), answer, from: socket.id, ...rest });
       return;
     }
-    socket.to(`call:${roomId}`).emit("call:webrtc:answer", { roomId: String(roomId), answer });
+    socket.to(`call:${roomId}`).emit("call:webrtc:answer", { roomId: String(roomId), answer, ...rest });
   });
 
-  socket.on("call:webrtc:ice", ({ roomId, candidate, to }) => {
+  socket.on("call:webrtc:ice", (payload) => {
+    const { roomId, candidate, to, ...rest } = payload || {};
     if (!roomId || !candidate) return;
     if (to) {
-      io.to(String(to)).emit("call:webrtc:ice", { roomId: String(roomId), candidate, from: socket.id });
+      io.to(String(to)).emit("call:webrtc:ice", { roomId: String(roomId), candidate, from: socket.id, ...rest });
       return;
     }
-    socket.to(`call:${roomId}`).emit("call:webrtc:ice", { roomId: String(roomId), candidate });
+    socket.to(`call:${roomId}`).emit("call:webrtc:ice", { roomId: String(roomId), candidate, ...rest });
   });
 
   /* =========================
      ✅ LIVE: WebRTC RELAY (host<->viewer)
      Live.vue uses: "webrtc:*"
+     ✅ upgraded to pass extra fields
   ========================= */
-  socket.on("webrtc:offer", ({ liveId, to, offer }) => {
+  socket.on("webrtc:offer", (payload) => {
+    const { liveId, to, offer, ...rest } = payload || {};
     if (!liveId || !to || !offer) return;
-    io.to(String(to)).emit("webrtc:offer", {
-      liveId: String(liveId),
-      from: socket.id,
-      offer,
-    });
+    io.to(String(to)).emit("webrtc:offer", { liveId: String(liveId), from: socket.id, offer, ...rest });
   });
 
-  socket.on("webrtc:answer", ({ liveId, to, answer }) => {
+  socket.on("webrtc:answer", (payload) => {
+    const { liveId, to, answer, ...rest } = payload || {};
     if (!liveId || !to || !answer) return;
-    io.to(String(to)).emit("webrtc:answer", {
-      liveId: String(liveId),
-      from: socket.id,
-      answer,
-    });
+    io.to(String(to)).emit("webrtc:answer", { liveId: String(liveId), from: socket.id, answer, ...rest });
   });
 
-  socket.on("webrtc:ice", ({ liveId, to, candidate }) => {
+  socket.on("webrtc:ice", (payload) => {
+    const { liveId, to, candidate, ...rest } = payload || {};
     if (!liveId || !to || !candidate) return;
-    io.to(String(to)).emit("webrtc:ice", {
-      liveId: String(liveId),
-      from: socket.id,
-      candidate,
-    });
+    io.to(String(to)).emit("webrtc:ice", { liveId: String(liveId), from: socket.id, candidate, ...rest });
   });
 
   /* =========================
@@ -905,6 +870,9 @@ io.on("connection", (socket) => {
 
     const hostUserId = socket.data.user?.id ? String(socket.data.user.id) : null;
     if (hostUserId) ensureLiveSpeakerSet(liveId).add(hostUserId);
+
+    // resend any pending mic requests (pro UX)
+    resendPendingMicRequestsToHost(liveId);
 
     emitLivePresence(String(liveId));
     logLIVE("live:create", { liveId: String(liveId), hostSocketId: socket.id });
@@ -927,15 +895,11 @@ io.on("connection", (socket) => {
 
     const meId = socket.data.user?.id ? String(socket.data.user.id) : null;
     const speakers = ensureLiveSpeakerSet(liveId);
-    socket.emit("live:mic:status", {
-      liveId: String(liveId),
-      canSpeak: meId ? speakers.has(meId) : false,
-    });
+    socket.emit("live:mic:status", { liveId: String(liveId), canSpeak: meId ? speakers.has(meId) : false });
 
     emitLivePresence(String(liveId));
   });
 
-  // ✅ FIX: viewer leaves live (host can cleanup peer)
   socket.on("live:leave", ({ liveId }) => {
     if (!liveId) return;
 
@@ -943,10 +907,7 @@ io.on("connection", (socket) => {
 
     const hostSocketId = liveHosts.get(String(liveId));
     if (hostSocketId) {
-      io.to(hostSocketId).emit("live:viewer-left", {
-        liveId: String(liveId),
-        viewerSocketId: socket.id,
-      });
+      io.to(hostSocketId).emit("live:viewer-left", { liveId: String(liveId), viewerSocketId: socket.id });
     }
 
     emitLivePresence(String(liveId));
@@ -970,7 +931,6 @@ io.on("connection", (socket) => {
 
   socket.on("get-live-list", () => socket.emit("live-list", Array.from(liveStreams)));
 
-  // ✅ FIX: live chat broadcast
   socket.on("live:chat", ({ liveId, message }) => {
     if (!liveId) return;
     const msg = String(message || "").trim();
@@ -1060,7 +1020,6 @@ io.on("connection", (socket) => {
      DISCONNECT CLEANUP
   ========================= */
   socket.on("disconnect", () => {
-    // presence cleanup
     let offlineUserId = null;
     for (const [uid, sid] of onlineUsers.entries()) {
       if (sid === socket.id) {
@@ -1070,7 +1029,6 @@ io.on("connection", (socket) => {
       }
     }
 
-    // live cleanup if host
     for (const [liveId, hostSocketId] of liveHosts.entries()) {
       if (hostSocketId === socket.id) {
         io.to(`live:${liveId}`).emit("live:ended", { liveId });
