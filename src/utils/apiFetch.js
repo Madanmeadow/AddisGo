@@ -1,22 +1,26 @@
-export async function apiFetch(url, options = {}) {
-  const res = await fetch(url, options);
+// src/utils/apiFetch.js
+const API_URL = import.meta.env.VITE_API_URL;
 
-  const contentType = res.headers.get("content-type") || "";
-  const isJson = contentType.includes("application/json");
+export default async function apiFetch(path, options = {}) {
+  const token = localStorage.getItem("token");
 
-  const data = isJson ? await res.json().catch(() => null) : await res.text();
+  const res = await fetch(`${API_URL}${path.startsWith("/") ? path : `/${path}`}`, {
+    ...options,
+    headers: {
+      "Content-Type": "application/json",
+      ...(options.headers || {}),
+      ...(token ? { Authorization: `Bearer ${token}` } : {}),
+    },
+  });
+
+  // optional: auto-handle non-json errors
+  const text = await res.text();
+  let data;
+  try { data = text ? JSON.parse(text) : null; } catch { data = text; }
 
   if (!res.ok) {
-    // If backend returns HTML, show a clean message instead of dumping HTML
-    const message =
-      typeof data === "string"
-        ? `Server error (${res.status}). Check Railway logs.`
-        : (data?.error || data?.message || `Request failed (${res.status})`);
-
-    const err = new Error(message);
-    err.status = res.status;
-    err.raw = data;
-    throw err;
+    const msg = (data && data.error) ? data.error : `Request failed (${res.status})`;
+    throw new Error(msg);
   }
 
   return data;
