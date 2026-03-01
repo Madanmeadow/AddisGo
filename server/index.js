@@ -36,12 +36,24 @@ const C = {
   magenta: "\x1b[35m",
   cyan: "\x1b[36m",
 };
-function logOK(...a) { console.log(`${C.green}✅${C.reset}`, ...a); }
-function logWARN(...a) { console.log(`${C.yellow}⚠️${C.reset}`, ...a); }
-function logERR(...a) { console.log(`${C.red}❌${C.reset}`, ...a); }
-function logSOCK(...a) { console.log(`${C.cyan}🔌${C.reset}`, ...a); }
-function logLIVE(...a) { console.log(`${C.magenta}🔴${C.reset}`, ...a); }
-function logCALL(...a) { console.log(`${C.blue}📞${C.reset}`, ...a); }
+function logOK(...a) {
+  console.log(`${C.green}✅${C.reset}`, ...a);
+}
+function logWARN(...a) {
+  console.log(`${C.yellow}⚠️${C.reset}`, ...a);
+}
+function logERR(...a) {
+  console.log(`${C.red}❌${C.reset}`, ...a);
+}
+function logSOCK(...a) {
+  console.log(`${C.cyan}🔌${C.reset}`, ...a);
+}
+function logLIVE(...a) {
+  console.log(`${C.magenta}🔴${C.reset}`, ...a);
+}
+function logCALL(...a) {
+  console.log(`${C.blue}📞${C.reset}`, ...a);
+}
 
 /* =========================
    APP + SERVER
@@ -114,8 +126,7 @@ function signToken(user) {
 app.post("/auth/register", async (req, res) => {
   try {
     const { username, name, email, password } = req.body;
-    if (!email || !password)
-      return res.status(400).json({ error: "Email and password required" });
+    if (!email || !password) return res.status(400).json({ error: "Email and password required" });
 
     const display = username || name || email.split("@")[0];
     const hashed = await bcrypt.hash(password, 10);
@@ -151,8 +162,7 @@ app.post("/auth/register", async (req, res) => {
 app.post("/auth/login", async (req, res) => {
   try {
     const { email, password } = req.body;
-    if (!email || !password)
-      return res.status(400).json({ error: "Email and password required" });
+    if (!email || !password) return res.status(400).json({ error: "Email and password required" });
 
     const found = await pool.query(`SELECT * FROM users WHERE email=$1 LIMIT 1`, [email]);
     if (!found.rows.length) return res.status(400).json({ error: "User not found" });
@@ -198,9 +208,21 @@ app.get("/api/health", async (req, res) => {
 });
 
 /* =========================
-   TURN (ICE servers)
+   TURN (ICE servers) ✅ UPGRADED
+   - keeps /api/turn (existing)
+   - adds /ice (simple)
+   - adds /turn (alias)
+   - adds caching (pro)
 ========================= */
+let ICE_CACHE = null; // { iceServers, expiresAt }
+const ICE_CACHE_MS = Number(process.env.TWILIO_ICE_CACHE_MS || 60_000);
+
 async function buildIceServers() {
+  // ✅ Cache (avoid calling Twilio on every request)
+  if (ICE_CACHE && Date.now() < ICE_CACHE.expiresAt) {
+    return { ok: true, iceServers: ICE_CACHE.iceServers, note: "cached" };
+  }
+
   const sid = (process.env.TWILIO_ACCOUNT_SID || "").trim();
   const auth = (process.env.TWILIO_AUTH_TOKEN || "").trim();
   const ttl = Number(process.env.TWILIO_TURN_TTL || 3600);
@@ -216,6 +238,13 @@ async function buildIceServers() {
   try {
     const client = twilio(sid, auth);
     const token = await client.tokens.create({ ttl });
+
+    // ✅ Store cache
+    ICE_CACHE = {
+      iceServers: token.iceServers,
+      expiresAt: Date.now() + ICE_CACHE_MS,
+    };
+
     return {
       ok: true,
       iceServers: token.iceServers,
@@ -227,7 +256,30 @@ async function buildIceServers() {
   }
 }
 
+// ✅ Existing (keep)
 app.get("/api/turn", async (req, res) => {
+  try {
+    res.json(await buildIceServers());
+  } catch (e) {
+    logERR("TURN ERROR:", e);
+    res.status(500).json({ ok: false, message: "Failed to get TURN servers" });
+  }
+});
+
+// ✅ NEW: Clean endpoint for frontend WebRTC
+// returns { iceServers: [...] }
+app.get("/ice", async (req, res) => {
+  try {
+    const data = await buildIceServers();
+    res.json({ iceServers: data.iceServers });
+  } catch (e) {
+    logERR("ICE ERROR:", e);
+    res.json({ iceServers: [{ urls: "stun:stun.l.google.com:19302" }] });
+  }
+});
+
+// ✅ NEW: Alias without /api
+app.get("/turn", async (req, res) => {
   try {
     res.json(await buildIceServers());
   } catch (e) {
@@ -581,11 +633,9 @@ io.on("connection", (socket) => {
   /* =========================
      ✅ CALLS (kept as you had)
   ========================= */
-
   socket.on("call:request", async ({ toUserId, kind = "audio" }) => {
     const from = socket.data.user;
-    if (!from?.id)
-      return socket.emit("call:error", { message: "Not online. Emit user:online first." });
+    if (!from?.id) return socket.emit("call:error", { message: "Not online. Emit user:online first." });
 
     const calleeUserId = String(toUserId);
     const callKind = kind === "video" ? "video" : "audio";
