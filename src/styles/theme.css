@@ -1,0 +1,76 @@
+:root{
+  --bg0:#05060a;
+  --bg1:#0b1020;
+  --card: rgba(255,255,255,.06);
+  --card2: rgba(255,255,255,.08);
+  --stroke: rgba(255,255,255,.10);
+
+  --text:#e9ecff;
+  --muted: rgba(233,236,255,.68);
+
+  --brand1:#ff2a6d;
+  --brand2:#5b8cff;
+  --ok:#35e3a1;
+  --warn:#ffcc66;
+
+  --r12: 12px;
+  --r16: 16px;
+  --r20: 20px;
+
+  --shadow: 0 16px 60px rgba(0,0,0,.45);
+  --blur: blur(14px);
+
+  --ease: cubic-bezier(.2,.9,.2,1);
+}
+
+html,body,#app{
+  height:100%;
+  background: radial-gradient(900px 420px at 20% 0%, rgba(91,140,255,.18), transparent 60%),
+              radial-gradient(700px 420px at 80% 10%, rgba(255,42,109,.14), transparent 60%),
+              linear-gradient(180deg, var(--bg0), var(--bg1));
+  color: var(--text);
+}
+
+.glass{
+  background: var(--card);
+  border: 1px solid var(--stroke);
+  box-shadow: var(--shadow);
+  backdrop-filter: var(--blur);
+  -webkit-backdrop-filter: var(--blur);
+  border-radius: var(--r16);
+}
+
+.btnx{
+  display:inline-flex; align-items:center; justify-content:center;
+  gap:10px; padding:10px 14px;
+  border-radius: 999px;
+  border: 1px solid var(--stroke);
+  background: rgba(255,255,255,.06);
+  color: var(--text);
+  transition: transform .12s var(--ease), background .2s var(--ease), border-color .2s var(--ease);
+  user-select:none;
+}
+.btnx:hover{ background: rgba(255,255,255,.10); border-color: rgba(255,255,255,.16); }
+.btnx:active{ transform: scale(.98); }
+
+.btnx.primary{
+  border: none;
+  background: linear-gradient(90deg, var(--brand1), var(--brand2));
+  box-shadow: 0 10px 30px rgba(91,140,255,.22);
+}
+.badge{
+  padding:6px 10px; border-radius:999px;
+  background: rgba(255,255,255,.08);
+  border: 1px solid rgba(255,255,255,.10);
+  color: var(--muted);
+}
+.pulse-dot{
+  width:10px;height:10px;border-radius:50%;
+  background: var(--ok);
+  box-shadow: 0 0 0 0 rgba(53,227,161,.5);
+  animation: pulse 1.4s infinite;
+}
+@keyframes pulse{ 0%{box-shadow:0 0 0 0 rgba(53,227,161,.5)} 70%{box-shadow:0 0 0 10px rgba(53,227,161,0)} 100%{box-shadow:0 0 0 0 rgba(53,227,161,0)} }
+
+.fade-up-enter-active,.fade-up-leave-active{ transition: all .18s var(--ease); }
+.fade-up-enter-from,.fade-up-leave-to{ opacity:0; transform: translateY(8px); }
