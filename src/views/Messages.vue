@@ -51,7 +51,7 @@
 import { ref, computed, onMounted, nextTick } from "vue";
 import { useRoute } from "vue-router";
 import Layout from "../components/Layout.vue";
-import apiFetch from "../apiFetch.js";
+import apiFetch from "../utils/apiFetch.js";
 
 const route = useRoute();
 
