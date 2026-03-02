@@ -49,12 +49,18 @@ function logCALL(...a) { console.log(`${C.blue}📞${C.reset}`, ...a); }
 const app = express();
 const server = http.createServer(app);
 
+app.set("trust proxy", 1); // ✅ NEW (helps get correct https/proxy host)
+
 const __filename = fileURLToPath(import.meta.url);
 const __dirname = path.dirname(__filename);
 
 const PORT = process.env.PORT || 5000;
 const CLIENT_ORIGIN = process.env.CLIENT_ORIGIN || "*";
 const JWT_SECRET = process.env.JWT_SECRET || "dev_secret_change_me";
+
+// ✅ NEW: optional public base (useful for uploads)
+const PUBLIC_URL = (process.env.PUBLIC_URL || "").trim(); 
+// Example: https://addisgo-production-xxxx.up.railway.app
 
 const ORIGINS =
   CLIENT_ORIGIN === "*"
@@ -267,7 +273,33 @@ app.get("/turn", async (req, res) => {
 ========================= */
 const io = new Server(server, {
   cors: { origin: ORIGINS, credentials: true, methods: ["GET", "POST"] },
+  transports: ["websocket", "polling"], // ✅ NEW (stability)
 });
+
+/* =========================
+   ✅ NEW: SOCKET JWT AUTO-REGISTER
+   This fixes: live list/calls/presence when frontend forgets to emit user:online
+========================= */
+function parseSocketToken(socket) {
+  const authToken = socket?.handshake?.auth?.token;
+  const qToken = socket?.handshake?.query?.token;
+  const hdr = socket?.handshake?.headers?.authorization;
+  if (authToken) return authToken;
+  if (qToken) return qToken;
+  if (hdr && String(hdr).startsWith("Bearer ")) return String(hdr).slice(7);
+  return null;
+}
+
+function safeDecodeUserFromToken(token) {
+  if (!token) return null;
+  try {
+    const d = jwt.verify(token, JWT_SECRET);
+    if (!d?.id) return null;
+    return { id: String(d.id), username: d.username || `User${d.id}` };
+  } catch {
+    return null;
+  }
+}
 
 /* ---------- PRESENCE ---------- */
 const onlineUsers = new Map(); // userId -> socketId
@@ -288,9 +320,13 @@ function broadcastPresenceUpdate(userId, online) {
 const liveStreams = new Set();
 const liveHosts = new Map(); // liveId -> hostSocketId
 
+// ✅ UPDATED: emit BOTH event names so any frontend version works
 function emitLiveList() {
-  io.emit("live-list", Array.from(liveStreams));
+  const list = Array.from(liveStreams);
+  io.emit("live-list", list);              // old
+  io.emit("live:list", { liveUserIds: list }); // new
 }
+
 function emitLivePresence(liveId) {
   const room = io.sockets.adapter.rooms.get(`live:${liveId}`);
   const count = room ? room.size : 0;
@@ -311,8 +347,6 @@ function ensureLiveRequestMap(liveId) {
   if (!liveMicRequests.has(id)) liveMicRequests.set(id, new Map());
   return liveMicRequests.get(id);
 }
-
-// ✅ helper: resend pending mic requests when host is active
 function resendPendingMicRequestsToHost(liveId) {
   const hostSocketId = liveHosts.get(String(liveId));
   if (!hostSocketId) return;
@@ -381,7 +415,6 @@ function emitCallParticipants(roomId) {
   });
 }
 
-/* ======= RING HELPERS ======= */
 function ringToUser(userId, roomId, kind, side) {
   io.to(`user:${String(userId)}`).emit("call:ring", { roomId: String(roomId), kind: String(kind), side: side || "unknown" });
   io.to(`user:${String(userId)}`).emit("call:ringing", { roomId: String(roomId), kind: String(kind), side: side || "unknown" });
@@ -394,7 +427,6 @@ function stopRingForSession(sess) {
   for (const uid of sess.invitedUserIds || []) stopRingToUser(uid, sess.roomId);
 }
 
-/* ======= BUSY HELPERS ======= */
 function isUserBusy(userId) {
   return userBusyRoom.has(String(userId));
 }
@@ -412,7 +444,7 @@ function clearBusyForSession(sess) {
   for (const uid of sess.invitedUserIds || []) clearUserBusy(uid, sess.roomId);
 }
 
-/* ======= OPTIONAL DB HELPERS ======= */
+/* ======= OPTIONAL DB HELPERS (unchanged) ======= */
 async function dbNotifyIncomingCall(userId, payload) {
   try {
     await pool.query(
@@ -529,16 +561,36 @@ function scheduleMissedTimer(roomId) {
    SOCKET EVENTS
 ========================= */
 io.on("connection", (socket) => {
-  logSOCK("Socket connected:", socket.id);
-  socket.data.user = null;
+  // ✅ NEW: auto set user from JWT if token exists
+  const token = parseSocketToken(socket);
+  const autoUser = safeDecodeUserFromToken(token);
+
+  socket.data.user = autoUser || null;
+
+  logSOCK("Socket connected:", socket.id, autoUser ? `userId=${autoUser.id}` : "(guest)");
+
+  // ✅ NEW: if token was valid, register presence immediately
+  if (autoUser?.id) {
+    onlineUsers.set(String(autoUser.id), socket.id);
+    socket.join(`user:${autoUser.id}`);
+    emitPresenceList(socket);
+    broadcastPresenceUpdate(autoUser.id, true);
+    emitOnlineUsersLegacy();
+    flushQueuedIncomingCallsToUser(autoUser.id);
+  } else {
+    emitPresenceList(socket);
+  }
+
+  // ✅ NEW: always send live list on connect
+  emitLiveList();
 
   /* =========================
      ✅ PRESENCE (NEW)
   ========================= */
-  socket.on("user:online", ({ userId }) => {
+  socket.on("user:online", ({ userId, username }) => {
     if (!userId) return;
 
-    socket.data.user = socket.data.user || { id: String(userId), username: `User${userId}` };
+    socket.data.user = socket.data.user || { id: String(userId), username: username || `User${userId}` };
     onlineUsers.set(String(userId), socket.id);
     socket.join(`user:${userId}`);
 
@@ -604,11 +656,15 @@ io.on("connection", (socket) => {
   });
 
   /* =========================
-     ✅ CALLS (kept as you had)
+     ✅ CALLS (FIXED WAITING)
+     Key fix:
+       - caller auto joins call room on request
+       - callee auto joins call room on accept
+     So even if frontend forgets call:join → it still connects.
   ========================= */
   socket.on("call:request", async ({ toUserId, kind = "audio" }) => {
     const from = socket.data.user;
-    if (!from?.id) return socket.emit("call:error", { message: "Not online. Emit user:online first." });
+    if (!from?.id) return socket.emit("call:error", { message: "Not online. (token or user:online required)" });
 
     const calleeUserId = String(toUserId);
     const callKind = kind === "video" ? "video" : "audio";
@@ -656,6 +712,10 @@ io.on("connection", (socket) => {
 
     scheduleMissedTimer(roomId);
 
+    // ✅ NEW: caller auto joins room NOW (prevents "Waiting...")
+    socket.join(`call:${roomId}`);
+    io.to(`call:${roomId}`).emit("call:presence", { roomId: String(roomId), count: 1 });
+
     socket.emit("call:ringing", { roomId: String(roomId), kind: callKind });
     ringToUser(from.id, roomId, callKind, "caller");
 
@@ -682,6 +742,20 @@ io.on("connection", (socket) => {
     const meId = socket.data.user?.id ? String(socket.data.user.id) : null;
     logCALL("call:accept", { roomId: String(roomId), by: meId });
 
+    // ✅ NEW: callee auto joins room on accept (prevents "Waiting...")
+    socket.join(`call:${roomId}`);
+
+    if (meId) {
+      sess.joinedUserIds.add(meId);
+      callSessions.set(String(roomId), sess);
+      removeQueuedIncomingCall(meId, roomId);
+
+      if (sess.dbCallId) {
+        await dbMarkJoined(sess.dbCallId, meId);
+        await dbActivateIfTwoJoined(sess.dbCallId);
+      }
+    }
+
     stopRingForSession(sess);
 
     io.to(`call:${roomId}`).emit("call:accepted", { roomId: String(roomId), kind: sess.kind });
@@ -690,6 +764,16 @@ io.on("connection", (socket) => {
       io.to(`user:${uid}`).emit("call:accepted", { roomId: String(roomId), kind: sess.kind });
       stopRingToUser(uid, roomId);
     }
+
+    const room = io.sockets.adapter.rooms.get(`call:${roomId}`);
+    const count = room ? room.size : 0;
+    io.to(`call:${roomId}`).emit("call:presence", { roomId: String(roomId), count });
+
+    if (count >= 2) {
+      io.to(`call:${roomId}`).emit("call:ready", { roomId: String(roomId), kind: sess.kind });
+    }
+
+    emitCallParticipants(roomId);
   });
 
   socket.on("call:reject", async ({ roomId }) => {
@@ -715,6 +799,7 @@ io.on("connection", (socket) => {
     callSessions.delete(String(roomId));
   });
 
+  // keep your call:join as optional/compatible (still works)
   socket.on("call:join", async ({ roomId }) => {
     const sess = callSessions.get(String(roomId));
     if (!sess) return socket.emit("call:error", { message: "Call session not found." });
@@ -800,7 +885,7 @@ io.on("connection", (socket) => {
   });
 
   /* =========================
-     ✅ CALLS: WebRTC RELAY
+     ✅ CALLS: WebRTC RELAY (unchanged)
   ========================= */
   socket.on("call:webrtc:offer", (payload) => {
     const { roomId, offer, to, ...rest } = payload || {};
@@ -833,9 +918,7 @@ io.on("connection", (socket) => {
   });
 
   /* =========================
-     ✅ LIVE: WebRTC RELAY (host<->viewer)
-     Live.vue uses: "webrtc:*"
-     ✅ upgraded to pass extra fields
+     ✅ LIVE: WebRTC RELAY (unchanged)
   ========================= */
   socket.on("webrtc:offer", (payload) => {
     const { liveId, to, offer, ...rest } = payload || {};
@@ -871,7 +954,6 @@ io.on("connection", (socket) => {
     const hostUserId = socket.data.user?.id ? String(socket.data.user.id) : null;
     if (hostUserId) ensureLiveSpeakerSet(liveId).add(hostUserId);
 
-    // resend any pending mic requests (pro UX)
     resendPendingMicRequestsToHost(liveId);
 
     emitLivePresence(String(liveId));
@@ -946,7 +1028,6 @@ io.on("connection", (socket) => {
     });
   });
 
-  // viewer requests mic
   socket.on("live:mic:request", ({ liveId }) => {
     if (!liveId) return;
     const me = socket.data.user;
@@ -972,7 +1053,6 @@ io.on("connection", (socket) => {
     logLIVE("live:mic:request", { liveId: String(liveId), userId: meId });
   });
 
-  // host approves mic
   socket.on("live:mic:approve", ({ liveId, userId }) => {
     if (!liveId || !userId) return;
 
@@ -996,7 +1076,6 @@ io.on("connection", (socket) => {
     logLIVE("live:mic:approve", { liveId: String(liveId), userId: uid });
   });
 
-  // host denies mic
   socket.on("live:mic:deny", ({ liveId, userId, reason }) => {
     if (!liveId || !userId) return;
 
@@ -1055,4 +1134,5 @@ io.on("connection", (socket) => {
 ========================= */
 server.listen(PORT, () => {
   logOK(`🔥 AddisGo Server running on port ${PORT}`);
+  if (PUBLIC_URL) logOK(`🌍 PUBLIC_URL: ${PUBLIC_URL}`);
 });
