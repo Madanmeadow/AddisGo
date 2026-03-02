@@ -78,23 +78,7 @@
 import { ref, computed, onMounted, onBeforeUnmount, nextTick } from "vue";
 import { useRoute, useRouter } from "vue-router";
 import Layout from "../components/Layout.vue";
-import { io } from "socket.io-client";
-
-/* =========================
-   🔧 CONFIG (ONLY CHANGE HERE if your server uses different event names)
-========================= */
-const EVT = {
-  join: "live:join",        // client -> server { liveId }
-  leave: "live:leave",      // client -> server { liveId }
-  watcher: "live:watcher",  // server -> host { watcherId }
-  offer: "live:offer",      // host -> server { watcherId, liveId, sdp }
-  answer: "live:answer",    // watcher -> server { liveId, sdp }
-  ice: "live:ice",          // both -> server { liveId, candidate }
-  hostSignal: "live:signal",// optional unified
-  chat: "live:chat",        // both ways { liveId, from, text, created_at }
-};
-
-const apiUrl = import.meta.env.VITE_API_URL;
+import { createSocket } from "../api/socket.js"; // ✅ use your shared socket helper
 
 const route = useRoute();
 const router = useRouter();
@@ -121,11 +105,12 @@ const videoEl = ref(null);
 let socket = null;
 let localStream = null;
 
-// host: many peer connections (watcherId -> pc)
+// host: many peer connections (viewerSocketId -> pc)
 const peers = new Map();
 
 // watch: one peer connection
 let watchPc = null;
+let hostSocketId = null;
 
 const muted = ref(false);
 const cameraOff = ref(false);
@@ -188,14 +173,8 @@ async function toggleFullscreen() {
     if (document.fullscreenElement) await document.exitFullscreen();
     else await el.requestFullscreen();
   } catch {
-    // iOS Safari uses native fullscreen UI sometimes; ignore
+    // iOS Safari sometimes blocks programmatic fullscreen; ignore
   }
-}
-
-function endLive() {
-  status.value = "ended";
-  cleanup();
-  router.push("/dashboard");
 }
 
 /* =========================
@@ -207,8 +186,10 @@ async function getHostMedia() {
       audio: true,
       video: { facingMode: "user" },
     });
-    videoEl.value.srcObject = localStream;
-    await videoEl.value.play().catch(() => {});
+    if (videoEl.value) {
+      videoEl.value.srcObject = localStream;
+      await videoEl.value.play().catch(() => {});
+    }
     setMicEnabled(!muted.value);
     setCamEnabled(!cameraOff.value);
   } catch {
@@ -220,50 +201,66 @@ async function getHostMedia() {
 /* =========================
    WebRTC helpers
 ========================= */
-function makePC() {
-  return new RTCPeerConnection({
-    iceServers: [{ urls: "stun:stun.l.google.com:19302" }],
-  });
+async function getIceServers() {
+  // optional: if you have /api/turn in your server, use it
+  // fallback to STUN only
+  try {
+    const apiUrl = import.meta.env.VITE_API_URL;
+    if (!apiUrl) return [{ urls: "stun:stun.l.google.com:19302" }];
+    const res = await fetch(`${apiUrl}/api/turn`);
+    const data = await res.json();
+    if (data?.ok && Array.isArray(data.iceServers) && data.iceServers.length) return data.iceServers;
+  } catch {}
+  return [{ urls: "stun:stun.l.google.com:19302" }];
 }
 
-/* HOST: create offer per watcher */
-async function hostCreateOfferForWatcher(watcherId) {
+async function makePC() {
+  const iceServers = await getIceServers();
+  return new RTCPeerConnection({ iceServers });
+}
+
+/* HOST: create offer per viewer */
+async function hostCreateOfferForViewer(viewerSocketId) {
   if (!localStream) return;
-  const pc = makePC();
-  peers.set(watcherId, pc);
+
+  const pc = await makePC();
+  peers.set(String(viewerSocketId), pc);
 
   localStream.getTracks().forEach((t) => pc.addTrack(t, localStream));
 
   pc.onicecandidate = (e) => {
-    if (e.candidate) socket?.emit(EVT.ice, { liveId, to: watcherId, candidate: e.candidate });
+    if (e.candidate) socket?.emit("webrtc:ice", { liveId, to: String(viewerSocketId), candidate: e.candidate });
   };
 
   const offer = await pc.createOffer();
   await pc.setLocalDescription(offer);
-  socket?.emit(EVT.offer, { liveId, to: watcherId, sdp: offer });
+
+  socket?.emit("webrtc:offer", { liveId, to: String(viewerSocketId), offer });
 }
 
-/* HOST: accept answer from watcher */
-async function hostAcceptAnswer(fromWatcherId, sdp) {
-  const pc = peers.get(fromWatcherId);
-  if (!pc) return;
-  await pc.setRemoteDescription(new RTCSessionDescription(sdp));
+/* HOST: accept answer from viewer */
+async function hostAcceptAnswer(fromSocketId, answer) {
+  const pc = peers.get(String(fromSocketId));
+  if (!pc || !answer) return;
+  await pc.setRemoteDescription(new RTCSessionDescription(answer));
 }
 
-/* HOST: add ice from watcher */
-async function hostAddIce(fromWatcherId, candidate) {
-  const pc = peers.get(fromWatcherId);
+/* HOST: add ice from viewer */
+async function hostAddIce(fromSocketId, candidate) {
+  const pc = peers.get(String(fromSocketId));
   if (!pc || !candidate) return;
   try { await pc.addIceCandidate(new RTCIceCandidate(candidate)); } catch {}
 }
 
-/* WATCH: join + receive offer -> answer */
+/* WATCH: setup pc + receive offer -> answer */
 async function watchSetupPC() {
-  watchPc = makePC();
+  if (watchPc) return;
+
+  watchPc = await makePC();
 
   watchPc.ontrack = (e) => {
     const [stream] = e.streams || [];
-    if (stream) {
+    if (stream && videoEl.value) {
       videoEl.value.srcObject = stream;
       videoEl.value.play().catch(() => {});
       status.value = "live";
@@ -271,16 +268,23 @@ async function watchSetupPC() {
   };
 
   watchPc.onicecandidate = (e) => {
-    if (e.candidate) socket?.emit(EVT.ice, { liveId, candidate: e.candidate });
+    if (e.candidate && hostSocketId) {
+      socket?.emit("webrtc:ice", { liveId, to: String(hostSocketId), candidate: e.candidate });
+    }
   };
 }
 
-async function watchHandleOffer(sdp) {
-  if (!watchPc) await watchSetupPC();
-  await watchPc.setRemoteDescription(new RTCSessionDescription(sdp));
+async function watchHandleOffer(from, offer) {
+  if (!from || !offer) return;
+  hostSocketId = String(from);
+
+  await watchSetupPC();
+  await watchPc.setRemoteDescription(new RTCSessionDescription(offer));
+
   const answer = await watchPc.createAnswer();
   await watchPc.setLocalDescription(answer);
-  socket?.emit(EVT.answer, { liveId, sdp: answer });
+
+  socket?.emit("webrtc:answer", { liveId, to: String(hostSocketId), answer });
 }
 
 async function watchAddIce(candidate) {
@@ -290,14 +294,31 @@ async function watchAddIce(candidate) {
 }
 
 /* =========================
-   Chat
+   Chat (matches your server/index.js)
+   client -> server: socket.emit("live:chat", { liveId, message })
+   server -> clients: socket.emit("live:chat", { liveId, message, from, at })
 ========================= */
 function sendMessage() {
   const text = chatText.value.trim();
   if (!text) return;
-  const payload = { liveId, from: me?.username || "me", text, created_at: new Date().toISOString() };
-  socket?.emit(EVT.chat, payload);
+
+  socket?.emit("live:chat", { liveId, message: text });
   chatText.value = "";
+}
+
+/* =========================
+   End/Leave
+========================= */
+function endLive() {
+  status.value = "ended";
+
+  try {
+    if (mode === "host") socket?.emit("live:end", { liveId });
+    else socket?.emit("live:leave", { liveId });
+  } catch {}
+
+  cleanup();
+  router.push("/dashboard");
 }
 
 /* =========================
@@ -309,67 +330,126 @@ async function init() {
     return;
   }
 
-  socket = io(apiUrl, { transports: ["websocket", "polling"] });
+  socket = createSocket();
 
   socket.on("connect", async () => {
-    socket.emit(EVT.join, { liveId, mode });
+    status.value = "connecting";
+    error.value = "";
+
+    // ✅ presence registration (helps calls/presence stay correct)
+    if (me?.id) {
+      socket.emit("user:online", { userId: me.id, username: me.username });
+      socket.emit("register-user", { id: me.id, username: me.username }); // legacy compat
+    }
 
     if (mode === "host") {
       await getHostMedia();
+      socket.emit("live:create", { liveId });
       status.value = "live";
     } else {
-      await watchSetupPC();
+      socket.emit("live:join", { liveId });
       status.value = "connecting";
-      // let server know we are a watcher (many servers do this automatically on join)
-      socket.emit("watcher", { liveId }); // if your server doesn't use this, remove it
     }
   });
 
-  // HOST: server tells host a watcher joined
-  socket.on(EVT.watcher, async ({ watcherId } = {}) => {
-    if (mode !== "host") return;
-    if (!watcherId) return;
-    await hostCreateOfferForWatcher(watcherId);
+  socket.on("disconnect", () => {
+    if (status.value !== "ended") status.value = "connecting";
   });
 
-  // WATCH: receive offer
-  socket.on(EVT.offer, async ({ sdp } = {}) => {
+  // watcher learns host socket id (server emits this)
+  socket.on("live:host", async ({ hostSocketId: hs } = {}) => {
     if (mode !== "watch") return;
-    if (sdp) await watchHandleOffer(sdp);
+    hostSocketId = hs ? String(hs) : hostSocketId;
+  });
+
+  // HOST: when viewer joins, server tells host the viewer socket id
+  socket.on("live:viewer-joined", async ({ viewerSocketId } = {}) => {
+    if (mode !== "host") return;
+    if (!viewerSocketId) return;
+
+    // if host media not ready yet, wait a tick then try
+    if (!localStream) {
+      await nextTick();
+      if (!localStream) return;
+    }
+
+    await hostCreateOfferForViewer(String(viewerSocketId));
+  });
+
+  // HOST: viewer left → close pc
+  socket.on("live:viewer-left", ({ viewerSocketId } = {}) => {
+    if (mode !== "host") return;
+    const id = String(viewerSocketId || "");
+    const pc = peers.get(id);
+    if (pc) {
+      try { pc.close(); } catch {}
+      peers.delete(id);
+    }
+  });
+
+  // WATCH: receive offer from host
+  socket.on("webrtc:offer", async ({ liveId: lid, from, offer } = {}) => {
+    if (mode !== "watch") return;
+    if (String(lid) !== String(liveId)) return;
+
+    await watchHandleOffer(from, offer);
   });
 
   // HOST: receive answer from watcher
-  socket.on(EVT.answer, async ({ from, watcherId, sdp } = {}) => {
+  socket.on("webrtc:answer", async ({ liveId: lid, from, answer } = {}) => {
     if (mode !== "host") return;
-    const id = watcherId || from;
-    if (id && sdp) await hostAcceptAnswer(id, sdp);
+    if (String(lid) !== String(liveId)) return;
+
+    await hostAcceptAnswer(from, answer);
   });
 
-  // ICE (both)
-  socket.on(EVT.ice, async ({ from, watcherId, candidate } = {}) => {
-    const id = watcherId || from;
-    if (mode === "host") await hostAddIce(id, candidate);
+  // ICE: both sides
+  socket.on("webrtc:ice", async ({ liveId: lid, from, candidate } = {}) => {
+    if (String(lid) !== String(liveId)) return;
+
+    if (mode === "host") await hostAddIce(from, candidate);
     else await watchAddIce(candidate);
   });
 
-  // Chat
-  socket.on(EVT.chat, async (msg) => {
-    if (!msg) return;
-    messages.value.push(msg);
+  // live ended
+  socket.on("live:ended", ({ liveId: lid } = {}) => {
+    if (String(lid) !== String(liveId)) return;
+    status.value = "ended";
+    overlayTip.value = "Live ended.";
+    cleanup();
+  });
+
+  // Chat receive
+  socket.on("live:chat", async (payload) => {
+    if (!payload) return;
+    if (String(payload.liveId) !== String(liveId)) return;
+
+    // server sends: { liveId, message, from:{id,username}, at }
+    messages.value.push({
+      from: payload?.from?.username || "Anon",
+      text: payload?.message || "",
+      created_at: payload?.at || new Date().toISOString(),
+    });
+
     await nextTick();
     scrollChat();
   });
+
+  // helpful hint on iOS if remote stays black
+  if (mode === "watch") {
+    overlayTip.value = "If video stays black on iPhone: allow Safari Camera/Mic and unmute Silent mode.";
+    setTimeout(() => (overlayTip.value = ""), 7000);
+  }
 }
 
 function cleanup() {
-  try { socket?.emit(EVT.leave, { liveId }); } catch {}
-
-  // close all peers
+  // close host pcs
   try {
     peers.forEach((pc) => { try { pc.close(); } catch {} });
     peers.clear();
   } catch {}
 
+  // close watcher pc
   try { watchPc?.close(); } catch {}
   watchPc = null;
 
