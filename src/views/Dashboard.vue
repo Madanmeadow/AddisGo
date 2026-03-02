@@ -235,7 +235,9 @@
             <header class="post-head">
               <div class="avatar">{{ getInitial(post.user_id) }}</div>
               <div class="who">
-                <div class="name">User #{{ post.user_id }}</div>
+                <div class="name">
+                    {{ post.display_name || post.username || ("User #" + post.user_id) }}
+                </div>
                 <div class="time">{{ formatDate(post.created_at) }}</div>
               </div>
             </header>
