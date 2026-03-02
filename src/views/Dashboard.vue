@@ -2,6 +2,9 @@
 <template>
   <Layout>
     <div class="wrap">
+      <!-- 🌌 Animated background layer -->
+      <div class="bg-animated" aria-hidden="true"></div>
+
       <!-- TOPBAR -->
       <header class="topbar">
         <div class="brand" @click="scrollToTop" role="button" tabindex="0">
@@ -72,7 +75,9 @@
             <div class="panel-head">
               <div class="panel-title">👥 People</div>
               <div class="dockActions">
-                <button class="btn" @click="fetchPeople" :disabled="peopleLoading || !token">{{ peopleLoading ? "Loading…" : "Refresh" }}</button>
+                <button class="btn" @click="fetchPeople" :disabled="peopleLoading || !token">
+                  {{ peopleLoading ? "Loading…" : "Refresh" }}
+                </button>
                 <button class="btn ghostBtn" @click="toggleChat">{{ chatOpen ? "Close Chat" : "Open Chat" }}</button>
               </div>
             </div>
@@ -86,7 +91,7 @@
                   :key="'pmini-' + u.id"
                   class="miniAvatarWrap"
                   :title="u.display_name || u.username || ('User #' + u.id)"
-                  @click="peopleOpen ? null : startCall(u,'audio')"
+                  @click="peopleOpen ? null : startCall(u, 'audio')"
                 >
                   <div class="miniAvatar">{{ (u.display_name || u.username || "U")[0]?.toUpperCase() }}</div>
                   <span class="miniDot" :class="{ on: isOnline(u.id) }"></span>
@@ -115,9 +120,8 @@
                     </div>
 
                     <div class="person-actions">
-                      <!-- ✅ You wanted offline calling later; UI stays enabled, backend decides -->
-                      <button class="iconbtn" title="Audio Call" :disabled="callBusy" @click="startCall(u,'audio')">📞</button>
-                      <button class="iconbtn" title="Video Call" :disabled="callBusy" @click="startCall(u,'video')">🎥</button>
+                      <button class="iconbtn" title="Audio Call" :disabled="callBusy" @click="startCall(u, 'audio')">📞</button>
+                      <button class="iconbtn" title="Video Call" :disabled="callBusy" @click="startCall(u, 'video')">🎥</button>
                     </div>
                   </div>
                 </div>
@@ -158,7 +162,7 @@
             </label>
 
             <button class="btn btn-primary" :disabled="posting || !token" @click="submitPost">
-              {{ posting ? "Posting…" : (feedMode === 'reels' ? "Post Reel 🎬" : "Post 🚀") }}
+              {{ posting ? "Posting…" : feedMode === "reels" ? "Post Reel 🎬" : "Post 🚀" }}
             </button>
           </div>
 
@@ -206,7 +210,7 @@
             </div>
 
             <div class="rooms-messages" ref="chatBoxRef">
-              <div v-for="(m, i) in chatMessages" :key="'rm-'+i" class="rm">
+              <div v-for="(m, i) in chatMessages" :key="'rm-' + i" class="rm">
                 <div class="rm-top">
                   <span class="rm-user">{{ m.from }}</span>
                   <span class="rm-time">{{ m.created_at ? formatDate(m.created_at) : "" }}</span>
@@ -231,13 +235,11 @@
             <div class="state-sub">Write something to start the conversation.</div>
           </div>
 
-          <article v-else v-for="post in threadsPosts" :key="'t-'+post.id" class="post thread">
+          <article v-else v-for="post in threadsPosts" :key="'t-' + post.id" class="post thread">
             <header class="post-head">
               <div class="avatar">{{ getInitial(post.user_id) }}</div>
               <div class="who">
-                <div class="name">
-                    {{ post.display_name || post.username || ("User #" + post.user_id) }}
-                </div>
+                <div class="name">{{ post.display_name || post.username || ("User #" + post.user_id) }}</div>
                 <div class="time">{{ formatDate(post.created_at) }}</div>
               </div>
             </header>
@@ -258,7 +260,12 @@
             </div>
 
             <div class="actions">
-              <button class="action-btn" :class="{ active: likesByPost[post.id]?.likedByMe }" :disabled="likeBusyByPost[post.id]" @click="toggleLike(post)">
+              <button
+                class="action-btn"
+                :class="{ active: likesByPost[post.id]?.likedByMe }"
+                :disabled="likeBusyByPost[post.id]"
+                @click="toggleLike(post)"
+              >
                 ❤️ <span class="label">{{ likesByPost[post.id]?.count ?? 0 }}</span>
               </button>
               <button class="action-btn" @click="toggleComments(post)">💬 <span class="label">{{ commentCount(post.id) }}</span></button>
@@ -282,7 +289,7 @@
             <div class="state-sub">Post a video and it will show here.</div>
           </div>
 
-          <article v-else v-for="post in reelsVisible" :key="'r-'+post.id" class="post tt-card">
+          <article v-else v-for="post in reelsVisible" :key="'r-' + post.id" class="post tt-card">
             <header class="post-head">
               <div class="avatar">{{ getInitial(post.user_id) }}</div>
               <div class="who">
@@ -314,7 +321,12 @@
             </div>
 
             <div class="actions">
-              <button class="action-btn" :class="{ active: likesByPost[post.id]?.likedByMe }" :disabled="likeBusyByPost[post.id]" @click="toggleLike(post)">
+              <button
+                class="action-btn"
+                :class="{ active: likesByPost[post.id]?.likedByMe }"
+                :disabled="likeBusyByPost[post.id]"
+                @click="toggleLike(post)"
+              >
                 ❤️ <span class="label">{{ likesByPost[post.id]?.count ?? 0 }}</span>
               </button>
               <button class="action-btn" @click="toggleComments(post)">💬 <span class="label">{{ commentCount(post.id) }}</span></button>
@@ -344,7 +356,7 @@
             <div class="state-sub">Be the first to post.</div>
           </div>
 
-          <article v-else v-for="post in followingPosts" :key="'f-'+post.id" class="post">
+          <article v-else v-for="post in followingPosts" :key="'f-' + post.id" class="post">
             <header class="post-head">
               <div class="avatar">{{ getInitial(post.user_id) }}</div>
               <div class="who">
@@ -361,7 +373,12 @@
             </div>
 
             <div class="actions">
-              <button class="action-btn" :class="{ active: likesByPost[post.id]?.likedByMe }" :disabled="likeBusyByPost[post.id]" @click="toggleLike(post)">
+              <button
+                class="action-btn"
+                :class="{ active: likesByPost[post.id]?.likedByMe }"
+                :disabled="likeBusyByPost[post.id]"
+                @click="toggleLike(post)"
+              >
                 ❤️ <span class="label">{{ likesByPost[post.id]?.count ?? 0 }}</span>
               </button>
               <button class="action-btn" @click="toggleComments(post)">💬 <span class="label">{{ commentCount(post.id) }}</span></button>
@@ -385,7 +402,7 @@
             <div class="state-sub">Post a video and it will autoplay here.</div>
           </div>
 
-          <article v-else v-for="post in visiblePosts" :key="'fy-'+post.id" class="post tt-card" :id="`post-${post.id}`">
+          <article v-else v-for="post in visiblePosts" :key="'fy-' + post.id" class="post tt-card" :id="`post-${post.id}`">
             <header class="post-head">
               <div class="avatar">{{ getInitial(post.user_id) }}</div>
               <div class="who">
@@ -421,7 +438,12 @@
             </div>
 
             <div class="actions">
-              <button class="action-btn" :class="{ active: likesByPost[post.id]?.likedByMe }" :disabled="likeBusyByPost[post.id]" @click="toggleLike(post)">
+              <button
+                class="action-btn"
+                :class="{ active: likesByPost[post.id]?.likedByMe }"
+                :disabled="likeBusyByPost[post.id]"
+                @click="toggleLike(post)"
+              >
                 ❤️ <span class="label">{{ likesByPost[post.id]?.count ?? 0 }}</span>
               </button>
               <button class="action-btn" @click="toggleComments(post)">💬 <span class="label">{{ commentCount(post.id) }}</span></button>
@@ -459,7 +481,9 @@
 
           <div class="chat-box">
             <div class="chat-messages" ref="chatBoxRef">
-              <div v-for="(m, i) in chatMessages" :key="'cm-'+i" class="chat-msg"><strong>{{ m.from }}:</strong> {{ m.text }}</div>
+              <div v-for="(m, i) in chatMessages" :key="'cm-' + i" class="chat-msg">
+                <strong>{{ m.from }}:</strong> {{ m.text }}
+              </div>
             </div>
 
             <div class="chat-input">
@@ -530,16 +554,18 @@ const apiUrl = import.meta.env.VITE_API_URL;
 const token = localStorage.getItem("token");
 
 const me = (() => {
-  try { return JSON.parse(localStorage.getItem("user") || "null"); } catch { return null; }
+  try {
+    return JSON.parse(localStorage.getItem("user") || "null");
+  } catch {
+    return null;
+  }
 })();
 
 /* ================== MEDIA URL (FIX DARK/SMALL AFTER DEPLOY) ================== */
 function mediaUrl(u) {
   if (!u) return "";
   const s = String(u);
-  // already absolute (cloudinary, etc.)
   if (/^https?:\/\//i.test(s)) return s;
-  // make sure relative paths resolve to BACKEND domain, not frontend domain
   if (s.startsWith("/")) return `${apiUrl}${s}`;
   return `${apiUrl}/${s}`;
 }
@@ -563,7 +589,7 @@ function normalizePost(p) {
 }
 
 /* ================= MODEBAR ================= */
-const feedMode = ref("foryou"); // foryou | reels | following | threads | rooms | live
+const feedMode = ref("foryou");
 function setFeedMode(mode) {
   feedMode.value = mode;
 
@@ -572,14 +598,24 @@ function setFeedMode(mode) {
       setupVideoObserver();
       applyMuteToAllVideos();
     } else {
-      try { videoObserver?.disconnect(); } catch {}
+      try {
+        videoObserver?.disconnect();
+      } catch {}
     }
 
     if (feedMode.value === "foryou") setupLoadMoreObserver();
-    else { try { loadMoreObserver?.disconnect(); } catch {} }
+    else {
+      try {
+        loadMoreObserver?.disconnect();
+      } catch {}
+    }
 
     if (feedMode.value === "reels") setupReelsLoadMoreObserver();
-    else { try { reelsLoadMoreObserver?.disconnect(); } catch {} }
+    else {
+      try {
+        reelsLoadMoreObserver?.disconnect();
+      } catch {}
+    }
   });
 }
 
@@ -599,7 +635,9 @@ const people = ref([]);
 const peopleLoading = ref(false);
 const peopleError = ref("");
 
-function togglePeople() { peopleOpen.value = !peopleOpen.value; }
+function togglePeople() {
+  peopleOpen.value = !peopleOpen.value;
+}
 
 async function fetchPeople() {
   if (!token) return;
@@ -630,24 +668,35 @@ const callingToast = ref("");
 const pendingRoomId = ref("");
 const pendingKind = ref("audio");
 
-// Put files in /public/sounds/
-const ringIn = new Audio("/sounds/ringtone.mp3");  // incoming ringtone
+const ringIn = new Audio("/sounds/ringtone.mp3");
 ringIn.loop = true;
-const ringOut = new Audio("/sounds/ringback.mp3"); // caller ringback
+const ringOut = new Audio("/sounds/ringback.mp3");
 ringOut.loop = true;
 
 function stopAllRings() {
-  try { ringIn.pause(); ringIn.currentTime = 0; } catch {}
-  try { ringOut.pause(); ringOut.currentTime = 0; } catch {}
+  try {
+    ringIn.pause();
+    ringIn.currentTime = 0;
+  } catch {}
+  try {
+    ringOut.pause();
+    ringOut.currentTime = 0;
+  } catch {}
 }
 
 async function safePlay(audio) {
-  // iOS may block until user gesture; we try anyway
-  try { audio.currentTime = 0; await audio.play(); } catch {}
+  try {
+    audio.currentTime = 0;
+    await audio.play();
+  } catch {}
 }
 
-function playRingIn() { safePlay(ringIn); }
-function playRingOut() { safePlay(ringOut); }
+function playRingIn() {
+  safePlay(ringIn);
+}
+function playRingOut() {
+  safePlay(ringOut);
+}
 
 function startCall(user, kind = "audio") {
   if (!socket) return;
@@ -703,13 +752,19 @@ const search = ref("");
 const composerRef = ref(null);
 const myInitial = computed(() => (me?.username ? me.username[0].toUpperCase() : "A"));
 
-function focusComposer() { try { composerRef.value?.focus?.(); } catch {} }
+function focusComposer() {
+  try {
+    composerRef.value?.focus?.();
+  } catch {}
+}
 function formatDate(d) {
   if (!d) return "";
   const date = new Date(d);
   return Number.isNaN(date.getTime()) ? "" : date.toLocaleString();
 }
-function getInitial(userId) { return String(userId || "?").slice(-1); }
+function getInitial(userId) {
+  return String(userId || "?").slice(-1);
+}
 
 async function fetchPosts() {
   try {
@@ -844,9 +899,15 @@ async function submitReel() {
   }
 }
 
-function onPickImage(e) { imageFile.value = e.target.files?.[0] || null; }
-function onPickVideo(e) { videoFile.value = e.target.files?.[0] || null; }
-function scrollToTop() { window.scrollTo({ top: 0, behavior: "smooth" }); }
+function onPickImage(e) {
+  imageFile.value = e.target.files?.[0] || null;
+}
+function onPickVideo(e) {
+  videoFile.value = e.target.files?.[0] || null;
+}
+function scrollToTop() {
+  window.scrollTo({ top: 0, behavior: "smooth" });
+}
 
 /* ================= FILTERED BASE ================= */
 const baseFiltered = computed(() => {
@@ -933,7 +994,9 @@ const commentLoadingByPost = ref({});
 const commentBusyByPost = ref({});
 const commentErrorByPost = ref({});
 
-function commentCount(postId) { return (commentsByPost.value[postId] || []).length; }
+function commentCount(postId) {
+  return (commentsByPost.value[postId] || []).length;
+}
 
 async function toggleComments(post) {
   const postId = post.id;
@@ -1001,7 +1064,10 @@ async function submitComment(post) {
     const data = await res.json();
 
     if (!res.ok) {
-      commentsByPost.value = { ...commentsByPost.value, [postId]: (commentsByPost.value[postId] || []).filter((c) => c.id !== tempId) };
+      commentsByPost.value = {
+        ...commentsByPost.value,
+        [postId]: (commentsByPost.value[postId] || []).filter((c) => c.id !== tempId),
+      };
       commentErrorByPost.value = { ...commentErrorByPost.value, [postId]: data?.error || "Failed to send comment" };
       return;
     }
@@ -1011,7 +1077,10 @@ async function submitComment(post) {
       [postId]: (commentsByPost.value[postId] || []).map((c) => (c.id === tempId ? data : c)),
     };
   } catch {
-    commentsByPost.value = { ...commentsByPost.value, [postId]: (commentsByPost.value[postId] || []).filter((c) => c.id !== tempId) };
+    commentsByPost.value = {
+      ...commentsByPost.value,
+      [postId]: (commentsByPost.value[postId] || []).filter((c) => c.id !== tempId),
+    };
     commentErrorByPost.value = { ...commentErrorByPost.value, [postId]: "Failed to send comment" };
   } finally {
     commentBusyByPost.value = { ...commentBusyByPost.value, [postId]: false };
@@ -1034,7 +1103,11 @@ const CommentsBlock = defineComponent({
       return h("div", { class: "comments" }, [
         h("div", { class: "comments-head" }, [
           h("div", { class: "comments-title" }, "Comments"),
-          h("button", { class: "x", onClick: () => (commentsOpenByPost.value = { ...commentsOpenByPost.value, [postId]: false }) }, "✕"),
+          h(
+            "button",
+            { class: "x", onClick: () => (commentsOpenByPost.value = { ...commentsOpenByPost.value, [postId]: false }) },
+            "✕"
+          ),
         ]),
         loadingC ? h("div", { class: "comments-state" }, "Loading comments…") : null,
         !loadingC
@@ -1058,7 +1131,8 @@ const CommentsBlock = defineComponent({
             class: "comment-input",
             value: commentDraftByPost.value[postId] || "",
             placeholder: "Write a comment…",
-            onInput: (e) => (commentDraftByPost.value = { ...commentDraftByPost.value, [postId]: e.target.value }),
+            onInput: (e) =>
+              (commentDraftByPost.value = { ...commentDraftByPost.value, [postId]: e.target.value }),
             onKeydown: (e) => {
               if (e.key === "Enter") {
                 e.preventDefault();
@@ -1091,8 +1165,12 @@ async function sharePost(post) {
       return;
     }
   } catch {}
-  try { await navigator.clipboard.writeText(url); alert("Link copied!"); }
-  catch { alert(url); }
+  try {
+    await navigator.clipboard.writeText(url);
+    alert("Link copied!");
+  } catch {
+    alert(url);
+  }
 }
 
 /* ================= CHAT ================= */
@@ -1102,7 +1180,9 @@ const chatText = ref("");
 const chatMessages = ref([]);
 const chatBoxRef = ref(null);
 
-function toggleChat() { chatOpen.value = !chatOpen.value; }
+function toggleChat() {
+  chatOpen.value = !chatOpen.value;
+}
 
 function selectChat(room) {
   chatRoom.value = room;
@@ -1129,7 +1209,9 @@ function startLive() {
   socket?.emit("live:create", { liveId });
   router.push(`/live?mode=host&liveId=${encodeURIComponent(liveId)}`);
 }
-function joinLive(liveId) { router.push(`/live?mode=watch&liveId=${encodeURIComponent(liveId)}`); }
+function joinLive(liveId) {
+  router.push(`/live?mode=watch&liveId=${encodeURIComponent(liveId)}`);
+}
 
 /* ================= AUTH ================= */
 function logout() {
@@ -1140,9 +1222,17 @@ function logout() {
 
 /* ================= BOTTOM NAV ACTIONS ================= */
 const isHomeActive = computed(() => ["foryou", "reels", "following", "threads", "rooms"].includes(feedMode.value));
-function goHome() { setFeedMode("foryou"); scrollToTop(); }
-function goInbox() { router.push("/messages"); }
-function goLiveTab() { setFeedMode("live"); scrollToTop(); }
+function goHome() {
+  setFeedMode("foryou");
+  scrollToTop();
+}
+function goInbox() {
+  router.push("/messages");
+}
+function goLiveTab() {
+  setFeedMode("live");
+  scrollToTop();
+}
 function goProfile() {
   const id = me?.id ? String(me.id) : "";
   router.push(id ? `/profile/${id}` : "/profile");
@@ -1158,23 +1248,28 @@ const canLoadMore = computed(() => baseFiltered.value.length > visiblePosts.valu
 
 let loadMoreObserver = null;
 function setupLoadMoreObserver() {
-  try { loadMoreObserver?.disconnect(); } catch {}
+  try {
+    loadMoreObserver?.disconnect();
+  } catch {}
   if (!loadMoreRef.value) return;
 
-  loadMoreObserver = new IntersectionObserver(async (entries) => {
-    const hit = entries.some((e) => e.isIntersecting);
-    if (!hit || !canLoadMore.value || infiniteLoading.value) return;
+  loadMoreObserver = new IntersectionObserver(
+    async (entries) => {
+      const hit = entries.some((e) => e.isIntersecting);
+      if (!hit || !canLoadMore.value || infiniteLoading.value) return;
 
-    infiniteLoading.value = true;
-    await new Promise((r) => setTimeout(r, 160));
-    pageSize.value += 6;
-    infiniteLoading.value = false;
+      infiniteLoading.value = true;
+      await new Promise((r) => setTimeout(r, 160));
+      pageSize.value += 6;
+      infiniteLoading.value = false;
 
-    await preloadLikesForPosts(visiblePosts.value.slice(-10));
-    await nextTick();
-    setupVideoObserver();
-    applyMuteToAllVideos();
-  }, { threshold: 0.15 });
+      await preloadLikesForPosts(visiblePosts.value.slice(-10));
+      await nextTick();
+      setupVideoObserver();
+      applyMuteToAllVideos();
+    },
+    { threshold: 0.15 }
+  );
 
   loadMoreObserver.observe(loadMoreRef.value);
 }
@@ -1189,23 +1284,28 @@ const reelsCanLoadMore = computed(() => reelsPosts.value.length > reelsVisible.v
 
 let reelsLoadMoreObserver = null;
 function setupReelsLoadMoreObserver() {
-  try { reelsLoadMoreObserver?.disconnect(); } catch {}
+  try {
+    reelsLoadMoreObserver?.disconnect();
+  } catch {}
   if (!reelsLoadMoreRef.value) return;
 
-  reelsLoadMoreObserver = new IntersectionObserver(async (entries) => {
-    const hit = entries.some((e) => e.isIntersecting);
-    if (!hit || !reelsCanLoadMore.value || reelsInfiniteLoading.value) return;
+  reelsLoadMoreObserver = new IntersectionObserver(
+    async (entries) => {
+      const hit = entries.some((e) => e.isIntersecting);
+      if (!hit || !reelsCanLoadMore.value || reelsInfiniteLoading.value) return;
 
-    reelsInfiniteLoading.value = true;
-    await new Promise((r) => setTimeout(r, 160));
-    reelsPageSize.value += 6;
-    reelsInfiniteLoading.value = false;
+      reelsInfiniteLoading.value = true;
+      await new Promise((r) => setTimeout(r, 160));
+      reelsPageSize.value += 6;
+      reelsInfiniteLoading.value = false;
 
-    await preloadLikesForPosts(reelsVisible.value.slice(-10));
-    await nextTick();
-    setupVideoObserver();
-    applyMuteToAllVideos();
-  }, { threshold: 0.15 });
+      await preloadLikesForPosts(reelsVisible.value.slice(-10));
+      await nextTick();
+      setupVideoObserver();
+      applyMuteToAllVideos();
+    },
+    { threshold: 0.15 }
+  );
 
   reelsLoadMoreObserver.observe(reelsLoadMoreRef.value);
 }
@@ -1244,35 +1344,47 @@ function applyMuteToAllVideos() {
 
 let videoObserver = null;
 function setupVideoObserver() {
-  try { videoObserver?.disconnect(); } catch {}
+  try {
+    videoObserver?.disconnect();
+  } catch {}
 
-  videoObserver = new IntersectionObserver(async (entries) => {
-    const visible = entries.filter((e) => e.isIntersecting)
-      .sort((a, b) => (b.intersectionRatio || 0) - (a.intersectionRatio || 0));
+  videoObserver = new IntersectionObserver(
+    async (entries) => {
+      const visible = entries
+        .filter((e) => e.isIntersecting)
+        .sort((a, b) => (b.intersectionRatio || 0) - (a.intersectionRatio || 0));
 
-    if (visible.length) {
-      const top = visible[0].target;
-      const id = Number(top.getAttribute("data-post-id") || 0) || null;
-      activePostId.value = id;
-    }
-
-    for (const entry of entries) {
-      const video = entry.target;
-      const postId = Number(video.getAttribute("data-post-id") || 0);
-      applyMuteToVideo(postId);
-
-      if (feedMode.value !== "foryou" && feedMode.value !== "reels") {
-        try { video.pause(); } catch {}
-        continue;
+      if (visible.length) {
+        const top = visible[0].target;
+        const id = Number(top.getAttribute("data-post-id") || 0) || null;
+        activePostId.value = id;
       }
 
-      if (entry.isIntersecting && entry.intersectionRatio >= 0.6) {
-        try { await video.play(); } catch {}
-      } else {
-        try { video.pause(); } catch {}
+      for (const entry of entries) {
+        const video = entry.target;
+        const postId = Number(video.getAttribute("data-post-id") || 0);
+        applyMuteToVideo(postId);
+
+        if (feedMode.value !== "foryou" && feedMode.value !== "reels") {
+          try {
+            video.pause();
+          } catch {}
+          continue;
+        }
+
+        if (entry.isIntersecting && entry.intersectionRatio >= 0.6) {
+          try {
+            await video.play();
+          } catch {}
+        } else {
+          try {
+            video.pause();
+          } catch {}
+        }
       }
-    }
-  }, { threshold: [0.25, 0.6, 0.85] });
+    },
+    { threshold: [0.25, 0.6, 0.85] }
+  );
 
   nextTick(() => {
     if (feedMode.value !== "foryou" && feedMode.value !== "reels") return;
@@ -1298,8 +1410,12 @@ onMounted(async () => {
     nextTick(scrollChatToBottom);
   });
 
-  socket.on("live-list", (streams) => { liveStreams.value = Array.isArray(streams) ? streams : []; });
-  socket.on("online-users", (pairs) => { onlinePairs.value = Array.isArray(pairs) ? pairs : []; });
+  socket.on("live-list", (streams) => {
+    liveStreams.value = Array.isArray(streams) ? streams : [];
+  });
+  socket.on("online-users", (pairs) => {
+    onlinePairs.value = Array.isArray(pairs) ? pairs : [];
+  });
 
   // CALLS
   socket.on("call:ringing", ({ roomId, kind }) => {
@@ -1310,7 +1426,6 @@ onMounted(async () => {
 
   socket.on("call:incoming", (p) => {
     incomingCall.value = p;
-    // try ring; iOS may require tap (handled by safePlay)
     playRingIn();
   });
 
@@ -1347,12 +1462,20 @@ onMounted(async () => {
 
 onBeforeUnmount(() => {
   stopAllRings();
-  try { socket?.disconnect(); } catch {}
+  try {
+    socket?.disconnect();
+  } catch {}
   socket = null;
 
-  try { loadMoreObserver?.disconnect(); } catch {}
-  try { reelsLoadMoreObserver?.disconnect(); } catch {}
-  try { videoObserver?.disconnect(); } catch {}
+  try {
+    loadMoreObserver?.disconnect();
+  } catch {}
+  try {
+    reelsLoadMoreObserver?.disconnect();
+  } catch {}
+  try {
+    videoObserver?.disconnect();
+  } catch {}
   loadMoreObserver = null;
   reelsLoadMoreObserver = null;
   videoObserver = null;
@@ -1380,6 +1503,46 @@ onBeforeUnmount(() => {
     radial-gradient(900px 600px at 50% 100%, rgba(124,58,237,0.10), transparent),
     #0b1220;
   color: white;
+
+  position: relative;
+  overflow-x: hidden;
+}
+
+/* 🌌 Animated moving gradient layer */
+.bg-animated {
+  position: fixed;
+  inset: 0;
+  z-index: 0;
+  pointer-events: none;
+
+  background:
+    radial-gradient(900px 650px at 20% 10%, rgba(255, 75, 43, 0.18), transparent 60%),
+    radial-gradient(850px 650px at 80% 20%, rgba(255, 65, 108, 0.16), transparent 60%),
+    radial-gradient(950px 700px at 50% 110%, rgba(124, 58, 237, 0.14), transparent 60%),
+    radial-gradient(700px 520px at 10% 80%, rgba(34, 197, 94, 0.10), transparent 60%),
+    linear-gradient(180deg, #0b1220, #070b14);
+
+  filter: saturate(115%) contrast(105%);
+  transform: translate3d(0, 0, 0);
+
+  animation: bgFloat 14s ease-in-out infinite;
+}
+
+.wrap > *:not(.bg-animated) {
+  position: relative;
+  z-index: 1;
+}
+
+@keyframes bgFloat {
+  0% { transform: translate3d(0px, 0px, 0) scale(1); }
+  25% { transform: translate3d(-18px, -10px, 0) scale(1.02); }
+  50% { transform: translate3d(12px, -16px, 0) scale(1.03); }
+  75% { transform: translate3d(18px, 8px, 0) scale(1.02); }
+  100% { transform: translate3d(0px, 0px, 0) scale(1); }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .bg-animated { animation: none; }
 }
 
 /* Topbar */
