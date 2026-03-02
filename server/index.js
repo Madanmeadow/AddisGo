@@ -61,6 +61,8 @@ const ORIGINS =
     ? "*"
     : CLIENT_ORIGIN.split(",").map((s) => s.trim()).filter(Boolean);
 
+const canon = (v) => (v === null || v === undefined ? null : String(v));
+
 /* =========================
    MIDDLEWARE
 ========================= */
@@ -101,8 +103,17 @@ pool.on("connect", () => logOK("PostgreSQL Connected"));
    AUTH (register/login)
 ========================= */
 function signToken(user) {
+  const userId = canon(user?.id); // your DB uses users.id integer
+  const username =
+    user?.username ||
+    user?.display_name ||
+    user?.name ||
+    user?.email ||
+    (userId ? `User${userId}` : "User");
+
+  // ✅ include BOTH: userId + id (backward compatible)
   return jwt.sign(
-    { id: user.id, username: user.username || user.name || user.email || `User${user.id}` },
+    { userId, id: userId, username },
     JWT_SECRET,
     { expiresIn: "7d" }
   );
@@ -120,13 +131,13 @@ app.post("/auth/register", async (req, res) => {
     try {
       created = await pool.query(
         `INSERT INTO users (username, email, password) VALUES ($1,$2,$3)
-         RETURNING id, username, email`,
+         RETURNING id, username, email, display_name, name`,
         [display, email, hashed]
       );
     } catch {
       created = await pool.query(
         `INSERT INTO users (name, email, password) VALUES ($1,$2,$3)
-         RETURNING id, name, email`,
+         RETURNING id, name, email, display_name, username`,
         [display, email, hashed]
       );
     }
@@ -136,7 +147,10 @@ app.post("/auth/register", async (req, res) => {
 
     res.json({
       token,
-      user: { id: userRow.id, username: userRow.username || userRow.name || userRow.email },
+      user: {
+        id: userRow.id,
+        username: userRow.username || userRow.display_name || userRow.name || userRow.email,
+      },
     });
   } catch (err) {
     logERR("REGISTER ERROR:", err);
@@ -160,7 +174,10 @@ app.post("/auth/login", async (req, res) => {
 
     res.json({
       token,
-      user: { id: user.id, username: user.username || user.name || user.email },
+      user: {
+        id: user.id,
+        username: user.username || user.display_name || user.name || user.email,
+      },
     });
   } catch (err) {
     logERR("LOGIN ERROR:", err);
@@ -234,8 +251,32 @@ const io = new Server(server, {
   cors: { origin: ORIGINS, credentials: true, methods: ["GET", "POST"] },
 });
 
+/* ✅ NEW: Socket JWT auth (makes presence/calls/live survive frontend changes) */
+io.use((socket, next) => {
+  try {
+    const token =
+      socket.handshake.auth?.token ||
+      socket.handshake.headers?.authorization?.replace("Bearer ", "");
+
+    if (!token) return next(); // allow guests; they can still emit user:online later
+
+    const payload = jwt.verify(token, JWT_SECRET);
+    const userId = canon(payload?.userId ?? payload?.id);
+    if (!userId) return next(new Error("INVALID_TOKEN_PAYLOAD"));
+
+    socket.userId = userId;
+    socket.username = payload?.username || `User${userId}`;
+    return next();
+  } catch (e) {
+    // don't hard-fail; let frontend register-user/user:online
+    logWARN("Socket auth failed (continuing as guest):", e?.message || e);
+    return next();
+  }
+});
+
 /* ---------- PRESENCE ---------- */
-const onlineUsers = new Map(); // userId -> socketId
+const onlineUsers = new Map();        // userId -> socketId
+const socketToUserId = new Map();     // socketId -> userId (NEW, avoids scanning map)
 
 function emitOnlineUsersLegacy() {
   io.emit("online-users", Array.from(onlineUsers.entries()));
@@ -247,6 +288,19 @@ function emitPresenceList(toSocket) {
 }
 function broadcastPresenceUpdate(userId, online) {
   io.emit("presence:update", { userId: String(userId), online: !!online });
+}
+
+function setOnline(socket, userId, username) {
+  const uid = canon(userId);
+  if (!uid) return false;
+
+  socket.data.user = { id: uid, username: username || socket.username || `User${uid}` };
+
+  onlineUsers.set(uid, socket.id);
+  socketToUserId.set(socket.id, uid);
+
+  socket.join(`user:${uid}`);
+  return true;
 }
 
 /* ---------- LIVE ---------- */
@@ -467,15 +521,22 @@ io.on("connection", (socket) => {
   logSOCK("Socket connected:", socket.id);
   socket.data.user = null;
 
+  /* ✅ Auto-register if JWT auth succeeded */
+  if (socket.userId) {
+    setOnline(socket, socket.userId, socket.username);
+    emitPresenceList(socket);
+    broadcastPresenceUpdate(socket.userId, true);
+    emitOnlineUsersLegacy();
+    flushQueuedIncomingCallsToUser(socket.userId);
+  }
+
   /* =========================
-     ✅ PRESENCE
+     ✅ PRESENCE (kept)
   ========================= */
   socket.on("user:online", ({ userId, username }) => {
     if (!userId) return;
 
-    socket.data.user = { id: String(userId), username: username || `User${userId}` };
-    onlineUsers.set(String(userId), socket.id);
-    socket.join(`user:${userId}`);
+    setOnline(socket, userId, username);
 
     emitPresenceList(socket);
     broadcastPresenceUpdate(userId, true);
@@ -492,9 +553,7 @@ io.on("connection", (socket) => {
     const username = typeof user === "object" ? user?.username : null;
     if (!userId) return;
 
-    socket.data.user = { id: String(userId), username: username || `User${userId}` };
-    onlineUsers.set(String(userId), socket.id);
-    socket.join(`user:${userId}`);
+    setOnline(socket, userId, username);
 
     emitPresenceList(socket);
     broadcastPresenceUpdate(userId, true);
@@ -534,16 +593,22 @@ io.on("connection", (socket) => {
   });
 
   /* =========================
-     ✅ CALLS (your existing logic kept)
+     ✅ CALLS (safe fixes)
   ========================= */
   socket.on("call:request", async ({ toUserId, kind = "audio" }) => {
     const from = socket.data.user;
-    if (!from?.id) return socket.emit("call:error", { message: "Not online. Emit user:online first." });
+    if (!from?.id) return socket.emit("call:error", { message: "Not online. (JWT auth or emit user:online)" });
+
+    if (!toUserId) return socket.emit("call:error", { message: "Missing toUserId" });
 
     const calleeUserId = String(toUserId);
     const callKind = kind === "video" ? "video" : "audio";
 
     logCALL("call:request", { from: from.id, to: calleeUserId, kind: callKind });
+
+    if (calleeUserId === String(from.id)) {
+      return socket.emit("call:error", { message: "You cannot call yourself." });
+    }
 
     if (isUserBusy(from.id)) return socket.emit("call:error", { message: "You are already in a call." });
     if (isUserBusy(calleeUserId)) return socket.emit("call:busy", { message: "User is busy." });
@@ -796,7 +861,6 @@ io.on("connection", (socket) => {
     emitLivePresence(liveId);
   });
 
-  // ✅ IMPORTANT: viewer leaves -> host closes peer
   socket.on("live:leave", ({ liveId }) => {
     if (!liveId) return;
 
@@ -828,7 +892,6 @@ io.on("connection", (socket) => {
 
   socket.on("get-live-list", () => socket.emit("live-list", Array.from(liveStreams)));
 
-  // ✅ FIX: LIVE CHAT (this is what you were missing)
   socket.on("live:chat", ({ liveId, message }) => {
     const msg = String(message || "").trim();
     if (!liveId || !msg) return;
@@ -843,7 +906,6 @@ io.on("connection", (socket) => {
     });
   });
 
-  // viewer requests mic
   socket.on("live:mic:request", ({ liveId }) => {
     if (!liveId) return;
     const me = socket.data.user;
@@ -869,7 +931,6 @@ io.on("connection", (socket) => {
     logLIVE("live:mic:request", { liveId: String(liveId), userId: meId });
   });
 
-  // host approves mic
   socket.on("live:mic:approve", ({ liveId, userId }) => {
     if (!liveId || !userId) return;
 
@@ -893,7 +954,6 @@ io.on("connection", (socket) => {
     logLIVE("live:mic:approve", { liveId: String(liveId), userId: uid });
   });
 
-  // host denies mic
   socket.on("live:mic:deny", ({ liveId, userId, reason }) => {
     if (!liveId || !userId) return;
 
@@ -910,16 +970,15 @@ io.on("connection", (socket) => {
   });
 
   /* =========================
-     DISCONNECT CLEANUP
+     DISCONNECT CLEANUP (fixed + fast)
   ========================= */
   socket.on("disconnect", () => {
-    let offlineUserId = null;
-    for (const [uid, sid] of onlineUsers.entries()) {
-      if (sid === socket.id) {
-        offlineUserId = uid;
-        onlineUsers.delete(uid);
-        break;
-      }
+    const offlineUserId = socketToUserId.get(socket.id) || null;
+
+    if (offlineUserId) {
+      onlineUsers.delete(offlineUserId);
+      socketToUserId.delete(socket.id);
+      broadcastPresenceUpdate(offlineUserId, false);
     }
 
     // if a live host disconnects, end stream
@@ -934,8 +993,6 @@ io.on("connection", (socket) => {
         liveMicRequests.delete(String(liveId));
       }
     }
-
-    if (offlineUserId) broadcastPresenceUpdate(offlineUserId, false);
 
     emitPresenceList();
     emitOnlineUsersLegacy();
