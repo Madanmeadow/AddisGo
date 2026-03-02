@@ -49,7 +49,7 @@ function logCALL(...a) { console.log(`${C.blue}📞${C.reset}`, ...a); }
 const app = express();
 const server = http.createServer(app);
 
-app.set("trust proxy", 1); // ✅ NEW (helps get correct https/proxy host)
+app.set("trust proxy", 1);
 
 const __filename = fileURLToPath(import.meta.url);
 const __dirname = path.dirname(__filename);
@@ -57,10 +57,6 @@ const __dirname = path.dirname(__filename);
 const PORT = process.env.PORT || 5000;
 const CLIENT_ORIGIN = process.env.CLIENT_ORIGIN || "*";
 const JWT_SECRET = process.env.JWT_SECRET || "dev_secret_change_me";
-
-// ✅ NEW: optional public base (useful for uploads)
-const PUBLIC_URL = (process.env.PUBLIC_URL || "").trim(); 
-// Example: https://addisgo-production-xxxx.up.railway.app
 
 const ORIGINS =
   CLIENT_ORIGIN === "*"
@@ -202,7 +198,7 @@ app.get("/api/health", async (req, res) => {
 });
 
 /* =========================
-   TURN (ICE servers) ✅ UPGRADED
+   TURN (ICE servers) ✅
 ========================= */
 let ICE_CACHE = null; // { iceServers, expiresAt }
 const ICE_CACHE_MS = Number(process.env.TWILIO_ICE_CACHE_MS || 60_000);
@@ -273,33 +269,8 @@ app.get("/turn", async (req, res) => {
 ========================= */
 const io = new Server(server, {
   cors: { origin: ORIGINS, credentials: true, methods: ["GET", "POST"] },
-  transports: ["websocket", "polling"], // ✅ NEW (stability)
+  transports: ["websocket", "polling"],
 });
-
-/* =========================
-   ✅ NEW: SOCKET JWT AUTO-REGISTER
-   This fixes: live list/calls/presence when frontend forgets to emit user:online
-========================= */
-function parseSocketToken(socket) {
-  const authToken = socket?.handshake?.auth?.token;
-  const qToken = socket?.handshake?.query?.token;
-  const hdr = socket?.handshake?.headers?.authorization;
-  if (authToken) return authToken;
-  if (qToken) return qToken;
-  if (hdr && String(hdr).startsWith("Bearer ")) return String(hdr).slice(7);
-  return null;
-}
-
-function safeDecodeUserFromToken(token) {
-  if (!token) return null;
-  try {
-    const d = jwt.verify(token, JWT_SECRET);
-    if (!d?.id) return null;
-    return { id: String(d.id), username: d.username || `User${d.id}` };
-  } catch {
-    return null;
-  }
-}
 
 /* ---------- PRESENCE ---------- */
 const onlineUsers = new Map(); // userId -> socketId
@@ -320,11 +291,11 @@ function broadcastPresenceUpdate(userId, online) {
 const liveStreams = new Set();
 const liveHosts = new Map(); // liveId -> hostSocketId
 
-// ✅ UPDATED: emit BOTH event names so any frontend version works
+// ✅ FIX: emit BOTH live list event formats (so dashboard ALWAYS updates)
 function emitLiveList() {
   const list = Array.from(liveStreams);
-  io.emit("live-list", list);              // old
-  io.emit("live:list", { liveUserIds: list }); // new
+  io.emit("live-list", list);                 // old frontend
+  io.emit("live:list", { liveUserIds: list }); // new frontend
 }
 
 function emitLivePresence(liveId) {
@@ -415,6 +386,7 @@ function emitCallParticipants(roomId) {
   });
 }
 
+/* ======= RING HELPERS ======= */
 function ringToUser(userId, roomId, kind, side) {
   io.to(`user:${String(userId)}`).emit("call:ring", { roomId: String(roomId), kind: String(kind), side: side || "unknown" });
   io.to(`user:${String(userId)}`).emit("call:ringing", { roomId: String(roomId), kind: String(kind), side: side || "unknown" });
@@ -427,6 +399,7 @@ function stopRingForSession(sess) {
   for (const uid of sess.invitedUserIds || []) stopRingToUser(uid, sess.roomId);
 }
 
+/* ======= BUSY HELPERS ======= */
 function isUserBusy(userId) {
   return userBusyRoom.has(String(userId));
 }
@@ -444,7 +417,7 @@ function clearBusyForSession(sess) {
   for (const uid of sess.invitedUserIds || []) clearUserBusy(uid, sess.roomId);
 }
 
-/* ======= OPTIONAL DB HELPERS (unchanged) ======= */
+/* ======= OPTIONAL DB HELPERS ======= */
 async function dbNotifyIncomingCall(userId, payload) {
   try {
     await pool.query(
@@ -561,27 +534,10 @@ function scheduleMissedTimer(roomId) {
    SOCKET EVENTS
 ========================= */
 io.on("connection", (socket) => {
-  // ✅ NEW: auto set user from JWT if token exists
-  const token = parseSocketToken(socket);
-  const autoUser = safeDecodeUserFromToken(token);
+  logSOCK("Socket connected:", socket.id);
+  socket.data.user = null;
 
-  socket.data.user = autoUser || null;
-
-  logSOCK("Socket connected:", socket.id, autoUser ? `userId=${autoUser.id}` : "(guest)");
-
-  // ✅ NEW: if token was valid, register presence immediately
-  if (autoUser?.id) {
-    onlineUsers.set(String(autoUser.id), socket.id);
-    socket.join(`user:${autoUser.id}`);
-    emitPresenceList(socket);
-    broadcastPresenceUpdate(autoUser.id, true);
-    emitOnlineUsersLegacy();
-    flushQueuedIncomingCallsToUser(autoUser.id);
-  } else {
-    emitPresenceList(socket);
-  }
-
-  // ✅ NEW: always send live list on connect
+  // ✅ ALWAYS send live list on connect (fixes dashboard refresh)
   emitLiveList();
 
   /* =========================
@@ -656,15 +612,13 @@ io.on("connection", (socket) => {
   });
 
   /* =========================
-     ✅ CALLS (FIXED WAITING)
-     Key fix:
-       - caller auto joins call room on request
-       - callee auto joins call room on accept
-     So even if frontend forgets call:join → it still connects.
+     ✅ CALLS (FIX WAITING!)
+     - Auto join room on request
+     - Auto join room on accept
   ========================= */
   socket.on("call:request", async ({ toUserId, kind = "audio" }) => {
     const from = socket.data.user;
-    if (!from?.id) return socket.emit("call:error", { message: "Not online. (token or user:online required)" });
+    if (!from?.id) return socket.emit("call:error", { message: "Not online. Emit user:online first." });
 
     const calleeUserId = String(toUserId);
     const callKind = kind === "video" ? "video" : "audio";
@@ -712,9 +666,8 @@ io.on("connection", (socket) => {
 
     scheduleMissedTimer(roomId);
 
-    // ✅ NEW: caller auto joins room NOW (prevents "Waiting...")
+    // ✅ AUTO JOIN CALL ROOM (caller)
     socket.join(`call:${roomId}`);
-    io.to(`call:${roomId}`).emit("call:presence", { roomId: String(roomId), count: 1 });
 
     socket.emit("call:ringing", { roomId: String(roomId), kind: callKind });
     ringToUser(from.id, roomId, callKind, "caller");
@@ -742,9 +695,19 @@ io.on("connection", (socket) => {
     const meId = socket.data.user?.id ? String(socket.data.user.id) : null;
     logCALL("call:accept", { roomId: String(roomId), by: meId });
 
-    // ✅ NEW: callee auto joins room on accept (prevents "Waiting...")
+    // ✅ AUTO JOIN CALL ROOM (callee)
     socket.join(`call:${roomId}`);
 
+    stopRingForSession(sess);
+
+    io.to(`call:${roomId}`).emit("call:accepted", { roomId: String(roomId), kind: sess.kind });
+
+    for (const uid of sess.invitedUserIds || []) {
+      io.to(`user:${uid}`).emit("call:accepted", { roomId: String(roomId), kind: sess.kind });
+      stopRingToUser(uid, roomId);
+    }
+
+    // mark joined
     if (meId) {
       sess.joinedUserIds.add(meId);
       callSessions.set(String(roomId), sess);
@@ -754,15 +717,6 @@ io.on("connection", (socket) => {
         await dbMarkJoined(sess.dbCallId, meId);
         await dbActivateIfTwoJoined(sess.dbCallId);
       }
-    }
-
-    stopRingForSession(sess);
-
-    io.to(`call:${roomId}`).emit("call:accepted", { roomId: String(roomId), kind: sess.kind });
-
-    for (const uid of sess.invitedUserIds || []) {
-      io.to(`user:${uid}`).emit("call:accepted", { roomId: String(roomId), kind: sess.kind });
-      stopRingToUser(uid, roomId);
     }
 
     const room = io.sockets.adapter.rooms.get(`call:${roomId}`);
@@ -799,7 +753,6 @@ io.on("connection", (socket) => {
     callSessions.delete(String(roomId));
   });
 
-  // keep your call:join as optional/compatible (still works)
   socket.on("call:join", async ({ roomId }) => {
     const sess = callSessions.get(String(roomId));
     if (!sess) return socket.emit("call:error", { message: "Call session not found." });
@@ -885,7 +838,7 @@ io.on("connection", (socket) => {
   });
 
   /* =========================
-     ✅ CALLS: WebRTC RELAY (unchanged)
+     ✅ CALLS: WebRTC RELAY
   ========================= */
   socket.on("call:webrtc:offer", (payload) => {
     const { roomId, offer, to, ...rest } = payload || {};
@@ -918,7 +871,7 @@ io.on("connection", (socket) => {
   });
 
   /* =========================
-     ✅ LIVE: WebRTC RELAY (unchanged)
+     ✅ LIVE: WebRTC RELAY
   ========================= */
   socket.on("webrtc:offer", (payload) => {
     const { liveId, to, offer, ...rest } = payload || {};
@@ -940,10 +893,9 @@ io.on("connection", (socket) => {
 
   /* =========================
      ✅ LIVE STREAMING + MIC
+     FIX: accept BOTH live:create and live:start
   ========================= */
-  socket.on("live:create", ({ liveId }) => {
-    if (!liveId) return;
-
+  function doLiveCreate(liveId) {
     liveHosts.set(String(liveId), socket.id);
     liveStreams.add(String(liveId));
     emitLiveList();
@@ -955,9 +907,20 @@ io.on("connection", (socket) => {
     if (hostUserId) ensureLiveSpeakerSet(liveId).add(hostUserId);
 
     resendPendingMicRequestsToHost(liveId);
-
     emitLivePresence(String(liveId));
+
     logLIVE("live:create", { liveId: String(liveId), hostSocketId: socket.id });
+  }
+
+  socket.on("live:create", ({ liveId }) => {
+    if (!liveId) return;
+    doLiveCreate(liveId);
+  });
+
+  // ✅ alias
+  socket.on("live:start", ({ liveId }) => {
+    if (!liveId) return;
+    doLiveCreate(liveId);
   });
 
   socket.on("live:join", ({ liveId }) => {
@@ -1011,7 +974,10 @@ io.on("connection", (socket) => {
     }
   });
 
-  socket.on("get-live-list", () => socket.emit("live-list", Array.from(liveStreams)));
+  socket.on("get-live-list", () => {
+    socket.emit("live-list", Array.from(liveStreams));
+    socket.emit("live:list", { liveUserIds: Array.from(liveStreams) });
+  });
 
   socket.on("live:chat", ({ liveId, message }) => {
     if (!liveId) return;
@@ -1134,5 +1100,4 @@ io.on("connection", (socket) => {
 ========================= */
 server.listen(PORT, () => {
   logOK(`🔥 AddisGo Server running on port ${PORT}`);
-  if (PUBLIC_URL) logOK(`🌍 PUBLIC_URL: ${PUBLIC_URL}`);
 });
