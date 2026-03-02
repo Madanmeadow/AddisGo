@@ -550,8 +550,12 @@ import Layout from "../components/Layout.vue";
 import { io } from "socket.io-client";
 
 const router = useRouter();
-const apiUrl = import.meta.env.VITE_API_URL;
-const token = localStorage.getItem("token");
+
+// ✅ Normalize base url (prevents // and socket issues)
+const apiUrlRaw = import.meta.env.VITE_API_URL || "";
+const apiUrl = apiUrlRaw.replace(/\/$/, "");
+
+const token = localStorage.getItem("token") || "";
 
 const me = (() => {
   try {
@@ -568,6 +572,34 @@ function mediaUrl(u) {
   if (/^https?:\/\//i.test(s)) return s;
   if (s.startsWith("/")) return `${apiUrl}${s}`;
   return `${apiUrl}/${s}`;
+}
+
+/* ================== /upload HELPER (FIX MEDIA POST DARK) ================== */
+async function uploadFile(file) {
+  const fd = new FormData();
+  // your upload route usually expects "file"
+  fd.append("file", file);
+
+  const res = await fetch(`${apiUrl}/upload`, {
+    method: "POST",
+    headers: token ? { Authorization: `Bearer ${token}` } : {},
+    body: fd,
+  });
+
+  const data = await res.json().catch(() => ({}));
+  if (!res.ok) throw new Error(data?.error || "Upload failed");
+
+  // Support common response keys
+  const url =
+    data?.url ||
+    data?.fileUrl ||
+    data?.imageUrl ||
+    data?.videoUrl ||
+    data?.path ||
+    data?.secure_url;
+
+  if (!url) throw new Error("Upload ok but no URL returned");
+  return url;
 }
 
 /* ================== POSTS NORMALIZER ================== */
@@ -621,11 +653,15 @@ function setFeedMode(mode) {
 
 /* ================= SOCKET ================= */
 let socket = null;
-const onlinePairs = ref([]);
+
+// legacy + new presence
+const onlinePairs = ref([]); // legacy: [[userId, socketId], ...]
+const onlineUserIds = ref([]); // new: ["1","2"]
 const liveStreams = ref([]);
 
 function isOnline(userId) {
   const id = String(userId);
+  if (onlineUserIds.value.includes(id)) return true;
   return onlinePairs.value.some(([uid]) => String(uid) === id);
 }
 
@@ -646,13 +682,13 @@ async function fetchPeople() {
 
   try {
     const res = await fetch(`${apiUrl}/users`, { headers: { Authorization: `Bearer ${token}` } });
-    const data = await res.json();
+    const data = await res.json().catch(() => ({}));
     if (!res.ok) {
       peopleError.value = data?.error || "Failed to load users";
       people.value = [];
       return;
     }
-    people.value = Array.isArray(data) ? data : [];
+    people.value = Array.isArray(data) ? data : Array.isArray(data?.users) ? data.users : [];
   } catch {
     peopleError.value = "Failed to load users";
     people.value = [];
@@ -668,6 +704,7 @@ const callingToast = ref("");
 const pendingRoomId = ref("");
 const pendingKind = ref("audio");
 
+// NOTE: put these in /public/sounds/
 const ringIn = new Audio("/sounds/ringtone.mp3");
 ringIn.loop = true;
 const ringOut = new Audio("/sounds/ringback.mp3");
@@ -772,7 +809,7 @@ async function fetchPosts() {
     error.value = "";
 
     const res = await fetch(`${apiUrl}/posts`);
-    const data = await res.json();
+    const data = await res.json().catch(() => ({}));
 
     if (!Array.isArray(data)) {
       posts.value = [];
@@ -806,6 +843,11 @@ async function fetchPosts() {
   }
 }
 
+/**
+ * ✅ FIX DARK MEDIA POSTS:
+ * Upload file(s) to /upload, then POST JSON to /posts with image_url/video_url.
+ * Text-only posts still work the same.
+ */
 async function submitPost() {
   if (!token) return alert("Login again to post.");
   if (!caption.value.trim() && !imageFile.value && !videoFile.value) return;
@@ -816,18 +858,23 @@ async function submitPost() {
     posting.value = true;
     error.value = "";
 
-    const form = new FormData();
-    form.append("caption", caption.value || "");
-    if (imageFile.value) form.append("image", imageFile.value);
-    if (videoFile.value) form.append("video", videoFile.value);
+    let image_url = null;
+    let video_url = null;
+
+    if (imageFile.value) image_url = await uploadFile(imageFile.value);
+    if (videoFile.value) video_url = await uploadFile(videoFile.value);
 
     const res = await fetch(`${apiUrl}/posts`, {
       method: "POST",
-      headers: { Authorization: `Bearer ${token}` },
-      body: form,
+      headers: { "Content-Type": "application/json", Authorization: `Bearer ${token}` },
+      body: JSON.stringify({
+        caption: caption.value || "",
+        image_url,
+        video_url,
+      }),
     });
 
-    const data = await res.json();
+    const data = await res.json().catch(() => ({}));
     if (!res.ok) {
       error.value = data?.error || "Post failed";
       return;
@@ -848,8 +895,8 @@ async function submitPost() {
       setupVideoObserver();
       applyMuteToAllVideos();
     }
-  } catch {
-    error.value = "Post failed";
+  } catch (e) {
+    error.value = e?.message || "Post failed";
   } finally {
     posting.value = false;
   }
@@ -863,26 +910,47 @@ async function submitReel() {
     posting.value = true;
     error.value = "";
 
-    const form = new FormData();
-    form.append("caption", caption.value || "");
-    form.append("video", videoFile.value);
+    // Try JSON-first (upload then /reels JSON)
+    try {
+      const video_url = await uploadFile(videoFile.value);
 
-    const res = await fetch(`${apiUrl}/reels`, {
-      method: "POST",
-      headers: { Authorization: `Bearer ${token}` },
-      body: form,
-    });
+      const r = await fetch(`${apiUrl}/reels`, {
+        method: "POST",
+        headers: { "Content-Type": "application/json", Authorization: `Bearer ${token}` },
+        body: JSON.stringify({ caption: caption.value || "", video_url }),
+      });
 
-    const data = await res.json();
-    if (!res.ok) {
-      error.value = data?.error || "Reel failed";
-      return;
-    }
+      const d = await r.json().catch(() => ({}));
+      if (!r.ok) throw new Error(d?.error || "Reel failed");
 
-    const clean = normalizePost(data?.post || data);
-    if (clean) {
-      posts.value.unshift(clean);
-      await ensureLikeState(clean.id);
+      const clean = normalizePost(d?.post || d);
+      if (clean) {
+        posts.value.unshift(clean);
+        await ensureLikeState(clean.id);
+      }
+    } catch {
+      // fallback: multipart (if your reels route expects formdata)
+      const form = new FormData();
+      form.append("caption", caption.value || "");
+      form.append("video", videoFile.value);
+
+      const res = await fetch(`${apiUrl}/reels`, {
+        method: "POST",
+        headers: { Authorization: `Bearer ${token}` },
+        body: form,
+      });
+
+      const data = await res.json().catch(() => ({}));
+      if (!res.ok) {
+        error.value = data?.error || "Reel failed";
+        return;
+      }
+
+      const clean = normalizePost(data?.post || data);
+      if (clean) {
+        posts.value.unshift(clean);
+        await ensureLikeState(clean.id);
+      }
     }
 
     caption.value = "";
@@ -892,8 +960,8 @@ async function submitReel() {
     await nextTick();
     setupVideoObserver();
     applyMuteToAllVideos();
-  } catch {
-    error.value = "Reel failed";
+  } catch (e) {
+    error.value = e?.message || "Reel failed";
   } finally {
     posting.value = false;
   }
@@ -941,7 +1009,7 @@ async function ensureLikeState(postId) {
 
   try {
     const res = await fetch(`${apiUrl}/likes/${postId}`, { headers: { Authorization: `Bearer ${token}` } });
-    const data = await res.json();
+    const data = await res.json().catch(() => ({}));
     if (!res.ok) return;
 
     likesByPost.value = {
@@ -968,7 +1036,7 @@ async function toggleLike(post) {
       method: "POST",
       headers: { Authorization: `Bearer ${token}` },
     });
-    const data = await res.json();
+    const data = await res.json().catch(() => ({}));
 
     if (!res.ok) {
       likesByPost.value = { ...likesByPost.value, [postId]: prev };
@@ -1013,7 +1081,7 @@ async function loadComments(postId, { force = false } = {}) {
     const res = await fetch(`${apiUrl}/posts/${postId}/comments`, {
       headers: token ? { Authorization: `Bearer ${token}` } : {},
     });
-    const data = await res.json();
+    const data = await res.json().catch(() => ({}));
 
     if (!res.ok) {
       commentErrorByPost.value = { ...commentErrorByPost.value, [postId]: data?.error || "Failed to load comments" };
@@ -1061,7 +1129,7 @@ async function submitComment(post) {
       headers: { "Content-Type": "application/json", Authorization: `Bearer ${token}` },
       body: JSON.stringify({ body: text }),
     });
-    const data = await res.json();
+    const data = await res.json().catch(() => ({}));
 
     if (!res.ok) {
       commentsByPost.value = {
@@ -1131,8 +1199,7 @@ const CommentsBlock = defineComponent({
             class: "comment-input",
             value: commentDraftByPost.value[postId] || "",
             placeholder: "Write a comment…",
-            onInput: (e) =>
-              (commentDraftByPost.value = { ...commentDraftByPost.value, [postId]: e.target.value }),
+            onInput: (e) => (commentDraftByPost.value = { ...commentDraftByPost.value, [postId]: e.target.value }),
             onKeydown: (e) => {
               if (e.key === "Enter") {
                 e.preventDefault();
@@ -1207,6 +1274,7 @@ function startLive() {
   if (!token) return alert("Login again to go live.");
   const liveId = `live-${me?.id || Math.random().toString(36).slice(2, 8)}-${Date.now().toString().slice(-4)}`;
   socket?.emit("live:create", { liveId });
+  socket?.emit("get-live-list");
   router.push(`/live?mode=host&liveId=${encodeURIComponent(liveId)}`);
 }
 function joinLive(liveId) {
@@ -1397,10 +1465,15 @@ onMounted(async () => {
   await fetchPosts();
   if (token) await fetchPeople();
 
-  socket = io(apiUrl, { transports: ["websocket", "polling"] });
+  socket = io(apiUrl, { transports: ["websocket", "polling"], auth: token ? { token } : {} });
 
   socket.on("connect", () => {
-    if (me?.id) socket.emit("register-user", { id: me.id, username: me.username });
+    // ✅ Register BOTH systems (your server supports both)
+    if (me?.id) {
+      socket.emit("user:online", { userId: me.id, username: me.username });
+      socket.emit("register-user", { id: me.id, username: me.username });
+    }
+    socket.emit("presence:get");
     socket.emit("join-room", chatRoom.value);
     socket.emit("get-live-list");
   });
@@ -1410,11 +1483,28 @@ onMounted(async () => {
     nextTick(scrollChatToBottom);
   });
 
+  // ✅ Live list (support both event names if you ever change later)
   socket.on("live-list", (streams) => {
     liveStreams.value = Array.isArray(streams) ? streams : [];
   });
+  socket.on("live:list", ({ liveUserIds } = {}) => {
+    if (Array.isArray(liveUserIds)) liveStreams.value = liveUserIds;
+  });
+
+  // ✅ Presence (legacy + new)
   socket.on("online-users", (pairs) => {
     onlinePairs.value = Array.isArray(pairs) ? pairs : [];
+  });
+  socket.on("presence:list", ({ onlineUserIds: ids } = {}) => {
+    onlineUserIds.value = Array.isArray(ids) ? ids.map(String) : [];
+  });
+  socket.on("presence:update", ({ userId, online } = {}) => {
+    const uid = String(userId || "");
+    if (!uid) return;
+    const set = new Set(onlineUserIds.value);
+    if (online) set.add(uid);
+    else set.delete(uid);
+    onlineUserIds.value = Array.from(set);
   });
 
   // CALLS
