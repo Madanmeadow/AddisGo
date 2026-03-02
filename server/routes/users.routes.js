@@ -1,93 +1,61 @@
-// server/routes/users.routes.js
 import express from "express";
+import jwt from "jsonwebtoken";
 import { pool } from "../db.js";
-import { authenticateToken } from "../middleware/auth.middleware.js";
 
 const router = express.Router();
+const JWT_SECRET = process.env.JWT_SECRET || "dev_secret_change_me";
 
-/* =========================
-   helpers
-========================= */
-function getAuthUserId(req) {
-  // Support multiple JWT payload styles
-  return (
-    req.user?.id ||
-    req.user?.userId ||
-    req.user?.user_id ||
-    req.user?.sub ||
-    null
-  );
-}
+/* ============================================================
+   AUTH MIDDLEWARE
+============================================================ */
+function authenticate(req, res, next) {
+  const header = req.headers.authorization || "";
+  const token = header.startsWith("Bearer ")
+    ? header.slice(7)
+    : null;
 
-function normalizeUser(row) {
-  if (!row) return null;
-  const baseName =
-    row.display_name ||
-    row.name ||
-    (row.email ? row.email.split("@")[0] : `User${row.id}`);
-
-  return {
-    id: row.id,
-    email: row.email || null,
-    username: baseName, // keep UI compatibility
-    display_name: row.display_name || baseName,
-    bio: row.bio || "",
-    avatar_url: row.avatar_url || "",
-    created_at: row.created_at || null,
-  };
-}
-
-/* =========================
-   GET /users  (People list)
-========================= */
-router.get("/", authenticateToken, async (req, res) => {
-  try {
-    const q = String(req.query.q || "").trim().toLowerCase();
-
-    if (q) {
-      const r = await pool.query(
-        `
-        SELECT id, name, email, created_at, display_name, bio, avatar_url
-        FROM users
-        WHERE
-          LOWER(COALESCE(display_name, '')) LIKE $1
-          OR LOWER(COALESCE(name, '')) LIKE $1
-          OR LOWER(COALESCE(email, '')) LIKE $1
-        ORDER BY id DESC
-        LIMIT 200
-        `,
-        [`%${q}%`]
-      );
-      return res.json(r.rows.map(normalizeUser));
-    }
-
-    const r = await pool.query(
-      `
-      SELECT id, name, email, created_at, display_name, bio, avatar_url
-      FROM users
-      ORDER BY id DESC
-      LIMIT 200
-      `
-    );
-
-    res.json(r.rows.map(normalizeUser));
-  } catch (err) {
-    console.error("GET /users ERROR:", err);
-    res.status(500).json({ error: err.message || "Failed to load users" });
+  if (!token) {
+    return res.status(401).json({ error: "No token provided" });
   }
-});
 
-/* =========================
-   GET /users/me
-========================= */
-router.get("/me", authenticateToken, async (req, res) => {
   try {
-    const userId = getAuthUserId(req);
-    if (!userId) return res.status(401).json({ error: "Unauthorized" });
+    const decoded = jwt.verify(token, JWT_SECRET);
+    req.user = decoded;
+    next();
+  } catch (err) {
+    return res.status(401).json({ error: "Invalid token" });
+  }
+}
 
-    const r = await pool.query(
+/* ============================================================
+   GET MY PROFILE
+   GET /users/me
+============================================================ */
+router.get("/me", authenticate, async (req, res) => {
+  try {
+    const userId = Number(req.user.id);
+
+    const result = await pool.query(
       `
-      SELECT id, name, email, created_at, display_name, bio, avatar_url
+      SELECT
+        id,
+        email,
+        name,
+        username,
+        display_name,
+        bio,
+        location,
+        country,
+        website,
+        avatar_url,
+        cover_url,
+        phone,
+        birthday,
+        gender,
+        is_private,
+        is_verified,
+        created_at,
+        updated_at
       FROM users
       WHERE id = $1
       LIMIT 1
@@ -95,78 +63,131 @@ router.get("/me", authenticateToken, async (req, res) => {
       [userId]
     );
 
-    if (!r.rows.length) return res.status(404).json({ error: "User not found" });
-    res.json(normalizeUser(r.rows[0]));
+    res.json(result.rows[0] || null);
   } catch (err) {
     console.error("GET /users/me ERROR:", err);
-    res.status(500).json({ error: err.message || "Failed to load profile" });
+    res.status(500).json({ error: err.message });
   }
 });
 
-/* =========================
-   PATCH /users/me
-   Update: display_name, bio, avatar_url
-========================= */
-router.patch("/me", authenticateToken, async (req, res) => {
+/* ============================================================
+   UPDATE MY PROFILE
+   PUT /users/me
+============================================================ */
+router.put("/me", authenticate, async (req, res) => {
   try {
-    const userId = getAuthUserId(req);
-    if (!userId) return res.status(401).json({ error: "Unauthorized" });
+    const userId = Number(req.user.id);
 
-    const body = req.body || {};
-    const display_name =
-      body.display_name !== undefined ? String(body.display_name).trim().slice(0, 80) : undefined;
-    const bio =
-      body.bio !== undefined ? String(body.bio).trim().slice(0, 500) : undefined;
-    const avatar_url =
-      body.avatar_url !== undefined ? String(body.avatar_url).trim().slice(0, 500) : undefined;
+    const {
+      username,
+      display_name,
+      bio,
+      location,
+      country,
+      website,
+      avatar_url,
+      cover_url,
+      phone,
+      birthday,
+      gender,
+      is_private
+    } = req.body || {};
 
-    const sets = [];
-    const vals = [];
-    let i = 1;
-
-    if (display_name !== undefined) {
-      sets.push(`display_name = $${i++}`);
-      vals.push(display_name);
-    }
-    if (bio !== undefined) {
-      sets.push(`bio = $${i++}`);
-      vals.push(bio);
-    }
-    if (avatar_url !== undefined) {
-      sets.push(`avatar_url = $${i++}`);
-      vals.push(avatar_url);
-    }
-
-    // If nothing to update, just return current profile
-    if (!sets.length) {
-      const r0 = await pool.query(
-        `
-        SELECT id, name, email, created_at, display_name, bio, avatar_url
-        FROM users
-        WHERE id = $1
-        LIMIT 1
-        `,
-        [userId]
-      );
-      return res.json(normalizeUser(r0.rows[0]));
-    }
-
-    vals.push(userId);
-
-    const r = await pool.query(
+    const result = await pool.query(
       `
       UPDATE users
-      SET ${sets.join(", ")}
-      WHERE id = $${i}
-      RETURNING id, name, email, created_at, display_name, bio, avatar_url
+      SET
+        username = COALESCE($2, username),
+        display_name = COALESCE($3, display_name),
+        bio = COALESCE($4, bio),
+        location = COALESCE($5, location),
+        country = COALESCE($6, country),
+        website = COALESCE($7, website),
+        avatar_url = COALESCE($8, avatar_url),
+        cover_url = COALESCE($9, cover_url),
+        phone = COALESCE($10, phone),
+        birthday = COALESCE($11, birthday),
+        gender = COALESCE($12, gender),
+        is_private = COALESCE($13, is_private),
+        updated_at = NOW()
+      WHERE id = $1
+      RETURNING
+        id,
+        email,
+        name,
+        username,
+        display_name,
+        bio,
+        location,
+        country,
+        website,
+        avatar_url,
+        cover_url,
+        phone,
+        birthday,
+        gender,
+        is_private,
+        is_verified,
+        created_at,
+        updated_at
       `,
-      vals
+      [
+        userId,
+        username,
+        display_name,
+        bio,
+        location,
+        country,
+        website,
+        avatar_url,
+        cover_url,
+        phone,
+        birthday,
+        gender,
+        is_private
+      ]
     );
 
-    res.json(normalizeUser(r.rows[0]));
+    res.json(result.rows[0]);
   } catch (err) {
-    console.error("PATCH /users/me ERROR:", err);
-    res.status(500).json({ error: err.message || "Failed to update profile" });
+    console.error("PUT /users/me ERROR:", err);
+    res.status(500).json({ error: err.message });
+  }
+});
+
+/* ============================================================
+   GET PUBLIC PROFILE
+   GET /users/:id
+============================================================ */
+router.get("/:id", async (req, res) => {
+  try {
+    const id = Number(req.params.id);
+
+    const result = await pool.query(
+      `
+      SELECT
+        id,
+        username,
+        display_name,
+        bio,
+        location,
+        country,
+        website,
+        avatar_url,
+        cover_url,
+        is_verified,
+        created_at
+      FROM users
+      WHERE id = $1
+      LIMIT 1
+      `,
+      [id]
+    );
+
+    res.json(result.rows[0] || null);
+  } catch (err) {
+    console.error("GET /users/:id ERROR:", err);
+    res.status(500).json({ error: err.message });
   }
 });
 
