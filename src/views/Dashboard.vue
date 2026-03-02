@@ -267,7 +267,7 @@
           </article>
         </section>
 
-        <!-- REELS MODE (just a feed mode: videos only) -->
+        <!-- REELS MODE -->
         <section v-else-if="feedMode === 'reels'" class="feed reels">
           <template v-if="loading">
             <div class="state">Loading…</div>
@@ -526,10 +526,12 @@
 import { ref, computed, onMounted, onBeforeUnmount, nextTick, defineComponent, h } from "vue";
 import { useRouter } from "vue-router";
 import Layout from "../components/Layout.vue";
-import { io } from "socket.io-client";
+
+// ✅ IMPORTANT: use your shared socket creator (fixes prod URL issues)
+import { createSocket } from "../api/socket";
 
 const router = useRouter();
-const apiUrl = import.meta.env.VITE_API_URL;
+const apiUrl = (import.meta.env.VITE_API_URL || "").trim();
 const token = localStorage.getItem("token");
 
 const me = (() => {
@@ -538,7 +540,6 @@ const me = (() => {
 
 /* ================== SAFETY: normalize posts (fix “dark/invisible cards”) ================== */
 function normalizePost(p) {
-  // If backend returns {reel, post}, pick the post
   const obj = p?.post && p?.reel ? p.post : p;
   if (!obj || typeof obj !== "object") return null;
 
@@ -562,7 +563,6 @@ function setFeedMode(mode) {
   feedMode.value = mode;
 
   nextTick(() => {
-    // ForYou + Reels use video observer
     if (feedMode.value === "foryou" || feedMode.value === "reels") {
       setupVideoObserver();
       applyMuteToAllVideos();
@@ -570,19 +570,11 @@ function setFeedMode(mode) {
       try { videoObserver?.disconnect(); } catch {}
     }
 
-    // ForYou infinite sentinel only
-    if (feedMode.value === "foryou") {
-      setupLoadMoreObserver();
-    } else {
-      try { loadMoreObserver?.disconnect(); } catch {}
-    }
+    if (feedMode.value === "foryou") setupLoadMoreObserver();
+    else { try { loadMoreObserver?.disconnect(); } catch {} }
 
-    // Reels infinite sentinel only
-    if (feedMode.value === "reels") {
-      setupReelsLoadMoreObserver();
-    } else {
-      try { reelsLoadMoreObserver?.disconnect(); } catch {}
-    }
+    if (feedMode.value === "reels") setupReelsLoadMoreObserver();
+    else { try { reelsLoadMoreObserver?.disconnect(); } catch {} }
   });
 }
 
@@ -594,6 +586,29 @@ const liveStreams = ref([]);
 function isOnline(userId) {
   const id = String(userId);
   return onlinePairs.value.some(([uid]) => String(uid) === id);
+}
+
+function safeRegisterOnline() {
+  if (!socket) return;
+  if (!me?.id) return;
+
+  // ✅ NEW users table still has id/username/display_name, but localStorage user might be old.
+  const username = me?.username || me?.display_name || me?.name || me?.email || `User${me.id}`;
+
+  // ✅ new best event
+  socket.emit("user:online", { userId: String(me.id), username });
+
+  // ✅ old compat event your server supports
+  socket.emit("register-user", { id: String(me.id), username });
+
+  // ✅ join default room for chat
+  socket.emit("join-room", chatRoom.value);
+
+  // ✅ ask for live list (legacy)
+  socket.emit("get-live-list");
+
+  // ✅ ask for presence list (new)
+  socket.emit("presence:get");
 }
 
 /* ================= PEOPLE ================= */
@@ -643,7 +658,7 @@ function startCall(user, kind = "audio") {
   callingToast.value = `Calling ${user.display_name || user.username || "user"}…`;
   pendingRoomId.value = "";
 
-  socket.emit("call:request", { toUserId: user.id, kind });
+  socket.emit("call:request", { toUserId: String(user.id), kind });
 }
 
 function cancelCall() {
@@ -744,7 +759,6 @@ async function submitPost() {
   if (!token) return alert("Login again to post.");
   if (!caption.value.trim() && !imageFile.value && !videoFile.value) return;
 
-  // ✅ Reels tab posts to /reels (and backend also creates /posts)
   if (feedMode.value === "reels") return await submitReel();
 
   try {
@@ -814,7 +828,6 @@ async function submitReel() {
       return;
     }
 
-    // backend should return { reel, post } — we add the post to the main posts feed
     const clean = normalizePost(data?.post || data);
     if (clean) {
       posts.value.unshift(clean);
@@ -848,8 +861,6 @@ const baseFiltered = computed(() => {
 
 const followingPosts = computed(() => baseFiltered.value.slice(0, 40));
 const threadsPosts = computed(() => baseFiltered.value.slice(0, 60));
-
-/* Reels: video-only from posts (so it matches “Also show in For You”) */
 const reelsPosts = computed(() => baseFiltered.value.filter((p) => !!p.video_url));
 
 /* ================= THREADS MEDIA TOGGLE ================= */
@@ -1011,7 +1022,7 @@ async function submitComment(post) {
   }
 }
 
-/* Inline reusable comments component (keeps template clean and consistent) */
+/* Inline reusable comments component */
 const CommentsBlock = defineComponent({
   name: "CommentsBlock",
   props: { post: { type: Object, required: true } },
@@ -1128,6 +1139,7 @@ function joinLive(liveId) { router.push(`/live?mode=watch&liveId=${encodeURIComp
 function logout() {
   localStorage.removeItem("token");
   localStorage.removeItem("user");
+  try { socket?.disconnect(); } catch {}
   router.push("/login");
 }
 
@@ -1172,7 +1184,7 @@ function setupLoadMoreObserver() {
   loadMoreObserver.observe(loadMoreRef.value);
 }
 
-/* ================= REELS Infinite (videos only) ================= */
+/* ================= REELS Infinite ================= */
 const reelsPageSize = ref(8);
 const reelsInfiniteLoading = ref(false);
 const reelsLoadMoreRef = ref(null);
@@ -1206,7 +1218,7 @@ function setupReelsLoadMoreObserver() {
 /* Video autoplay */
 const activePostId = ref(null);
 const globalMuted = ref(true);
-const videoMutedByPost = ref({}); // {postId: true}
+const videoMutedByPost = ref({});
 
 function isVideoMuted(postId) {
   return globalMuted.value || !!videoMutedByPost.value[postId];
@@ -1254,7 +1266,6 @@ function setupVideoObserver() {
       const postId = Number(video.getAttribute("data-post-id") || 0);
       applyMuteToVideo(postId);
 
-      // only play videos in foryou or reels
       if (feedMode.value !== "foryou" && feedMode.value !== "reels") {
         try { video.pause(); } catch {}
         continue;
@@ -1279,12 +1290,16 @@ onMounted(async () => {
   await fetchPosts();
   if (token) await fetchPeople();
 
-  socket = io(apiUrl, { transports: ["websocket", "polling"] });
+  // ✅ connect with correct server URL + token auth
+  socket = createSocket();
 
   socket.on("connect", () => {
-    if (me?.id) socket.emit("register-user", { id: me.id, username: me.username });
-    socket.emit("join-room", chatRoom.value);
-    socket.emit("get-live-list");
+    safeRegisterOnline();
+  });
+
+  // ✅ reconnect safety (presence + live list comes back)
+  socket.io?.on?.("reconnect", () => {
+    safeRegisterOnline();
   });
 
   socket.on("receive-message", (msg) => {
@@ -1292,17 +1307,42 @@ onMounted(async () => {
     nextTick(scrollChatToBottom);
   });
 
-  socket.on("live-list", (streams) => { liveStreams.value = Array.isArray(streams) ? streams : []; });
-  socket.on("online-users", (pairs) => { onlinePairs.value = Array.isArray(pairs) ? pairs : []; });
-
-  socket.on("call:ringing", ({ roomId, kind }) => {
-    pendingRoomId.value = roomId;
-    callingToast.value = `Calling… (${kind || pendingKind.value})`;
-    router.push(`/call?roomId=${encodeURIComponent(roomId)}&role=caller&kind=${encodeURIComponent(kind || pendingKind.value)}`);
+  // ✅ Live list from server
+  socket.on("live-list", (streams) => {
+    liveStreams.value = Array.isArray(streams) ? streams : [];
   });
 
-  socket.on("call:incoming", (p) => { incomingCall.value = p; });
-  socket.on("call:accepted", () => { callingToast.value = ""; callBusy.value = false; });
+  // ✅ Presence list (new)
+  socket.on("presence:list", ({ onlineUserIds } = {}) => {
+    if (!Array.isArray(onlineUserIds)) return;
+    // convert to legacy pairs format so isOnline() still works
+    onlinePairs.value = onlineUserIds.map((id) => [String(id), ""]);
+  });
+
+  // ✅ Legacy presence list (your server emits this)
+  socket.on("online-users", (pairs) => {
+    onlinePairs.value = Array.isArray(pairs) ? pairs : [];
+  });
+
+  // ✅ Call handling
+  socket.on("call:ringing", ({ roomId, kind }) => {
+    pendingRoomId.value = String(roomId || "");
+    callingToast.value = `Calling… (${kind || pendingKind.value})`;
+
+    // move to call page after we have roomId
+    if (pendingRoomId.value) {
+      router.push(`/call?roomId=${encodeURIComponent(pendingRoomId.value)}&role=caller&kind=${encodeURIComponent(kind || pendingKind.value)}`);
+    }
+  });
+
+  socket.on("call:incoming", (p) => {
+    incomingCall.value = p || null;
+  });
+
+  socket.on("call:accepted", () => {
+    callingToast.value = "";
+    callBusy.value = false;
+  });
 
   socket.on("call:ended", () => {
     callingToast.value = "";
@@ -1319,6 +1359,7 @@ onMounted(async () => {
     alert(message || "Call error");
   });
 
+  // ✅ ensure first paint observers
   await nextTick();
   if (feedMode.value === "foryou") {
     setupLoadMoreObserver();
@@ -1340,6 +1381,7 @@ onBeforeUnmount(() => {
 });
 </script>
 
+<!-- ✅ keep your exact same CSS -->
 <style scoped>
 /* ✅ Remove left menu/sidebar coming from Layout.vue (no Layout edits needed) */
 :deep(.sidebar),
