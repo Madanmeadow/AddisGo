@@ -1,172 +1,295 @@
 // server/routes/users.routes.js
 import express from "express";
+import bcrypt from "bcrypt";
+import jwt from "jsonwebtoken";
 import { pool } from "../db.js";
 import { authenticateToken } from "../middleware/auth.middleware.js";
 
 const router = express.Router();
 
 /* =========================
-   helpers
+   HELPERS
 ========================= */
-function getAuthUserId(req) {
-  // Support multiple JWT payload styles
-  return (
-    req.user?.id ||
-    req.user?.userId ||
-    req.user?.user_id ||
-    req.user?.sub ||
-    null
+function signToken(user) {
+  return jwt.sign(
+    { id: user.id, email: user.email, username: user.username, display_name: user.display_name },
+    process.env.JWT_SECRET,
+    { expiresIn: "7d" }
   );
 }
 
-function normalizeUser(row) {
-  if (!row) return null;
-  const baseName =
-    row.display_name ||
-    row.name ||
-    (row.email ? row.email.split("@")[0] : `User${row.id}`);
-
+function safeUserRow(u) {
+  if (!u) return null;
   return {
-    id: row.id,
-    email: row.email || null,
-    username: baseName, // keep UI compatibility
-    display_name: row.display_name || baseName,
-    bio: row.bio || "",
-    avatar_url: row.avatar_url || "",
-    created_at: row.created_at || null,
+    id: u.id,
+    name: u.name ?? null,
+    email: u.email ?? null,
+    username: u.username ?? null,
+    display_name: u.display_name ?? u.name ?? null,
+    bio: u.bio ?? null,
+    avatar_url: u.avatar_url ?? null,
+    phone: u.phone ?? null,
+    location: u.location ?? null,
+    country: u.country ?? null,
+    website: u.website ?? null,
+    cover_url: u.cover_url ?? null,
+    birthday: u.birthday ?? null,
+    gender: u.gender ?? null,
+    is_private: !!u.is_private,
+    is_verified: !!u.is_verified,
+    last_seen: u.last_seen ?? null,
+    created_at: u.created_at ?? null,
+    updated_at: u.updated_at ?? null,
   };
 }
 
 /* =========================
-   GET /users  (People list)
+   AUTH: REGISTER
+========================= */
+router.post("/register", async (req, res) => {
+  try {
+    const { name, email, password, username, display_name } = req.body || {};
+
+    if (!email || !password) {
+      return res.status(400).json({ error: "email and password are required" });
+    }
+
+    const emailNorm = String(email).trim().toLowerCase();
+    const nameNorm = String(name || "").trim();
+    const usernameNorm = String(username || "").trim() || null;
+    const displayNorm = String(display_name || "").trim() || nameNorm || usernameNorm || emailNorm.split("@")[0];
+
+    const exists = await pool.query(`SELECT id FROM users WHERE email = $1`, [emailNorm]);
+    if (exists.rows.length) return res.status(409).json({ error: "Email already registered" });
+
+    if (usernameNorm) {
+      const uex = await pool.query(`SELECT id FROM users WHERE lower(username) = lower($1)`, [usernameNorm]);
+      if (uex.rows.length) return res.status(409).json({ error: "Username already taken" });
+    }
+
+    const hash = await bcrypt.hash(String(password), 10);
+
+    const result = await pool.query(
+      `
+      INSERT INTO users (name, email, password, username, display_name)
+      VALUES ($1, $2, $3, $4, $5)
+      RETURNING
+        id, name, email, created_at,
+        username, display_name,
+        bio, avatar_url, phone, location, country, website, cover_url, birthday, gender,
+        is_private, is_verified, last_seen, updated_at
+      `,
+      [nameNorm || displayNorm, emailNorm, hash, usernameNorm, displayNorm]
+    );
+
+    const user = result.rows[0];
+    const token = signToken(user);
+
+    return res.json({ token, user: safeUserRow(user) });
+  } catch (err) {
+    console.error("POST /users/register ERROR:", err);
+    return res.status(500).json({ error: err.message });
+  }
+});
+
+/* =========================
+   AUTH: LOGIN
+========================= */
+router.post("/login", async (req, res) => {
+  try {
+    const { email, password } = req.body || {};
+    if (!email || !password) return res.status(400).json({ error: "email and password are required" });
+
+    const emailNorm = String(email).trim().toLowerCase();
+    const found = await pool.query(
+      `
+      SELECT
+        id, name, email, password, created_at,
+        username, display_name,
+        bio, avatar_url, phone, location, country, website, cover_url, birthday, gender,
+        is_private, is_verified, last_seen, updated_at
+      FROM users
+      WHERE email = $1
+      `,
+      [emailNorm]
+    );
+
+    if (!found.rows.length) return res.status(401).json({ error: "Invalid credentials" });
+
+    const user = found.rows[0];
+    const ok = await bcrypt.compare(String(password), user.password);
+    if (!ok) return res.status(401).json({ error: "Invalid credentials" });
+
+    const token = signToken(user);
+    return res.json({ token, user: safeUserRow(user) });
+  } catch (err) {
+    console.error("POST /users/login ERROR:", err);
+    return res.status(500).json({ error: err.message });
+  }
+});
+
+/* =========================
+   GET ME (PROFILE HEADER)
+========================= */
+router.get("/me", authenticateToken, async (req, res) => {
+  try {
+    const result = await pool.query(
+      `
+      SELECT
+        id, name, email, created_at,
+        username, display_name,
+        bio, avatar_url, phone, location, country, website, cover_url, birthday, gender,
+        is_private, is_verified, last_seen, updated_at
+      FROM users
+      WHERE id = $1
+      `,
+      [req.user.id]
+    );
+
+    if (!result.rows.length) return res.status(404).json({ error: "User not found" });
+    return res.json(safeUserRow(result.rows[0]));
+  } catch (err) {
+    console.error("GET /users/me ERROR:", err);
+    return res.status(500).json({ error: err.message });
+  }
+});
+
+/* =========================
+   UPDATE ME (EDIT PROFILE)
+   ✅ This makes Email/Location/Bio etc editable
+========================= */
+router.put("/me", authenticateToken, async (req, res) => {
+  try {
+    const {
+      display_name,
+      username,
+      bio,
+      avatar_url,
+      phone,
+      location,
+      country,
+      website,
+      cover_url,
+      birthday,
+      gender,
+      is_private,
+    } = req.body || {};
+
+    // username uniqueness (if changing)
+    if (username) {
+      const uex = await pool.query(
+        `SELECT id FROM users WHERE lower(username)=lower($1) AND id <> $2`,
+        [String(username).trim(), req.user.id]
+      );
+      if (uex.rows.length) return res.status(409).json({ error: "Username already taken" });
+    }
+
+    const result = await pool.query(
+      `
+      UPDATE users SET
+        display_name = COALESCE($1, display_name),
+        username     = COALESCE($2, username),
+        bio          = COALESCE($3, bio),
+        avatar_url   = COALESCE($4, avatar_url),
+        phone        = COALESCE($5, phone),
+        location     = COALESCE($6, location),
+        country      = COALESCE($7, country),
+        website      = COALESCE($8, website),
+        cover_url    = COALESCE($9, cover_url),
+        birthday     = COALESCE($10, birthday),
+        gender       = COALESCE($11, gender),
+        is_private   = COALESCE($12, is_private),
+        updated_at   = now()
+      WHERE id = $13
+      RETURNING
+        id, name, email, created_at,
+        username, display_name,
+        bio, avatar_url, phone, location, country, website, cover_url, birthday, gender,
+        is_private, is_verified, last_seen, updated_at
+      `,
+      [
+        display_name ?? null,
+        username ?? null,
+        bio ?? null,
+        avatar_url ?? null,
+        phone ?? null,
+        location ?? null,
+        country ?? null,
+        website ?? null,
+        cover_url ?? null,
+        birthday ?? null,
+        gender ?? null,
+        typeof is_private === "boolean" ? is_private : null,
+        req.user.id,
+      ]
+    );
+
+    return res.json(safeUserRow(result.rows[0]));
+  } catch (err) {
+    console.error("PUT /users/me ERROR:", err);
+    return res.status(500).json({ error: err.message });
+  }
+});
+
+/* =========================
+   USERS LIST (PEOPLE)
+   ✅ fixes your 404 /users
 ========================= */
 router.get("/", authenticateToken, async (req, res) => {
   try {
-    const q = String(req.query.q || "").trim().toLowerCase();
-
-    if (q) {
-      const r = await pool.query(
-        `
-        SELECT id, name, email, created_at, display_name, bio, avatar_url
-        FROM users
-        WHERE
-          LOWER(COALESCE(display_name, '')) LIKE $1
-          OR LOWER(COALESCE(name, '')) LIKE $1
-          OR LOWER(COALESCE(email, '')) LIKE $1
-        ORDER BY id DESC
-        LIMIT 200
-        `,
-        [`%${q}%`]
-      );
-      return res.json(r.rows.map(normalizeUser));
-    }
-
-    const r = await pool.query(
+    const result = await pool.query(
       `
-      SELECT id, name, email, created_at, display_name, bio, avatar_url
+      SELECT
+        id,
+        username,
+        display_name,
+        avatar_url,
+        bio,
+        location,
+        country,
+        is_private,
+        is_verified,
+        last_seen,
+        created_at
       FROM users
-      ORDER BY id DESC
+      ORDER BY created_at DESC
       LIMIT 200
       `
     );
 
-    res.json(r.rows.map(normalizeUser));
+    return res.json(result.rows.map(safeUserRow));
   } catch (err) {
     console.error("GET /users ERROR:", err);
-    res.status(500).json({ error: err.message || "Failed to load users" });
+    return res.status(500).json({ error: err.message });
   }
 });
 
 /* =========================
-   GET /users/me
+   USER BY ID (PROFILE PAGE)
 ========================= */
-router.get("/me", authenticateToken, async (req, res) => {
+router.get("/:id", authenticateToken, async (req, res) => {
   try {
-    const userId = getAuthUserId(req);
-    if (!userId) return res.status(401).json({ error: "Unauthorized" });
+    const id = Number(req.params.id);
+    if (!id) return res.status(400).json({ error: "Invalid user id" });
 
-    const r = await pool.query(
+    const result = await pool.query(
       `
-      SELECT id, name, email, created_at, display_name, bio, avatar_url
+      SELECT
+        id, name, email, created_at,
+        username, display_name,
+        bio, avatar_url, phone, location, country, website, cover_url, birthday, gender,
+        is_private, is_verified, last_seen, updated_at
       FROM users
       WHERE id = $1
-      LIMIT 1
       `,
-      [userId]
+      [id]
     );
 
-    if (!r.rows.length) return res.status(404).json({ error: "User not found" });
-    res.json(normalizeUser(r.rows[0]));
+    if (!result.rows.length) return res.status(404).json({ error: "User not found" });
+    return res.json(safeUserRow(result.rows[0]));
   } catch (err) {
-    console.error("GET /users/me ERROR:", err);
-    res.status(500).json({ error: err.message || "Failed to load profile" });
-  }
-});
-
-/* =========================
-   PATCH /users/me
-   Update: display_name, bio, avatar_url
-========================= */
-router.patch("/me", authenticateToken, async (req, res) => {
-  try {
-    const userId = getAuthUserId(req);
-    if (!userId) return res.status(401).json({ error: "Unauthorized" });
-
-    const body = req.body || {};
-    const display_name =
-      body.display_name !== undefined ? String(body.display_name).trim().slice(0, 80) : undefined;
-    const bio =
-      body.bio !== undefined ? String(body.bio).trim().slice(0, 500) : undefined;
-    const avatar_url =
-      body.avatar_url !== undefined ? String(body.avatar_url).trim().slice(0, 500) : undefined;
-
-    const sets = [];
-    const vals = [];
-    let i = 1;
-
-    if (display_name !== undefined) {
-      sets.push(`display_name = $${i++}`);
-      vals.push(display_name);
-    }
-    if (bio !== undefined) {
-      sets.push(`bio = $${i++}`);
-      vals.push(bio);
-    }
-    if (avatar_url !== undefined) {
-      sets.push(`avatar_url = $${i++}`);
-      vals.push(avatar_url);
-    }
-
-    // If nothing to update, just return current profile
-    if (!sets.length) {
-      const r0 = await pool.query(
-        `
-        SELECT id, name, email, created_at, display_name, bio, avatar_url
-        FROM users
-        WHERE id = $1
-        LIMIT 1
-        `,
-        [userId]
-      );
-      return res.json(normalizeUser(r0.rows[0]));
-    }
-
-    vals.push(userId);
-
-    const r = await pool.query(
-      `
-      UPDATE users
-      SET ${sets.join(", ")}
-      WHERE id = $${i}
-      RETURNING id, name, email, created_at, display_name, bio, avatar_url
-      `,
-      vals
-    );
-
-    res.json(normalizeUser(r.rows[0]));
-  } catch (err) {
-    console.error("PATCH /users/me ERROR:", err);
-    res.status(500).json({ error: err.message || "Failed to update profile" });
+    console.error("GET /users/:id ERROR:", err);
+    return res.status(500).json({ error: err.message });
   }
 });
 
