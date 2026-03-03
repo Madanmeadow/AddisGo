@@ -11,13 +11,37 @@
           <div class="pill">
             <span class="dot on"></span>
             <span class="t">LIVE</span>
-            <span class="s">{{ modeLabel }} • {{ liveId }}</span>
+            <span class="s">{{ mode.toUpperCase() }} • {{ liveId }}</span>
           </div>
 
-          <div class="pill tinyPill">👀 {{ viewerCount }} watching</div>
+          <div class="watchers" v-if="viewerCount > 0">
+            👀 {{ viewerCount }} watching
+          </div>
         </div>
 
         <div class="right">
+          <!-- Watcher mic tools -->
+          <button
+            v-if="mode === 'watch'"
+            class="chip ghost"
+            @click="toggleWatcherMic"
+            :disabled="micRequestPending"
+            title="Enable/disable your mic (only if host approves)"
+          >
+            {{ watcherMicEnabled ? "🎙️ Mic On" : "🔇 Mic" }}
+          </button>
+
+          <button
+            v-if="mode === 'watch'"
+            class="chip ghost"
+            @click="requestMic"
+            :disabled="micRequestPending"
+            title="Ask host to let you speak"
+          >
+            {{ micRequestPending ? "⏳ Requested" : "🎤 Request Mic" }}
+          </button>
+
+          <!-- Host controls -->
           <button class="chip ghost" @click="toggleMute">
             {{ muted ? "🔇 Muted" : "🎙️ Mic" }}
           </button>
@@ -26,24 +50,17 @@
             {{ cameraOff ? "📷 Off" : "📹 Cam" }}
           </button>
 
-          <!-- Viewer mic request -->
-          <button
-            v-if="mode === 'watch'"
-            class="chip ghost"
-            :disabled="micRequestPending || canSpeak"
-            @click="requestMic"
-            title="Ask host to allow you to speak"
-          >
-            {{ canSpeak ? "✅ Mic Allowed" : (micRequestPending ? "⏳ Requested" : "🎙️ Request Mic") }}
-          </button>
-
           <button class="chip ghost" @click="toggleChat">{{ chatOpen ? "Hide Chat" : "Chat" }}</button>
 
-          <button class="chip ghost" @click="hardReconnect">♻️ Reconnect</button>
-
-          <button class="chip danger" @click="endLive">
-            {{ mode === "host" ? "End Live" : "Leave" }}
+          <button
+            class="chip ghost ok"
+            v-if="status === 'failed' || status === 'connecting'"
+            @click="reconnectNow"
+          >
+            ♻️ Reconnect
           </button>
+
+          <button class="chip danger" @click="endLive">{{ mode === "host" ? "End Live" : "Leave" }}</button>
         </div>
       </header>
 
@@ -51,11 +68,9 @@
         <section class="playerCard">
           <div class="playerTop">
             <div class="title">🔴 AddisGo Live</div>
-
             <div class="meta">
               <span class="tag">{{ mode === "host" ? "HOSTING" : "WATCHING" }}</span>
               <span class="small muted">{{ statusLabel }}</span>
-              <span v-if="canSpeak" class="tag speakTag">🎙️ You can speak</span>
             </div>
 
             <div class="actions">
@@ -67,12 +82,34 @@
             <video ref="videoEl" class="video" autoplay playsinline :muted="mode === 'host'"></video>
 
             <div v-if="overlayTip" class="overlayTip">
-              {{ overlayTip }}
-              <button class="chip mini ghost" @click="overlayTip = ''">OK</button>
+              <div class="overlayText">{{ overlayTip }}</div>
+              <div class="overlayBtns">
+                <button class="chip mini ghost" @click="overlayTip = ''">OK</button>
+                <button class="chip mini ghost ok" v-if="status === 'failed' || status === 'connecting'" @click="reconnectNow">
+                  Reconnect
+                </button>
+              </div>
             </div>
           </div>
 
           <div v-if="error" class="alert">{{ error }}</div>
+
+          <!-- HOST: mic requests -->
+          <div v-if="mode === 'host' && micRequests.length" class="micPanel">
+            <div class="micTitle">🎤 Mic Requests</div>
+            <div class="micReq" v-for="r in micRequests" :key="r.reqId">
+              <div class="micWho">
+                {{ r.fromName || ("User #" + (r.fromUserId || "?")) }}
+              </div>
+              <div class="micBtns">
+                <button class="chip mini ghost" @click="denyMic(r)">Deny</button>
+                <button class="chip mini ok" @click="approveMic(r)">Allow</button>
+              </div>
+            </div>
+            <div class="micHint">
+              If your server doesn’t relay <code>live:mic:*</code> events yet, mic-requests will show but won’t connect audio.
+            </div>
+          </div>
         </section>
 
         <aside class="chat" :class="{ open: chatOpen }">
@@ -81,38 +118,13 @@
             <button class="chip mini ghost" @click="toggleChat">✕</button>
           </div>
 
-          <!-- Host mic requests panel -->
-          <div v-if="mode === 'host' && micRequests.length" class="micPanel">
-            <div class="micTitle">🎙️ Mic Requests</div>
-
-            <div class="micReq" v-for="r in micRequests" :key="r.fromUserId">
-              <div class="micReqLeft">
-                <div class="micReqName">{{ r.fromName || ("User #" + r.fromUserId) }}</div>
-                <div class="micReqSub">ID {{ r.fromUserId }}</div>
-              </div>
-
-              <div class="micReqActions">
-                <button class="chip mini ghost" @click="denyMic(r.fromUserId)">Deny</button>
-                <button class="chip mini" @click="approveMic(r.fromUserId)">Approve</button>
-              </div>
-            </div>
-          </div>
-
-          <!-- Speakers list -->
-          <div v-if="speakerUserIds.length" class="micPanel">
-            <div class="micTitle">🎧 Speakers</div>
-            <div class="speakers">
-              <span class="speaker" v-for="id in speakerUserIds" :key="id">🎙️ {{ id }}</span>
-            </div>
-          </div>
-
           <div class="chatBody" ref="chatBoxRef">
             <div v-for="(m, i) in messages" :key="i" class="msg">
               <div class="msgTop">
-                <span class="who">{{ m.from?.username || m.from || "user" }}</span>
-                <span class="time">{{ m.at ? formatDate(m.at) : (m.created_at ? formatDate(m.created_at) : "") }}</span>
+                <span class="who">{{ m.from }}</span>
+                <span class="time">{{ m.created_at ? formatDate(m.created_at) : "" }}</span>
               </div>
-              <div class="text">{{ m.message || m.text }}</div>
+              <div class="text">{{ m.text }}</div>
             </div>
           </div>
 
@@ -132,7 +144,35 @@ import { useRoute, useRouter } from "vue-router";
 import Layout from "../components/Layout.vue";
 import { io } from "socket.io-client";
 
+/**
+ * ✅ Event names:
+ * Keep your existing live system working, but add extra optional events.
+ * If server ignores unknown events, everything still works.
+ */
+const EVT = {
+  join: "live:join",           // { liveId, mode }
+  leave: "live:leave",         // { liveId }
+  watcher: "live:watcher",     // -> host { watcherId, name?, userId? }
+  offer: "live:offer",         // host -> watcher { liveId, to, sdp }
+  answer: "live:answer",       // watcher -> host { liveId, to:'host', sdp }
+  ice: "live:ice",             // both ways { liveId, to?, candidate }
+
+  chat: "live:chat",           // both ways { liveId, from, text, created_at }
+
+  // optional viewer count (server can emit any of these)
+  viewers: "live:viewers",
+  viewerCount: "live:viewerCount",
+
+  // mic request (optional)
+  micRequest: "live:mic:request",  // watcher -> host { liveId, reqId, fromUserId, fromName }
+  micGrant: "live:mic:grant",      // host -> watcher { liveId, reqId, allowed:true/false }
+  micOffer: "live:mic:offer",      // watcher -> host { liveId, sdp }
+  micAnswer: "live:mic:answer",    // host -> watcher { liveId, sdp }
+  micIce: "live:mic:ice",          // both { liveId, candidate }
+};
+
 const apiUrl = import.meta.env.VITE_API_URL;
+
 const route = useRoute();
 const router = useRouter();
 
@@ -143,12 +183,11 @@ const me = (() => {
   try { return JSON.parse(localStorage.getItem("user") || "null"); } catch { return null; }
 })();
 
-const modeLabel = computed(() => (mode === "host" ? "HOST" : "WATCH"));
-
-const status = ref("connecting"); // connecting | live | ended
+const status = ref("connecting"); // connecting | live | ended | failed
 const statusLabel = computed(() => {
   if (status.value === "live") return "Streaming";
   if (status.value === "ended") return "Ended";
+  if (status.value === "failed") return "Connection failed";
   return "Connecting…";
 });
 
@@ -160,10 +199,10 @@ const videoEl = ref(null);
 let socket = null;
 let localStream = null;
 
-// host: watcherSocketId -> pc
+// host: many peer connections (watcherId -> pc)
 const peers = new Map();
 
-// watch: single pc
+// watch: one peer connection
 let watchPc = null;
 
 const muted = ref(false);
@@ -176,11 +215,15 @@ const chatBoxRef = ref(null);
 
 const viewerCount = ref(0);
 
-/* mic request */
-const canSpeak = ref(false);
+// watcher mic request feature
 const micRequestPending = ref(false);
-const micRequests = ref([]); // host only
-const speakerUserIds = ref([]);
+const watcherMicEnabled = ref(false);
+let watcherMicStream = null;
+
+// host mic requests list
+const micRequests = ref([]); // [{reqId, fromUserId, fromName, watcherId?}]
+let micUplinkPcWatcher = null; // watcher -> host uplink pc
+let micDownlinkPcHost = null;  // host receives uplink
 
 function formatDate(d) {
   try {
@@ -234,7 +277,15 @@ async function toggleFullscreen() {
   try {
     if (document.fullscreenElement) await document.exitFullscreen();
     else await el.requestFullscreen();
-  } catch {}
+  } catch {
+    // iOS Safari sometimes uses native fullscreen
+  }
+}
+
+function endLive() {
+  status.value = "ended";
+  cleanup();
+  router.push("/dashboard");
 }
 
 /* =========================
@@ -253,62 +304,72 @@ async function getHostMedia() {
   } catch {
     error.value = "Camera/Mic blocked. Allow permissions then retry.";
     overlayTip.value = "Allow Camera & Microphone permissions to host live.";
+    status.value = "failed";
   }
 }
 
 /* =========================
-   WebRTC (relay events)
-   Uses: webrtc:offer, webrtc:answer, webrtc:ice
+   WebRTC helpers
 ========================= */
-async function makePC() {
+function makePC() {
   return new RTCPeerConnection({
-    iceServers: [{ urls: "stun:stun.l.google.com:19302" }],
+    iceServers: [
+      { urls: "stun:stun.l.google.com:19302" },
+      { urls: "stun:stun1.l.google.com:19302" },
+      { urls: "stun:stun2.l.google.com:19302" },
+    ],
   });
 }
 
-/* HOST: viewer joined -> create offer */
-async function hostCreateOffer(viewerSocketId) {
-  if (!localStream) return;
-  const pc = await makePC();
-  peers.set(viewerSocketId, pc);
+function setFailed(msg = "Connection failed. Tap Reconnect.") {
+  status.value = "failed";
+  overlayTip.value = msg;
+}
 
+/* HOST: create offer per watcher */
+async function hostCreateOfferForWatcher(watcherId) {
+  if (!localStream) return;
+
+  const pc = makePC();
+  peers.set(watcherId, pc);
+
+  // add tracks
   localStream.getTracks().forEach((t) => pc.addTrack(t, localStream));
 
   pc.onicecandidate = (e) => {
-    if (e.candidate) socket?.emit("webrtc:ice", { liveId, to: viewerSocketId, candidate: e.candidate });
+    if (e.candidate) {
+      socket?.emit(EVT.ice, { liveId, to: watcherId, role: "host", candidate: e.candidate });
+    }
   };
 
   pc.onconnectionstatechange = () => {
     const st = pc.connectionState;
-    if (st === "failed" || st === "closed" || st === "disconnected") {
-      try { pc.close(); } catch {}
-      peers.delete(viewerSocketId);
-    }
+    if (st === "failed") setFailed("Connection failed. Tap Reconnect.");
   };
 
   const offer = await pc.createOffer();
   await pc.setLocalDescription(offer);
 
-  socket?.emit("webrtc:offer", { liveId, to: viewerSocketId, offer });
+  socket?.emit(EVT.offer, { liveId, to: watcherId, role: "host", sdp: offer });
 }
 
-/* HOST: receive answer */
-async function hostAcceptAnswer(fromSocketId, answer) {
-  const pc = peers.get(fromSocketId);
-  if (!pc || !answer) return;
-  await pc.setRemoteDescription(new RTCSessionDescription(answer));
+/* HOST: accept answer from watcher */
+async function hostAcceptAnswer(fromWatcherId, sdp) {
+  const pc = peers.get(fromWatcherId);
+  if (!pc) return;
+  await pc.setRemoteDescription(new RTCSessionDescription(sdp));
 }
 
-/* HOST: add ICE */
-async function hostAddIce(fromSocketId, candidate) {
-  const pc = peers.get(fromSocketId);
+/* HOST: add ice from watcher */
+async function hostAddIce(fromWatcherId, candidate) {
+  const pc = peers.get(fromWatcherId);
   if (!pc || !candidate) return;
   try { await pc.addIceCandidate(new RTCIceCandidate(candidate)); } catch {}
 }
 
-/* WATCH: setup pc */
+/* WATCH: join + receive offer -> answer */
 async function watchSetupPC() {
-  watchPc = await makePC();
+  watchPc = makePC();
 
   watchPc.ontrack = (e) => {
     const [stream] = e.streams || [];
@@ -316,25 +377,28 @@ async function watchSetupPC() {
       videoEl.value.srcObject = stream;
       videoEl.value.play().catch(() => {});
       status.value = "live";
+      overlayTip.value = "";
     }
   };
 
   watchPc.onicecandidate = (e) => {
-    if (e.candidate) socket?.emit("webrtc:ice", { liveId, candidate: e.candidate });
+    if (e.candidate) {
+      socket?.emit(EVT.ice, { liveId, to: "host", role: "watch", candidate: e.candidate });
+    }
   };
 
   watchPc.onconnectionstatechange = () => {
     const st = watchPc?.connectionState;
-    if (st === "failed") overlayTip.value = "Connection failed. Tap Reconnect.";
+    if (st === "failed") setFailed("Connection failed. Tap Reconnect.");
   };
 }
 
-async function watchHandleOffer(offer) {
+async function watchHandleOffer(sdp, fromWatcherIdMaybe) {
   if (!watchPc) await watchSetupPC();
-  await watchPc.setRemoteDescription(new RTCSessionDescription(offer));
+  await watchPc.setRemoteDescription(new RTCSessionDescription(sdp));
   const answer = await watchPc.createAnswer();
   await watchPc.setLocalDescription(answer);
-  socket?.emit("webrtc:answer", { liveId, answer });
+  socket?.emit(EVT.answer, { liveId, to: "host", role: "watch", sdp: answer, from: fromWatcherIdMaybe });
 }
 
 async function watchAddIce(candidate) {
@@ -344,47 +408,327 @@ async function watchAddIce(candidate) {
 }
 
 /* =========================
+   Mic request feature (optional)
+   - Viewer requests mic -> host approves -> viewer creates audio-only uplink
+   - Requires server to relay EVT.mic* events
+========================= */
+async function toggleWatcherMic() {
+  watcherMicEnabled.value = !watcherMicEnabled.value;
+  // we only actually send audio if host grants
+  if (!watcherMicEnabled.value) {
+    safeStopTracks(watcherMicStream);
+    watcherMicStream = null;
+  }
+}
+
+async function requestMic() {
+  if (mode !== "watch") return;
+  if (!socket) return;
+
+  micRequestPending.value = true;
+  const reqId = `${Date.now()}-${Math.random().toString(16).slice(2)}`;
+
+  socket.emit(EVT.micRequest, {
+    liveId,
+    reqId,
+    fromUserId: me?.id || null,
+    fromName: me?.username || "viewer",
+  });
+
+  overlayTip.value = "Mic requested. Waiting for host approval…";
+
+  // failsafe if server doesn’t support
+  setTimeout(() => {
+    if (micRequestPending.value) {
+      overlayTip.value = "If nothing happens: your server may not relay mic-request events yet.";
+    }
+  }, 3500);
+}
+
+/* HOST: approve/deny mic */
+function approveMic(r) {
+  socket?.emit(EVT.micGrant, { liveId, reqId: r.reqId, allowed: true, toUserId: r.fromUserId });
+  micRequests.value = micRequests.value.filter((x) => x.reqId !== r.reqId);
+}
+function denyMic(r) {
+  socket?.emit(EVT.micGrant, { liveId, reqId: r.reqId, allowed: false, toUserId: r.fromUserId });
+  micRequests.value = micRequests.value.filter((x) => x.reqId !== r.reqId);
+}
+
+/* WATCH: build uplink audio to host after grant */
+async function watcherStartMicUplink() {
+  if (!watcherMicEnabled.value) watcherMicEnabled.value = true;
+
+  if (!watcherMicStream) {
+    watcherMicStream = await navigator.mediaDevices.getUserMedia({ audio: true, video: false });
+  }
+
+  micUplinkPcWatcher = makePC();
+  watcherMicStream.getTracks().forEach((t) => micUplinkPcWatcher.addTrack(t, watcherMicStream));
+
+  micUplinkPcWatcher.onicecandidate = (e) => {
+    if (e.candidate) socket?.emit(EVT.micIce, { liveId, role: "watch", candidate: e.candidate });
+  };
+
+  const offer = await micUplinkPcWatcher.createOffer();
+  await micUplinkPcWatcher.setLocalDescription(offer);
+  socket?.emit(EVT.micOffer, { liveId, sdp: offer });
+}
+
+/* HOST: receive mic uplink offer */
+async function hostHandleMicOffer(sdp) {
+  micDownlinkPcHost = makePC();
+  micDownlinkPcHost.onicecandidate = (e) => {
+    if (e.candidate) socket?.emit(EVT.micIce, { liveId, role: "host", candidate: e.candidate });
+  };
+
+  // When host receives viewer audio, we can optionally play it locally
+  micDownlinkPcHost.ontrack = (e) => {
+    // optional: play remote mic audio quietly (debug)
+    // const a = new Audio();
+    // a.srcObject = e.streams[0];
+    // a.play().catch(()=>{});
+  };
+
+  await micDownlinkPcHost.setRemoteDescription(new RTCSessionDescription(sdp));
+  const answer = await micDownlinkPcHost.createAnswer();
+  await micDownlinkPcHost.setLocalDescription(answer);
+  socket?.emit(EVT.micAnswer, { liveId, sdp: answer });
+}
+
+/* WATCH: complete mic uplink handshake */
+async function watcherHandleMicAnswer(sdp) {
+  if (!micUplinkPcWatcher) return;
+  await micUplinkPcWatcher.setRemoteDescription(new RTCSessionDescription(sdp));
+}
+
+/* mic ICE */
+async function handleMicIce(role, candidate) {
+  try {
+    if (role === "host") {
+      // host sending ICE -> watcher applies on watcher pc
+      if (micUplinkPcWatcher && candidate) await micUplinkPcWatcher.addIceCandidate(new RTCIceCandidate(candidate));
+    } else {
+      // watcher sending ICE -> host applies on host pc
+      if (micDownlinkPcHost && candidate) await micDownlinkPcHost.addIceCandidate(new RTCIceCandidate(candidate));
+    }
+  } catch {}
+}
+
+/* =========================
    Chat
 ========================= */
 function sendMessage() {
   const text = chatText.value.trim();
   if (!text) return;
-  socket?.emit("live:chat", { liveId, message: text });
+  const payload = { liveId, from: me?.username || "me", text, created_at: new Date().toISOString() };
+  socket?.emit(EVT.chat, payload);
   chatText.value = "";
 }
 
 /* =========================
-   Mic request
+   Reconnect logic
 ========================= */
-function requestMic() {
-  if (!socket) return;
-  micRequestPending.value = true;
-  socket.emit("live:mic:request", { liveId });
-  overlayTip.value = "Mic request sent to host.";
+let reconnectTimer = null;
+
+function clearReconnectTimer() {
+  try { if (reconnectTimer) clearTimeout(reconnectTimer); } catch {}
+  reconnectTimer = null;
 }
 
-function approveMic(userId) {
-  socket?.emit("live:mic:approve", { liveId, userId });
-  micRequests.value = micRequests.value.filter((r) => String(r.fromUserId) !== String(userId));
+async function reconnectNow() {
+  clearReconnectTimer();
+  overlayTip.value = "Reconnecting…";
+  status.value = "connecting";
+
+  // close all webrtc
+  try {
+    peers.forEach((pc) => { try { pc.close(); } catch {} });
+    peers.clear();
+  } catch {}
+  try { watchPc?.close(); } catch {}
+  watchPc = null;
+
+  try { micUplinkPcWatcher?.close(); } catch {}
+  micUplinkPcWatcher = null;
+  try { micDownlinkPcHost?.close(); } catch {}
+  micDownlinkPcHost = null;
+
+  // keep host stream (don’t stop camera) for smoother reconnect
+  // but if it’s missing, reacquire
+  if (mode === "host" && !localStream) await getHostMedia();
+
+  // rebuild socket
+  try { socket?.disconnect(); } catch {}
+  socket = null;
+
+  initSocket();
 }
 
-function denyMic(userId) {
-  socket?.emit("live:mic:deny", { liveId, userId });
-  micRequests.value = micRequests.value.filter((r) => String(r.fromUserId) !== String(userId));
+function scheduleAutoReconnect() {
+  clearReconnectTimer();
+  reconnectTimer = setTimeout(() => {
+    reconnectNow();
+  }, 1500);
 }
 
 /* =========================
-   Lifecycle
+   Socket init
 ========================= */
-function endLive() {
-  status.value = "ended";
-  if (mode === "host") socket?.emit("live:end", { liveId });
-  else socket?.emit("live:leave", { liveId });
-  cleanup();
-  router.push("/dashboard");
+function initSocket() {
+  socket = io(apiUrl, {
+    transports: ["websocket", "polling"],
+    reconnection: true,
+    reconnectionAttempts: 10,
+    reconnectionDelay: 400,
+    reconnectionDelayMax: 2000,
+  });
+
+  socket.on("connect", async () => {
+    error.value = "";
+    overlayTip.value = "";
+
+    socket.emit(EVT.join, { liveId, mode, userId: me?.id || null, name: me?.username || null });
+
+    // many servers need watcher “register”
+    if (mode === "watch") socket.emit("watcher", { liveId, userId: me?.id || null, name: me?.username || null });
+
+    if (mode === "host") {
+      if (!localStream) await getHostMedia();
+      status.value = localStream ? "live" : "failed";
+    } else {
+      await watchSetupPC();
+      status.value = "connecting";
+    }
+  });
+
+  socket.on("disconnect", () => {
+    if (status.value !== "ended") {
+      status.value = "connecting";
+      overlayTip.value = "Disconnected. Reconnecting…";
+      scheduleAutoReconnect();
+    }
+  });
+
+  socket.on("connect_error", () => {
+    if (status.value !== "ended") setFailed("Socket connection failed. Tap Reconnect.");
+  });
+
+  // HOST: server tells host a watcher joined
+  socket.on(EVT.watcher, async (payload = {}) => {
+    if (mode !== "host") return;
+    const watcherId = payload.watcherId || payload.id || payload.socketId;
+    if (!watcherId) return;
+    await hostCreateOfferForWatcher(watcherId);
+  });
+
+  // WATCH: receive offer (accept multiple payload shapes)
+  socket.on(EVT.offer, async (payload = {}) => {
+    if (mode !== "watch") return;
+    const sdp = payload.sdp || payload.offer;
+    if (!sdp) return;
+    await watchHandleOffer(sdp, payload.from || payload.hostId);
+  });
+
+  // HOST: receive answer
+  socket.on(EVT.answer, async (payload = {}) => {
+    if (mode !== "host") return;
+    const sdp = payload.sdp || payload.answer;
+    const id = payload.watcherId || payload.from || payload.id;
+    if (id && sdp) await hostAcceptAnswer(id, sdp);
+  });
+
+  // ICE (both)
+  socket.on(EVT.ice, async (payload = {}) => {
+    const candidate = payload.candidate;
+    const id = payload.watcherId || payload.from || payload.id;
+    if (mode === "host") {
+      if (id) await hostAddIce(id, candidate);
+    } else {
+      await watchAddIce(candidate);
+    }
+  });
+
+  // Chat
+  socket.on(EVT.chat, async (msg) => {
+    if (!msg) return;
+    messages.value.push(msg);
+    await nextTick();
+    scrollChat();
+  });
+
+  // Viewer count (support both)
+  socket.on(EVT.viewerCount, (n) => {
+    const num = Number(n);
+    if (!Number.isNaN(num)) viewerCount.value = num;
+  });
+  socket.on(EVT.viewers, (payload) => {
+    // payload could be {count} or array of viewers
+    if (Array.isArray(payload)) viewerCount.value = payload.length;
+    else if (payload && typeof payload === "object") {
+      const num = Number(payload.count);
+      if (!Number.isNaN(num)) viewerCount.value = num;
+    }
+  });
+
+  // Mic request (host receives)
+  socket.on(EVT.micRequest, (p = {}) => {
+    if (mode !== "host") return;
+    micRequests.value.unshift({
+      reqId: p.reqId || `${Date.now()}-${Math.random().toString(16).slice(2)}`,
+      fromUserId: p.fromUserId || null,
+      fromName: p.fromName || p.name || null,
+    });
+  });
+
+  // Watcher receives grant
+  socket.on(EVT.micGrant, async (p = {}) => {
+    if (mode !== "watch") return;
+    micRequestPending.value = false;
+
+    if (!p.allowed) {
+      overlayTip.value = "Host denied mic request.";
+      return;
+    }
+
+    overlayTip.value = "Host approved. Turning on your mic…";
+    try {
+      await watcherStartMicUplink();
+      overlayTip.value = "Mic connected ✅";
+    } catch {
+      overlayTip.value = "Mic failed. Check permissions.";
+    }
+  });
+
+  // Mic signaling
+  socket.on(EVT.micOffer, async (p = {}) => {
+    if (mode !== "host") return;
+    const sdp = p.sdp;
+    if (sdp) await hostHandleMicOffer(sdp);
+  });
+
+  socket.on(EVT.micAnswer, async (p = {}) => {
+    if (mode !== "watch") return;
+    const sdp = p.sdp;
+    if (sdp) await watcherHandleMicAnswer(sdp);
+  });
+
+  socket.on(EVT.micIce, async (p = {}) => {
+    const role = p.role; // "host" or "watch"
+    const candidate = p.candidate;
+    if (!role || !candidate) return;
+    await handleMicIce(role, candidate);
+  });
 }
 
+/* =========================
+   Init / Cleanup
+========================= */
 function cleanup() {
+  clearReconnectTimer();
+
+  try { socket?.emit(EVT.leave, { liveId }); } catch {}
+
   try {
     peers.forEach((pc) => { try { pc.close(); } catch {} });
     peers.clear();
@@ -393,6 +737,15 @@ function cleanup() {
   try { watchPc?.close(); } catch {}
   watchPc = null;
 
+  try { micUplinkPcWatcher?.close(); } catch {}
+  micUplinkPcWatcher = null;
+  try { micDownlinkPcHost?.close(); } catch {}
+  micDownlinkPcHost = null;
+
+  safeStopTracks(watcherMicStream);
+  watcherMicStream = null;
+
+  // host media: stop on exit
   safeStopTracks(localStream);
   localStream = null;
 
@@ -400,186 +753,19 @@ function cleanup() {
   socket = null;
 }
 
-function hardReconnect() {
-  overlayTip.value = "Reconnecting…";
-  cleanup();
-  init();
-}
-
-function buildSocket() {
-  return io(apiUrl, {
-    transports: ["websocket", "polling"],
-    reconnection: true,
-    reconnectionAttempts: 10,
-    reconnectionDelay: 500,
-    reconnectionDelayMax: 2000,
-    timeout: 15000,
-  });
-}
-
-function init() {
+onMounted(async () => {
   if (!liveId) {
     error.value = "Missing liveId";
+    status.value = "failed";
     return;
   }
+  initSocket();
+});
 
-  error.value = "";
-  overlayTip.value = "";
-  status.value = "connecting";
-
-  socket = buildSocket();
-
-  socket.on("connect", async () => {
-    // keeps your global presence reliable (also helps calls)
-    if (me?.id) socket.emit("user:online", { userId: me.id, username: me.username });
-
-    if (mode === "host") {
-      // ✅ critical: live gets created ONLY here
-      socket.emit("live:create", { liveId });
-      await getHostMedia();
-      status.value = "live";
-    } else {
-      socket.emit("live:join", { liveId });
-      await watchSetupPC();
-      status.value = "connecting";
-    }
-  });
-
-  socket.on("disconnect", () => {
-    status.value = "connecting";
-  });
-
-  socket.on("live:presence", ({ viewerCount: n } = {}) => {
-    viewerCount.value = Number(n || 0);
-  });
-
-  // host: when viewer joins, server provides socket id
-  socket.on("live:viewer-joined", async ({ viewerSocketId } = {}) => {
-    if (mode !== "host") return;
-    if (!viewerSocketId) return;
-    await hostCreateOffer(viewerSocketId);
-  });
-
-  socket.on("live:viewer-left", ({ viewerSocketId } = {}) => {
-    if (mode !== "host") return;
-    const pc = peers.get(viewerSocketId);
-    if (pc) {
-      try { pc.close(); } catch {}
-      peers.delete(viewerSocketId);
-    }
-  });
-
-  // watch receives offer
-  socket.on("webrtc:offer", async ({ offer } = {}) => {
-    if (mode !== "watch") return;
-    if (offer) await watchHandleOffer(offer);
-  });
-
-  // host receives answer
-  socket.on("webrtc:answer", async ({ answer, from } = {}) => {
-    if (mode !== "host") return;
-    if (from && answer) await hostAcceptAnswer(from, answer);
-  });
-
-  // ice both
-  socket.on("webrtc:ice", async ({ candidate, from } = {}) => {
-    if (!candidate) return;
-    if (mode === "host") await hostAddIce(from, candidate);
-    else await watchAddIce(candidate);
-  });
-
-  socket.on("live:ended", ({ liveId: endedId } = {}) => {
-    if (String(endedId) === String(liveId)) {
-      overlayTip.value = "Live ended.";
-      status.value = "ended";
-      setTimeout(() => endLive(), 400);
-    }
-  });
-
-  socket.on("live:chat", async (msg) => {
-    if (!msg) return;
-    messages.value.push(msg);
-    await nextTick();
-    scrollChat();
-  });
-
-  // mic events
-  socket.on("live:mic:status", ({ canSpeak: cs } = {}) => {
-    canSpeak.value = !!cs;
-    if (canSpeak.value) micRequestPending.value = false;
-  });
-
-  socket.on("live:mic:speakers", ({ speakerUserIds: ids } = {}) => {
-    speakerUserIds.value = Array.isArray(ids) ? ids.map(String) : [];
-  });
-
-  socket.on("live:mic:requested", (payload) => {
-    if (mode !== "host" || !payload?.fromUserId) return;
-    const uid = String(payload.fromUserId);
-    const exists = micRequests.value.some((r) => String(r.fromUserId) === uid);
-    if (!exists) micRequests.value = [payload, ...micRequests.value].slice(0, 40);
-  });
-
-  socket.on("live:mic:requested:ack", () => {
-    micRequestPending.value = true;
-  });
-  socket.on("live:mic:approved", () => {
-    micRequestPending.value = false;
-    canSpeak.value = true;
-    overlayTip.value = "✅ Host approved your mic.";
-  });
-  socket.on("live:mic:denied", () => {
-    micRequestPending.value = false;
-    canSpeak.value = false;
-    overlayTip.value = "❌ Host denied your mic request.";
-  });
-}
-
-onMounted(() => init());
 onBeforeUnmount(() => cleanup());
 </script>
 
 <style scoped>
-/* NEW tiny additions */
-.speakTag{
-  background: rgba(34,197,94,.16);
-  border: 1px solid rgba(34,197,94,.30);
-}
-.tinyPill{
-  padding: 8px 10px;
-  font-size: 12px;
-  opacity: .9;
-}
-.micPanel{
-  margin-bottom: 12px;
-  padding: 10px;
-  border-radius: 14px;
-  background: rgba(0,0,0,.28);
-  border: 1px solid rgba(255,255,255,.10);
-}
-.micTitle{ font-weight: 950; margin-bottom: 8px; }
-.micReq{
-  display:flex; justify-content:space-between; gap:10px; align-items:center;
-  padding: 10px;
-  border-radius: 14px;
-  background: rgba(255,255,255,.06);
-  border: 1px solid rgba(255,255,255,.10);
-  margin-bottom: 8px;
-}
-.micReqName{ font-weight: 950; }
-.micReqSub{ opacity:.75; font-size: 12px; margin-top: 2px; }
-.micReqActions{ display:flex; gap:8px; }
-.speakers{ display:flex; gap:8px; flex-wrap: wrap; }
-.speaker{
-  padding: 6px 10px;
-  border-radius: 999px;
-  background: rgba(255,255,255,.08);
-  border: 1px solid rgba(255,255,255,.12);
-  font-weight: 900;
-  font-size: 12px;
-}
-
-/* ORIGINAL styling */
 .liveWrap{
   min-height: 100vh;
   padding-bottom: 18px;
@@ -587,6 +773,7 @@ onBeforeUnmount(() => cleanup());
   position: relative;
   overflow: hidden;
 }
+
 .bg-animated{
   position: fixed;
   inset: 0;
@@ -625,6 +812,15 @@ onBeforeUnmount(() => cleanup());
 .left{ display:flex; gap: 10px; align-items:center; flex-wrap:wrap; }
 .right{ display:flex; gap: 10px; align-items:center; flex-wrap:wrap; justify-content:flex-end; }
 
+.watchers{
+  padding: 8px 10px;
+  border-radius: 999px;
+  background: rgba(255,255,255,.08);
+  border: 1px solid rgba(255,255,255,.12);
+  font-weight: 900;
+  opacity: .9;
+}
+
 .pill{
   display:flex;
   align-items:center;
@@ -655,6 +851,7 @@ onBeforeUnmount(() => cleanup());
 }
 .chip.ghost{ background: rgba(255,255,255,.10); }
 .chip.danger{ background: rgba(255,80,80,.20); border:1px solid rgba(255,80,80,.35); }
+.chip.ok{ background: rgba(34,197,94,.18); border:1px solid rgba(34,197,94,.28); }
 .chip.mini{ padding: 8px 10px; font-size: 12px; }
 
 .stage{
@@ -728,6 +925,8 @@ onBeforeUnmount(() => cleanup());
   backdrop-filter: blur(10px);
   font-weight: 900;
 }
+.overlayText{ flex: 1; }
+.overlayBtns{ display:flex; gap: 8px; }
 
 .alert{
   margin-top: 12px;
@@ -736,6 +935,30 @@ onBeforeUnmount(() => cleanup());
   background: rgba(255,80,80,.18);
   border: 1px solid rgba(255,80,80,.35);
 }
+
+/* Host mic request panel */
+.micPanel{
+  margin-top: 12px;
+  border-radius: 16px;
+  padding: 12px;
+  background: rgba(0,0,0,.32);
+  border: 1px solid rgba(255,255,255,.12);
+}
+.micTitle{ font-weight: 950; margin-bottom: 8px; }
+.micReq{
+  display:flex;
+  justify-content:space-between;
+  align-items:center;
+  gap: 10px;
+  padding: 10px;
+  border-radius: 14px;
+  background: rgba(255,255,255,.06);
+  border: 1px solid rgba(255,255,255,.10);
+  margin-bottom: 8px;
+}
+.micWho{ font-weight: 900; opacity:.95; }
+.micBtns{ display:flex; gap: 8px; }
+.micHint{ opacity:.75; font-size: 12px; margin-top: 8px; }
 
 .chat{
   background: rgba(255,255,255,.08);
