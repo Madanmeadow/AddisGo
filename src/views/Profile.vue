@@ -88,7 +88,7 @@
 
 <script setup>
 import { ref, reactive, onMounted } from "vue";
-import api from "../api/http"; // keep your existing axios wrapper
+import { apiFetch } from "../api/http.js";
 import { getMedia } from "../utils/media"; // your getMedia helper
 
 const loading = ref(false);
