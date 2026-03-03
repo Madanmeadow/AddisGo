@@ -88,8 +88,8 @@
 
 <script setup>
 import { ref, reactive, onMounted } from "vue";
-import api from "@/api/http"; // keep your existing axios wrapper
-import { getMedia } from "@/utils/media"; // your getMedia helper
+import api from "../api/http"; // keep your existing axios wrapper
+import { getMedia } from "../utils/media"; // your getMedia helper
 
 const loading = ref(false);
 const saving = ref(false);
