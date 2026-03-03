@@ -5,10 +5,7 @@ import { authenticateToken } from "../middleware/auth.middleware.js";
 
 const router = express.Router();
 
-/**
- * GET /posts
- * (safe, no joins)
- */
+/* ✅ GET POSTS */
 router.get("/", async (req, res) => {
   try {
     const result = await pool.query(`
@@ -23,27 +20,26 @@ router.get("/", async (req, res) => {
   }
 });
 
-/**
- * POST /posts
- * Body: { caption, image_url, video_url }
- * NOTE: image_url/video_url should be the Cloudinary "url" returned from /upload
- */
-router.post("/", authenticateToken, async (req, res) => {
+/* ✅ CREATE POST (JSON)
+   body can include:
+   - caption (text)
+   - image_url (Cloudinary https)
+   - video_url (Cloudinary https)
+*/
+router.post("/create", authenticateToken, async (req, res) => {
   try {
     const userId = req.user?.id;
-    const caption = (req.body.caption || "").toString().trim();
+    const { caption, text, image_url, video_url } = req.body || {};
 
-    // Cloudinary URLs should be full https links
-    const image_url = (req.body.image_url || "").toString().trim();
-    const video_url = (req.body.video_url || "").toString().trim();
+    const finalCaption = (caption ?? text ?? "").trim();
 
-    if (!caption && !image_url && !video_url) {
-      return res.status(400).json({ error: "Post must include text, image, or video." });
+    if (!finalCaption && !image_url && !video_url) {
+      return res.status(400).json({ error: "Post must include text or media." });
     }
 
-    // Basic safety: prevent relative paths from being saved going forward
-    const safeImage = image_url.startsWith("http") ? image_url : "";
-    const safeVideo = video_url.startsWith("http") ? video_url : "";
+    // Safety: only allow http(s) for media (Cloudinary links)
+    const safeImg = image_url && String(image_url).startsWith("http") ? String(image_url) : null;
+    const safeVid = video_url && String(video_url).startsWith("http") ? String(video_url) : null;
 
     const result = await pool.query(
       `
@@ -51,12 +47,12 @@ router.post("/", authenticateToken, async (req, res) => {
       VALUES ($1, $2, $3, $4)
       RETURNING id, user_id, caption, image_url, video_url, created_at
       `,
-      [userId, caption, safeImage, safeVideo]
+      [userId, finalCaption || null, safeImg, safeVid]
     );
 
     res.json(result.rows[0]);
   } catch (err) {
-    console.error("POST /posts ERROR:", err);
+    console.error("POST /posts/create ERROR:", err);
     res.status(500).json({ error: err.message });
   }
 });

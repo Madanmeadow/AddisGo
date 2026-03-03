@@ -6,54 +6,39 @@ import { authenticateToken } from "../middleware/auth.middleware.js";
 
 const router = express.Router();
 
-/**
- * Use memory storage so we upload directly to Cloudinary
- * (no /uploads folder = no "dark media after deploy")
- */
+// memory storage (no /uploads folder = no disappearing files)
 const upload = multer({
   storage: multer.memoryStorage(),
-  limits: { fileSize: 150 * 1024 * 1024 }, // 150MB
+  limits: { fileSize: 60 * 1024 * 1024 }, // 60MB
 });
 
-/** Cloudinary upload helper (buffer -> upload_stream) */
-function uploadBufferToCloudinary(buffer, options = {}) {
-  return new Promise((resolve, reject) => {
-    const stream = cloudinary.uploader.upload_stream(options, (err, result) => {
-      if (err) return reject(err);
-      resolve(result);
-    });
-    stream.end(buffer);
-  });
-}
-
-/**
- * POST /upload
- * form-data: file
- * returns: { url, public_id, resource_type, format, bytes, width, height, duration }
- */
-router.post("/", authenticateToken, upload.single("file"), async (req, res) => {
+// POST /api/upload  (field name: "media")
+router.post("/", authenticateToken, upload.single("media"), async (req, res) => {
   try {
-    if (!req.file) return res.status(400).json({ error: "No file uploaded" });
+    if (!req.file) return res.status(400).json({ error: "No file uploaded (media)." });
 
     const mime = req.file.mimetype || "";
     const isVideo = mime.startsWith("video/");
-    const isImage = mime.startsWith("image/");
+    const resource_type = isVideo ? "video" : "image";
 
-    if (!isVideo && !isImage) {
-      return res.status(400).json({ error: "Only image/video files supported" });
-    }
+    const folder = process.env.CLOUDINARY_FOLDER || "addisgo";
 
-    const folder = isVideo ? "addisgo/videos" : "addisgo/images";
+    const result = await new Promise((resolve, reject) => {
+      const stream = cloudinary.uploader.upload_stream(
+        {
+          folder,
+          resource_type,
+          // good defaults
+          overwrite: false,
+          // for videos, Cloudinary can generate streaming formats later
+        },
+        (err, uploaded) => (err ? reject(err) : resolve(uploaded))
+      );
 
-    const result = await uploadBufferToCloudinary(req.file.buffer, {
-      folder,
-      resource_type: isVideo ? "video" : "image",
-      // quality/performance knobs (safe defaults)
-      overwrite: false,
-      secure: true,
+      stream.end(req.file.buffer);
     });
 
-    return res.json({
+    res.json({
       url: result.secure_url,
       public_id: result.public_id,
       resource_type: result.resource_type,
@@ -64,8 +49,8 @@ router.post("/", authenticateToken, upload.single("file"), async (req, res) => {
       duration: result.duration,
     });
   } catch (err) {
-    console.error("POST /upload ERROR:", err);
-    return res.status(500).json({ error: err.message || "Upload failed" });
+    console.error("UPLOAD ERROR:", err);
+    res.status(500).json({ error: err.message });
   }
 });
 
