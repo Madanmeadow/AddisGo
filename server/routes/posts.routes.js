@@ -1,38 +1,48 @@
 // server/routes/posts.routes.js
 import express from "express";
+import multer from "multer";
+import path from "path";
+import { fileURLToPath } from "url";
 import { pool } from "../db.js";
 import { authenticateToken } from "../middleware/auth.middleware.js";
 
 const router = express.Router();
 
 /* =========================
-   HELPERS
+   MULTER STORAGE (LOCAL UPLOADS)
 ========================= */
-function isHttpUrl(u) {
-  if (!u) return false;
-  return String(u).startsWith("http://") || String(u).startsWith("https://");
-}
+const __filename = fileURLToPath(import.meta.url);
+const __dirname = path.dirname(__filename);
+
+const storage = multer.diskStorage({
+  destination: path.join(__dirname, "../uploads"),
+  filename: (req, file, cb) => cb(null, Date.now() + "-" + file.originalname.replace(/\s+/g, "_")),
+});
+
+const upload = multer({ storage });
 
 /* =========================
-   GET POSTS
-   GET /api/posts
+   GET POSTS (WITH USER NAMES)
+   ✅ still returns user_id (frontend uses it)
+   ✅ also returns display_name/username/avatar_url for later
 ========================= */
 router.get("/", async (req, res) => {
   try {
-    const result = await pool.query(
-      `
+    const result = await pool.query(`
       SELECT
-        id,
-        user_id,
-        caption,
-        image_url,
-        video_url,
-        created_at
-      FROM posts
-      ORDER BY created_at DESC
-      LIMIT 200
-    `
-    );
+        p.id,
+        p.user_id,
+        p.caption,
+        p.image_url,
+        p.video_url,
+        p.created_at,
+        u.display_name,
+        u.username,
+        u.avatar_url
+      FROM posts p
+      LEFT JOIN users u ON u.id = p.user_id
+      ORDER BY p.created_at DESC
+    `);
 
     res.json(result.rows);
   } catch (err) {
@@ -43,66 +53,121 @@ router.get("/", async (req, res) => {
 
 /* =========================
    CREATE POST
-   POST /api/posts/create
-   body: { caption/text, image_url?, video_url? }
+   ✅ FIX: user_id from JWT, not from frontend
 ========================= */
-router.post("/create", authenticateToken, async (req, res) => {
+router.post(
+  "/",
+  authenticateToken,
+  upload.fields([
+    { name: "image", maxCount: 1 },
+    { name: "video", maxCount: 1 },
+  ]),
+  async (req, res) => {
+    try {
+      const userId = req.user?.id;
+      if (!userId) return res.status(401).json({ error: "Unauthorized" });
+
+      const caption = String(req.body?.caption || "").trim();
+
+      const imageFile = req.files?.image?.[0] || null;
+      const videoFile = req.files?.video?.[0] || null;
+
+      const image_url = imageFile ? `/uploads/${imageFile.filename}` : null;
+      const video_url = videoFile ? `/uploads/${videoFile.filename}` : null;
+
+      if (!caption && !image_url && !video_url) {
+        return res.status(400).json({ error: "caption, image, or video is required" });
+      }
+
+      const result = await pool.query(
+        `
+        INSERT INTO posts (user_id, caption, image_url, video_url)
+        VALUES ($1, $2, $3, $4)
+        RETURNING id, user_id, caption, image_url, video_url, created_at
+        `,
+        [userId, caption || null, image_url, video_url]
+      );
+
+      res.json(result.rows[0]);
+    } catch (err) {
+      console.error("POST /posts ERROR:", err);
+      res.status(500).json({ error: err.message });
+    }
+  }
+);
+
+/* =========================
+   COMMENTS: GET
+========================= */
+router.get("/:postId/comments", async (req, res) => {
   try {
-    const userId = req.user?.id || req.user?.userId;
-    if (!userId) return res.status(401).json({ error: "Missing user id (token invalid)." });
-
-    const caption = (req.body.caption ?? req.body.text ?? "").toString().trim();
-    const image_url = (req.body.image_url ?? "").toString().trim();
-    const video_url = (req.body.video_url ?? "").toString().trim();
-
-    // allow text-only posts
-    if (!caption && !image_url && !video_url) {
-      return res.status(400).json({ error: "Post must have caption/text or image/video." });
-    }
-
-    // require Cloudinary (http/https) to prevent future 404 posts
-    // (optional but recommended)
-    if (image_url && !isHttpUrl(image_url)) {
-      return res.status(400).json({ error: "image_url must be a full Cloudinary URL (http/https)." });
-    }
-    if (video_url && !isHttpUrl(video_url)) {
-      return res.status(400).json({ error: "video_url must be a full Cloudinary URL (http/https)." });
-    }
+    const postId = Number(req.params.postId);
+    if (!postId) return res.status(400).json({ error: "Invalid post id" });
 
     const result = await pool.query(
       `
-      INSERT INTO posts (user_id, caption, image_url, video_url)
-      VALUES ($1, $2, $3, $4)
-      RETURNING id, user_id, caption, image_url, video_url, created_at
-    `,
-      [userId, caption, image_url || null, video_url || null]
+      SELECT
+        c.id,
+        c.post_id,
+        c.user_id,
+        c.body,
+        c.created_at,
+        u.username,
+        u.display_name
+      FROM comments c
+      LEFT JOIN users u ON u.id = c.user_id
+      WHERE c.post_id = $1
+      ORDER BY c.created_at DESC
+      `,
+      [postId]
     );
 
-    res.json(result.rows[0]);
+    res.json(result.rows);
   } catch (err) {
-    console.error("POST /posts/create ERROR:", err);
+    console.error("GET /posts/:postId/comments ERROR:", err);
     res.status(500).json({ error: err.message });
   }
 });
 
 /* =========================
-   DELETE POST (OPTIONAL)
-   DELETE /api/posts/:id
+   COMMENTS: POST
 ========================= */
-router.delete("/:id", authenticateToken, async (req, res) => {
+router.post("/:postId/comments", authenticateToken, async (req, res) => {
   try {
-    const userId = req.user?.id || req.user?.userId;
-    const postId = req.params.id;
+    const postId = Number(req.params.postId);
+    if (!postId) return res.status(400).json({ error: "Invalid post id" });
 
-    const check = await pool.query(`SELECT user_id FROM posts WHERE id=$1`, [postId]);
-    if (check.rows.length === 0) return res.status(404).json({ error: "Post not found" });
-    if (String(check.rows[0].user_id) !== String(userId))
-      return res.status(403).json({ error: "Not allowed" });
+    const userId = req.user?.id;
+    if (!userId) return res.status(401).json({ error: "Unauthorized" });
 
-    await pool.query(`DELETE FROM posts WHERE id=$1`, [postId]);
-    res.json({ ok: true });
+    const body = String(req.body?.body || "").trim();
+    if (!body) return res.status(400).json({ error: "Comment body is required" });
+
+    const insert = await pool.query(
+      `
+      INSERT INTO comments (post_id, user_id, body)
+      VALUES ($1, $2, $3)
+      RETURNING id, post_id, user_id, body, created_at
+      `,
+      [postId, userId, body]
+    );
+
+    // return with username/display_name like your UI expects
+    const withUser = await pool.query(
+      `
+      SELECT
+        c.id, c.post_id, c.user_id, c.body, c.created_at,
+        u.username, u.display_name
+      FROM comments c
+      LEFT JOIN users u ON u.id = c.user_id
+      WHERE c.id = $1
+      `,
+      [insert.rows[0].id]
+    );
+
+    res.json(withUser.rows[0]);
   } catch (err) {
-    console.error("DELETE /posts ERROR:", err);
+    console.error("POST /posts/:postId/comments ERROR:", err);
     res.status(500).json({ error: err.message });
   }
 });
