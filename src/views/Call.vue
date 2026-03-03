@@ -1,553 +1,694 @@
 <!-- src/views/Call.vue -->
 <template>
   <Layout>
-    <div class="wrap">
+    <div class="callWrap">
+      <div class="bg-animated" aria-hidden="true"></div>
+
       <header class="topbar">
-        <div class="left">
-          <div class="pill">
-            <span class="t">{{ kindLabel }}</span>
-            <span class="s">{{ statusLabel }}</span>
-          </div>
+        <button class="chip ghost" @click="goBack">← Back</button>
+
+        <div class="pill">
+          <span class="dot" :class="{ on: connected }"></span>
+          <span class="t">CALL</span>
+          <span class="s">
+            {{ kind.toUpperCase() }} • {{ role.toUpperCase() }} • {{ roomId }}
+          </span>
         </div>
 
         <div class="right">
-          <button class="chip ghost" @click="toggleMic">{{ micMuted ? "🔇 Mic" : "🎙️ Mic" }}</button>
-          <button v-if="kind === 'video'" class="chip ghost" @click="toggleCam">{{ camOff ? "📷 Off" : "📹 Cam" }}</button>
-
-          <button class="chip ghost ok" v-if="status === 'failed' || status === 'connecting'" @click="reconnectNow">
-            ♻️ Reconnect
+          <button class="chip ghost" @click="toggleMute">{{ muted ? "🔇 Muted" : "🎙️ Mic" }}</button>
+          <button v-if="kind === 'video'" class="chip ghost" @click="toggleCam">
+            {{ camOff ? "📷 Camera Off" : "📷 Camera" }}
           </button>
-
-          <button class="chip danger" @click="endCall">End</button>
+          <button class="chip danger" @click="endCall">⛔ End</button>
         </div>
       </header>
 
       <main class="grid">
-        <section class="card">
-          <div class="cardTop">
-            <div class="label">REMOTE</div>
-            <div class="hint" v-if="status !== 'live'">Waiting…</div>
-          </div>
+        <section class="stage">
+          <div class="stageInner" :class="{ video: kind === 'video' }">
+            <video
+              v-if="kind === 'video'"
+              ref="remoteVideo"
+              class="remote"
+              autoplay
+              playsinline
+            ></video>
 
-          <video v-if="kind === 'video'" ref="remoteVideo" class="video" autoplay playsinline></video>
-          <audio v-else ref="remoteAudio" autoplay></audio>
+            <div v-else class="audioOnly">
+              <div class="ringIcon">📞</div>
+              <div class="ringTitle">Audio Call</div>
+              <div class="ringSub">{{ statusText }}</div>
+            </div>
 
-          <div v-if="overlayTip" class="overlayTip">
-            <div class="overlayText">{{ overlayTip }}</div>
-            <button class="chip mini ghost" @click="overlayTip=''">OK</button>
+            <video
+              v-if="kind === 'video'"
+              ref="localVideo"
+              class="local"
+              autoplay
+              playsinline
+              muted
+            ></video>
+
+            <div class="hud">
+              <div class="hudRow">
+                <span class="badge" :class="{ ok: pcReady }">Peer</span>
+                <span class="badge" :class="{ ok: mediaReady }">Media</span>
+                <span class="badge" :class="{ ok: iceConnected }">ICE</span>
+                <span class="badge" :class="{ ok: connected }">Socket</span>
+              </div>
+
+              <div class="hudRow small">
+                <span>ICE: {{ iceState }}</span>
+                <span class="sep">•</span>
+                <span>Conn: {{ connState }}</span>
+                <span class="sep">•</span>
+                <span>Sig: {{ sigState }}</span>
+              </div>
+
+              <div v-if="errorText" class="errorBox">⚠️ {{ errorText }}</div>
+              <div v-else class="hintBox">{{ statusText }}</div>
+            </div>
           </div>
         </section>
 
-        <section class="card">
-          <div class="cardTop">
-            <div class="label">YOU</div>
-          </div>
+        <section class="side">
+          <div class="panel">
+            <div class="panelTitle">🧪 Fix Buttons</div>
 
-          <video v-if="kind === 'video'" ref="localVideo" class="video" autoplay playsinline muted></video>
+            <button class="btn" @click="restartIce" :disabled="!pc">♻️ Restart ICE</button>
+            <button class="btn" @click="regetMedia">🎥 Re-get Media</button>
+            <button class="btn" @click="reconnectSocket">🛰️ Reconnect Socket</button>
+            <button class="btn ghost" @click="copyDebug">📋 Copy Debug</button>
 
-          <div v-else class="audioBox">
-            <div class="meIcon">🎙️</div>
-            <div class="meText">{{ me?.username || "You" }}</div>
+            <div class="miniNote">
+              If call works on same Wi-Fi but fails on mobile data, you need TURN.
+            </div>
           </div>
         </section>
       </main>
 
-      <div v-if="toast" class="toast">
-        <span class="dot"></span>
-        {{ toast }}
-        <button class="miniX" @click="toast=''">✕</button>
-      </div>
+      <audio ref="remoteAudio" autoplay></audio>
     </div>
   </Layout>
 </template>
 
 <script setup>
-import { ref, computed, onMounted, onBeforeUnmount } from "vue";
+import { ref, onMounted, onBeforeUnmount, computed } from "vue";
 import { useRoute, useRouter } from "vue-router";
 import Layout from "../components/Layout.vue";
-import { io } from "socket.io-client";
-
-const apiUrl = (import.meta.env.VITE_API_URL || "").trim();
+import { createSocket } from "../api/socket";
 
 const route = useRoute();
 const router = useRouter();
+
+const apiUrl = (import.meta.env.VITE_API_URL || "").trim();
+const token = localStorage.getItem("token");
 
 const roomId = String(route.query.roomId || "");
 const role = String(route.query.role || "caller"); // caller | callee
 const kind = String(route.query.kind || "video"); // video | audio
 
-const token = localStorage.getItem("token") || "";
 const me = (() => {
   try { return JSON.parse(localStorage.getItem("user") || "null"); } catch { return null; }
 })();
-
-const status = ref("connecting"); // connecting | live | ended | failed
-const statusLabel = computed(() => {
-  if (status.value === "live") return "Connected";
-  if (status.value === "ended") return "Ended";
-  if (status.value === "failed") return "Failed";
-  return "Connecting…";
-});
-const kindLabel = computed(() => (kind === "video" ? "VIDEO CALL" : "AUDIO CALL"));
-
-const overlayTip = ref("");
-const toast = ref("");
 
 const localVideo = ref(null);
 const remoteVideo = ref(null);
 const remoteAudio = ref(null);
 
+const muted = ref(false);
+const camOff = ref(false);
+
+const connected = ref(false);
+const pcReady = ref(false);
+const mediaReady = ref(false);
+const iceConnected = ref(false);
+
+const iceState = ref("new");
+const connState = ref("new");
+const sigState = ref("stable");
+
+const statusText = ref("Starting…");
+const errorText = ref("");
+
 let socket = null;
 let pc = null;
 let localStream = null;
-
-const micMuted = ref(false);
-const camOff = ref(false);
-
-// who to send SDP/ICE to (best reliability)
-let remoteSocketId = null;
-
-// prevent double-offer storms
-let offeredOnce = false;
+let remoteStream = null;
+let makingOffer = false;
 
 /* =========================
-   TURN/ICE
+   TURN / ICE SERVERS
 ========================= */
 async function getIceServers() {
+  // Your server had /api/turn returning { ok, iceServers, note }
   try {
     const res = await fetch(`${apiUrl}/api/turn`);
     const data = await res.json();
     if (data?.ok && Array.isArray(data.iceServers) && data.iceServers.length) return data.iceServers;
   } catch {}
-  return [
-    { urls: "stun:stun.l.google.com:19302" },
-    { urls: "stun:stun1.l.google.com:19302" },
-  ];
+  // fallback STUN only
+  return [{ urls: "stun:stun.l.google.com:19302" }];
 }
 
-let cachedIce = null;
-async function makePC() {
-  if (!cachedIce) cachedIce = await getIceServers();
-  return new RTCPeerConnection({ iceServers: cachedIce });
-}
-
-function safeStopTracks(stream) {
-  try { stream?.getTracks?.().forEach(t => t.stop()); } catch {}
-}
-
-function applyMediaToggles() {
-  if (!localStream) return;
-  localStream.getAudioTracks().forEach(t => (t.enabled = !micMuted.value));
-  localStream.getVideoTracks().forEach(t => (t.enabled = !camOff.value));
-}
-
-async function getMedia() {
+/* =========================
+   MEDIA
+========================= */
+async function setupMedia() {
   try {
-    localStream = await navigator.mediaDevices.getUserMedia({
-      audio: true,
-      video: kind === "video" ? { facingMode: "user" } : false,
-    });
+    errorText.value = "";
+    statusText.value = "Requesting camera/mic…";
 
-    applyMediaToggles();
+    const constraints =
+      kind === "video"
+        ? { video: { facingMode: "user" }, audio: true }
+        : { video: false, audio: true };
+
+    localStream = await navigator.mediaDevices.getUserMedia(constraints);
+    mediaReady.value = true;
 
     if (kind === "video" && localVideo.value) {
       localVideo.value.srcObject = localStream;
-      await localVideo.value.play().catch(() => {});
     }
-  } catch {
-    overlayTip.value = "Camera/Mic blocked. Allow permissions and reconnect.";
-    status.value = "failed";
+  } catch (e) {
+    mediaReady.value = false;
+    errorText.value = "Camera/Mic blocked. Enable permissions and reload.";
+    console.error(e);
+    throw e;
   }
 }
 
-async function buildPeer() {
-  pc = await makePC();
+function attachRemote(stream) {
+  if (!stream) return;
+  if (kind === "video" && remoteVideo.value) remoteVideo.value.srcObject = stream;
+  if (remoteAudio.value) remoteAudio.value.srcObject = stream;
+}
 
-  // ICE -> relay through server
-  pc.onicecandidate = (e) => {
-    if (e.candidate) {
-      socket?.emit("call:webrtc:ice", {
-        roomId,
-        candidate: e.candidate,
-        to: remoteSocketId || undefined,
-      });
-    }
-  };
+/* =========================
+   PEER CONNECTION
+========================= */
+async function createPeer() {
+  const iceServers = await getIceServers();
 
-  pc.ontrack = async (e) => {
-    const [stream] = e.streams || [];
-    if (!stream) return;
+  pc = new RTCPeerConnection({
+    iceServers,
+    // This helps with Safari/iOS weirdness
+    bundlePolicy: "max-bundle",
+    rtcpMuxPolicy: "require",
+  });
 
-    if (kind === "video" && remoteVideo.value) {
-      remoteVideo.value.srcObject = stream;
-      await remoteVideo.value.play().catch(() => {});
-    } else if (remoteAudio.value) {
-      remoteAudio.value.srcObject = stream;
-      await remoteAudio.value.play().catch(() => {});
-    }
+  pcReady.value = true;
 
-    status.value = "live";
-    overlayTip.value = "";
-    toast.value = "Connected ✅";
+  pc.oniceconnectionstatechange = () => {
+    iceState.value = pc.iceConnectionState;
+    iceConnected.value = ["connected", "completed"].includes(pc.iceConnectionState);
   };
 
   pc.onconnectionstatechange = () => {
-    const st = pc?.connectionState;
-    if (st === "failed") {
-      status.value = "failed";
-      overlayTip.value = "Connection failed. Tap Reconnect.";
-    }
-    if (st === "disconnected") {
-      if (status.value !== "ended") {
-        status.value = "connecting";
-        overlayTip.value = "Peer disconnected. Waiting/reconnecting…";
-      }
+    connState.value = pc.connectionState;
+  };
+
+  pc.onsignalingstatechange = () => {
+    sigState.value = pc.signalingState;
+  };
+
+  pc.ontrack = (ev) => {
+    if (!remoteStream) remoteStream = new MediaStream();
+    remoteStream.addTrack(ev.track);
+    attachRemote(remoteStream);
+  };
+
+  pc.onicecandidate = (ev) => {
+    if (ev.candidate) {
+      emitIce(ev.candidate);
     }
   };
 
-  // attach local tracks
-  if (localStream) {
-    localStream.getTracks().forEach((t) => pc.addTrack(t, localStream));
-  }
-}
-
-async function callerStartOffer() {
-  if (!pc || offeredOnce) return;
-  offeredOnce = true;
-
-  const offer = await pc.createOffer();
-  await pc.setLocalDescription(offer);
-
-  socket?.emit("call:webrtc:offer", {
-    roomId,
-    offer,
-    to: remoteSocketId || undefined,
-  });
+  // add local tracks
+  localStream.getTracks().forEach((t) => pc.addTrack(t, localStream));
 }
 
 /* =========================
-   Handle incoming SDP/ICE (server events)
+   SOCKET + SIGNALING (MATCHES server call:webrtc:*)
 ========================= */
-async function handleOffer(payload) {
-  const offer = payload?.offer;
-  if (!offer) return;
+function connectSocket() {
+  socket = createSocket();
 
-  // capture who sent it (so we can send answer/ice back)
-  if (payload?.from) remoteSocketId = String(payload.from);
+  socket.on("connect", () => {
+    connected.value = true;
+    statusText.value = "Socket connected. Joining call room…";
 
-  if (!pc) await buildPeer();
+    // register presence (safe)
+    if (me?.id) {
+      const username = me?.username || me?.display_name || me?.email || `User${me.id}`;
+      socket.emit("user:online", { userId: String(me.id), username });
+      socket.emit("register-user", { id: String(me.id), username });
+    }
 
-  await pc.setRemoteDescription(new RTCSessionDescription(offer));
-
-  const answer = await pc.createAnswer();
-  await pc.setLocalDescription(answer);
-
-  socket?.emit("call:webrtc:answer", {
-    roomId,
-    answer,
-    to: remoteSocketId || undefined,
-  });
-}
-
-async function handleAnswer(payload) {
-  const answer = payload?.answer;
-  if (!answer || !pc) return;
-
-  if (payload?.from) remoteSocketId = String(payload.from);
-  await pc.setRemoteDescription(new RTCSessionDescription(answer));
-}
-
-async function handleIce(payload) {
-  const candidate = payload?.candidate;
-  if (!candidate || !pc) return;
-
-  if (payload?.from) remoteSocketId = String(payload.from);
-  try { await pc.addIceCandidate(new RTCIceCandidate(candidate)); } catch {}
-}
-
-/* =========================
-   Socket init
-========================= */
-async function initSocket() {
-  socket = io(apiUrl, {
-    transports: ["websocket", "polling"],
-    auth: token ? { token } : undefined,
-    reconnection: true,
-    reconnectionAttempts: 10,
-    reconnectionDelay: 400,
-    reconnectionDelayMax: 2000,
-  });
-
-  socket.on("connect", async () => {
-    status.value = "connecting";
-    toast.value = "Connected to server…";
-
-    // join call room (server only needs {roomId})
+    // join call room (your server uses a room for signaling)
     socket.emit("call:join", { roomId, role, kind });
 
-    // make sure media + pc exist
-    if (!localStream) await getMedia();
-    if (!pc) await buildPeer();
+    // caller can “start” after join (server may ignore if not needed)
+    if (role === "caller") socket.emit("call:start", { roomId, kind });
   });
 
   socket.on("disconnect", () => {
-    if (status.value !== "ended") {
-      status.value = "connecting";
-      overlayTip.value = "Disconnected. Reconnecting…";
-    }
+    connected.value = false;
+    statusText.value = "Socket disconnected…";
   });
 
-  // server tells us who joined (gives socket id to target)
-  socket.on("call:peer-joined", ({ peerSocketId } = {}) => {
-    if (peerSocketId) remoteSocketId = String(peerSocketId);
-
-    // if caller and peer appears, start offer
-    if (role === "caller") {
-      callerStartOffer().catch(() => {});
-    }
+  /* ====== NEW STYLE EVENTS ====== */
+  socket.on("call:webrtc:offer", async ({ sdp }) => {
+    await onOffer(sdp);
   });
 
-  // server says call room ready (>=2)
-  socket.on("call:ready", () => {
-    if (role === "caller") {
-      callerStartOffer().catch(() => {});
-    }
+  socket.on("call:webrtc:answer", async ({ sdp }) => {
+    await onAnswer(sdp);
   });
 
-  // if peer leaves
-  socket.on("call:peer-left", () => {
-    if (status.value !== "ended") {
-      status.value = "connecting";
-      overlayTip.value = "Peer left. Waiting for reconnect…";
-    }
-  });
-
-  socket.on("call:webrtc:offer", async (p) => {
-    await handleOffer(p);
-  });
-
-  socket.on("call:webrtc:answer", async (p) => {
-    await handleAnswer(p);
-  });
-
-  socket.on("call:webrtc:ice", async (p) => {
-    await handleIce(p);
+  socket.on("call:webrtc:ice", async ({ candidate }) => {
+    await onRemoteIce(candidate);
   });
 
   socket.on("call:ended", () => {
-    endCall(true);
+    statusText.value = "Call ended.";
+    cleanup(true);
   });
 
   socket.on("call:error", ({ message } = {}) => {
-    status.value = "failed";
-    overlayTip.value = message || "Call error.";
+    errorText.value = message || "Call error.";
   });
+
+  /* ====== LEGACY FALLBACK EVENTS (so nothing breaks) ====== */
+  socket.on("call:offer", async ({ sdp }) => onOffer(sdp));
+  socket.on("call:answer", async ({ sdp }) => onAnswer(sdp));
+  socket.on("call:ice", async ({ candidate }) => onRemoteIce(candidate));
+
+  // some servers use these:
+  socket.on("webrtc:offer", async ({ sdp }) => onOffer(sdp));
+  socket.on("webrtc:answer", async ({ sdp }) => onAnswer(sdp));
+  socket.on("webrtc:ice", async ({ candidate }) => onRemoteIce(candidate));
+}
+
+function emitOffer(sdp) {
+  if (!socket) return;
+  socket.emit("call:webrtc:offer", { roomId, sdp }); // ✅ expected
+  socket.emit("call:offer", { roomId, sdp }); // fallback
+}
+
+function emitAnswer(sdp) {
+  if (!socket) return;
+  socket.emit("call:webrtc:answer", { roomId, sdp });
+  socket.emit("call:answer", { roomId, sdp });
+}
+
+function emitIce(candidate) {
+  if (!socket) return;
+  socket.emit("call:webrtc:ice", { roomId, candidate });
+  socket.emit("call:ice", { roomId, candidate });
 }
 
 /* =========================
-   UI actions
+   PERFECT NEGOTIATION (fixes “glare”)
 ========================= */
-function toggleMic() {
-  micMuted.value = !micMuted.value;
-  applyMediaToggles();
+async function makeOfferIfCaller() {
+  if (role !== "caller") return;
+  try {
+    makingOffer = true;
+    statusText.value = "Creating offer…";
+    const offer = await pc.createOffer();
+    await pc.setLocalDescription(offer);
+    emitOffer(pc.localDescription);
+    statusText.value = "Offer sent…";
+  } finally {
+    makingOffer = false;
+  }
+}
+
+async function onOffer(sdp) {
+  try {
+    if (!pc) return;
+
+    const offerDesc = new RTCSessionDescription(sdp);
+    const offerCollision = makingOffer || pc.signalingState !== "stable";
+
+    // If collision, callee rolls back safely
+    if (offerCollision) {
+      await pc.setLocalDescription({ type: "rollback" });
+    }
+
+    await pc.setRemoteDescription(offerDesc);
+    statusText.value = "Offer received. Creating answer…";
+
+    const answer = await pc.createAnswer();
+    await pc.setLocalDescription(answer);
+    emitAnswer(pc.localDescription);
+
+    statusText.value = "Answer sent.";
+  } catch (e) {
+    console.error(e);
+    errorText.value = "Failed handling offer.";
+  }
+}
+
+async function onAnswer(sdp) {
+  try {
+    if (!pc) return;
+    await pc.setRemoteDescription(new RTCSessionDescription(sdp));
+    statusText.value = "Connected…";
+  } catch (e) {
+    console.error(e);
+    errorText.value = "Failed handling answer.";
+  }
+}
+
+async function onRemoteIce(candidate) {
+  try {
+    if (!pc || !candidate) return;
+    await pc.addIceCandidate(candidate);
+  } catch (e) {
+    // ignore addIceCandidate errors during rollbacks
+    console.warn("addIceCandidate warn:", e?.message || e);
+  }
+}
+
+/* =========================
+   ACTIONS
+========================= */
+function toggleMute() {
+  muted.value = !muted.value;
+  localStream?.getAudioTracks()?.forEach((t) => (t.enabled = !muted.value));
 }
 
 function toggleCam() {
   camOff.value = !camOff.value;
-  applyMediaToggles();
+  localStream?.getVideoTracks()?.forEach((t) => (t.enabled = !camOff.value));
 }
 
-async function reconnectNow() {
-  overlayTip.value = "Reconnecting…";
-  status.value = "connecting";
-
-  offeredOnce = false;
-  remoteSocketId = null;
-
-  try { pc?.close(); } catch {}
-  pc = null;
-
-  try { socket?.disconnect(); } catch {}
-  socket = null;
-
-  if (!localStream) await getMedia();
-  await initSocket();
-}
-
-function endCall(fromRemote = false) {
-  if (status.value === "ended") return;
-  status.value = "ended";
-
-  if (!fromRemote) {
-    try { socket?.emit("call:end", { roomId }); } catch {}
+async function restartIce() {
+  try {
+    if (!pc) return;
+    statusText.value = "Restarting ICE…";
+    const offer = await pc.createOffer({ iceRestart: true });
+    await pc.setLocalDescription(offer);
+    emitOffer(pc.localDescription);
+  } catch (e) {
+    console.error(e);
+    errorText.value = "ICE restart failed.";
   }
+}
 
-  try { pc?.close(); } catch {}
-  pc = null;
+async function regetMedia() {
+  try {
+    localStream?.getTracks()?.forEach((t) => t.stop());
+    await setupMedia();
 
-  safeStopTracks(localStream);
-  localStream = null;
+    // replace tracks on sender
+    if (pc) {
+      const senders = pc.getSenders();
+      const audio = localStream.getAudioTracks()[0];
+      const video = localStream.getVideoTracks()[0];
 
+      for (const s of senders) {
+        if (s.track?.kind === "audio" && audio) await s.replaceTrack(audio);
+        if (s.track?.kind === "video" && video) await s.replaceTrack(video);
+      }
+    }
+    statusText.value = "Media refreshed.";
+  } catch (e) {
+    console.error(e);
+    errorText.value = "Failed to refresh media.";
+  }
+}
+
+function reconnectSocket() {
   try { socket?.disconnect(); } catch {}
   socket = null;
+  connectSocket();
+}
 
-  setTimeout(() => router.push("/dashboard"), 250);
+async function copyDebug() {
+  const debug = {
+    roomId,
+    role,
+    kind,
+    apiUrl,
+    socketConnected: connected.value,
+    iceState: iceState.value,
+    connState: connState.value,
+    sigState: sigState.value,
+    mediaReady: mediaReady.value,
+    pcReady: pcReady.value,
+  };
+  try {
+    await navigator.clipboard.writeText(JSON.stringify(debug, null, 2));
+    statusText.value = "Debug copied.";
+  } catch {
+    alert(JSON.stringify(debug, null, 2));
+  }
+}
+
+function endCall() {
+  try { socket?.emit("call:end", { roomId }); } catch {}
+  cleanup(true);
+}
+
+function goBack() {
+  cleanup(true);
+  router.back();
 }
 
 /* =========================
-   Mount
+   CLEANUP
+========================= */
+function cleanup(navigateAway = false) {
+  try { socket?.emit("call:leave", { roomId }); } catch {}
+  try { socket?.disconnect(); } catch {}
+  socket = null;
+
+  try { pc?.close(); } catch {}
+  pc = null;
+
+  try { localStream?.getTracks()?.forEach((t) => t.stop()); } catch {}
+  localStream = null;
+  remoteStream = null;
+
+  pcReady.value = false;
+  iceConnected.value = false;
+
+  if (navigateAway) {
+    // no-op
+  }
+}
+
+/* =========================
+   INIT
 ========================= */
 onMounted(async () => {
   if (!roomId) {
-    status.value = "failed";
-    overlayTip.value = "Missing roomId.";
+    errorText.value = "Missing roomId. Go back and start call again.";
     return;
   }
-  await initSocket();
+  if (!token) {
+    errorText.value = "Login again to call.";
+    return;
+  }
+
+  try {
+    await setupMedia();
+    await createPeer();
+    connectSocket();
+
+    // Caller makes the first offer (after short delay to ensure join)
+    setTimeout(() => {
+      if (role === "caller" && pc) makeOfferIfCaller();
+      statusText.value = role === "caller" ? "Calling…" : "Waiting for caller…";
+    }, 250);
+  } catch (e) {
+    console.error(e);
+  }
 });
 
-onBeforeUnmount(() => endCall(true));
+onBeforeUnmount(() => {
+  cleanup(false);
+});
 </script>
 
 <style scoped>
-/* (UNCHANGED: your exact CSS) */
-.wrap{
+.callWrap {
   min-height: 100vh;
-  padding-bottom: 24px;
-  background:
-    radial-gradient(1200px 700px at 20% 0%, rgba(255,75,43,0.18), transparent),
-    radial-gradient(900px 600px at 80% 20%, rgba(255,65,108,0.16), transparent),
-    #0b1220;
+  background: #0b1220;
   color: #fff;
+  position: relative;
+  padding-bottom: 18px;
+  overflow: hidden;
 }
 
-.topbar{
+.bg-animated {
+  position: absolute;
+  inset: -60px;
+  background:
+    radial-gradient(900px 600px at 15% 10%, rgba(255,75,43,.20), transparent),
+    radial-gradient(900px 600px at 85% 20%, rgba(255,65,108,.18), transparent),
+    radial-gradient(900px 600px at 50% 90%, rgba(34,197,94,.12), transparent);
+  filter: blur(0px);
+  animation: drift 10s ease-in-out infinite;
+  z-index: 0;
+}
+@keyframes drift {
+  0% { transform: translate3d(0,0,0) scale(1); }
+  50% { transform: translate3d(10px,-8px,0) scale(1.02); }
+  100% { transform: translate3d(0,0,0) scale(1); }
+}
+
+.topbar {
   position: sticky;
   top: 0;
-  z-index: 50;
-  padding: 14px;
-  display:flex;
-  justify-content:space-between;
+  z-index: 5;
+  display: flex;
+  align-items: center;
   gap: 10px;
+  padding: 12px 14px;
   background: rgba(8,12,20,.72);
   backdrop-filter: blur(10px);
   border-bottom: 1px solid rgba(255,255,255,.10);
 }
-.left, .right{ display:flex; gap: 10px; align-items:center; flex-wrap:wrap; }
 
-.pill{
-  display:flex;
-  align-items:center;
+.right { margin-left: auto; display: flex; gap: 8px; flex-wrap: wrap; }
+
+.chip {
+  border: 1px solid rgba(255,255,255,.14);
+  background: rgba(255,255,255,.10);
+  color: #fff;
+  padding: 10px 12px;
+  border-radius: 999px;
+  cursor: pointer;
+  font-weight: 900;
+}
+.ghost { opacity: .95; }
+.danger { background: rgba(255,80,80,.22); border-color: rgba(255,80,80,.35); }
+
+.pill {
+  display: inline-flex;
+  align-items: center;
   gap: 10px;
   padding: 10px 12px;
   border-radius: 999px;
-  background: rgba(255,255,255,.08);
-  border: 1px solid rgba(255,255,255,.12);
+  border: 1px solid rgba(255,255,255,.14);
+  background: rgba(0,0,0,.30);
 }
-.t{ font-weight: 950; }
-.s{ opacity: .75; font-size: 12px; }
+.dot { width: 10px; height: 10px; border-radius: 50%; background: rgba(255,255,255,.35); }
+.dot.on { background: #00e676; }
+.t { font-weight: 950; }
+.s { opacity: .8; font-size: 12px; }
 
-.chip{
-  border:none;
-  border-radius: 999px;
-  padding: 10px 14px;
-  cursor:pointer;
-  background: rgba(255,255,255,.12);
-  color:#fff;
-  font-weight: 900;
-}
-.chip.ghost{ background: rgba(255,255,255,.10); }
-.chip.danger{ background: rgba(255,80,80,.20); border:1px solid rgba(255,80,80,.35); }
-.chip.ok{ background: rgba(34,197,94,.18); border:1px solid rgba(34,197,94,.28); }
-.chip.mini{ padding: 8px 10px; font-size: 12px; }
-
-.grid{
+.grid {
+  position: relative;
+  z-index: 2;
   max-width: 1100px;
   margin: 0 auto;
   padding: 16px;
-  display:grid;
-  grid-template-columns: 1fr 1fr;
+  display: grid;
+  grid-template-columns: 1fr 280px;
   gap: 14px;
 }
 
-.card{
-  background: rgba(255,255,255,.08);
-  border: 1px solid rgba(255,255,255,.12);
-  border-radius: 18px;
-  padding: 12px;
-  backdrop-filter: blur(10px);
+.stageInner {
   position: relative;
+  border-radius: 18px;
+  border: 1px solid rgba(255,255,255,.12);
+  background: rgba(255,255,255,.06);
   overflow: hidden;
   min-height: 520px;
 }
 
-.cardTop{
-  display:flex;
-  justify-content:space-between;
-  align-items:center;
-  margin-bottom: 10px;
-}
-.label{ font-weight: 950; opacity:.9; }
-.hint{ opacity:.75; font-size: 12px; }
-
-.video{
+.remote {
   width: 100%;
-  height: auto;
-  max-height: 76vh;
-  border-radius: 16px;
-  background: #000;
+  height: 520px;
   object-fit: cover;
+  background: #000;
 }
-
-.audioBox{
-  display:grid;
-  place-items:center;
-  height: 100%;
-  min-height: 420px;
-  border-radius: 16px;
-  background: rgba(0,0,0,.35);
-  border: 1px solid rgba(255,255,255,.10);
-}
-.meIcon{ font-size: 44px; margin-bottom: 8px; }
-.meText{ font-weight: 950; opacity:.9; }
-
-.overlayTip{
-  position:absolute;
-  left: 12px;
+.local {
+  position: absolute;
   right: 12px;
   bottom: 12px;
-  display:flex;
-  justify-content:space-between;
-  gap: 10px;
-  align-items:center;
+  width: 160px;
+  height: 220px;
+  object-fit: cover;
+  border-radius: 16px;
+  border: 1px solid rgba(255,255,255,.16);
+  background: #000;
+}
+
+.hud {
+  position: absolute;
+  left: 12px;
+  bottom: 12px;
+  right: 190px;
+  display: grid;
+  gap: 8px;
+}
+
+.hudRow { display: flex; gap: 8px; flex-wrap: wrap; align-items: center; }
+.small { font-size: 12px; opacity: .85; }
+.sep { opacity: .5; }
+
+.badge {
+  padding: 6px 10px;
+  border-radius: 999px;
+  border: 1px solid rgba(255,255,255,.14);
+  background: rgba(0,0,0,.35);
+  font-weight: 950;
+  font-size: 12px;
+}
+.badge.ok { border-color: rgba(34,197,94,.35); background: rgba(34,197,94,.12); }
+
+.errorBox, .hintBox {
   padding: 10px 12px;
   border-radius: 14px;
-  background: rgba(0,0,0,.55);
   border: 1px solid rgba(255,255,255,.12);
-  backdrop-filter: blur(10px);
-  font-weight: 900;
+  background: rgba(0,0,0,.35);
 }
-.overlayText{ flex: 1; }
+.errorBox { border-color: rgba(255,80,80,.35); background: rgba(255,80,80,.14); }
 
-.toast{
-  position: fixed;
-  left: 50%;
-  bottom: 16px;
-  transform: translateX(-50%);
-  z-index: 80;
-  background: rgba(12,18,32,.95);
-  border: 1px solid rgba(255,255,255,.14);
-  padding: 10px 12px;
-  border-radius: 999px;
-  display:flex;
-  align-items:center;
+.audioOnly {
+  height: 520px;
+  display: grid;
+  place-items: center;
+  text-align: center;
   gap: 10px;
 }
-.dot{ width: 10px; height:10px; border-radius:50%; background:#00e676; }
-.miniX{ border:none; cursor:pointer; background: rgba(255,255,255,.10); color:#fff; border-radius: 10px; padding: 4px 8px; }
+.ringIcon { font-size: 44px; }
+.ringTitle { font-weight: 950; font-size: 18px; }
+.ringSub { opacity: .75; }
 
-@media (max-width: 980px){
-  .grid{ grid-template-columns: 1fr; }
-  .card{ min-height: 420px; }
+.panel {
+  border-radius: 18px;
+  border: 1px solid rgba(255,255,255,.12);
+  background: rgba(255,255,255,.06);
+  padding: 14px;
+}
+.panelTitle { font-weight: 950; margin-bottom: 10px; }
+
+.btn {
+  width: 100%;
+  padding: 10px 12px;
+  border-radius: 14px;
+  border: 1px solid rgba(255,255,255,.14);
+  background: rgba(0,0,0,.35);
+  color: #fff;
+  cursor: pointer;
+  font-weight: 950;
+  margin-bottom: 10px;
+}
+.btn.ghost { opacity: .9; }
+
+.miniNote { opacity: .8; font-size: 12px; margin-top: 6px; }
+
+@media (max-width: 900px) {
+  .grid { grid-template-columns: 1fr; }
+  .hud { right: 12px; }
+  .local { width: 120px; height: 160px; }
 }
 </style>
