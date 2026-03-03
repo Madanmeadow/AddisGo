@@ -82,7 +82,7 @@ import { useRoute, useRouter } from "vue-router";
 import Layout from "../components/Layout.vue";
 import { io } from "socket.io-client";
 
-const apiUrl = import.meta.env.VITE_API_URL;
+const apiUrl = (import.meta.env.VITE_API_URL || "").trim();
 
 const route = useRoute();
 const router = useRouter();
@@ -90,6 +90,7 @@ const router = useRouter();
 const mode = String(route.query.mode || "watch"); // host | watch
 const liveId = String(route.query.liveId || "");
 
+const token = localStorage.getItem("token") || "";
 const me = (() => {
   try { return JSON.parse(localStorage.getItem("user") || "null"); } catch { return null; }
 })();
@@ -175,13 +176,11 @@ async function toggleFullscreen() {
   try {
     if (document.fullscreenElement) await document.exitFullscreen();
     else await el.requestFullscreen();
-  } catch {
-    // ignore (iOS safari etc)
-  }
+  } catch {}
 }
 
 /* =========================
-   ✅ IMPORTANT: use your server TURN endpoint if available
+   ✅ ICE servers (TURN if available)
 ========================= */
 async function getIceServers() {
   try {
@@ -215,18 +214,19 @@ async function getHostMedia() {
 
     setMicEnabled(!muted.value);
     setCamEnabled(!cameraOff.value);
+
     status.value = "live";
+    error.value = "";
+    overlayTip.value = "";
   } catch {
     error.value = "Camera/Mic blocked. Allow permissions then retry.";
     overlayTip.value = "Allow Camera & Microphone permissions to host live.";
+    status.value = "connecting";
   }
 }
 
 /* =========================
    WebRTC - HOST
-   Server events you have:
-   - host gets: live:viewer-joined { viewerSocketId }
-   - relay: webrtc:offer / webrtc:answer / webrtc:ice
 ========================= */
 async function hostCreatePeer(viewerSocketId) {
   if (!localStream) return;
@@ -267,11 +267,6 @@ function hostDropPeer(viewerSocketId) {
 
 /* =========================
    WebRTC - WATCHER
-   Server relays to watcher:
-   - webrtc:offer { from, offer }
-   - webrtc:ice { from, candidate }
-   Watcher sends:
-   - webrtc:answer { to: from, answer }
 ========================= */
 async function watchEnsurePC() {
   if (watchPc) return;
@@ -315,9 +310,7 @@ async function watchAddIce(candidate) {
 }
 
 /* =========================
-   Live Chat (matches your server)
-   client -> server: live:chat { liveId, message }
-   server -> clients: live:chat { liveId, message, from:{id,username}, at }
+   Live Chat
 ========================= */
 function pushChat(msg) {
   const fromName =
@@ -375,17 +368,24 @@ async function init() {
     return;
   }
 
-  socket = io(apiUrl, { transports: ["websocket", "polling"] });
+  socket = io(apiUrl, {
+    transports: ["websocket", "polling"],
+    auth: token ? { token } : undefined,
+  });
 
   socket.on("connect", async () => {
-    // ✅ PRESENCE (helps calls/online status consistency across pages)
+    // presence (stable identity)
     if (me?.id) socket.emit("user:online", { userId: me.id, username: me.username });
 
     if (mode === "host") {
-      // ✅ CRITICAL FIX: re-register live host on THIS socket connection
+      // ✅ Live page owns live:create (host socket is correct)
       socket.emit("live:create", { liveId });
 
       await getHostMedia();
+      if (!localStream) {
+        overlayTip.value = overlayTip.value || "Allow permissions then come back and tap Go Live again.";
+        return;
+      }
       status.value = "live";
     } else {
       socket.emit("live:join", { liveId });
@@ -394,38 +394,32 @@ async function init() {
     }
   });
 
-  // host id for watchers (optional but useful for debugging)
   socket.on("live:host", ({ hostSocketId: hid } = {}) => {
     if (mode === "watch" && hid) hostSocketId = String(hid);
   });
 
-  // HOST: watcher joined -> create offer
   socket.on("live:viewer-joined", async ({ viewerSocketId } = {}) => {
     if (mode !== "host") return;
     if (!viewerSocketId) return;
     await hostCreatePeer(String(viewerSocketId));
   });
 
-  // HOST: watcher left -> cleanup peer
   socket.on("live:viewer-left", ({ viewerSocketId } = {}) => {
     if (mode !== "host") return;
     if (!viewerSocketId) return;
     hostDropPeer(String(viewerSocketId));
   });
 
-  // WATCH: receive offer
   socket.on("webrtc:offer", async ({ from, offer } = {}) => {
     if (mode !== "watch") return;
     if (offer) await watchHandleOffer(from, offer);
   });
 
-  // HOST: receive answer
   socket.on("webrtc:answer", async ({ from, answer } = {}) => {
     if (mode !== "host") return;
     if (from && answer) await hostAcceptAnswer(String(from), answer);
   });
 
-  // ICE (both)
   socket.on("webrtc:ice", async ({ from, candidate } = {}) => {
     if (!candidate) return;
     if (mode === "host") {
@@ -435,7 +429,6 @@ async function init() {
     }
   });
 
-  // Live ended (watchers)
   socket.on("live:ended", () => {
     status.value = "ended";
     overlayTip.value = "Live ended.";
@@ -445,7 +438,6 @@ async function init() {
     }, 600);
   });
 
-  // Chat
   socket.on("live:chat", async (msg) => {
     if (!msg) return;
     pushChat(msg);
@@ -455,18 +447,15 @@ async function init() {
 }
 
 function cleanup() {
-  // leave room if watcher
   try {
     if (socket && liveId && mode !== "host") socket.emit("live:leave", { liveId });
   } catch {}
 
-  // close all host pcs
   try {
     peers.forEach((pc) => { try { pc.close(); } catch {} });
     peers.clear();
   } catch {}
 
-  // close watcher pc
   try { watchPc?.close(); } catch {}
   watchPc = null;
 
@@ -482,6 +471,7 @@ onBeforeUnmount(() => cleanup());
 </script>
 
 <style scoped>
+/* (UNCHANGED: your exact CSS) */
 .liveWrap{
   min-height: 100vh;
   padding-bottom: 18px;

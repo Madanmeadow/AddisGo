@@ -13,9 +13,22 @@
         </div>
 
         <div class="top-actions">
-          <button class="chip" @click="fetchPosts" :disabled="loading">↻ {{ loading ? "Loading…" : "Refresh" }}</button>
-          <button class="chip ghost" @click="togglePeople">{{ peopleOpen ? "Hide People" : "People" }}</button>
-          <button class="chip ghost" @click="toggleChat">{{ chatOpen ? "Close Chat" : "Chat" }}</button>
+          <button class="chip" @click="refreshAll" :disabled="loading">
+            🔁 {{ loading ? "Loading…" : "Refresh All" }}
+          </button>
+
+          <button class="chip ghost" @click="togglePeople">
+            {{ peopleOpen ? "Hide People" : "People" }}
+          </button>
+
+          <button class="chip ghost" @click="toggleChat">
+            {{ chatOpen ? "Close Chat" : "Chat" }}
+          </button>
+
+          <button class="chip ghost" @click="toggleTools">
+            {{ toolsOpen ? "Close Tools" : "Tools" }}
+          </button>
+
           <button class="chip danger" @click="logout">Logout</button>
         </div>
       </header>
@@ -39,12 +52,38 @@
 
       <!-- SINGLE SCREEN CONTENT -->
       <main class="main">
+        <!-- SOCKET STATUS BANNER -->
+        <section v-if="token" class="panel miniPanel">
+          <div class="panel-head">
+            <div class="panel-title">🛰️ Status</div>
+            <div class="row">
+              <span class="badgePill" :class="{ ok: socketConnected, bad: !socketConnected }">
+                {{ socketConnected ? "Socket Connected" : "Socket Disconnected" }}
+              </span>
+              <span class="badgePill">{{ onlineCount }} online</span>
+              <span class="badgePill">{{ liveStreams.length }} live</span>
+            </div>
+
+            <div class="row">
+              <button class="btn ghostBtn" @click="reconnectSocket">♻️ Reconnect</button>
+              <button class="btn ghostBtn" @click="copyMyProfileLink">🔗 Copy Profile</button>
+              <button class="btn ghostBtn" @click="copyDiagnostics">🧾 Copy Diagnostics</button>
+            </div>
+          </div>
+
+          <div v-if="statusNote" class="hint mt10">{{ statusNote }}</div>
+        </section>
+
         <!-- TOP DOCK -->
         <section class="dock">
           <!-- Live compact -->
           <div class="panel dockCard">
             <div class="panel-head">
               <div class="panel-title">🔴 Live Now</div>
+
+              <!-- ✅ IMPORTANT FIX:
+                   Do NOT emit live:create here (Dashboard socket != Live socket).
+                   Just navigate; Live.vue will emit live:create on its own connection. -->
               <button class="btn btn-primary" @click="startLive" :disabled="!token">Go Live</button>
             </div>
 
@@ -72,7 +111,9 @@
             <div class="panel-head">
               <div class="panel-title">👥 People</div>
               <div class="dockActions">
-                <button class="btn" @click="fetchPeople" :disabled="peopleLoading || !token">{{ peopleLoading ? "Loading…" : "Refresh" }}</button>
+                <button class="btn" @click="fetchPeople" :disabled="peopleLoading || !token">
+                  {{ peopleLoading ? "Loading…" : "Refresh" }}
+                </button>
                 <button class="btn ghostBtn" @click="toggleChat">{{ chatOpen ? "Close Chat" : "Open Chat" }}</button>
               </div>
             </div>
@@ -88,7 +129,7 @@
                   :title="u.display_name || u.username || ('User #' + u.id)"
                   @click="peopleOpen ? null : startCall(u,'audio')"
                 >
-                  <div class="miniAvatar">{{ (u.display_name || u.username || "U")[0]?.toUpperCase() }}</div>
+                  <div class="miniAvatar">{{ (u.display_name || u.username || 'U')[0]?.toUpperCase() }}</div>
                   <span class="miniDot" :class="{ on: isOnline(u.id) }"></span>
                 </div>
 
@@ -101,8 +142,8 @@
                 <div v-else-if="people.length === 0" class="hint">No users found.</div>
 
                 <div v-else class="peopleList">
-                  <div v-for="u in people" :key="'plist-' + u.id" class="person compact">
-                    <div class="avatar small">{{ (u.display_name || u.username || "U")[0]?.toUpperCase() }}</div>
+                  <div v-for="u in filteredPeople" :key="'plist-' + u.id" class="person compact">
+                    <div class="avatar small">{{ (u.display_name || u.username || 'U')[0]?.toUpperCase() }}</div>
 
                     <div class="person-meta">
                       <div class="person-name">{{ u.display_name || u.username || ("User #" + u.id) }}</div>
@@ -117,6 +158,7 @@
                     <div class="person-actions">
                       <button class="iconbtn" title="Audio Call" :disabled="!isOnline(u.id) || callBusy" @click="startCall(u,'audio')">📞</button>
                       <button class="iconbtn" title="Video Call" :disabled="!isOnline(u.id) || callBusy" @click="startCall(u,'video')">🎥</button>
+                      <button class="iconbtn" title="Open Profile" @click="openUserProfile(u)">👤</button>
                     </div>
                   </div>
                 </div>
@@ -125,6 +167,34 @@
               </div>
             </template>
           </div>
+        </section>
+
+        <!-- TOOLS PANEL (EXTRA POWER) -->
+        <section v-if="toolsOpen" class="panel toolsPanel">
+          <div class="panel-head">
+            <div class="panel-title">🧰 Power Tools</div>
+            <div class="dockActions">
+              <button class="btn ghostBtn" @click="toggleTools">Close</button>
+            </div>
+          </div>
+
+          <div class="toolsGrid">
+            <button class="toolBtn" @click="setFeedMode('foryou')">🎬 Go For You</button>
+            <button class="toolBtn" @click="setFeedMode('reels')">🎞️ Go Reels</button>
+            <button class="toolBtn" @click="setFeedMode('rooms')">🎧 Go Rooms</button>
+            <button class="toolBtn" @click="setFeedMode('live')">🔴 Go Live Tab</button>
+
+            <button class="toolBtn" @click="scrollToTop">⬆️ Scroll Top</button>
+            <button class="toolBtn" @click="focusComposer">✍️ Focus Composer</button>
+            <button class="toolBtn" @click="clearDraft">🧹 Clear Draft</button>
+            <button class="toolBtn" @click="refreshAll" :disabled="loading">🔁 Refresh All</button>
+
+            <button class="toolBtn" @click="testTurn">🧊 Test TURN</button>
+            <button class="toolBtn" @click="requestNotifications">🔔 Enable Notifications</button>
+            <button class="toolBtn" @click="hardResetApp">💣 Hard Reset (Local)</button>
+          </div>
+
+          <div v-if="turnNote" class="hint mt10">{{ turnNote }}</div>
         </section>
 
         <!-- COMPOSER -->
@@ -143,7 +213,13 @@
             </div>
           </div>
 
-          <textarea ref="composerRef" v-model="caption" class="input" placeholder="What's happening?" rows="3"></textarea>
+          <textarea
+            ref="composerRef"
+            v-model="caption"
+            class="input"
+            placeholder="What's happening?"
+            rows="3"
+          ></textarea>
 
           <div class="upload-row">
             <label class="file-pill">
@@ -159,6 +235,8 @@
             <button class="btn btn-primary" :disabled="posting || !token" @click="submitPost">
               {{ posting ? "Posting…" : (feedMode === 'reels' ? "Post Reel 🎬" : "Post 🚀") }}
             </button>
+
+            <button class="btn ghostBtn" :disabled="posting" @click="clearDraft">Clear</button>
           </div>
 
           <div v-if="error" class="alert">{{ error }}</div>
@@ -204,7 +282,7 @@
               <button class="chip ghost" @click="toggleChat">Toggle Chat Drawer</button>
             </div>
 
-            <div class="rooms-messages" ref="chatBoxRef">
+            <div class="rooms-messages" ref="roomsChatBoxRef">
               <div v-for="(m, i) in chatMessages" :key="'rm-'+i" class="rm">
                 <div class="rm-top">
                   <span class="rm-user">{{ m.from }}</span>
@@ -261,6 +339,7 @@
               <button class="action-btn" @click="toggleComments(post)">💬 <span class="label">{{ commentCount(post.id) }}</span></button>
               <div class="spacer"></div>
               <button class="action-btn ghost" @click="sharePost(post)">🔗 <span class="label">Share</span></button>
+              <button class="action-btn ghost" @click="copyPostText(post)">📋 <span class="label">Copy</span></button>
             </div>
 
             <CommentsBlock :post="post" />
@@ -322,6 +401,7 @@
               <button class="action-btn" @click="toggleComments(post)">💬 <span class="label">{{ commentCount(post.id) }}</span></button>
               <div class="spacer"></div>
               <button class="action-btn ghost" @click="sharePost(post)">🔗 <span class="label">Share</span></button>
+              <button class="action-btn ghost" @click="copyPostText(post)">📋 <span class="label">Copy</span></button>
             </div>
 
             <CommentsBlock :post="post" />
@@ -367,6 +447,7 @@
               <button class="action-btn" @click="toggleComments(post)">💬 <span class="label">{{ commentCount(post.id) }}</span></button>
               <div class="spacer"></div>
               <button class="action-btn ghost" @click="sharePost(post)">🔗 <span class="label">Share</span></button>
+              <button class="action-btn ghost" @click="copyPostText(post)">📋 <span class="label">Copy</span></button>
             </div>
 
             <CommentsBlock :post="post" />
@@ -430,6 +511,7 @@
               <button class="action-btn" @click="toggleComments(post)">💬 <span class="label">{{ commentCount(post.id) }}</span></button>
               <div class="spacer"></div>
               <button class="action-btn ghost" @click="sharePost(post)">🔗 <span class="label">Share</span></button>
+              <button class="action-btn ghost" @click="copyPostText(post)">📋 <span class="label">Copy</span></button>
             </div>
 
             <CommentsBlock :post="post" />
@@ -580,8 +662,16 @@ function setFeedMode(mode) {
 
 /* ================= SOCKET ================= */
 let socket = null;
+const socketConnected = ref(false);
 const onlinePairs = ref([]);
 const liveStreams = ref([]);
+const statusNote = ref("");
+
+const onlineCount = computed(() => {
+  // legacy pairs: [[userId, socketId], ...]
+  if (Array.isArray(onlinePairs.value)) return onlinePairs.value.length;
+  return 0;
+});
 
 function isOnline(userId) {
   const id = String(userId);
@@ -592,7 +682,6 @@ function safeRegisterOnline() {
   if (!socket) return;
   if (!me?.id) return;
 
-  // ✅ NEW users table still has id/username/display_name, but localStorage user might be old.
   const username = me?.username || me?.display_name || me?.name || me?.email || `User${me.id}`;
 
   // ✅ new best event
@@ -611,6 +700,34 @@ function safeRegisterOnline() {
   socket.emit("presence:get");
 }
 
+function reconnectSocket() {
+  statusNote.value = "Reconnecting socket…";
+  try { socket?.disconnect(); } catch {}
+  socket = null;
+  connectSocket();
+}
+
+function connectSocket() {
+  socket = createSocket();
+
+  socket.on("connect", () => {
+    socketConnected.value = true;
+    statusNote.value = "";
+    safeRegisterOnline();
+  });
+
+  socket.on("disconnect", () => {
+    socketConnected.value = false;
+    if (token) statusNote.value = "Socket disconnected. Tap Reconnect.";
+  });
+
+  // reconnect safety
+  socket.io?.on?.("reconnect", () => {
+    socketConnected.value = true;
+    safeRegisterOnline();
+  });
+}
+
 /* ================= PEOPLE ================= */
 const peopleOpen = ref(false);
 const people = ref([]);
@@ -618,6 +735,15 @@ const peopleLoading = ref(false);
 const peopleError = ref("");
 
 function togglePeople() { peopleOpen.value = !peopleOpen.value; }
+
+const filteredPeople = computed(() => {
+  const q = (search.value || "").trim().toLowerCase();
+  if (!q) return people.value;
+  return people.value.filter((u) => {
+    const n = String(u.display_name || u.username || u.email || "").toLowerCase();
+    return n.includes(q) || String(u.id || "").includes(q);
+  });
+});
 
 async function fetchPeople() {
   if (!token) return;
@@ -639,6 +765,12 @@ async function fetchPeople() {
   } finally {
     peopleLoading.value = false;
   }
+}
+
+function openUserProfile(u) {
+  const id = u?.id ? String(u.id) : "";
+  if (!id) return;
+  router.push(`/profile/${id}`);
 }
 
 /* ================= CALLS ================= */
@@ -699,6 +831,12 @@ const composerRef = ref(null);
 const myInitial = computed(() => (me?.username ? me.username[0].toUpperCase() : "A"));
 
 function focusComposer() { try { composerRef.value?.focus?.(); } catch {} }
+
+function clearDraft() {
+  caption.value = "";
+  imageFile.value = null;
+  videoFile.value = null;
+}
 
 function formatDate(d) {
   if (!d) return "";
@@ -788,9 +926,7 @@ async function submitPost() {
       await ensureLikeState(clean.id);
     }
 
-    caption.value = "";
-    imageFile.value = null;
-    videoFile.value = null;
+    clearDraft();
 
     await nextTick();
     if (feedMode.value === "foryou") {
@@ -834,9 +970,7 @@ async function submitReel() {
       await ensureLikeState(clean.id);
     }
 
-    caption.value = "";
-    imageFile.value = null;
-    videoFile.value = null;
+    clearDraft();
 
     await nextTick();
     setupVideoObserver();
@@ -851,6 +985,14 @@ async function submitReel() {
 function onPickImage(e) { imageFile.value = e.target.files?.[0] || null; }
 function onPickVideo(e) { videoFile.value = e.target.files?.[0] || null; }
 function scrollToTop() { window.scrollTo({ top: 0, behavior: "smooth" }); }
+
+async function refreshAll() {
+  await fetchPosts();
+  if (token) await fetchPeople();
+  // refresh socket lists
+  try { socket?.emit("get-live-list"); } catch {}
+  try { socket?.emit("presence:get"); } catch {}
+}
 
 /* ================= FILTERED BASE ================= */
 const baseFiltered = computed(() => {
@@ -1086,7 +1228,7 @@ const CommentsBlock = defineComponent({
   },
 });
 
-/* ================= SHARE ================= */
+/* ================= SHARE / COPY ================= */
 async function sharePost(post) {
   const url = `${window.location.origin}/#post-${post.id}`;
   try {
@@ -1099,12 +1241,19 @@ async function sharePost(post) {
   catch { alert(url); }
 }
 
+async function copyPostText(post) {
+  const text = (post?.caption || "").trim() || "(no caption)";
+  try { await navigator.clipboard.writeText(text); alert("Copied!"); }
+  catch { alert(text); }
+}
+
 /* ================= CHAT ================= */
 const chatOpen = ref(false);
 const chatRoom = ref("global");
 const chatText = ref("");
 const chatMessages = ref([]);
 const chatBoxRef = ref(null);
+const roomsChatBoxRef = ref(null);
 
 function toggleChat() { chatOpen.value = !chatOpen.value; }
 
@@ -1112,11 +1261,18 @@ function selectChat(room) {
   chatRoom.value = room;
   socket?.emit("join-room", room);
   chatMessages.value.push({ from: "system", text: `Joined room: ${room}`, created_at: new Date().toISOString() });
-  nextTick(scrollChatToBottom);
+  nextTick(() => {
+    scrollChatToBottom();
+    scrollRoomsToBottom();
+  });
 }
 
 function scrollChatToBottom() {
   const el = chatBoxRef.value;
+  if (el) el.scrollTop = el.scrollHeight;
+}
+function scrollRoomsToBottom() {
+  const el = roomsChatBoxRef.value;
   if (el) el.scrollTop = el.scrollHeight;
 }
 
@@ -1130,10 +1286,13 @@ function sendChat() {
 function startLive() {
   if (!token) return alert("Login again to go live.");
   const liveId = `live-${me?.id || Math.random().toString(36).slice(2, 8)}-${Date.now().toString().slice(-4)}`;
-  socket?.emit("live:create", { liveId });
+
+  // ✅ DO NOT emit live:create here (wrong socket).
   router.push(`/live?mode=host&liveId=${encodeURIComponent(liveId)}`);
 }
-function joinLive(liveId) { router.push(`/live?mode=watch&liveId=${encodeURIComponent(liveId)}`); }
+function joinLive(liveId) {
+  router.push(`/live?mode=watch&liveId=${encodeURIComponent(liveId)}`);
+}
 
 /* ================= AUTH ================= */
 function logout() {
@@ -1285,26 +1444,80 @@ function setupVideoObserver() {
   });
 }
 
+/* ================= EXTRA: TOOLS / DIAGNOSTICS ================= */
+const toolsOpen = ref(false);
+const turnNote = ref("");
+
+function toggleTools() {
+  toolsOpen.value = !toolsOpen.value;
+}
+
+async function copyMyProfileLink() {
+  const id = me?.id ? String(me.id) : "";
+  const url = `${window.location.origin}/#/profile/${id}`;
+  try { await navigator.clipboard.writeText(url); alert("Profile link copied!"); }
+  catch { alert(url); }
+}
+
+async function copyDiagnostics() {
+  const diag = {
+    at: new Date().toISOString(),
+    apiUrl,
+    socketConnected: socketConnected.value,
+    me: me ? { id: me.id, username: me.username || me.display_name || me.name || me.email } : null,
+    onlineCount: onlineCount.value,
+    liveCount: liveStreams.value.length,
+    feedMode: feedMode.value,
+  };
+  try { await navigator.clipboard.writeText(JSON.stringify(diag, null, 2)); alert("Diagnostics copied!"); }
+  catch { alert(JSON.stringify(diag, null, 2)); }
+}
+
+async function testTurn() {
+  turnNote.value = "Testing TURN…";
+  try {
+    const res = await fetch(`${apiUrl}/api/turn`);
+    const data = await res.json();
+    if (data?.ok && Array.isArray(data.iceServers)) {
+      turnNote.value = `TURN OK: ${data.note || "iceServers received"} • servers=${data.iceServers.length}`;
+    } else {
+      turnNote.value = "TURN failed (fallback STUN will still work).";
+    }
+  } catch {
+    turnNote.value = "TURN test failed (network).";
+  }
+}
+
+async function requestNotifications() {
+  try {
+    if (!("Notification" in window)) return alert("Notifications not supported here.");
+    const perm = await Notification.requestPermission();
+    alert(`Notifications: ${perm}`);
+  } catch {
+    alert("Notification permission failed.");
+  }
+}
+
+function hardResetApp() {
+  const ok = confirm("Hard reset local app data? (token + user + drafts) You will be logged out.");
+  if (!ok) return;
+  localStorage.clear();
+  router.push("/login");
+}
+
 /* ================= INIT ================= */
 onMounted(async () => {
   await fetchPosts();
   if (token) await fetchPeople();
 
-  // ✅ connect with correct server URL + token auth
-  socket = createSocket();
-
-  socket.on("connect", () => {
-    safeRegisterOnline();
-  });
-
-  // ✅ reconnect safety (presence + live list comes back)
-  socket.io?.on?.("reconnect", () => {
-    safeRegisterOnline();
-  });
+  connectSocket();
 
   socket.on("receive-message", (msg) => {
     chatMessages.value.push(msg);
-    nextTick(scrollChatToBottom);
+    nextTick(() => {
+      scrollChatToBottom();
+      scrollRoomsToBottom();
+    });
   });
 
   // ✅ Live list from server
@@ -1315,11 +1528,10 @@ onMounted(async () => {
   // ✅ Presence list (new)
   socket.on("presence:list", ({ onlineUserIds } = {}) => {
     if (!Array.isArray(onlineUserIds)) return;
-    // convert to legacy pairs format so isOnline() still works
     onlinePairs.value = onlineUserIds.map((id) => [String(id), ""]);
   });
 
-  // ✅ Legacy presence list (your server emits this)
+  // ✅ Legacy presence list
   socket.on("online-users", (pairs) => {
     onlinePairs.value = Array.isArray(pairs) ? pairs : [];
   });
@@ -1329,7 +1541,6 @@ onMounted(async () => {
     pendingRoomId.value = String(roomId || "");
     callingToast.value = `Calling… (${kind || pendingKind.value})`;
 
-    // move to call page after we have roomId
     if (pendingRoomId.value) {
       router.push(`/call?roomId=${encodeURIComponent(pendingRoomId.value)}&role=caller&kind=${encodeURIComponent(kind || pendingKind.value)}`);
     }
@@ -1351,6 +1562,13 @@ onMounted(async () => {
     pendingRoomId.value = "";
   });
 
+  socket.on("call:busy", ({ message } = {}) => {
+    callingToast.value = "";
+    callBusy.value = false;
+    pendingRoomId.value = "";
+    alert(message || "User is busy.");
+  });
+
   socket.on("call:error", ({ message } = {}) => {
     callingToast.value = "";
     callBusy.value = false;
@@ -1359,7 +1577,6 @@ onMounted(async () => {
     alert(message || "Call error");
   });
 
-  // ✅ ensure first paint observers
   await nextTick();
   if (feedMode.value === "foryou") {
     setupLoadMoreObserver();
@@ -1937,5 +2154,35 @@ onBeforeUnmount(() => {
 @media (max-width: 500px) {
   .modebar { overflow-x: auto; scrollbar-width: none; }
   .modebar::-webkit-scrollbar { display: none; }
+}
+
+/* ======= tiny extras (safe) ======= */
+.miniPanel { padding: 12px; }
+.row { display:flex; gap:8px; align-items:center; flex-wrap:wrap; }
+.badgePill{
+  padding: 6px 10px;
+  border-radius: 999px;
+  background: rgba(255,255,255,0.10);
+  border: 1px solid rgba(255,255,255,0.14);
+  font-weight: 950;
+  font-size: 12px;
+}
+.badgePill.ok{ border-color: rgba(34,197,94,0.35); background: rgba(34,197,94,0.12); }
+.badgePill.bad{ border-color: rgba(255,80,80,0.35); background: rgba(255,80,80,0.12); }
+
+.toolsPanel{ margin-top: -4px; }
+.toolsGrid{
+  display:grid;
+  grid-template-columns: repeat(2, minmax(0,1fr));
+  gap: 10px;
+}
+.toolBtn{
+  border: 1px solid rgba(255,255,255,0.14);
+  background: rgba(0,0,0,0.28);
+  color: #fff;
+  padding: 10px 12px;
+  border-radius: 14px;
+  cursor: pointer;
+  font-weight: 950;
 }
 </style>

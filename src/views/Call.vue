@@ -29,14 +29,7 @@
             <div class="hint" v-if="status !== 'live'">Waiting…</div>
           </div>
 
-          <video
-            v-if="kind === 'video'"
-            ref="remoteVideo"
-            class="video"
-            autoplay
-            playsinline
-          ></video>
-
+          <video v-if="kind === 'video'" ref="remoteVideo" class="video" autoplay playsinline></video>
           <audio v-else ref="remoteAudio" autoplay></audio>
 
           <div v-if="overlayTip" class="overlayTip">
@@ -50,14 +43,7 @@
             <div class="label">YOU</div>
           </div>
 
-          <video
-            v-if="kind === 'video'"
-            ref="localVideo"
-            class="video"
-            autoplay
-            playsinline
-            muted
-          ></video>
+          <video v-if="kind === 'video'" ref="localVideo" class="video" autoplay playsinline muted></video>
 
           <div v-else class="audioBox">
             <div class="meIcon">🎙️</div>
@@ -81,7 +67,7 @@ import { useRoute, useRouter } from "vue-router";
 import Layout from "../components/Layout.vue";
 import { io } from "socket.io-client";
 
-const apiUrl = import.meta.env.VITE_API_URL;
+const apiUrl = (import.meta.env.VITE_API_URL || "").trim();
 
 const route = useRoute();
 const router = useRouter();
@@ -90,6 +76,7 @@ const roomId = String(route.query.roomId || "");
 const role = String(route.query.role || "caller"); // caller | callee
 const kind = String(route.query.kind || "video"); // video | audio
 
+const token = localStorage.getItem("token") || "";
 const me = (() => {
   try { return JSON.parse(localStorage.getItem("user") || "null"); } catch { return null; }
 })();
@@ -117,24 +104,31 @@ let localStream = null;
 const micMuted = ref(false);
 const camOff = ref(false);
 
-const EVT = {
-  join: "call:join",     // { roomId, role, kind }
-  offer: "call:offer",   // { roomId, sdp }
-  answer: "call:answer", // { roomId, sdp }
-  ice: "call:ice",       // { roomId, candidate }
-  end: "call:end",       // { roomId }
-  ended: "call:ended",   // server -> client
-  error: "call:error",   // server -> client
-};
+// who to send SDP/ICE to (best reliability)
+let remoteSocketId = null;
 
-function makePC() {
-  return new RTCPeerConnection({
-    iceServers: [
-      { urls: "stun:stun.l.google.com:19302" },
-      { urls: "stun:stun1.l.google.com:19302" },
-      { urls: "stun:stun2.l.google.com:19302" },
-    ],
-  });
+// prevent double-offer storms
+let offeredOnce = false;
+
+/* =========================
+   TURN/ICE
+========================= */
+async function getIceServers() {
+  try {
+    const res = await fetch(`${apiUrl}/api/turn`);
+    const data = await res.json();
+    if (data?.ok && Array.isArray(data.iceServers) && data.iceServers.length) return data.iceServers;
+  } catch {}
+  return [
+    { urls: "stun:stun.l.google.com:19302" },
+    { urls: "stun:stun1.l.google.com:19302" },
+  ];
+}
+
+let cachedIce = null;
+async function makePC() {
+  if (!cachedIce) cachedIce = await getIceServers();
+  return new RTCPeerConnection({ iceServers: cachedIce });
 }
 
 function safeStopTracks(stream) {
@@ -167,10 +161,17 @@ async function getMedia() {
 }
 
 async function buildPeer() {
-  pc = makePC();
+  pc = await makePC();
 
+  // ICE -> relay through server
   pc.onicecandidate = (e) => {
-    if (e.candidate) socket?.emit(EVT.ice, { roomId, candidate: e.candidate });
+    if (e.candidate) {
+      socket?.emit("call:webrtc:ice", {
+        roomId,
+        candidate: e.candidate,
+        to: remoteSocketId || undefined,
+      });
+    }
   };
 
   pc.ontrack = async (e) => {
@@ -187,6 +188,7 @@ async function buildPeer() {
 
     status.value = "live";
     overlayTip.value = "";
+    toast.value = "Connected ✅";
   };
 
   pc.onconnectionstatechange = () => {
@@ -195,34 +197,81 @@ async function buildPeer() {
       status.value = "failed";
       overlayTip.value = "Connection failed. Tap Reconnect.";
     }
+    if (st === "disconnected") {
+      if (status.value !== "ended") {
+        status.value = "connecting";
+        overlayTip.value = "Peer disconnected. Waiting/reconnecting…";
+      }
+    }
   };
 
+  // attach local tracks
   if (localStream) {
     localStream.getTracks().forEach((t) => pc.addTrack(t, localStream));
   }
 }
 
-async function callerStart() {
-  // caller creates offer
+async function callerStartOffer() {
+  if (!pc || offeredOnce) return;
+  offeredOnce = true;
+
   const offer = await pc.createOffer();
   await pc.setLocalDescription(offer);
-  socket?.emit(EVT.offer, { roomId, sdp: offer });
+
+  socket?.emit("call:webrtc:offer", {
+    roomId,
+    offer,
+    to: remoteSocketId || undefined,
+  });
 }
 
-async function handleOffer(sdp) {
-  await pc.setRemoteDescription(new RTCSessionDescription(sdp));
+/* =========================
+   Handle incoming SDP/ICE (server events)
+========================= */
+async function handleOffer(payload) {
+  const offer = payload?.offer;
+  if (!offer) return;
+
+  // capture who sent it (so we can send answer/ice back)
+  if (payload?.from) remoteSocketId = String(payload.from);
+
+  if (!pc) await buildPeer();
+
+  await pc.setRemoteDescription(new RTCSessionDescription(offer));
+
   const answer = await pc.createAnswer();
   await pc.setLocalDescription(answer);
-  socket?.emit(EVT.answer, { roomId, sdp: answer });
+
+  socket?.emit("call:webrtc:answer", {
+    roomId,
+    answer,
+    to: remoteSocketId || undefined,
+  });
 }
 
-async function handleAnswer(sdp) {
-  await pc.setRemoteDescription(new RTCSessionDescription(sdp));
+async function handleAnswer(payload) {
+  const answer = payload?.answer;
+  if (!answer || !pc) return;
+
+  if (payload?.from) remoteSocketId = String(payload.from);
+  await pc.setRemoteDescription(new RTCSessionDescription(answer));
 }
 
+async function handleIce(payload) {
+  const candidate = payload?.candidate;
+  if (!candidate || !pc) return;
+
+  if (payload?.from) remoteSocketId = String(payload.from);
+  try { await pc.addIceCandidate(new RTCIceCandidate(candidate)); } catch {}
+}
+
+/* =========================
+   Socket init
+========================= */
 async function initSocket() {
   socket = io(apiUrl, {
     transports: ["websocket", "polling"],
+    auth: token ? { token } : undefined,
     reconnection: true,
     reconnectionAttempts: 10,
     reconnectionDelay: 400,
@@ -233,15 +282,12 @@ async function initSocket() {
     status.value = "connecting";
     toast.value = "Connected to server…";
 
-    socket.emit(EVT.join, { roomId, role, kind });
+    // join call room (server only needs {roomId})
+    socket.emit("call:join", { roomId, role, kind });
 
+    // make sure media + pc exist
     if (!localStream) await getMedia();
     if (!pc) await buildPeer();
-
-    // caller drives negotiation
-    if (role === "caller") {
-      await callerStart();
-    }
   });
 
   socket.on("disconnect", () => {
@@ -251,33 +297,56 @@ async function initSocket() {
     }
   });
 
-  socket.on(EVT.offer, async ({ sdp } = {}) => {
-    if (!sdp) return;
-    if (!pc) await buildPeer();
-    await handleOffer(sdp);
+  // server tells us who joined (gives socket id to target)
+  socket.on("call:peer-joined", ({ peerSocketId } = {}) => {
+    if (peerSocketId) remoteSocketId = String(peerSocketId);
+
+    // if caller and peer appears, start offer
+    if (role === "caller") {
+      callerStartOffer().catch(() => {});
+    }
   });
 
-  socket.on(EVT.answer, async ({ sdp } = {}) => {
-    if (!sdp) return;
-    await handleAnswer(sdp);
+  // server says call room ready (>=2)
+  socket.on("call:ready", () => {
+    if (role === "caller") {
+      callerStartOffer().catch(() => {});
+    }
   });
 
-  socket.on(EVT.ice, async ({ candidate } = {}) => {
-    try {
-      if (pc && candidate) await pc.addIceCandidate(new RTCIceCandidate(candidate));
-    } catch {}
+  // if peer leaves
+  socket.on("call:peer-left", () => {
+    if (status.value !== "ended") {
+      status.value = "connecting";
+      overlayTip.value = "Peer left. Waiting for reconnect…";
+    }
   });
 
-  socket.on(EVT.ended, () => {
+  socket.on("call:webrtc:offer", async (p) => {
+    await handleOffer(p);
+  });
+
+  socket.on("call:webrtc:answer", async (p) => {
+    await handleAnswer(p);
+  });
+
+  socket.on("call:webrtc:ice", async (p) => {
+    await handleIce(p);
+  });
+
+  socket.on("call:ended", () => {
     endCall(true);
   });
 
-  socket.on(EVT.error, ({ message } = {}) => {
+  socket.on("call:error", ({ message } = {}) => {
     status.value = "failed";
     overlayTip.value = message || "Call error.";
   });
 }
 
+/* =========================
+   UI actions
+========================= */
 function toggleMic() {
   micMuted.value = !micMuted.value;
   applyMediaToggles();
@@ -292,15 +361,16 @@ async function reconnectNow() {
   overlayTip.value = "Reconnecting…";
   status.value = "connecting";
 
+  offeredOnce = false;
+  remoteSocketId = null;
+
   try { pc?.close(); } catch {}
   pc = null;
 
   try { socket?.disconnect(); } catch {}
   socket = null;
 
-  // keep localStream (faster), but if missing reacquire
   if (!localStream) await getMedia();
-
   await initSocket();
 }
 
@@ -309,7 +379,7 @@ function endCall(fromRemote = false) {
   status.value = "ended";
 
   if (!fromRemote) {
-    try { socket?.emit(EVT.end, { roomId }); } catch {}
+    try { socket?.emit("call:end", { roomId }); } catch {}
   }
 
   try { pc?.close(); } catch {}
@@ -324,6 +394,9 @@ function endCall(fromRemote = false) {
   setTimeout(() => router.push("/dashboard"), 250);
 }
 
+/* =========================
+   Mount
+========================= */
 onMounted(async () => {
   if (!roomId) {
     status.value = "failed";
@@ -337,6 +410,7 @@ onBeforeUnmount(() => endCall(true));
 </script>
 
 <style scoped>
+/* (UNCHANGED: your exact CSS) */
 .wrap{
   min-height: 100vh;
   padding-bottom: 24px;

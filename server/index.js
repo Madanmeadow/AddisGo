@@ -103,7 +103,7 @@ pool.on("connect", () => logOK("PostgreSQL Connected"));
    AUTH (register/login)
 ========================= */
 function signToken(user) {
-  const userId = canon(user?.id); // your DB uses users.id integer
+  const userId = canon(user?.id);
   const username =
     user?.username ||
     user?.display_name ||
@@ -111,7 +111,6 @@ function signToken(user) {
     user?.email ||
     (userId ? `User${userId}` : "User");
 
-  // ✅ include BOTH: userId + id (backward compatible)
   return jwt.sign(
     { userId, id: userId, username },
     JWT_SECRET,
@@ -251,14 +250,14 @@ const io = new Server(server, {
   cors: { origin: ORIGINS, credentials: true, methods: ["GET", "POST"] },
 });
 
-/* ✅ NEW: Socket JWT auth (makes presence/calls/live survive frontend changes) */
+/* ✅ NEW: Socket JWT auth */
 io.use((socket, next) => {
   try {
     const token =
       socket.handshake.auth?.token ||
       socket.handshake.headers?.authorization?.replace("Bearer ", "");
 
-    if (!token) return next(); // allow guests; they can still emit user:online later
+    if (!token) return next();
 
     const payload = jwt.verify(token, JWT_SECRET);
     const userId = canon(payload?.userId ?? payload?.id);
@@ -268,7 +267,6 @@ io.use((socket, next) => {
     socket.username = payload?.username || `User${userId}`;
     return next();
   } catch (e) {
-    // don't hard-fail; let frontend register-user/user:online
     logWARN("Socket auth failed (continuing as guest):", e?.message || e);
     return next();
   }
@@ -276,7 +274,7 @@ io.use((socket, next) => {
 
 /* ---------- PRESENCE ---------- */
 const onlineUsers = new Map();        // userId -> socketId
-const socketToUserId = new Map();     // socketId -> userId (NEW, avoids scanning map)
+const socketToUserId = new Map();     // socketId -> userId
 
 function emitOnlineUsersLegacy() {
   io.emit("online-users", Array.from(onlineUsers.entries()));
@@ -531,7 +529,7 @@ io.on("connection", (socket) => {
   }
 
   /* =========================
-     ✅ PRESENCE (kept)
+     ✅ PRESENCE
   ========================= */
   socket.on("user:online", ({ userId, username }) => {
     if (!userId) return;
@@ -593,7 +591,7 @@ io.on("connection", (socket) => {
   });
 
   /* =========================
-     ✅ CALLS (safe fixes)
+     ✅ CALLS
   ========================= */
   socket.on("call:request", async ({ toUserId, kind = "audio" }) => {
     const from = socket.data.user;
@@ -712,6 +710,9 @@ io.on("connection", (socket) => {
       callSessions.set(String(roomId), sess);
       removeQueuedIncomingCall(meId, roomId);
 
+      // mark busy again on join (reconnect safe)
+      setUserBusy(meId, roomId);
+
       if (sess.dbCallId) {
         await dbMarkJoined(sess.dbCallId, meId);
         await dbActivateIfTwoJoined(sess.dbCallId);
@@ -787,19 +788,19 @@ io.on("connection", (socket) => {
   socket.on("call:webrtc:offer", ({ roomId, offer, to }) => {
     if (!roomId || !offer) return;
     if (to) return io.to(String(to)).emit("call:webrtc:offer", { roomId: String(roomId), offer, from: socket.id });
-    socket.to(`call:${roomId}`).emit("call:webrtc:offer", { roomId: String(roomId), offer });
+    socket.to(`call:${roomId}`).emit("call:webrtc:offer", { roomId: String(roomId), offer, from: socket.id });
   });
 
   socket.on("call:webrtc:answer", ({ roomId, answer, to }) => {
     if (!roomId || !answer) return;
     if (to) return io.to(String(to)).emit("call:webrtc:answer", { roomId: String(roomId), answer, from: socket.id });
-    socket.to(`call:${roomId}`).emit("call:webrtc:answer", { roomId: String(roomId), answer });
+    socket.to(`call:${roomId}`).emit("call:webrtc:answer", { roomId: String(roomId), answer, from: socket.id });
   });
 
   socket.on("call:webrtc:ice", ({ roomId, candidate, to }) => {
     if (!roomId || !candidate) return;
     if (to) return io.to(String(to)).emit("call:webrtc:ice", { roomId: String(roomId), candidate, from: socket.id });
-    socket.to(`call:${roomId}`).emit("call:webrtc:ice", { roomId: String(roomId), candidate });
+    socket.to(`call:${roomId}`).emit("call:webrtc:ice", { roomId: String(roomId), candidate, from: socket.id });
   });
 
   /* =========================
@@ -821,7 +822,7 @@ io.on("connection", (socket) => {
   });
 
   /* =========================
-     ✅ LIVE (create/join/leave/end/chat + mic)
+     ✅ LIVE
   ========================= */
   socket.on("live:create", ({ liveId }) => {
     if (!liveId) return;
@@ -833,7 +834,6 @@ io.on("connection", (socket) => {
     socket.join(`live:${liveId}`);
     io.to(`live:${liveId}`).emit("live:host", { liveId: String(liveId), hostSocketId: socket.id });
 
-    // host always speaker
     const hostUserId = socket.data.user?.id ? String(socket.data.user.id) : null;
     if (hostUserId) ensureLiveSpeakerSet(liveId).add(hostUserId);
 
@@ -853,7 +853,6 @@ io.on("connection", (socket) => {
       io.to(hostSocketId).emit("live:viewer-joined", { liveId: String(liveId), viewerSocketId: socket.id });
     }
 
-    // mic status
     const meId = socket.data.user?.id ? String(socket.data.user.id) : null;
     const speakers = ensureLiveSpeakerSet(liveId);
     socket.emit("live:mic:status", { liveId: String(liveId), canSpeak: meId ? speakers.has(meId) : false });
@@ -979,6 +978,17 @@ io.on("connection", (socket) => {
       onlineUsers.delete(offlineUserId);
       socketToUserId.delete(socket.id);
       broadcastPresenceUpdate(offlineUserId, false);
+
+      // ✅ CALL STABILITY: if user was marked busy, release it + notify room
+      const busyRoomId = userBusyRoom.get(String(offlineUserId));
+      if (busyRoomId) {
+        userBusyRoom.delete(String(offlineUserId));
+        io.to(`call:${busyRoomId}`).emit("call:peer-left", {
+          roomId: String(busyRoomId),
+          userId: String(offlineUserId),
+          socketId: socket.id,
+        });
+      }
     }
 
     // if a live host disconnects, end stream
