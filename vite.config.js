@@ -1,6 +1,7 @@
 import { defineConfig } from "vite";
 import vue from "@vitejs/plugin-vue";
 import { VitePWA } from "vite-plugin-pwa";
+import { fileURLToPath, URL } from "node:url"; // ✅ add
 
 export default defineConfig({
   base: "/",
@@ -10,7 +11,6 @@ export default defineConfig({
       registerType: "autoUpdate",
       devOptions: { enabled: false },
 
-      // ✅ Make sure these exist in /public
       includeAssets: [
         "favicon.ico",
         "apple-touch-icon.png",
@@ -39,13 +39,10 @@ export default defineConfig({
         ],
       },
 
-      // ✅ THE IMPORTANT PART (fix 416 + keep PWA stable)
       workbox: {
-        // Don’t precache mp3 files (Range requests + SW cache can cause 416)
         globIgnores: ["**/*.mp3", "**/*.ogg", "**/*.wav"],
 
         runtimeCaching: [
-          // ✅ API calls: Network first (so you always get fresh server data)
           {
             urlPattern: ({ url }) =>
               url.pathname.startsWith("/posts") ||
@@ -65,7 +62,6 @@ export default defineConfig({
             },
           },
 
-          // ✅ MP3: Network only (prevents 416 issues)
           {
             urlPattern: ({ url }) =>
               url.pathname.endsWith(".mp3") ||
@@ -74,7 +70,6 @@ export default defineConfig({
             handler: "NetworkOnly",
           },
 
-          // ✅ Images: Cache first
           {
             urlPattern: ({ request }) => request.destination === "image",
             handler: "CacheFirst",
@@ -85,7 +80,6 @@ export default defineConfig({
             },
           },
 
-          // ✅ JS/CSS/fonts: Stale-while-revalidate
           {
             urlPattern: ({ request }) =>
               request.destination === "script" ||
@@ -101,4 +95,11 @@ export default defineConfig({
       },
     }),
   ],
+
+  // ✅ THIS FIXES "@/..." IMPORTS ON VERCEL
+  resolve: {
+    alias: {
+      "@": fileURLToPath(new URL("./src", import.meta.url)),
+    },
+  },
 });
