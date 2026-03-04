@@ -500,62 +500,23 @@
 
               <article
                 v-else
-                v-for="post in visiblePosts"
-                :key="'fy-'+post.id"
-                class="post tt-card lux-card lux-pad"
-                :id="`post-${post.id}`"
-              >
-                <header class="post-head">
-                  <div class="avatar">{{ getInitial(post.user_id) }}</div>
-                  <div class="who">
-                    <div class="name">User #{{ post.user_id }}</div>
-                    <div class="time">{{ formatDate(post.created_at) }}</div>
-                  </div>
-
-                  <button class="tt-ic" title="Sound" @click="toggleGlobalMute">{{ globalMuted ? "🔇" : "🔊" }}</button>
-                </header>
-
-                <div v-if="post.caption" class="text">{{ post.caption }}</div>
-                <img v-if="post.image_url" class="media" :src="getMedia(post.image_url)" loading="lazy" />
-
-                <div v-if="post.video_url" class="tt-video-wrap">
-                  <video
-                    class="media tt-video"
-                    :data-post-id="post.id"
-                    :src="getMedia(post.video_url)"
-                    playsinline
-                    preload="metadata"
-                    loop
-                    muted
-                    @click="toggleVideoMute(post.id)"
-                  ></video>
-
-                  <div class="tt-overlay">
-                    <div class="tt-badge">{{ activePostId === post.id ? "FOR YOU" : "NEXT" }}</div>
-                    <div class="tt-mute">{{ isVideoMuted(post.id) ? "🔇 Muted" : "🔊 Sound" }}</div>
-                  </div>
-                </div>
-
-                <div class="actions">
-                  <button class="action-btn" :class="{ active: likesByPost[post.id]?.likedByMe }" :disabled="likeBusyByPost[post.id]" @click="toggleLike(post)">
-                    ❤️ <span class="label">{{ likesByPost[post.id]?.count ?? 0 }}</span>
-                  </button>
-                  <button class="action-btn" @click="toggleComments(post)">💬 <span class="label">{{ commentCount(post.id) }}</span></button>
-                  <div class="spacer"></div>
-                  <button class="action-btn ghost" @click="sharePost(post)">🔗 <span class="label">Share</span></button>
-                  <button class="action-btn ghost" @click="copyPostText(post)">📋 <span class="label">Copy</span></button>
-                </div>
-
-                <CommentsBlock :post="post" />
-              </article>
-
-              <div ref="loadMoreRef" class="load-more">
-                <span v-if="infiniteLoading">Loading more…</span>
-                <span v-else-if="canLoadMore">Scroll for more</span>
-                <span v-else>End</span>
-              </div>
+                :items="visiblePosts"
+                mode="foryou"
+                :globalMuted="globalMuted"
+                :canLoadMore="canLoadMore"
+                :loadingMore="infiniteLoading"
+                :getMedia="getMedia"
+                :formatDate="formatDate"
+                :getInitial="getInitial"
+                :likesCount="(p) => (likesByPost[p.id]?.count ?? 0)"
+                :commentCount="(p) => commentCount(p.id)"
+                @toggle-muted="toggleGlobalMute"
+                @load-more="loadMore"
+                @like="toggleLike"
+                @comments="toggleComments"
+                @share="sharePost"
+              />
             </section>
-          </main>
 
           <!-- CHAT DRAWER -->
           <aside class="chatDrawer" :class="{ open: chatOpen }">
