@@ -3,7 +3,6 @@
   <Layout>
     <div class="lux-page">
       <div class="lux-container">
-
         <div class="wrap">
           <!-- TOPBAR -->
           <header class="topbar">
@@ -16,598 +15,631 @@
             </div>
 
             <div class="top-actions">
-              <button class="chip" @click="refreshAll" :disabled="loading">
+              <button class="chip lux-btn" @click="refreshAll" :disabled="loading">
                 🔁 {{ loading ? "Loading…" : "Refresh All" }}
               </button>
 
-              <button class="chip ghost" @click="togglePeople">
+              <button class="chip ghost lux-btn lux-btn-ghost" @click="togglePeople">
                 {{ peopleOpen ? "Hide People" : "People" }}
               </button>
 
-              <button class="chip ghost" @click="toggleChat">
+              <button class="chip ghost lux-btn lux-btn-ghost" @click="toggleChat">
                 {{ chatOpen ? "Close Chat" : "Chat" }}
               </button>
 
-              <button class="chip ghost" @click="toggleTools">
+              <button class="chip ghost lux-btn lux-btn-ghost" @click="toggleTools">
                 {{ toolsOpen ? "Close Tools" : "Tools" }}
               </button>
 
-              <button class="chip danger" @click="logout">Logout</button>
+              <button class="chip danger lux-btn lux-btn-danger" @click="logout">Logout</button>
             </div>
           </header>
 
-      <!-- MODEBAR -->
-      <div class="modebar">
-        <button class="mode" :class="{ on: feedMode === 'foryou' }" @click="setFeedMode('foryou')">🎬 For You</button>
-        <button class="mode reels" :class="{ on: feedMode === 'reels' }" @click="setFeedMode('reels')">🎞️ Reels</button>
-        <button class="mode" :class="{ on: feedMode === 'following' }" @click="setFeedMode('following')">📸 Following</button>
-        <button class="mode" :class="{ on: feedMode === 'threads' }" @click="setFeedMode('threads')">✍️ Threads</button>
-        <button class="mode" :class="{ on: feedMode === 'rooms' }" @click="setFeedMode('rooms')">🎧 Rooms</button>
-        <button class="mode" :class="{ on: feedMode === 'live' }" @click="setFeedMode('live')">🔴 Live</button>
+          <!-- MODEBAR (Luxury Tabs) -->
+          <div class="modebar lux-tabs">
+            <button class="mode lux-tab" :class="{ 'is-active': feedMode === 'foryou' }" @click="setFeedMode('foryou')">
+              🎬 For You
+            </button>
+            <button class="mode reels lux-tab" :class="{ 'is-active': feedMode === 'reels' }" @click="setFeedMode('reels')">
+              🎞️ Reels
+            </button>
+            <button class="mode lux-tab" :class="{ 'is-active': feedMode === 'following' }" @click="setFeedMode('following')">
+              📸 Following
+            </button>
+            <button class="mode lux-tab" :class="{ 'is-active': feedMode === 'threads' }" @click="setFeedMode('threads')">
+              ✍️ Threads
+            </button>
+            <button class="mode lux-tab" :class="{ 'is-active': feedMode === 'rooms' }" @click="setFeedMode('rooms')">
+              🎧 Rooms
+            </button>
+            <button class="mode lux-tab" :class="{ 'is-active': feedMode === 'live' }" @click="setFeedMode('live')">
+              🔴 Live
+            </button>
 
-        <div class="mode-right">
-          <input v-model="search" class="search" placeholder="Search…" />
-          <button v-if="feedMode === 'foryou' || feedMode === 'reels'" class="chip ghost" @click="toggleGlobalMute">
-            {{ globalMuted ? "🔇 Muted" : "🔊 Sound" }}
-          </button>
-        </div>
-      </div>
-
-      <!-- SINGLE SCREEN CONTENT -->
-      <main class="main">
-        <!-- SOCKET STATUS BANNER -->
-        <section v-if="token" class="panel miniPanel">
-          <div class="panel-head">
-            <div class="panel-title">🛰️ Status</div>
-            <div class="row">
-              <span class="badgePill" :class="{ ok: socketConnected, bad: !socketConnected }">
-                {{ socketConnected ? "Socket Connected" : "Socket Disconnected" }}
-              </span>
-              <span class="badgePill">{{ onlineCount }} online</span>
-              <span class="badgePill">{{ liveStreams.length }} live</span>
-            </div>
-
-            <div class="row">
-              <button class="btn ghostBtn" @click="reconnectSocket">♻️ Reconnect</button>
-              <button class="btn ghostBtn" @click="copyMyProfileLink">🔗 Copy Profile</button>
-              <button class="btn ghostBtn" @click="copyDiagnostics">🧾 Copy Diagnostics</button>
-            </div>
-          </div>
-
-          <div v-if="statusNote" class="hint mt10">{{ statusNote }}</div>
-        </section>
-
-        <!-- TOP DOCK -->
-        <section class="dock">
-          <!-- Live compact -->
-          <div class="panel dockCard">
-            <div class="panel-head">
-              <div class="panel-title">🔴 Live Now</div>
-
-              <!-- ✅ IMPORTANT FIX:
-                   Do NOT emit live:create here (Dashboard socket != Live socket).
-                   Just navigate; Live.vue will emit live:create on its own connection. -->
-              <button class="btn btn-primary" @click="startLive" :disabled="!token">Go Live</button>
-            </div>
-
-            <div v-if="liveStreams.length === 0" class="hint mt10">No one live right now</div>
-
-            <div v-else class="live-strip">
-              <div
-                v-for="stream in liveStreams.slice(0, 6)"
-                :key="'live-mini-' + stream"
-                class="live-pill"
-                @click="joinLive(stream)"
-                title="Tap to watch"
+            <div class="mode-right">
+              <input v-model="search" class="search lux-input" placeholder="Search…" />
+              <button
+                v-if="feedMode === 'foryou' || feedMode === 'reels'"
+                class="chip ghost lux-btn lux-btn-ghost"
+                @click="toggleGlobalMute"
               >
-                <span class="dot"></span>
-                <span class="live-pill-name">{{ stream }}</span>
-                <span class="chev">›</span>
-              </div>
-
-              <button v-if="liveStreams.length > 6" class="chip ghost mini" @click="setFeedMode('live')">View all</button>
+                {{ globalMuted ? "🔇 Muted" : "🔊 Sound" }}
+              </button>
             </div>
           </div>
 
-          <!-- People + Chat -->
-          <div class="panel dockCard">
-            <div class="panel-head">
-              <div class="panel-title">👥 People</div>
-              <div class="dockActions">
-                <button class="btn" @click="fetchPeople" :disabled="peopleLoading || !token">
-                  {{ peopleLoading ? "Loading…" : "Refresh" }}
-                </button>
-                <button class="btn ghostBtn" @click="toggleChat">{{ chatOpen ? "Close Chat" : "Open Chat" }}</button>
-              </div>
-            </div>
-
-            <div v-if="!token" class="alert soft">Login again to see people & call buttons.</div>
-
-            <template v-else>
-              <div class="miniAvatars">
-                <div
-                  v-for="u in people.slice(0, 14)"
-                  :key="'pmini-' + u.id"
-                  class="miniAvatarWrap"
-                  :title="u.display_name || u.username || ('User #' + u.id)"
-                  @click="peopleOpen ? null : startCall(u,'audio')"
-                >
-                  <div class="miniAvatar">{{ (u.display_name || u.username || 'U')[0]?.toUpperCase() }}</div>
-                  <span class="miniDot" :class="{ on: isOnline(u.id) }"></span>
+          <!-- SINGLE SCREEN CONTENT -->
+          <main class="main">
+            <!-- SOCKET STATUS BANNER -->
+            <section v-if="token" class="panel miniPanel lux-card lux-pad">
+              <div class="panel-head">
+                <div class="panel-title">🛰️ Status</div>
+                <div class="row">
+                  <span class="badgePill" :class="{ ok: socketConnected, bad: !socketConnected }">
+                    {{ socketConnected ? "Socket Connected" : "Socket Disconnected" }}
+                  </span>
+                  <span class="badgePill">{{ onlineCount }} online</span>
+                  <span class="badgePill">{{ liveStreams.length }} live</span>
                 </div>
 
-                <button class="chip ghost mini" @click="togglePeople">{{ peopleOpen ? "Hide list" : "Show list" }}</button>
+                <div class="row">
+                  <button class="btn ghostBtn lux-btn lux-btn-ghost" @click="reconnectSocket">♻️ Reconnect</button>
+                  <button class="btn ghostBtn lux-btn lux-btn-ghost" @click="copyMyProfileLink">🔗 Copy Profile</button>
+                  <button class="btn ghostBtn lux-btn lux-btn-ghost" @click="copyDiagnostics">🧾 Copy Diagnostics</button>
+                </div>
               </div>
 
-              <div v-if="peopleOpen" class="peopleCompact">
-                <div v-if="peopleError" class="alert">{{ peopleError }}</div>
-                <div v-else-if="peopleLoading" class="hint">Loading people…</div>
-                <div v-else-if="people.length === 0" class="hint">No users found.</div>
+              <div v-if="statusNote" class="hint mt10">{{ statusNote }}</div>
+            </section>
 
-                <div v-else class="peopleList">
-                  <div v-for="u in filteredPeople" :key="'plist-' + u.id" class="person compact">
-                    <div class="avatar small">{{ (u.display_name || u.username || 'U')[0]?.toUpperCase() }}</div>
+            <!-- TOP DOCK -->
+            <section class="dock">
+              <!-- Live compact -->
+              <div class="panel dockCard lux-card lux-pad">
+                <div class="panel-head">
+                  <div class="panel-title">🔴 Live Now</div>
 
-                    <div class="person-meta">
-                      <div class="person-name">{{ u.display_name || u.username || ("User #" + u.id) }}</div>
-                      <div class="person-sub">
-                        <span class="status" :class="{ on: isOnline(u.id) }"></span>
-                        <span class="status-text">{{ isOnline(u.id) ? "Online" : "Offline" }}</span>
-                        <span class="sep">•</span>
-                        <span class="id">ID {{ u.id }}</span>
-                      </div>
-                    </div>
+                  <!-- Live.vue will emit live:create -->
+                  <button class="btn btn-primary lux-btn lux-btn-primary" @click="startLive" :disabled="!token">
+                    Go Live
+                  </button>
+                </div>
 
-                    <div class="person-actions">
-                      <button class="iconbtn" title="Audio Call" :disabled="!isOnline(u.id) || callBusy" @click="startCall(u,'audio')">📞</button>
-                      <button class="iconbtn" title="Video Call" :disabled="!isOnline(u.id) || callBusy" @click="startCall(u,'video')">🎥</button>
-                      <button class="iconbtn" title="Open Profile" @click="openUserProfile(u)">👤</button>
-                    </div>
+                <div v-if="liveStreams.length === 0" class="hint mt10">No one live right now</div>
+
+                <div v-else class="live-strip">
+                  <div
+                    v-for="stream in liveStreams.slice(0, 6)"
+                    :key="'live-mini-' + stream"
+                    class="live-pill"
+                    @click="joinLive(stream)"
+                    title="Tap to watch"
+                  >
+                    <span class="dot"></span>
+                    <span class="live-pill-name">{{ stream }}</span>
+                    <span class="chev">›</span>
+                  </div>
+
+                  <button v-if="liveStreams.length > 6" class="chip ghost mini lux-btn lux-btn-ghost" @click="setFeedMode('live')">
+                    View all
+                  </button>
+                </div>
+              </div>
+
+              <!-- People + Chat -->
+              <div class="panel dockCard lux-card lux-pad">
+                <div class="panel-head">
+                  <div class="panel-title">👥 People</div>
+                  <div class="dockActions">
+                    <button class="btn lux-btn" @click="fetchPeople" :disabled="peopleLoading || !token">
+                      {{ peopleLoading ? "Loading…" : "Refresh" }}
+                    </button>
+                    <button class="btn ghostBtn lux-btn lux-btn-ghost" @click="toggleChat">
+                      {{ chatOpen ? "Close Chat" : "Open Chat" }}
+                    </button>
                   </div>
                 </div>
 
-                <div class="hint mt10">Calls require both users online (green).</div>
+                <div v-if="!token" class="alert soft">Login again to see people & call buttons.</div>
+
+                <template v-else>
+                  <div class="miniAvatars">
+                    <div
+                      v-for="u in people.slice(0, 14)"
+                      :key="'pmini-' + u.id"
+                      class="miniAvatarWrap"
+                      :title="u.display_name || u.username || ('User #' + u.id)"
+                      @click="peopleOpen ? null : startCall(u,'audio')"
+                    >
+                      <!-- upgraded avatar -->
+                      <div class="miniAvatar lux-avatar">
+                        {{ (u.display_name || u.username || 'U')[0]?.toUpperCase() }}
+                        <span v-if="isOnline(u.id)" class="lux-online"></span>
+                      </div>
+
+                      <!-- keep your existing dot too (optional) -->
+                      <span class="miniDot" :class="{ on: isOnline(u.id) }"></span>
+                    </div>
+
+                    <button class="chip ghost mini lux-btn lux-btn-ghost" @click="togglePeople">
+                      {{ peopleOpen ? "Hide list" : "Show list" }}
+                    </button>
+                  </div>
+
+                  <div v-if="peopleOpen" class="peopleCompact">
+                    <div v-if="peopleError" class="alert">{{ peopleError }}</div>
+                    <div v-else-if="peopleLoading" class="hint">Loading people…</div>
+                    <div v-else-if="people.length === 0" class="hint">No users found.</div>
+
+                    <div v-else class="peopleList">
+                      <div v-for="u in filteredPeople" :key="'plist-' + u.id" class="person compact">
+                        <div class="avatar small">
+                          {{ (u.display_name || u.username || 'U')[0]?.toUpperCase() }}
+                        </div>
+
+                        <div class="person-meta">
+                          <div class="person-name">{{ u.display_name || u.username || ("User #" + u.id) }}</div>
+                          <div class="person-sub">
+                            <span class="status" :class="{ on: isOnline(u.id) }"></span>
+                            <span class="status-text">{{ isOnline(u.id) ? "Online" : "Offline" }}</span>
+                            <span class="sep">•</span>
+                            <span class="id">ID {{ u.id }}</span>
+                          </div>
+                        </div>
+
+                        <div class="person-actions">
+                          <button class="iconbtn" title="Audio Call" :disabled="!isOnline(u.id) || callBusy" @click="startCall(u,'audio')">📞</button>
+                          <button class="iconbtn" title="Video Call" :disabled="!isOnline(u.id) || callBusy" @click="startCall(u,'video')">🎥</button>
+                          <button class="iconbtn" title="Open Profile" @click="openUserProfile(u)">👤</button>
+                        </div>
+                      </div>
+                    </div>
+
+                    <div class="hint mt10">Calls require both users online (green).</div>
+                  </div>
+                </template>
               </div>
-            </template>
-          </div>
-        </section>
+            </section>
 
-        <!-- TOOLS PANEL (EXTRA POWER) -->
-        <section v-if="toolsOpen" class="panel toolsPanel">
-          <div class="panel-head">
-            <div class="panel-title">🧰 Power Tools</div>
-            <div class="dockActions">
-              <button class="btn ghostBtn" @click="toggleTools">Close</button>
-            </div>
-          </div>
-
-          <div class="toolsGrid">
-            <button class="toolBtn" @click="setFeedMode('foryou')">🎬 Go For You</button>
-            <button class="toolBtn" @click="setFeedMode('reels')">🎞️ Go Reels</button>
-            <button class="toolBtn" @click="setFeedMode('rooms')">🎧 Go Rooms</button>
-            <button class="toolBtn" @click="setFeedMode('live')">🔴 Go Live Tab</button>
-
-            <button class="toolBtn" @click="scrollToTop">⬆️ Scroll Top</button>
-            <button class="toolBtn" @click="focusComposer">✍️ Focus Composer</button>
-            <button class="toolBtn" @click="clearDraft">🧹 Clear Draft</button>
-            <button class="toolBtn" @click="refreshAll" :disabled="loading">🔁 Refresh All</button>
-
-            <button class="toolBtn" @click="testTurn">🧊 Test TURN</button>
-            <button class="toolBtn" @click="requestNotifications">🔔 Enable Notifications</button>
-            <button class="toolBtn" @click="hardResetApp">💣 Hard Reset (Local)</button>
-          </div>
-
-          <div v-if="turnNote" class="hint mt10">{{ turnNote }}</div>
-        </section>
-
-        <!-- COMPOSER -->
-        <section class="composer">
-          <div class="composer-head">
-            <div class="avatar big">{{ myInitial }}</div>
-            <div class="composer-meta">
-              <div class="me">{{ me?.username || "You" }}</div>
-              <div class="small muted">
-                <span v-if="feedMode === 'reels'">Reels mode: upload a VIDEO → posts to Reels + For You</span>
-                <span v-else>Post to the world (works everywhere)</span>
+            <!-- TOOLS PANEL -->
+            <section v-if="toolsOpen" class="panel toolsPanel lux-card lux-pad">
+              <div class="panel-head">
+                <div class="panel-title">🧰 Power Tools</div>
+                <div class="dockActions">
+                  <button class="btn ghostBtn lux-btn lux-btn-ghost" @click="toggleTools">Close</button>
+                </div>
               </div>
-            </div>
-            <div class="composer-actions">
-              <button class="pill-btn" @click="focusComposer">Create</button>
-            </div>
-          </div>
 
-          <textarea
-            ref="composerRef"
-            v-model="caption"
-            class="input"
-            placeholder="What's happening?"
-            rows="3"
-          ></textarea>
+              <div class="toolsGrid">
+                <button class="toolBtn lux-btn lux-btn-ghost" @click="setFeedMode('foryou')">🎬 Go For You</button>
+                <button class="toolBtn lux-btn lux-btn-ghost" @click="setFeedMode('reels')">🎞️ Go Reels</button>
+                <button class="toolBtn lux-btn lux-btn-ghost" @click="setFeedMode('rooms')">🎧 Go Rooms</button>
+                <button class="toolBtn lux-btn lux-btn-ghost" @click="setFeedMode('live')">🔴 Go Live Tab</button>
 
-          <div class="upload-row">
-            <label class="file-pill">
-              <input type="file" accept="image/*" @change="onPickImage" />
-              📷 Image <span v-if="imageFile" class="file-dot">•</span>
-            </label>
+                <button class="toolBtn lux-btn lux-btn-ghost" @click="scrollToTop">⬆️ Scroll Top</button>
+                <button class="toolBtn lux-btn lux-btn-ghost" @click="focusComposer">✍️ Focus Composer</button>
+                <button class="toolBtn lux-btn lux-btn-ghost" @click="clearDraft">🧹 Clear Draft</button>
+                <button class="toolBtn lux-btn lux-btn-ghost" @click="refreshAll" :disabled="loading">🔁 Refresh All</button>
 
-            <label class="file-pill">
-              <input type="file" accept="video/*" @change="onPickVideo" />
-              🎥 Video <span v-if="videoFile" class="file-dot">•</span>
-            </label>
+                <button class="toolBtn lux-btn lux-btn-ghost" @click="testTurn">🧊 Test TURN</button>
+                <button class="toolBtn lux-btn lux-btn-ghost" @click="requestNotifications">🔔 Enable Notifications</button>
+                <button class="toolBtn lux-btn lux-btn-danger" @click="hardResetApp">💣 Hard Reset (Local)</button>
+              </div>
 
-            <button class="btn btn-primary" :disabled="posting || !token" @click="submitPost">
-              {{ posting ? "Posting…" : (feedMode === 'reels' ? "Post Reel 🎬" : "Post 🚀") }}
-            </button>
+              <div v-if="turnNote" class="hint mt10">{{ turnNote }}</div>
+            </section>
 
-            <button class="btn ghostBtn" :disabled="posting" @click="clearDraft">Clear</button>
-          </div>
+            <!-- COMPOSER -->
+            <section class="composer lux-card lux-pad">
+              <div class="composer-head">
+                <div class="avatar big">{{ myInitial }}</div>
+                <div class="composer-meta">
+                  <div class="me">{{ me?.username || "You" }}</div>
+                  <div class="small muted">
+                    <span v-if="feedMode === 'reels'">Reels mode: upload a VIDEO → posts to Reels + For You</span>
+                    <span v-else>Post to the world (works everywhere)</span>
+                  </div>
+                </div>
+                <div class="composer-actions">
+                  <button class="pill-btn lux-btn lux-btn-ghost" @click="focusComposer">Create</button>
+                </div>
+              </div>
 
-          <div v-if="error" class="alert">{{ error }}</div>
-        </section>
+              <textarea
+                ref="composerRef"
+                v-model="caption"
+                class="input lux-textarea"
+                placeholder="What's happening?"
+                rows="3"
+              ></textarea>
 
-        <!-- LIVE MODE -->
-        <section v-if="feedMode === 'live'" class="panel">
-          <div class="panel-head">
-            <div class="panel-title">🔴 Live</div>
-            <button class="btn btn-primary" @click="startLive" :disabled="!token">Go Live</button>
-          </div>
+              <div class="upload-row">
+                <label class="file-pill lux-btn lux-btn-ghost">
+                  <input type="file" accept="image/*" @change="onPickImage" />
+                  📷 Image <span v-if="imageFile" class="file-dot">•</span>
+                </label>
 
-          <div class="hint">Tap any live session below to watch.</div>
+                <label class="file-pill lux-btn lux-btn-ghost">
+                  <input type="file" accept="video/*" @change="onPickVideo" />
+                  🎥 Video <span v-if="videoFile" class="file-dot">•</span>
+                </label>
 
-          <div v-if="liveStreams.length === 0" class="state">
-            <div class="state-emoji">📡</div>
-            <div class="state-title">Nobody is live</div>
-            <div class="state-sub">Start the first stream.</div>
-          </div>
+                <button class="btn btn-primary lux-btn lux-btn-primary" :disabled="posting || !token" @click="submitPost">
+                  {{ posting ? "Posting…" : (feedMode === 'reels' ? "Post Reel 🎬" : "Post 🚀") }}
+                </button>
 
-          <div v-else class="live-grid">
-            <div v-for="stream in liveStreams" :key="'live-center-' + stream" class="live-big" @click="joinLive(stream)">
-              <div class="live-big-top"><span class="dot"></span><span class="live-big-title">{{ stream }}</span></div>
-              <div class="live-big-sub">Tap to watch</div>
-            </div>
-          </div>
-        </section>
+                <button class="btn ghostBtn lux-btn lux-btn-ghost" :disabled="posting" @click="clearDraft">Clear</button>
+              </div>
 
-        <!-- ROOMS MODE -->
-        <section v-else-if="feedMode === 'rooms'" class="rooms">
-          <aside class="rooms-left">
-            <div class="rooms-head">🎧 Rooms</div>
-            <button class="room" :class="{ on: chatRoom === 'global' }" @click="selectChat('global')">🌍 global</button>
-            <button class="room" :class="{ on: chatRoom === 'support' }" @click="selectChat('support')">🛠 support</button>
-            <button class="room" :class="{ on: chatRoom === 'dev' }" @click="selectChat('dev')">💻 dev</button>
-            <button class="room" :class="{ on: chatRoom === 'random' }" @click="selectChat('random')">🎲 random</button>
-            <div class="rooms-hint">Real-time chat via Socket.io</div>
+              <div v-if="error" class="alert">{{ error }}</div>
+            </section>
+
+            <!-- LIVE MODE -->
+            <section v-if="feedMode === 'live'" class="panel lux-card lux-pad">
+              <div class="panel-head">
+                <div class="panel-title">🔴 Live</div>
+                <button class="btn btn-primary lux-btn lux-btn-primary" @click="startLive" :disabled="!token">Go Live</button>
+              </div>
+
+              <div class="hint">Tap any live session below to watch.</div>
+
+              <div v-if="liveStreams.length === 0" class="state">
+                <div class="state-emoji">📡</div>
+                <div class="state-title">Nobody is live</div>
+                <div class="state-sub">Start the first stream.</div>
+              </div>
+
+              <div v-else class="live-grid">
+                <div v-for="stream in liveStreams" :key="'live-center-' + stream" class="live-big" @click="joinLive(stream)">
+                  <div class="live-big-top"><span class="dot"></span><span class="live-big-title">{{ stream }}</span></div>
+                  <div class="live-big-sub">Tap to watch</div>
+                </div>
+              </div>
+            </section>
+
+            <!-- ROOMS MODE -->
+            <section v-else-if="feedMode === 'rooms'" class="rooms">
+              <aside class="rooms-left lux-card lux-pad">
+                <div class="rooms-head">🎧 Rooms</div>
+                <button class="room" :class="{ on: chatRoom === 'global' }" @click="selectChat('global')">🌍 global</button>
+                <button class="room" :class="{ on: chatRoom === 'support' }" @click="selectChat('support')">🛠 support</button>
+                <button class="room" :class="{ on: chatRoom === 'dev' }" @click="selectChat('dev')">💻 dev</button>
+                <button class="room" :class="{ on: chatRoom === 'random' }" @click="selectChat('random')">🎲 random</button>
+                <div class="rooms-hint">Real-time chat via Socket.io</div>
+              </aside>
+
+              <div class="rooms-main lux-card lux-pad">
+                <div class="rooms-top">
+                  <div class="rooms-title"># {{ chatRoom }}</div>
+                  <button class="chip ghost lux-btn lux-btn-ghost" @click="toggleChat">Toggle Chat Drawer</button>
+                </div>
+
+                <div class="rooms-messages" ref="roomsChatBoxRef">
+                  <div v-for="(m, i) in chatMessages" :key="'rm-'+i" class="rm">
+                    <div class="rm-top">
+                      <span class="rm-user">{{ m.from }}</span>
+                      <span class="rm-time">{{ m.created_at ? formatDate(m.created_at) : "" }}</span>
+                    </div>
+                    <div class="rm-text">{{ m.text }}</div>
+                  </div>
+                </div>
+
+                <div class="rooms-input">
+                  <input v-model="chatText" class="lux-input" placeholder="Message #room…" @keydown.enter.prevent="sendChat" />
+                  <button class="btn btn-primary lux-btn lux-btn-primary" @click="sendChat">Send</button>
+                </div>
+              </div>
+            </section>
+
+            <!-- THREADS MODE -->
+            <section v-else-if="feedMode === 'threads'" class="feed threads">
+              <div v-if="loading" class="state">Loading…</div>
+              <div v-else-if="baseFiltered.length === 0" class="state">
+                <div class="state-emoji">✍️</div>
+                <div class="state-title">No threads yet</div>
+                <div class="state-sub">Write something to start the conversation.</div>
+              </div>
+
+              <article v-else v-for="post in threadsPosts" :key="'t-'+post.id" class="post thread lux-card lux-pad">
+                <header class="post-head">
+                  <div class="avatar">{{ getInitial(post.user_id) }}</div>
+                  <div class="who">
+                    <div class="name">User #{{ post.user_id }}</div>
+                    <div class="time">{{ formatDate(post.created_at) }}</div>
+                  </div>
+                </header>
+
+                <div v-if="post.caption" class="text thread-text">{{ post.caption }}</div>
+
+                <button
+                  v-if="post.image_url || post.video_url"
+                  class="chip ghost thread-media-toggle lux-btn lux-btn-ghost"
+                  @click="toggleThreadMedia(post.id)"
+                >
+                  {{ threadMediaOpen[post.id] ? "Hide media" : "View media" }}
+                </button>
+
+                <div v-if="threadMediaOpen[post.id]" class="thread-media">
+                  <img v-if="post.image_url" class="media" :src="getMedia(post.image_url)" loading="lazy" />
+                  <video v-if="post.video_url" class="media" :src="getMedia(post.video_url)" controls playsinline preload="metadata"></video>
+                </div>
+
+                <div class="actions">
+                  <button class="action-btn" :class="{ active: likesByPost[post.id]?.likedByMe }" :disabled="likeBusyByPost[post.id]" @click="toggleLike(post)">
+                    ❤️ <span class="label">{{ likesByPost[post.id]?.count ?? 0 }}</span>
+                  </button>
+                  <button class="action-btn" @click="toggleComments(post)">💬 <span class="label">{{ commentCount(post.id) }}</span></button>
+                  <div class="spacer"></div>
+                  <button class="action-btn ghost" @click="sharePost(post)">🔗 <span class="label">Share</span></button>
+                  <button class="action-btn ghost" @click="copyPostText(post)">📋 <span class="label">Copy</span></button>
+                </div>
+
+                <CommentsBlock :post="post" />
+              </article>
+            </section>
+
+            <!-- REELS MODE -->
+            <section v-else-if="feedMode === 'reels'" class="feed reels">
+              <template v-if="loading">
+                <div class="state">Loading…</div>
+              </template>
+
+              <div v-else-if="reelsPosts.length === 0" class="state">
+                <div class="state-emoji">🎞️</div>
+                <div class="state-title">No reels yet</div>
+                <div class="state-sub">Post a video and it will show here.</div>
+              </div>
+
+              <article
+                v-else
+                v-for="post in reelsVisible"
+                :key="'r-'+post.id"
+                class="post tt-card lux-card lux-pad"
+              >
+                <header class="post-head">
+                  <div class="avatar">{{ getInitial(post.user_id) }}</div>
+                  <div class="who">
+                    <div class="name">User #{{ post.user_id }}</div>
+                    <div class="time">{{ formatDate(post.created_at) }}</div>
+                  </div>
+
+                  <button class="tt-ic" title="Sound" @click="toggleGlobalMute">{{ globalMuted ? "🔇" : "🔊" }}</button>
+                </header>
+
+                <div v-if="post.caption" class="text">{{ post.caption }}</div>
+
+                <div class="tt-video-wrap">
+                  <video
+                    class="media tt-video"
+                    :data-post-id="post.id"
+                    :src="getMedia(post.video_url)"
+                    playsinline
+                    preload="metadata"
+                    loop
+                    muted
+                    @click="toggleVideoMute(post.id)"
+                  ></video>
+
+                  <div class="tt-overlay">
+                    <div class="tt-badge">REELS</div>
+                    <div class="tt-mute">{{ isVideoMuted(post.id) ? "🔇 Muted" : "🔊 Sound" }}</div>
+                  </div>
+                </div>
+
+                <div class="actions">
+                  <button class="action-btn" :class="{ active: likesByPost[post.id]?.likedByMe }" :disabled="likeBusyByPost[post.id]" @click="toggleLike(post)">
+                    ❤️ <span class="label">{{ likesByPost[post.id]?.count ?? 0 }}</span>
+                  </button>
+                  <button class="action-btn" @click="toggleComments(post)">💬 <span class="label">{{ commentCount(post.id) }}</span></button>
+                  <div class="spacer"></div>
+                  <button class="action-btn ghost" @click="sharePost(post)">🔗 <span class="label">Share</span></button>
+                  <button class="action-btn ghost" @click="copyPostText(post)">📋 <span class="label">Copy</span></button>
+                </div>
+
+                <CommentsBlock :post="post" />
+              </article>
+
+              <div ref="reelsLoadMoreRef" class="load-more">
+                <span v-if="reelsInfiniteLoading">Loading more…</span>
+                <span v-else-if="reelsCanLoadMore">Scroll for more</span>
+                <span v-else>End</span>
+              </div>
+            </section>
+
+            <!-- FOLLOWING MODE -->
+            <section v-else-if="feedMode === 'following'" class="feed following">
+              <template v-if="loading">
+                <div class="state">Loading…</div>
+              </template>
+
+              <div v-else-if="baseFiltered.length === 0" class="state">
+                <div class="state-emoji">📸</div>
+                <div class="state-title">No posts yet</div>
+                <div class="state-sub">Be the first to post.</div>
+              </div>
+
+              <article v-else v-for="post in followingPosts" :key="'f-'+post.id" class="post lux-card lux-pad">
+                <header class="post-head">
+                  <div class="avatar">{{ getInitial(post.user_id) }}</div>
+                  <div class="who">
+                    <div class="name">User #{{ post.user_id }}</div>
+                    <div class="time">{{ formatDate(post.created_at) }}</div>
+                  </div>
+                </header>
+
+                <div v-if="post.caption" class="text">{{ post.caption }}</div>
+
+                <img v-if="post.image_url" class="media" :src="getMedia(post.image_url)" loading="lazy" />
+                <video v-if="post.video_url" class="media" :src="getMedia(post.video_url)" controls playsinline preload="metadata"></video>
+
+                <div class="actions">
+                  <button class="action-btn" :class="{ active: likesByPost[post.id]?.likedByMe }" :disabled="likeBusyByPost[post.id]" @click="toggleLike(post)">
+                    ❤️ <span class="label">{{ likesByPost[post.id]?.count ?? 0 }}</span>
+                  </button>
+                  <button class="action-btn" @click="toggleComments(post)">💬 <span class="label">{{ commentCount(post.id) }}</span></button>
+                  <div class="spacer"></div>
+                  <button class="action-btn ghost" @click="sharePost(post)">🔗 <span class="label">Share</span></button>
+                  <button class="action-btn ghost" @click="copyPostText(post)">📋 <span class="label">Copy</span></button>
+                </div>
+
+                <CommentsBlock :post="post" />
+              </article>
+            </section>
+
+            <!-- FOR YOU MODE -->
+            <section v-else class="feed tiktok">
+              <template v-if="loading">
+                <div class="state">Loading…</div>
+              </template>
+
+              <div v-else-if="baseFiltered.length === 0" class="state">
+                <div class="state-emoji">🎬</div>
+                <div class="state-title">No videos yet</div>
+                <div class="state-sub">Post a video and it will autoplay here.</div>
+              </div>
+
+              <article
+                v-else
+                v-for="post in visiblePosts"
+                :key="'fy-'+post.id"
+                class="post tt-card lux-card lux-pad"
+                :id="`post-${post.id}`"
+              >
+                <header class="post-head">
+                  <div class="avatar">{{ getInitial(post.user_id) }}</div>
+                  <div class="who">
+                    <div class="name">User #{{ post.user_id }}</div>
+                    <div class="time">{{ formatDate(post.created_at) }}</div>
+                  </div>
+
+                  <button class="tt-ic" title="Sound" @click="toggleGlobalMute">{{ globalMuted ? "🔇" : "🔊" }}</button>
+                </header>
+
+                <div v-if="post.caption" class="text">{{ post.caption }}</div>
+                <img v-if="post.image_url" class="media" :src="getMedia(post.image_url)" loading="lazy" />
+
+                <div v-if="post.video_url" class="tt-video-wrap">
+                  <video
+                    class="media tt-video"
+                    :data-post-id="post.id"
+                    :src="getMedia(post.video_url)"
+                    playsinline
+                    preload="metadata"
+                    loop
+                    muted
+                    @click="toggleVideoMute(post.id)"
+                  ></video>
+
+                  <div class="tt-overlay">
+                    <div class="tt-badge">{{ activePostId === post.id ? "FOR YOU" : "NEXT" }}</div>
+                    <div class="tt-mute">{{ isVideoMuted(post.id) ? "🔇 Muted" : "🔊 Sound" }}</div>
+                  </div>
+                </div>
+
+                <div class="actions">
+                  <button class="action-btn" :class="{ active: likesByPost[post.id]?.likedByMe }" :disabled="likeBusyByPost[post.id]" @click="toggleLike(post)">
+                    ❤️ <span class="label">{{ likesByPost[post.id]?.count ?? 0 }}</span>
+                  </button>
+                  <button class="action-btn" @click="toggleComments(post)">💬 <span class="label">{{ commentCount(post.id) }}</span></button>
+                  <div class="spacer"></div>
+                  <button class="action-btn ghost" @click="sharePost(post)">🔗 <span class="label">Share</span></button>
+                  <button class="action-btn ghost" @click="copyPostText(post)">📋 <span class="label">Copy</span></button>
+                </div>
+
+                <CommentsBlock :post="post" />
+              </article>
+
+              <div ref="loadMoreRef" class="load-more">
+                <span v-if="infiniteLoading">Loading more…</span>
+                <span v-else-if="canLoadMore">Scroll for more</span>
+                <span v-else>End</span>
+              </div>
+            </section>
+          </main>
+
+          <!-- CHAT DRAWER -->
+          <aside class="chatDrawer" :class="{ open: chatOpen }">
+            <section class="panel chatPanel lux-card lux-pad">
+              <div class="panel-head">
+                <div class="panel-title">💬 Chat</div>
+                <button class="btn lux-btn" @click="toggleChat">{{ chatOpen ? "Close" : "Open" }}</button>
+              </div>
+
+              <div class="chat-hint">Quick room chat. Rooms tab is full Discord-style.</div>
+
+              <div class="chat-list">
+                <button class="chat-item" :class="{ active: chatRoom === 'global' }" @click="selectChat('global')">🌍 Global</button>
+                <button class="chat-item" :class="{ active: chatRoom === 'support' }" @click="selectChat('support')">🛠 Support</button>
+                <button class="chat-item" :class="{ active: chatRoom === 'dev' }" @click="selectChat('dev')">💻 Dev</button>
+                <button class="chat-item" :class="{ active: chatRoom === 'random' }" @click="selectChat('random')">🎲 Random</button>
+              </div>
+
+              <div class="chat-box">
+                <div class="chat-messages" ref="chatBoxRef">
+                  <div v-for="(m, i) in chatMessages" :key="'cm-'+i" class="chat-msg">
+                    <strong>{{ m.from }}:</strong> {{ m.text }}
+                  </div>
+                </div>
+
+                <div class="chat-input">
+                  <input v-model="chatText" class="lux-input" placeholder="Type message…" @keydown.enter.prevent="sendChat" />
+                  <button class="btn btn-primary lux-btn lux-btn-primary" @click="sendChat">Send</button>
+                </div>
+              </div>
+            </section>
           </aside>
 
-          <div class="rooms-main">
-            <div class="rooms-top">
-              <div class="rooms-title"># {{ chatRoom }}</div>
-              <button class="chip ghost" @click="toggleChat">Toggle Chat Drawer</button>
-            </div>
-
-            <div class="rooms-messages" ref="roomsChatBoxRef">
-              <div v-for="(m, i) in chatMessages" :key="'rm-'+i" class="rm">
-                <div class="rm-top">
-                  <span class="rm-user">{{ m.from }}</span>
-                  <span class="rm-time">{{ m.created_at ? formatDate(m.created_at) : "" }}</span>
-                </div>
-                <div class="rm-text">{{ m.text }}</div>
+          <!-- INCOMING CALL POPUP -->
+          <div v-if="incomingCall" class="modal-backdrop" @click.self="rejectIncoming">
+            <div class="modal">
+              <div class="modal-title">Incoming {{ incomingCall.kind === "video" ? "Video" : "Audio" }} Call</div>
+              <div class="modal-sub">
+                From
+                <span class="pill">
+                  {{ incomingCall.from?.username || incomingCall.fromName || ("User #" + incomingCall.fromUserId) }}
+                </span>
               </div>
-            </div>
 
-            <div class="rooms-input">
-              <input v-model="chatText" placeholder="Message #room…" @keydown.enter.prevent="sendChat" />
-              <button class="btn btn-primary" @click="sendChat">Send</button>
+              <div class="modal-actions">
+                <button class="btn danger lux-btn lux-btn-danger" @click="rejectIncoming">Reject</button>
+                <button class="btn btn-primary lux-btn lux-btn-primary" @click="acceptIncoming">Accept</button>
+              </div>
+
+              <div class="tiny muted mt10">Tip: keep Dashboard open on both devices for best reliability.</div>
             </div>
           </div>
-        </section>
 
-        <!-- THREADS MODE -->
-        <section v-else-if="feedMode === 'threads'" class="feed threads">
-          <div v-if="loading" class="state">Loading…</div>
-          <div v-else-if="baseFiltered.length === 0" class="state">
-            <div class="state-emoji">✍️</div>
-            <div class="state-title">No threads yet</div>
-            <div class="state-sub">Write something to start the conversation.</div>
+          <!-- CALLING TOAST -->
+          <div v-if="callingToast" class="toast">
+            <span class="toast-dot"></span>
+            {{ callingToast }}
+            <button class="mini-x" @click="cancelCall">✕</button>
           </div>
 
-          <article v-else v-for="post in threadsPosts" :key="'t-'+post.id" class="post thread">
-            <header class="post-head">
-              <div class="avatar">{{ getInitial(post.user_id) }}</div>
-              <div class="who">
-                <div class="name">User #{{ post.user_id }}</div>
-                <div class="time">{{ formatDate(post.created_at) }}</div>
-              </div>
-            </header>
-
-            <div v-if="post.caption" class="text thread-text">{{ post.caption }}</div>
-
-            <button
-              v-if="post.image_url || post.video_url"
-              class="chip ghost thread-media-toggle"
-              @click="toggleThreadMedia(post.id)"
-            >
-              {{ threadMediaOpen[post.id] ? "Hide media" : "View media" }}
+          <!-- BOTTOM NAV -->
+          <nav class="bottomNav">
+            <button class="bn" :class="{ on: isHomeActive }" @click="goHome">
+              <span class="bnI">🏠</span><span class="bnT">Home</span>
             </button>
 
-            <div v-if="threadMediaOpen[post.id]" class="thread-media">
-              <img v-if="post.image_url" class="media" :src="getMedia(post.image_url)" loading="lazy" />
-              <video v-if="post.video_url" class="media" :src="getMedia(post.video_url)" controls playsinline preload="metadata"></video>
-            </div>
+            <button class="bn" @click="goInbox">
+              <span class="bnI">💬</span><span class="bnT">Inbox</span>
+            </button>
 
-            <div class="actions">
-              <button class="action-btn" :class="{ active: likesByPost[post.id]?.likedByMe }" :disabled="likeBusyByPost[post.id]" @click="toggleLike(post)">
-                ❤️ <span class="label">{{ likesByPost[post.id]?.count ?? 0 }}</span>
-              </button>
-              <button class="action-btn" @click="toggleComments(post)">💬 <span class="label">{{ commentCount(post.id) }}</span></button>
-              <div class="spacer"></div>
-              <button class="action-btn ghost" @click="sharePost(post)">🔗 <span class="label">Share</span></button>
-              <button class="action-btn ghost" @click="copyPostText(post)">📋 <span class="label">Copy</span></button>
-            </div>
+            <button class="bn" :class="{ on: feedMode === 'live' }" @click="goLiveTab">
+              <span class="bnI">🔴</span><span class="bnT">Live</span>
+            </button>
 
-            <CommentsBlock :post="post" />
-          </article>
-        </section>
-
-        <!-- REELS MODE -->
-        <section v-else-if="feedMode === 'reels'" class="feed reels">
-          <template v-if="loading">
-            <div class="state">Loading…</div>
-          </template>
-
-          <div v-else-if="reelsPosts.length === 0" class="state">
-            <div class="state-emoji">🎞️</div>
-            <div class="state-title">No reels yet</div>
-            <div class="state-sub">Post a video and it will show here.</div>
-          </div>
-
-          <article
-            v-else
-            v-for="post in reelsVisible"
-            :key="'r-'+post.id"
-            class="post tt-card"
-          >
-            <header class="post-head">
-              <div class="avatar">{{ getInitial(post.user_id) }}</div>
-              <div class="who">
-                <div class="name">User #{{ post.user_id }}</div>
-                <div class="time">{{ formatDate(post.created_at) }}</div>
-              </div>
-
-              <button class="tt-ic" title="Sound" @click="toggleGlobalMute">{{ globalMuted ? "🔇" : "🔊" }}</button>
-            </header>
-
-            <div v-if="post.caption" class="text">{{ post.caption }}</div>
-
-            <div class="tt-video-wrap">
-              <video
-                class="media tt-video"
-                :data-post-id="post.id"
-                :src="getMedia(post.video_url)"
-                playsinline
-                preload="metadata"
-                loop
-                muted
-                @click="toggleVideoMute(post.id)"
-              ></video>
-
-              <div class="tt-overlay">
-                <div class="tt-badge">REELS</div>
-                <div class="tt-mute">{{ isVideoMuted(post.id) ? "🔇 Muted" : "🔊 Sound" }}</div>
-              </div>
-            </div>
-
-            <div class="actions">
-              <button class="action-btn" :class="{ active: likesByPost[post.id]?.likedByMe }" :disabled="likeBusyByPost[post.id]" @click="toggleLike(post)">
-                ❤️ <span class="label">{{ likesByPost[post.id]?.count ?? 0 }}</span>
-              </button>
-              <button class="action-btn" @click="toggleComments(post)">💬 <span class="label">{{ commentCount(post.id) }}</span></button>
-              <div class="spacer"></div>
-              <button class="action-btn ghost" @click="sharePost(post)">🔗 <span class="label">Share</span></button>
-              <button class="action-btn ghost" @click="copyPostText(post)">📋 <span class="label">Copy</span></button>
-            </div>
-
-            <CommentsBlock :post="post" />
-          </article>
-
-          <div ref="reelsLoadMoreRef" class="load-more">
-            <span v-if="reelsInfiniteLoading">Loading more…</span>
-            <span v-else-if="reelsCanLoadMore">Scroll for more</span>
-            <span v-else>End</span>
-          </div>
-        </section>
-
-        <!-- FOLLOWING MODE -->
-        <section v-else-if="feedMode === 'following'" class="feed following">
-          <template v-if="loading">
-            <div class="state">Loading…</div>
-          </template>
-
-          <div v-else-if="baseFiltered.length === 0" class="state">
-            <div class="state-emoji">📸</div>
-            <div class="state-title">No posts yet</div>
-            <div class="state-sub">Be the first to post.</div>
-          </div>
-
-          <article v-else v-for="post in followingPosts" :key="'f-'+post.id" class="post">
-            <header class="post-head">
-              <div class="avatar">{{ getInitial(post.user_id) }}</div>
-              <div class="who">
-                <div class="name">User #{{ post.user_id }}</div>
-                <div class="time">{{ formatDate(post.created_at) }}</div>
-              </div>
-            </header>
-
-            <div v-if="post.caption" class="text">{{ post.caption }}</div>
-
-            <img v-if="post.image_url" class="media" :src="getMedia(post.image_url)" loading="lazy" />
-            <video v-if="post.video_url" class="media" :src="getMedia(post.video_url)" controls playsinline preload="metadata"></video>
-
-            <div class="actions">
-              <button class="action-btn" :class="{ active: likesByPost[post.id]?.likedByMe }" :disabled="likeBusyByPost[post.id]" @click="toggleLike(post)">
-                ❤️ <span class="label">{{ likesByPost[post.id]?.count ?? 0 }}</span>
-              </button>
-              <button class="action-btn" @click="toggleComments(post)">💬 <span class="label">{{ commentCount(post.id) }}</span></button>
-              <div class="spacer"></div>
-              <button class="action-btn ghost" @click="sharePost(post)">🔗 <span class="label">Share</span></button>
-              <button class="action-btn ghost" @click="copyPostText(post)">📋 <span class="label">Copy</span></button>
-            </div>
-
-            <CommentsBlock :post="post" />
-          </article>
-        </section>
-
-        <!-- FOR YOU MODE -->
-        <section v-else class="feed tiktok">
-          <template v-if="loading">
-            <div class="state">Loading…</div>
-          </template>
-
-          <div v-else-if="baseFiltered.length === 0" class="state">
-            <div class="state-emoji">🎬</div>
-            <div class="state-title">No videos yet</div>
-            <div class="state-sub">Post a video and it will autoplay here.</div>
-          </div>
-
-          <article
-            v-else
-            v-for="post in visiblePosts"
-            :key="'fy-'+post.id"
-            class="post tt-card"
-            :id="`post-${post.id}`"
-          >
-            <header class="post-head">
-              <div class="avatar">{{ getInitial(post.user_id) }}</div>
-              <div class="who">
-                <div class="name">User #{{ post.user_id }}</div>
-                <div class="time">{{ formatDate(post.created_at) }}</div>
-              </div>
-
-              <button class="tt-ic" title="Sound" @click="toggleGlobalMute">{{ globalMuted ? "🔇" : "🔊" }}</button>
-            </header>
-
-            <div v-if="post.caption" class="text">{{ post.caption }}</div>
-            <img v-if="post.image_url" class="media" :src="getMedia(post.image_url)" loading="lazy" />
-
-            <div v-if="post.video_url" class="tt-video-wrap">
-              <video
-                class="media tt-video"
-                :data-post-id="post.id"
-                :src="getMedia(post.video_url)"
-                playsinline
-                preload="metadata"
-                loop
-                muted
-                @click="toggleVideoMute(post.id)"
-              ></video>
-
-              <div class="tt-overlay">
-                <div class="tt-badge">{{ activePostId === post.id ? "FOR YOU" : "NEXT" }}</div>
-                <div class="tt-mute">{{ isVideoMuted(post.id) ? "🔇 Muted" : "🔊 Sound" }}</div>
-              </div>
-            </div>
-
-            <div class="actions">
-              <button class="action-btn" :class="{ active: likesByPost[post.id]?.likedByMe }" :disabled="likeBusyByPost[post.id]" @click="toggleLike(post)">
-                ❤️ <span class="label">{{ likesByPost[post.id]?.count ?? 0 }}</span>
-              </button>
-              <button class="action-btn" @click="toggleComments(post)">💬 <span class="label">{{ commentCount(post.id) }}</span></button>
-              <div class="spacer"></div>
-              <button class="action-btn ghost" @click="sharePost(post)">🔗 <span class="label">Share</span></button>
-              <button class="action-btn ghost" @click="copyPostText(post)">📋 <span class="label">Copy</span></button>
-            </div>
-
-            <CommentsBlock :post="post" />
-          </article>
-
-          <div ref="loadMoreRef" class="load-more">
-            <span v-if="infiniteLoading">Loading more…</span>
-            <span v-else-if="canLoadMore">Scroll for more</span>
-            <span v-else>End</span>
-          </div>
-        </section>
-      </main>
-
-      <!-- CHAT DRAWER -->
-      <aside class="chatDrawer" :class="{ open: chatOpen }">
-        <section class="panel chatPanel">
-          <div class="panel-head">
-            <div class="panel-title">💬 Chat</div>
-            <button class="btn" @click="toggleChat">{{ chatOpen ? "Close" : "Open" }}</button>
-          </div>
-
-          <div class="chat-hint">Quick room chat. Rooms tab is full Discord-style.</div>
-
-          <div class="chat-list">
-            <button class="chat-item" :class="{ active: chatRoom === 'global' }" @click="selectChat('global')">🌍 Global</button>
-            <button class="chat-item" :class="{ active: chatRoom === 'support' }" @click="selectChat('support')">🛠 Support</button>
-            <button class="chat-item" :class="{ active: chatRoom === 'dev' }" @click="selectChat('dev')">💻 Dev</button>
-            <button class="chat-item" :class="{ active: chatRoom === 'random' }" @click="selectChat('random')">🎲 Random</button>
-          </div>
-
-          <div class="chat-box">
-            <div class="chat-messages" ref="chatBoxRef">
-              <div v-for="(m, i) in chatMessages" :key="'cm-'+i" class="chat-msg"><strong>{{ m.from }}:</strong> {{ m.text }}</div>
-            </div>
-
-            <div class="chat-input">
-              <input v-model="chatText" placeholder="Type message…" @keydown.enter.prevent="sendChat" />
-              <button class="btn btn-primary" @click="sendChat">Send</button>
-            </div>
-          </div>
-        </section>
-      </aside>
-
-      <!-- INCOMING CALL POPUP -->
-      <div v-if="incomingCall" class="modal-backdrop" @click.self="rejectIncoming">
-        <div class="modal">
-          <div class="modal-title">Incoming {{ incomingCall.kind === "video" ? "Video" : "Audio" }} Call</div>
-          <div class="modal-sub">
-            From
-            <span class="pill">
-              {{ incomingCall.from?.username || incomingCall.fromName || ("User #" + incomingCall.fromUserId) }}
-            </span>
-          </div>
-
-          <div class="modal-actions">
-            <button class="btn danger" @click="rejectIncoming">Reject</button>
-            <button class="btn btn-primary" @click="acceptIncoming">Accept</button>
-          </div>
-
-          <div class="tiny muted mt10">Tip: keep Dashboard open on both devices for best reliability.</div>
-        </div>
-      </div>
-
-      <!-- CALLING TOAST -->
-      <div v-if="callingToast" class="toast">
-        <span class="toast-dot"></span>
-        {{ callingToast }}
-        <button class="mini-x" @click="cancelCall">✕</button>
-      </div>
-
-      <!-- BOTTOM NAV -->
-      <nav class="bottomNav">
-        <button class="bn" :class="{ on: isHomeActive }" @click="goHome">
-          <span class="bnI">🏠</span><span class="bnT">Home</span>
-        </button>
-
-        <button class="bn" @click="goInbox">
-          <span class="bnI">💬</span><span class="bnT">Inbox</span>
-        </button>
-
-        <button class="bn" :class="{ on: feedMode === 'live' }" @click="goLiveTab">
-          <span class="bnI">🔴</span><span class="bnT">Live</span>
-        </button>
-
-        <button class="bn" @click="goProfile">
-          <span class="bnI">👤</span><span class="bnT">Profile</span>
-        </button>
-      </nav>
+            <button class="bn" @click="goProfile">
+              <span class="bnI">👤</span><span class="bnT">Profile</span>
+            </button>
+          </nav>
         </div>
       </div>
     </div>
   </Layout>
 </template>
+
 
 <script setup>
 import { ref, computed, onMounted, onBeforeUnmount, nextTick, defineComponent, h } from "vue";
@@ -2190,4 +2222,7 @@ onBeforeUnmount(() => {
   cursor: pointer;
   font-weight: 950;
 }
+.modebar.lux-tabs { align-items: center; }
+.modebar .mode.lux-tab { border: 0 !important; }
+.search.lux-input { min-width: 220px; }
 </style>
