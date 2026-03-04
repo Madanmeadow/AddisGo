@@ -1,37 +1,40 @@
 <!-- src/views/Dashboard.vue -->
 <template>
   <Layout>
-    <div class="wrap">
-      <!-- TOPBAR -->
-      <header class="topbar">
-        <div class="brand" @click="scrollToTop" role="button" tabindex="0">
-          <div class="logo">🔥</div>
-          <div class="brand-text">
-            <div class="title">AddisGo</div>
-            <div class="sub">All-in-One • TikTok • IG • X • Discord • Live</div>
-          </div>
-        </div>
+    <div class="lux-page">
+      <div class="lux-container">
 
-        <div class="top-actions">
-          <button class="chip" @click="refreshAll" :disabled="loading">
-            🔁 {{ loading ? "Loading…" : "Refresh All" }}
-          </button>
+        <div class="wrap">
+          <!-- TOPBAR -->
+          <header class="topbar">
+            <div class="brand" @click="scrollToTop" role="button" tabindex="0">
+              <div class="logo">🔥</div>
+              <div class="brand-text">
+                <div class="title">AddisGo</div>
+                <div class="sub">All-in-One • TikTok • IG • X • Discord • Live</div>
+              </div>
+            </div>
 
-          <button class="chip ghost" @click="togglePeople">
-            {{ peopleOpen ? "Hide People" : "People" }}
-          </button>
+            <div class="top-actions">
+              <button class="chip" @click="refreshAll" :disabled="loading">
+                🔁 {{ loading ? "Loading…" : "Refresh All" }}
+              </button>
 
-          <button class="chip ghost" @click="toggleChat">
-            {{ chatOpen ? "Close Chat" : "Chat" }}
-          </button>
+              <button class="chip ghost" @click="togglePeople">
+                {{ peopleOpen ? "Hide People" : "People" }}
+              </button>
 
-          <button class="chip ghost" @click="toggleTools">
-            {{ toolsOpen ? "Close Tools" : "Tools" }}
-          </button>
+              <button class="chip ghost" @click="toggleChat">
+                {{ chatOpen ? "Close Chat" : "Chat" }}
+              </button>
 
-          <button class="chip danger" @click="logout">Logout</button>
-        </div>
-      </header>
+              <button class="chip ghost" @click="toggleTools">
+                {{ toolsOpen ? "Close Tools" : "Tools" }}
+              </button>
+
+              <button class="chip danger" @click="logout">Logout</button>
+            </div>
+          </header>
 
       <!-- MODEBAR -->
       <div class="modebar">
@@ -600,6 +603,8 @@
           <span class="bnI">👤</span><span class="bnT">Profile</span>
         </button>
       </nav>
+        </div>
+      </div>
     </div>
   </Layout>
 </template>
