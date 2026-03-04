@@ -19,9 +19,9 @@ export default defineConfig({
       ],
 
       manifest: {
-        name: "AddisGo",
-        short_name: "AddisGo",
-        description: "Social • Live • Chat",
+        name: "Pulse",
+        short_name: "Pulse",
+        description: "Your Social Universe",
         theme_color: "#0b1220",
         background_color: "#0b1220",
         display: "standalone",
