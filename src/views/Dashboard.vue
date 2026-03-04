@@ -7,14 +7,14 @@
           <!-- TOPBAR -->
           <header class="topbar">
             <div class="brand" @click="scrollToTop" role="button" tabindex="0">
-              <div class="logo">🔥</div>
-              <div class="brand-text">
-                <div class="title">AddisGo</div>
-                <div class="sub">All-in-One • TikTok • IG • X • Discord • Live</div>
-              </div>
-            </div>
+                <div class="logo">⚡</div>
 
-            <div class="top-actions">
+                <div class="brand-text">
+                  <div class="title">Pulse</div>
+                  <div class="sub">Your Social Universe</div>
+                </div>
+              </div>
+                  <div class="top-actions">
               <button class="chip lux-btn" @click="refreshAll" :disabled="loading">
                 🔁 {{ loading ? "Loading…" : "Refresh All" }}
               </button>
@@ -378,7 +378,7 @@
               </article>
             </section>
 
-            <!-- REELS MODE -->
+           <!-- REELS MODE -->
             <section v-else-if="feedMode === 'reels'" class="feed reels">
               <template v-if="loading">
                 <div class="state">Loading…</div>
@@ -390,60 +390,24 @@
                 <div class="state-sub">Post a video and it will show here.</div>
               </div>
 
-              <article
+              <TikTokFeed
                 v-else
-                v-for="post in reelsVisible"
-                :key="'r-'+post.id"
-                class="post tt-card lux-card lux-pad"
-              >
-                <header class="post-head">
-                  <div class="avatar">{{ getInitial(post.user_id) }}</div>
-                  <div class="who">
-                    <div class="name">User #{{ post.user_id }}</div>
-                    <div class="time">{{ formatDate(post.created_at) }}</div>
-                  </div>
-
-                  <button class="tt-ic" title="Sound" @click="toggleGlobalMute">{{ globalMuted ? "🔇" : "🔊" }}</button>
-                </header>
-
-                <div v-if="post.caption" class="text">{{ post.caption }}</div>
-
-                <div class="tt-video-wrap">
-                  <video
-                    class="media tt-video"
-                    :data-post-id="post.id"
-                    :src="getMedia(post.video_url)"
-                    playsinline
-                    preload="metadata"
-                    loop
-                    muted
-                    @click="toggleVideoMute(post.id)"
-                  ></video>
-
-                  <div class="tt-overlay">
-                    <div class="tt-badge">REELS</div>
-                    <div class="tt-mute">{{ isVideoMuted(post.id) ? "🔇 Muted" : "🔊 Sound" }}</div>
-                  </div>
-                </div>
-
-                <div class="actions">
-                  <button class="action-btn" :class="{ active: likesByPost[post.id]?.likedByMe }" :disabled="likeBusyByPost[post.id]" @click="toggleLike(post)">
-                    ❤️ <span class="label">{{ likesByPost[post.id]?.count ?? 0 }}</span>
-                  </button>
-                  <button class="action-btn" @click="toggleComments(post)">💬 <span class="label">{{ commentCount(post.id) }}</span></button>
-                  <div class="spacer"></div>
-                  <button class="action-btn ghost" @click="sharePost(post)">🔗 <span class="label">Share</span></button>
-                  <button class="action-btn ghost" @click="copyPostText(post)">📋 <span class="label">Copy</span></button>
-                </div>
-
-                <CommentsBlock :post="post" />
-              </article>
-
-              <div ref="reelsLoadMoreRef" class="load-more">
-                <span v-if="reelsInfiniteLoading">Loading more…</span>
-                <span v-else-if="reelsCanLoadMore">Scroll for more</span>
-                <span v-else>End</span>
-              </div>
+                :items="reelsVisible"
+                mode="reels"
+                :globalMuted="globalMuted"
+                :canLoadMore="reelsCanLoadMore"
+                :loadingMore="reelsInfiniteLoading"
+                :getMedia="getMedia"
+                :formatDate="formatDate"
+                :getInitial="getInitial"
+                :likesCount="(p) => (likesByPost[p.id]?.count ?? 0)"
+                :commentCount="(p) => commentCount(p.id)"
+                @toggle-muted="toggleGlobalMute"
+                @load-more="loadMoreReels"
+                @like="toggleLike"
+                @comments="toggleComments"
+                @share="sharePost"
+              />
             </section>
 
             <!-- FOLLOWING MODE -->
@@ -486,7 +450,7 @@
               </article>
             </section>
 
-            <!-- FOR YOU MODE -->
+          <!-- FOR YOU MODE -->
             <section v-else class="feed tiktok">
               <template v-if="loading">
                 <div class="state">Loading…</div>
@@ -498,7 +462,7 @@
                 <div class="state-sub">Post a video and it will autoplay here.</div>
               </div>
 
-              <article
+              <TikTokFeed
                 v-else
                 :items="visiblePosts"
                 mode="foryou"
@@ -517,6 +481,7 @@
                 @share="sharePost"
               />
             </section>
+          </main>
 
           <!-- CHAT DRAWER -->
           <aside class="chatDrawer" :class="{ open: chatOpen }">
@@ -606,6 +571,7 @@
 import { ref, computed, onMounted, onBeforeUnmount, nextTick, defineComponent, h } from "vue";
 import { useRouter } from "vue-router";
 import Layout from "../components/Layout.vue";
+import TikTokFeed from "../components/TikTokFeed.vue";
 
 // ✅ IMPORTANT: use your shared socket creator (fixes prod URL issues)
 import { createSocket } from "../api/socket";
