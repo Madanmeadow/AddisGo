@@ -6,15 +6,15 @@
         <div class="wrap">
           <!-- TOPBAR -->
           <header class="topbar">
-            <div class="brand" @click="scrollToTop" role="button" tabindex="0">
-                <div class="logo">⚡</div>
+          <div class="brand" @click="scrollToTop" role="button" tabindex="0">
+            <div class="logo">⚡</div>
 
-                <div class="brand-text">
-                  <div class="title">Pulse</div>
-                  <div class="sub">Your Social Universe</div>
-                </div>
-              </div>
-                  <div class="top-actions">
+            <div class="brand-text">
+              <div class="title">Pulse</div>
+              <div class="sub">Your Social Universe</div>
+            </div>
+          </div>
+              <div class="top-actions">
               <button class="chip lux-btn" @click="refreshAll" :disabled="loading">
                 🔁 {{ loading ? "Loading…" : "Refresh All" }}
               </button>
