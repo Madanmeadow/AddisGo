@@ -400,7 +400,7 @@ async function share(post) {
   const url = `${window.location.origin}/watch/${post.id}`;
   try {
     if (navigator.share) {
-      await navigator.share({ title: "AddisGo", text: post.caption || "Post", url });
+      await navigator.share({ title: "Pulse", text: post.caption || "Post", url });
       return;
     }
   } catch {}

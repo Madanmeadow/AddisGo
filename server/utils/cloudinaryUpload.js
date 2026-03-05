@@ -15,7 +15,7 @@ const storage = new CloudinaryStorage({
   cloudinary,
   params: async (req, file) => {
     return {
-      folder: "addisgo",
+      folder: "pulse",
       resource_type: "auto", // image or video
       public_id: `img_${Date.now()}`,
     };

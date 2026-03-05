@@ -187,7 +187,7 @@ app.post("/auth/login", async (req, res) => {
 /* =========================
    HEALTH
 ========================= */
-app.get("/", (req, res) => res.send("🚀 AddisGo backend running"));
+app.get("/", (req, res) => res.send("🚀 Pulse backend running"));
 
 app.get("/health", async (req, res) => {
   try {
@@ -1015,5 +1015,5 @@ io.on("connection", (socket) => {
    START
 ========================= */
 server.listen(PORT, () => {
-  logOK(`🔥 AddisGo Server running on port ${PORT}`);
+  logOK(` ⚡Pulse Server running on port ${PORT}`);
 });

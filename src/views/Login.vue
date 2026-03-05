@@ -42,7 +42,8 @@ async function login() {
 
 <template>
   <div class="auth">
-    <h1>🔥 pulse Login</h1>
+    <h1>⚡ Pulse</h1>
+    <p>Your Social Universe</p>
 
     <input v-model="email" placeholder="Email" />
     <input v-model="password" type="password" placeholder="Password" />

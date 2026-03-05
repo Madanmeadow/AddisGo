@@ -55,7 +55,7 @@ export default defineConfig({
               url.pathname.startsWith("/api"),
             handler: "NetworkFirst",
             options: {
-              cacheName: "addisgo-api",
+              cacheName: "Pulse-api",
               networkTimeoutSeconds: 8,
               expiration: { maxEntries: 100, maxAgeSeconds: 60 * 5 },
               cacheableResponse: { statuses: [0, 200] },
@@ -74,7 +74,7 @@ export default defineConfig({
             urlPattern: ({ request }) => request.destination === "image",
             handler: "CacheFirst",
             options: {
-              cacheName: "addisgo-images",
+              cacheName: "Pulse-images",
               expiration: { maxEntries: 100, maxAgeSeconds: 60 * 60 * 24 * 7 },
               cacheableResponse: { statuses: [0, 200] },
             },
@@ -87,7 +87,7 @@ export default defineConfig({
               request.destination === "font",
             handler: "StaleWhileRevalidate",
             options: {
-              cacheName: "addisgo-assets",
+              cacheName: "Pulse-assets",
               cacheableResponse: { statuses: [0, 200] },
             },
           },

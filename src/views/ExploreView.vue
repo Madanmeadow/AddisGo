@@ -37,7 +37,7 @@ export default {
 
   async mounted() {
     const res = await axios.get(
-      "https://addisgo-1.onrender.com/api/videos"
+      "https://pulse-1.onrender.com/api/videos"
     );
     this.videos = res.data;
   },

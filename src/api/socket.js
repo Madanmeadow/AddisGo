@@ -10,7 +10,7 @@ const apiUrl = (import.meta.env.VITE_API_URL || "").trim();
 function getSocketUrl() {
   if (!apiUrl) {
     console.error(
-      "[AddisGo] VITE_API_URL is missing. Socket would connect to Vercel by default. Fix Vercel env."
+      "[Pulse] VITE_API_URL is missing. Socket would connect to Vercel by default. Fix Vercel env."
     );
     return null;
   }

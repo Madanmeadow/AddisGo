@@ -20,7 +20,7 @@ onMounted(fetchVideos)
 
 <template>
   <div class="feed">
-    <h1>AddisGo Feed 🔥</h1>
+    <h1>Pulse Feed 🔥</h1>
 
     <div v-for="video in videos" :key="video.id" class="video-card">
       

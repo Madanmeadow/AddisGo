@@ -1,7 +1,7 @@
 <template>
   <div class="home">
-    <h1>🔥 Welcome to AddisGo</h1>
-    <p>The future social platform.</p>
+    <h1>⚡ Welcome to Pulse</h1>
+    <p>Your social universe.</p>
 
     <div class="actions">
       <router-link to="/login">

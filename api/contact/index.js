@@ -17,7 +17,7 @@ module.exports = async function (context, req) {
     const resend = new Resend(process.env.RESEND_API_KEY)
 
     await resend.emails.send({
-      from: process.env.FROM_EMAIL, // example: "AddisGo <onboarding@resend.dev>" OR your verified sender
+      from: process.env.FROM_EMAIL, // example: "Pulse <onboarding@resend.dev>" OR your verified sender
       to: process.env.TO_EMAIL,     // your inbox email
       subject: `New Contact Form Message from ${name}`,
       html: `
@@ -39,7 +39,7 @@ module.exports = async function (context, req) {
       await client.messages.create({
         from: process.env.TWILIO_PHONE_NUMBER,
         to: process.env.TO_PHONE_NUMBER || process.env.TO_SMS || process.env.TO_MOBILE || "", // optional
-        body: `AddisGo: New message from ${name} (${email})`,
+        body: `Pulse: New message from ${name} (${email})`,
       }).catch(() => {})
     }
 

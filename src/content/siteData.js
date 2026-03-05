@@ -1,13 +1,13 @@
 export const siteData = {
   brand: {
-    name: "AddisGo",
+    name: "Pulse",
     accent: "Go",
     tagline: "Clean, modern websites — built with Vue & Azure Static Web Apps.",
     bullets: ["Quick turnaround", "Mobile-first", "Professional look"],
   },
 
   contact: {
-    email: "hello@ethioaddisgo.com",
+    email: "hello@ethiopulse.com",
     responseTime: "I usually respond within 24 hours.",
     ctaTitle: "Ready to start? Let’s talk.",
     ctaText: "Tell me what you need — I’ll reply with a clear plan and next steps.",

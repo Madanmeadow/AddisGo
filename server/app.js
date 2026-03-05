@@ -15,7 +15,7 @@ app.use("/uploads", express.static("uploads"));
 app.use("/upload", uploadRoutes);
 
 app.get("/", (req, res) => {
-  res.json({ status: "AddisGo API running ✅" });
+  res.json({ status: "Pulse API running ✅" });
 });
 
 export default app;

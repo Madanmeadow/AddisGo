@@ -43,7 +43,7 @@ router.post("/", authenticateToken, upload.single("file"), async (req, res) => {
       return res.status(400).json({ error: "Only image/video files supported" });
     }
 
-    const folder = isVideo ? "addisgo/videos" : "addisgo/images";
+    const folder = isVideo ? "pulse/videos" : "pulse/images";
 
     const result = await uploadBufferToCloudinary(req.file.buffer, {
       folder,

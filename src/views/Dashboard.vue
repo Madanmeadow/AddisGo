@@ -1197,7 +1197,7 @@ async function sharePost(post) {
   const url = `${window.location.origin}/#post-${post.id}`;
   try {
     if (navigator.share) {
-      await navigator.share({ title: "AddisGo Post", text: post.caption || "Post", url });
+      await navigator.share({ title: "Pulse Post", text: post.caption || "Post", url });
       return;
     }
   } catch {}
