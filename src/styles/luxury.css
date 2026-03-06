@@ -1,0 +1,257 @@
+:root{
+  --bg0:#05070f;
+  --bg1:#070b16;
+  --ink:#eef2ff;
+  --muted:rgba(238,242,255,.72);
+
+  --glass:rgba(255,255,255,.06);
+  --glass2:rgba(255,255,255,.085);
+  --stroke:rgba(255,255,255,.12);
+
+  --red:#ff3b5c;
+  --pink:#ff4fd8;
+  --cyan:#3be4ff;
+  --lime:#6dff8f;
+
+  --shadow2: 0 14px 48px rgba(0,0,0,.45);
+  --r22:22px;
+  --ease: cubic-bezier(.2,.9,.2,1);
+  --ring: 0 0 0 4px rgba(59,228,255,.14);
+}
+
+/* Page wrapper used by ALL views */
+.lux-page{
+  min-height:100vh;
+  color:var(--ink);
+  background:
+    radial-gradient(1200px 900px at 15% 10%, rgba(255,79,216,.16), transparent 55%),
+    radial-gradient(1000px 800px at 85% 20%, rgba(59,228,255,.12), transparent 50%),
+    radial-gradient(900px 700px at 40% 95%, rgba(255,59,92,.12), transparent 55%),
+    linear-gradient(180deg, var(--bg0), var(--bg1));
+  position:relative;
+  overflow:hidden;
+}
+.lux-page::before{
+  content:"";
+  position:absolute; inset:-45%;
+  background: conic-gradient(from 180deg,
+    rgba(255,79,216,.20),
+    rgba(59,228,255,.16),
+    rgba(255,59,92,.16),
+    rgba(255,79,216,.20));
+  filter: blur(90px);
+  opacity:.32;
+  animation: luxSpin 20s linear infinite;
+  pointer-events:none;
+}
+@keyframes luxSpin{ to { transform: rotate(360deg);} }
+
+.lux-container{
+  width:min(1100px, 100%);
+  margin:0 auto;
+  padding:16px;
+  position:relative;
+  z-index:2;
+}
+
+/* Cards */
+.lux-card{
+  background: linear-gradient(180deg, rgba(255,255,255,.09), rgba(255,255,255,.045));
+  border: 1px solid var(--stroke);
+  border-radius: var(--r22);
+  box-shadow: var(--shadow2);
+  backdrop-filter: blur(14px);
+  -webkit-backdrop-filter: blur(14px);
+  position:relative;
+}
+.lux-card::after{
+  content:"";
+  position:absolute; inset:0;
+  border-radius: inherit;
+  background: radial-gradient(520px 220px at 20% 0%, rgba(255,255,255,.11), transparent 62%);
+  pointer-events:none;
+}
+.lux-pad{ padding:14px; }
+
+/* Buttons */
+.lux-btn{
+  border-radius:999px;
+  border:1px solid rgba(255,255,255,.14);
+  background: rgba(255,255,255,.06);
+  color:var(--ink);
+  padding:10px 12px;
+  font-weight:750;
+  transition: transform .18s var(--ease), box-shadow .18s var(--ease), background .18s var(--ease), border-color .18s var(--ease);
+}
+.lux-btn:hover{
+  transform: translateY(-2px);
+  box-shadow: 0 14px 34px rgba(0,0,0,.38);
+  background: rgba(255,255,255,.08);
+  border-color: rgba(255,255,255,.22);
+}
+.lux-btn:active{ transform: translateY(0) scale(.99); }
+.lux-btn-primary{
+  background: linear-gradient(135deg, rgba(255,59,92,.92), rgba(255,79,216,.74));
+  border-color: rgba(255,255,255,.18);
+}
+.lux-btn-danger{
+  background: linear-gradient(135deg, rgba(255,59,92,.92), rgba(255,86,86,.70));
+  border-color: rgba(255,255,255,.18);
+}
+
+/* Inputs */
+.lux-input, .lux-textarea{
+  width:100%;
+  border-radius: 14px;
+  border:1px solid rgba(255,255,255,.12);
+  background: rgba(0,0,0,.28);
+  color: var(--ink);
+  padding:12px 12px;
+  outline:none;
+  transition: box-shadow .18s var(--ease), border-color .18s var(--ease);
+}
+.lux-textarea{ min-height: 86px; }
+.lux-input:focus, .lux-textarea:focus{
+  border-color: rgba(59,228,255,.35);
+  box-shadow: var(--ring), 0 18px 60px rgba(0,0,0,.45);
+}
+
+/* Tabs */
+.lux-tabs{
+  display:flex; gap:10px; flex-wrap:wrap;
+  padding:10px;
+  border-radius:999px;
+  background: rgba(255,255,255,.05);
+  border:1px solid rgba(255,255,255,.10);
+  backdrop-filter: blur(12px);
+}
+.lux-tab{
+  padding:10px 14px;
+  border-radius:999px;
+  font-weight:800;
+  color: rgba(238,242,255,.82);
+  border: 1px solid transparent;
+  background: transparent;
+}
+.lux-tab.is-active{
+  color: var(--ink);
+  background: linear-gradient(135deg, rgba(59,228,255,.22), rgba(255,79,216,.18));
+  border-color: rgba(255,255,255,.14);
+}
+
+/* Avatar */
+.lux-avatar{
+  width:46px; height:46px;
+  border-radius: 16px;
+  display:grid; place-items:center;
+  font-weight:900;
+  color: rgba(255,255,255,.94);
+  position:relative;
+  background:
+    radial-gradient(18px 18px at 25% 25%, rgba(255,255,255,.22), transparent 60%),
+    linear-gradient(135deg, rgba(255,79,216,.55), rgba(59,228,255,.35));
+  border: 1px solid rgba(255,255,255,.14);
+  box-shadow: 0 14px 35px rgba(0,0,0,.35);
+}
+.lux-online{
+  position:absolute;
+  width:10px; height:10px; border-radius:999px;
+  background: var(--lime);
+  border: 2px solid rgba(7,11,22,.9);
+  bottom:-3px; right:-3px;
+}
+.boot{
+  position:fixed;
+  inset:0;
+  z-index:9999;
+  display:grid;
+  place-items:center;
+  background:
+    radial-gradient(900px 700px at 20% 10%, rgba(255,79,216,.22), transparent 55%),
+    radial-gradient(900px 700px at 80% 20%, rgba(59,228,255,.16), transparent 55%),
+    linear-gradient(180deg, #05070f, #070b16);
+  transition: opacity .45s ease, transform .45s ease;
+}
+
+.boot.off{
+  opacity:0;
+  pointer-events:none;
+  transform: scale(1.02);
+}
+
+.bootCard{
+  width:min(420px, 92vw);
+  padding:22px 18px;
+  border-radius:22px;
+  border:1px solid rgba(255,255,255,.12);
+  background: rgba(255,255,255,.06);
+  backdrop-filter: blur(14px);
+  box-shadow: 0 22px 90px rgba(0,0,0,.55);
+  text-align:center;
+}
+
+.bootLogo{
+  font-size:38px;
+  filter: drop-shadow(0 10px 25px rgba(255,59,92,.25));
+}
+
+.bootTitle{
+  font-weight:900;
+  font-size:30px;
+  letter-spacing:.4px;
+  margin-top:6px;
+}
+
+.bootSub{
+  color:rgba(238,242,255,.75);
+  margin-top:4px;
+}
+
+.bootLine{
+  margin-top:14px;
+  display:flex;
+  justify-content:center;
+  gap:10px;
+  align-items:center;
+  color:rgba(238,242,255,.75);
+}
+
+.bootDot{
+  width:10px; height:10px;
+  border-radius:999px;
+  background:#ff3b5c;
+  box-shadow: 0 0 0 0 rgba(255,59,92,.55);
+  animation: pulse 1.3s infinite;
+}
+
+.bootBar{
+  margin:14px auto 2px;
+  height:4px;
+  width:72%;
+  border-radius:999px;
+  background: linear-gradient(90deg,
+    rgba(255,79,216,.15),
+    rgba(59,228,255,.18),
+    rgba(255,59,92,.18));
+  overflow:hidden;
+  position:relative;
+}
+
+.bootBar::after{
+  content:"";
+  position:absolute;
+  inset:0;
+  background: linear-gradient(90deg, transparent, rgba(255,255,255,.22), transparent);
+  transform: translateX(-60%);
+  animation: shimmer 1.2s infinite;
+}
+
+@keyframes shimmer{
+  to{ transform: translateX(60%); }
+}
+
+@keyframes pulse{
+  0%{ box-shadow:0 0 0 0 rgba(255,59,92,.55); }
+  70%{ box-shadow:0 0 0 14px rgba(255,59,92,0); }
+  100%{ box-shadow:0 0 0 0 rgba(255,59,92,0); }
+}

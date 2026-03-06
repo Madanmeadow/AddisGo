@@ -1,7 +1,7 @@
 import { createApp } from "vue";
 import App from "./App.vue";
 import router from "./router";
-
+import "./styles/luxury.css";
 // ✅ Global styles (world-class + accessible)
 import "./style.css";
 
