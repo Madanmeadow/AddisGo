@@ -42,7 +42,7 @@ async function login() {
 
 <template>
   <div class="auth">
-    <h1>🔥 AddisGo Login</h1>
+    <h1>⚡ Pulse Login</h1>
 
     <input v-model="email" placeholder="Email" />
     <input v-model="password" type="password" placeholder="Password" />
