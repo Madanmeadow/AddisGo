@@ -1,7 +1,7 @@
 <!-- src/App.vue -->
 <template>
   <!-- ✅ Skip link for keyboard + screen readers -->
-  <a href="#main" class="skip-link">Skip to content</a>
+  
 
   <!-- ✅ Main landmark for accessibility -->
   <main id="main" role="main" class="app-main">
