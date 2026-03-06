@@ -98,7 +98,7 @@
 <script setup>
 import { ref, reactive, computed, onMounted, onBeforeUnmount } from "vue";
 import { useRoute, useRouter } from "vue-router";
-import Layout from "@/components/Layout.vue";
+import Layout from "../components/Layout.vue";
 
 // ✅ Your socket should come from your existing file
 // Example: src/services/socket.js exports `socket` already connected with token.
