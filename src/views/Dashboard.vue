@@ -4,11 +4,12 @@
     <div class="wrap">
       <!-- TOPBAR -->
       <header class="topbar">
-        <div class="brand" @click="scrollToTop" role="button" tabindex="0">
-          <div class="logo">🔥</div>
+        <<div class="brand" @click="scrollToTop" role="button" tabindex="0">
+          <div class="logo">⚡</div>
+
           <div class="brand-text">
-            <div class="title">AddisGo</div>
-            <div class="sub">All-in-One • TikTok • IG • X • Discord • Live</div>
+            <div class="title">Pulse</div>
+            <div class="sub">Your Social Universe</div>
           </div>
         </div>
 
