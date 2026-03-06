@@ -1537,7 +1537,23 @@ onBeforeUnmount(() => {
 :deep(nav.sidebar) {
   display: none !important;
 }
+/* ===============================
+   APPLE STYLE GLASS PANELS
+================================ */
 
+.glass {
+  backdrop-filter: blur(20px) saturate(180%);
+  -webkit-backdrop-filter: blur(20px) saturate(180%);
+
+  background: rgba(255, 255, 255, 0.05);
+  border: 1px solid rgba(255, 255, 255, 0.08);
+
+  box-shadow:
+    0 8px 32px rgba(0,0,0,0.45),
+    inset 0 1px rgba(255,255,255,0.06);
+
+  border-radius: 18px;
+}
 /* Background */
 .wrap {
   min-height: 100vh;
