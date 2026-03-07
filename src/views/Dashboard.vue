@@ -4,7 +4,7 @@
     <div class="wrap">
       <!-- TOPBAR -->
       <header class="topbar">
-        <<div class="brand" @click="scrollToTop" role="button" tabindex="0">
+        <div class="brand" @click="scrollToTop" role="button" tabindex="0">
           <div class="logo">⚡</div>
 
           <div class="brand-text">
@@ -45,7 +45,11 @@
 
         <div class="mode-right">
           <input v-model="search" class="search" placeholder="Search…" />
-          <button v-if="feedMode === 'foryou' || feedMode === 'reels'" class="chip ghost" @click="toggleGlobalMute">
+          <button
+            v-if="feedMode === 'foryou' || feedMode === 'reels'"
+            class="chip ghost"
+            @click="toggleGlobalMute"
+          >
             {{ globalMuted ? "🔇 Muted" : "🔊 Sound" }}
           </button>
         </div>
@@ -57,6 +61,7 @@
         <section v-if="token" class="panel miniPanel">
           <div class="panel-head">
             <div class="panel-title">🛰️ Status</div>
+
             <div class="row">
               <span class="badgePill" :class="{ ok: socketConnected, bad: !socketConnected }">
                 {{ socketConnected ? "Socket Connected" : "Socket Disconnected" }}
@@ -99,7 +104,13 @@
                 <span class="chev">›</span>
               </div>
 
-              <button v-if="liveStreams.length > 6" class="chip ghost mini" @click="setFeedMode('live')">View all</button>
+              <button
+                v-if="liveStreams.length > 6"
+                class="chip ghost mini"
+                @click="setFeedMode('live')"
+              >
+                View all
+              </button>
             </div>
           </div>
 
@@ -107,15 +118,20 @@
           <div class="panel dockCard">
             <div class="panel-head">
               <div class="panel-title">👥 People</div>
+
               <div class="dockActions">
                 <button class="btn" @click="fetchPeople" :disabled="peopleLoading || !token">
                   {{ peopleLoading ? "Loading…" : "Refresh" }}
                 </button>
-                <button class="btn ghostBtn" @click="toggleChat">{{ chatOpen ? "Close Chat" : "Open Chat" }}</button>
+                <button class="btn ghostBtn" @click="toggleChat">
+                  {{ chatOpen ? "Close Chat" : "Open Chat" }}
+                </button>
               </div>
             </div>
 
-            <div v-if="!token" class="alert soft">Login again to see people & call buttons.</div>
+            <div v-if="!token" class="alert soft">
+              Login again to see people & call buttons.
+            </div>
 
             <template v-else>
               <div class="miniAvatars">
@@ -124,13 +140,17 @@
                   :key="'pmini-' + u.id"
                   class="miniAvatarWrap"
                   :title="u.display_name || u.username || ('User #' + u.id)"
-                  @click="peopleOpen ? null : startCall(u,'audio')"
+                  @click="peopleOpen ? null : startCall(u, 'audio')"
                 >
-                  <div class="miniAvatar">{{ (u.display_name || u.username || 'U')[0]?.toUpperCase() }}</div>
+                  <div class="miniAvatar">
+                    {{ (u.display_name || u.username || 'U')[0]?.toUpperCase() }}
+                  </div>
                   <span class="miniDot" :class="{ on: isOnline(u.id) }"></span>
                 </div>
 
-                <button class="chip ghost mini" @click="togglePeople">{{ peopleOpen ? "Hide list" : "Show list" }}</button>
+                <button class="chip ghost mini" @click="togglePeople">
+                  {{ peopleOpen ? "Hide list" : "Show list" }}
+                </button>
               </div>
 
               <div v-if="peopleOpen" class="peopleCompact">
@@ -139,36 +159,68 @@
                 <div v-else-if="people.length === 0" class="hint">No users found.</div>
 
                 <div v-else class="peopleList">
-                  <div v-for="u in filteredPeople" :key="'plist-' + u.id" class="person compact">
-                    <div class="avatar small">{{ (u.display_name || u.username || 'U')[0]?.toUpperCase() }}</div>
+                  <div
+                    v-for="u in filteredPeople"
+                    :key="'plist-' + u.id"
+                    class="person compact"
+                  >
+                    <div class="avatar small">
+                      {{ (u.display_name || u.username || 'U')[0]?.toUpperCase() }}
+                    </div>
 
                     <div class="person-meta">
-                      <div class="person-name">{{ u.display_name || u.username || ("User #" + u.id) }}</div>
+                      <div class="person-name">
+                        {{ u.display_name || u.username || ("User #" + u.id) }}
+                      </div>
+
                       <div class="person-sub">
                         <span class="status" :class="{ on: isOnline(u.id) }"></span>
-                        <span class="status-text">{{ isOnline(u.id) ? "Online" : "Offline" }}</span>
+                        <span class="status-text">
+                          {{ isOnline(u.id) ? "Online" : "Offline" }}
+                        </span>
                         <span class="sep">•</span>
                         <span class="id">ID {{ u.id }}</span>
                       </div>
                     </div>
 
                     <div class="person-actions">
-                      <button class="iconbtn" title="Audio Call" :disabled="!isOnline(u.id) || callBusy" @click="startCall(u,'audio')">📞</button>
-                      <button class="iconbtn" title="Video Call" :disabled="!isOnline(u.id) || callBusy" @click="startCall(u,'video')">🎥</button>
-                      <button class="iconbtn" title="Open Profile" @click="openUserProfile(u)">👤</button>
+                      <button
+                        class="iconbtn"
+                        title="Audio Call"
+                        :disabled="!isOnline(u.id) || callBusy"
+                        @click="startCall(u, 'audio')"
+                      >
+                        📞
+                      </button>
+
+                      <button
+                        class="iconbtn"
+                        title="Video Call"
+                        :disabled="!isOnline(u.id) || callBusy"
+                        @click="startCall(u, 'video')"
+                      >
+                        🎥
+                      </button>
+
+                      <button
+                        class="iconbtn"
+                        title="Open Profile"
+                        @click="openUserProfile(u)"
+                      >
+                        👤
+                      </button>
                     </div>
                   </div>
                 </div>
 
-                <div class="hint mt10">Calls require both users online (green).</div>
+                <div class="hint mt10">
+                  Calls require both users online (green).
+                </div>
               </div>
             </template>
           </div>
         </section>
-      </main>
-    </div>
-  </Layout>
-</template>
+      
 
         <!-- TOOLS PANEL (EXTRA POWER) -->
         <section v-if="toolsOpen" class="panel toolsPanel">
