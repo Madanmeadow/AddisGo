@@ -500,19 +500,38 @@ function scheduleMissedTimer(roomId) {
     const s = callSessions.get(String(roomId));
     if (!s) return;
 
+    const room = io.sockets.adapter.rooms.get(`call:${roomId}`);
+    const count = room ? room.size : 0;
+
+    // ✅ If 2 people already joined, do NOT end the call
+    if (count >= 2 || (s.joinedUserIds && s.joinedUserIds.size >= 2)) {
+      return;
+    }
+
     stopRingForSession(s);
     clearBusyForSession(s);
 
-    for (const uid of s.invitedUserIds || []) removeQueuedIncomingCall(uid, s.roomId);
+    for (const uid of s.invitedUserIds || []) {
+      removeQueuedIncomingCall(uid, s.roomId);
+    }
 
-    const room = io.sockets.adapter.rooms.get(`call:${roomId}`);
-    const count = room ? room.size : 0;
-    if (count < 2) callSessions.delete(String(roomId));
+    await dbEndCall(roomId);
 
-    io.to(`call:${roomId}`).emit("call:ended", { roomId: String(roomId), reason: "timeout" });
-  }, RING_TIMEOUT_MS);
+    io.to(`call:${roomId}`).emit("call:ended", {
+      roomId: String(roomId),
+      reason: "missed",
+    });
 
-  callSessions.set(String(roomId), sess);
+    for (const uid of s.invitedUserIds || []) {
+      io.to(`user:${uid}`).emit("call:ended", {
+        roomId: String(roomId),
+        reason: "missed",
+      });
+      stopRingToUser(uid, roomId);
+    }
+
+    callSessions.delete(String(roomId));
+  }, 30000);
 }
 
 io.on("connection", (socket) => {
