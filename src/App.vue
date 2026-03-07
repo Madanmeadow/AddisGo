@@ -1,17 +1,21 @@
 <!-- src/App.vue -->
 <template>
-  <!-- ✅ Skip link for keyboard + screen readers -->
-  
-
   <!-- ✅ Main landmark for accessibility -->
   <main id="main" role="main" class="app-main">
-    <router-view />
+    <router-view v-slot="{ Component }">
+      <KeepAlive include="Call">
+        <component :is="Component" />
+      </KeepAlive>
+    </router-view>
   </main>
+
+  <!-- ✅ Floating mini call overlay -->
+  <MiniCallOverlay />
 
   <!-- ✅ Global toast host -->
   <ToastHost />
 
-  <!-- ✅ Screen reader live region (future: toast/notifications) -->
+  <!-- ✅ Screen reader live region -->
   <div class="sr-only" aria-live="polite" aria-atomic="true">
     {{ announcement }}
   </div>
@@ -28,14 +32,15 @@
 </template>
 
 <script setup>
-import { ref } from "vue";
-import ToastHost from "./components/ToastHost.vue";
+import { ref, KeepAlive } from "vue"
+import ToastHost from "./components/ToastHost.vue"
+import MiniCallOverlay from "./components/call/MiniCallOverlay.vue"
 
 /**
- * You can update this later from anywhere (toast/notifications)
+ * You can update this later from anywhere
  * by creating a tiny event bus or Pinia store.
  */
-const announcement = ref("");
+const announcement = ref("")
 </script>
 
 <style>

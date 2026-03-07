@@ -3,6 +3,7 @@
     <div class="call-page">
       <div class="bg"></div>
 
+      <!-- Incoming Call Modal -->
       <div v-if="incomingCall && !inCall" class="incoming-overlay">
         <div class="incoming-card">
           <div class="incoming-avatar">{{ callerInitial }}</div>
@@ -19,6 +20,7 @@
         </div>
       </div>
 
+      <!-- Top Bar -->
       <header class="topbar">
         <button class="icon-btn" @click="goBack" aria-label="Back">←</button>
 
@@ -35,7 +37,9 @@
         </div>
       </header>
 
+      <!-- Video Area -->
       <main class="call-stage" :class="{ audioOnly: isAudioOnly }">
+        <!-- Remote -->
         <section class="video-card remote-card">
           <div class="video-label">Remote</div>
 
@@ -53,6 +57,7 @@
           </div>
         </section>
 
+        <!-- Local -->
         <section class="video-card local-card">
           <div class="video-label">You</div>
 
@@ -72,6 +77,7 @@
         </section>
       </main>
 
+      <!-- Controls -->
       <footer class="controls">
         <button
           class="control-btn"
@@ -92,6 +98,23 @@
           {{ cameraOff ? "Camera Off" : "Camera" }}
         </button>
 
+        <button
+          v-if="!isAudioOnly"
+          class="control-btn"
+          @click="switchCamera"
+          :disabled="!localStream || switchingCamera"
+        >
+          {{ switchingCamera ? "Switching…" : "Switch" }}
+        </button>
+
+        <button
+          class="control-btn"
+          @click="minimizeCurrentCall"
+          :disabled="!inCall"
+        >
+          Minimize
+        </button>
+
         <button class="control-btn danger" @click="endCall">End</button>
       </footer>
     </div>
@@ -99,13 +122,19 @@
 </template>
 
 <script setup>
-import { ref, computed, onMounted, onBeforeUnmount, nextTick } from "vue"
+defineOptions({ name: "Call" })
+
+import { ref, computed, watch, onMounted, onBeforeUnmount, nextTick } from "vue"
 import { useRoute, useRouter } from "vue-router"
 import { io } from "socket.io-client"
+import { useCallOverlay } from "@/composables/useCallOverlay"
 
 const route = useRoute()
 const router = useRouter()
 
+/* =========================
+   CONFIG
+========================= */
 const API_BASE =
   import.meta.env.VITE_API_URL ||
   import.meta.env.VITE_SERVER_URL ||
@@ -144,6 +173,8 @@ const inCall = ref(false)
 
 const micMuted = ref(false)
 const cameraOff = ref(kind.value === "audio")
+const switchingCamera = ref(false)
+const currentFacingMode = ref("user")
 
 const hasRemoteDescription = ref(false)
 const cleaningUp = ref(false)
@@ -161,6 +192,12 @@ const pendingCandidates = []
 const callStartedAt = ref(null)
 const callSeconds = ref(0)
 let callTimer = null
+
+const {
+  syncCallOverlay,
+  minimizeCall,
+  resetOverlay,
+} = useCallOverlay()
 
 /* =========================
    COMPUTED
@@ -189,13 +226,13 @@ const formattedDuration = computed(() => {
 const showRemotePlaceholder = computed(() => {
   if (isAudioOnly.value) return true
   const track = remoteStream.value?.getVideoTracks?.()?.[0]
-  return !track
+  return !track || track.readyState !== "live"
 })
 
 const showLocalPlaceholder = computed(() => {
   if (!localStream.value) return true
   if (isAudioOnly.value) return true
-  return !localStream.value.getVideoTracks().some(track => track.enabled)
+  return !localStream.value.getVideoTracks().some(track => track.enabled && track.readyState === "live")
 })
 
 const myInitial = computed(() => {
@@ -212,6 +249,34 @@ const callerInitial = computed(() => {
   const name = incomingCall.value?.fromName || "C"
   return String(name).trim().charAt(0).toUpperCase() || "C"
 })
+
+/* =========================
+   OVERLAY SYNC
+========================= */
+watch(
+  [inCall, roomId, kind, statusText, localStream, remoteStream, callPartnerName],
+  () => {
+    syncCallOverlay({
+      inCall: inCall.value,
+      roomId: roomId.value,
+      kind: kind.value,
+      partnerName: callPartnerName.value,
+      statusText: statusText.value,
+      localStream: localStream.value,
+      remoteStream: remoteStream.value,
+      expandPath: "/call",
+      expandQuery: {
+        roomId: roomId.value,
+        mode: mode.value,
+        role: mode.value,
+        kind: kind.value,
+        toUserId: toUserId.value,
+        name: callPartnerName.value,
+      },
+    })
+  },
+  { immediate: true }
+)
 
 /* =========================
    SOCKET
@@ -233,50 +298,46 @@ function createSocket() {
 
   socket.value.on("disconnect", (reason) => {
     console.log("⚠️ socket disconnected:", reason)
+    if (inCall.value) statusText.value = "Reconnecting..."
   })
 
-  socket.value.on("call:ringing", (data) => {
+  socket.value.on("call:ringing", (data = {}) => {
     console.log("📳 call:ringing", data)
-    if (data?.roomId) roomId.value = String(data.roomId)
-    if (data?.kind) kind.value = data.kind
-    isCaller.value = !!data?.isCaller
+    if (data.roomId) roomId.value = String(data.roomId)
+    if (data.kind) kind.value = data.kind
+    isCaller.value = !!data.isCaller
     statusText.value = "Ringing..."
   })
 
-  socket.value.on("call:status", ({ calleeOnline }) => {
+  socket.value.on("call:status", ({ calleeOnline } = {}) => {
     statusText.value = calleeOnline ? "Calling..." : "Queued"
   })
 
-  socket.value.on("call:incoming", async (data) => {
+  socket.value.on("call:incoming", (data = {}) => {
     console.log("📲 call:incoming", data)
 
     incomingCall.value = {
-      roomId: String(data.roomId),
+      roomId: String(data.roomId || ""),
       fromUserId: String(data.fromUserId || ""),
       fromName: data.fromName || "Caller",
       kind: data.kind || "video",
     }
 
-    roomId.value = String(data.roomId)
+    roomId.value = String(data.roomId || "")
     kind.value = data.kind || "video"
     initialPartnerName.value = data.fromName || "Caller"
     hostUserId.value = String(data.hostUserId || data.fromUserId || "")
     mode.value = "receiver"
     isCaller.value = false
     statusText.value = "Incoming"
-
-    // IMPORTANT:
-    // Do not auto-answer.
-    // Do not auto-join.
-    // Wait for user to tap Answer.
   })
 
-  socket.value.on("call:accepted", async (data) => {
+  socket.value.on("call:accepted", async (data = {}) => {
     console.log("✅ call:accepted", data)
 
-    if (data?.roomId) roomId.value = String(data.roomId)
-    if (data?.kind) kind.value = data.kind
-    if (data?.hostUserId) hostUserId.value = String(data.hostUserId)
+    if (data.roomId) roomId.value = String(data.roomId)
+    if (data.kind) kind.value = data.kind
+    if (data.hostUserId) hostUserId.value = String(data.hostUserId)
 
     statusText.value = "Accepted"
 
@@ -284,19 +345,19 @@ function createSocket() {
     joinCallRoom()
   })
 
-  socket.value.on("call:peer-joined", async (data) => {
+  socket.value.on("call:peer-joined", async (data = {}) => {
     console.log("👤 call:peer-joined", data)
     if (!pc.value) {
       await createPeerConnection()
     }
   })
 
-  socket.value.on("call:ready", async (data) => {
+  socket.value.on("call:ready", async (data = {}) => {
     console.log("🚀 call:ready", data)
 
-    if (data?.roomId) roomId.value = String(data.roomId)
-    if (data?.kind) kind.value = data.kind
-    if (data?.hostUserId) hostUserId.value = String(data.hostUserId)
+    if (data.roomId) roomId.value = String(data.roomId)
+    if (data.kind) kind.value = data.kind
+    if (data.hostUserId) hostUserId.value = String(data.hostUserId)
 
     statusText.value = "Connecting..."
 
@@ -330,7 +391,7 @@ function createSocket() {
     }
   })
 
-  socket.value.on("call:webrtc:offer", async ({ roomId: incomingRoomId, offer, from }) => {
+  socket.value.on("call:webrtc:offer", async ({ roomId: incomingRoomId, offer, from } = {}) => {
     console.log("📡 got offer", incomingRoomId, from)
 
     try {
@@ -358,8 +419,8 @@ function createSocket() {
     }
   })
 
-  socket.value.on("call:webrtc:answer", async ({ answer }) => {
-    console.log("📡 got answer", answer)
+  socket.value.on("call:webrtc:answer", async ({ answer } = {}) => {
+    console.log("📡 got answer")
 
     try {
       if (!pc.value) return
@@ -375,8 +436,8 @@ function createSocket() {
     }
   })
 
-  socket.value.on("call:webrtc:ice", async ({ candidate }) => {
-    console.log("🧊 got ice", candidate)
+  socket.value.on("call:webrtc:ice", async ({ candidate } = {}) => {
+    console.log("🧊 got ice")
 
     try {
       if (!candidate || !pc.value) return
@@ -391,24 +452,19 @@ function createSocket() {
     }
   })
 
-  socket.value.on("call:ended", ({ reason }) => {
-  console.log("📴 call ended:", reason)
-
-  // only really end if remote rejected/canceled/ended
-  if (reason === "rejected" || reason === "canceled" || reason === "ended") {
+  socket.value.on("call:ended", ({ reason } = {}) => {
+    console.log("📴 call ended:", reason)
+    statusText.value = "Call ended"
     cleanupAll()
     router.back()
-    return
-  }
-
-  statusText.value = "Call ended"
   })
-  socket.value.on("call:error", ({ message }) => {
+
+  socket.value.on("call:error", ({ message } = {}) => {
     console.error("call:error", message)
     statusText.value = message || "Error"
   })
 
-  socket.value.on("call:busy", ({ message }) => {
+  socket.value.on("call:busy", ({ message } = {}) => {
     console.error("call:busy", message)
     statusText.value = message || "Busy"
   })
@@ -489,11 +545,21 @@ async function createPeerConnection() {
       reconnectAttempted.value = false
       statusText.value = "Connected"
       markCallStarted()
-    } else if (state === "connecting") {
+      return
+    }
+
+    if (state === "connecting") {
       statusText.value = "Connecting..."
-    } else if (state === "disconnected") {
+      return
+    }
+
+    if (state === "disconnected") {
+      console.log("⚠️ Network lost, trying to reconnect…")
       statusText.value = "Reconnecting..."
-    } else if (state === "failed" && !reconnectAttempted.value) {
+      return
+    }
+
+    if (state === "failed" && !reconnectAttempted.value) {
       reconnectAttempted.value = true
       statusText.value = "Recovering..."
 
@@ -515,7 +581,10 @@ async function createPeerConnection() {
       } catch (err) {
         console.error("ICE restart failed", err)
       }
-    } else if (state === "closed") {
+      return
+    }
+
+    if (state === "closed") {
       statusText.value = "Closed"
     }
   }
@@ -537,7 +606,7 @@ async function ensureLocalMedia() {
     video: isAudioOnly.value
       ? false
       : {
-          facingMode: "user",
+          facingMode: currentFacingMode.value,
           width: { ideal: 1280 },
           height: { ideal: 720 },
           frameRate: { ideal: 24, max: 30 },
@@ -563,6 +632,70 @@ async function ensureLocalMedia() {
   }
 
   return stream
+}
+
+async function switchCamera() {
+  if (isAudioOnly.value) return
+  if (!pc.value || !localStream.value) return
+  if (switchingCamera.value) return
+
+  switchingCamera.value = true
+
+  try {
+    const devices = await navigator.mediaDevices.enumerateDevices()
+    const cameras = devices.filter((d) => d.kind === "videoinput")
+
+    if (cameras.length < 2) {
+      console.log("Only one camera found")
+      return
+    }
+
+    currentFacingMode.value =
+      currentFacingMode.value === "user" ? "environment" : "user"
+
+    const newStream = await navigator.mediaDevices.getUserMedia({
+      audio: false,
+      video: {
+        facingMode: currentFacingMode.value,
+        width: { ideal: 1280 },
+        height: { ideal: 720 },
+        frameRate: { ideal: 24, max: 30 },
+      },
+    })
+
+    const newVideoTrack = newStream.getVideoTracks()[0]
+    if (!newVideoTrack) return
+
+    const videoSender = pc.value
+      .getSenders()
+      .find((sender) => sender.track && sender.track.kind === "video")
+
+    if (videoSender) {
+      await videoSender.replaceTrack(newVideoTrack)
+    }
+
+    const audioTracks = localStream.value.getAudioTracks()
+    const oldVideoTracks = localStream.value.getVideoTracks()
+
+    oldVideoTracks.forEach((track) => {
+      try {
+        track.stop()
+      } catch {}
+    })
+
+    localStream.value = new MediaStream([...audioTracks, newVideoTrack])
+
+    if (localVideo.value) {
+      localVideo.value.srcObject = localStream.value
+      localVideo.value.play?.().catch(() => {})
+    }
+
+    cameraOff.value = false
+  } catch (err) {
+    console.error("switchCamera error", err)
+  } finally {
+    switchingCamera.value = false
+  }
 }
 
 async function flushPendingIceCandidates() {
@@ -654,6 +787,9 @@ function rejectIncoming() {
   statusText.value = "Declined"
 }
 
+/* =========================
+   CONTROLS
+========================= */
 function toggleMic() {
   if (!localStream.value) return
   const audioTracks = localStream.value.getAudioTracks()
@@ -675,33 +811,17 @@ function toggleCamera() {
     track.enabled = !cameraOff.value
   })
 }
-async function createPeerConnection() {
 
-  const iceServers = await getIceServers()
-
-  pc.value = new RTCPeerConnection({
-    iceServers,
-    iceCandidatePoolSize: 10
-  })
-
-  pc.value.onconnectionstatechange = () => {
-    const state = pc.value.connectionState
-
-    console.log("Connection state:", state)
-
-    if (state === "connected") {
-      console.log("✅ Call connected")
-    }
-
-    if (state === "disconnected") {
-      console.log("⚠️ Network lost, trying to reconnect…")
-    }
-
-    if (state === "failed") {
-      console.log("❌ Connection failed")
-    }
+function minimizeCurrentCall() {
+  if (!inCall.value) {
+    router.back()
+    return
   }
+
+  minimizeCall()
+  router.push("/dashboard")
 }
+
 function endCall() {
   if (roomId.value) {
     socket.value?.emit("call:end", {
@@ -714,10 +834,16 @@ function endCall() {
 }
 
 function goBack() {
-  if (roomId.value || inCall.value) {
+  if (inCall.value) {
+    minimizeCurrentCall()
+    return
+  }
+
+  if (roomId.value) {
     endCall()
     return
   }
+
   router.back()
 }
 
@@ -774,13 +900,24 @@ function cleanupAll() {
   callSeconds.value = 0
   micMuted.value = false
   cameraOff.value = kind.value === "audio"
+  switchingCamera.value = false
   statusText.value = "Ready"
   hasJoinedRoom.value = false
   madeOffer.value = false
   requestSent.value = false
   reconnectAttempted.value = false
+  currentFacingMode.value = "user"
+
+  resetOverlay()
 
   cleaningUp.value = false
+}
+
+/* =========================
+   GLOBAL EVENT
+========================= */
+function onOverlayEndCall() {
+  endCall()
 }
 
 /* =========================
@@ -788,6 +925,8 @@ function cleanupAll() {
 ========================= */
 onMounted(async () => {
   try {
+    window.addEventListener("pulse:end-call", onOverlayEndCall)
+
     createSocket()
     await nextTick()
 
@@ -807,6 +946,8 @@ onMounted(async () => {
 })
 
 onBeforeUnmount(() => {
+  window.removeEventListener("pulse:end-call", onOverlayEndCall)
+
   cleanupAll()
 
   if (socket.value) {
@@ -919,7 +1060,7 @@ onBeforeUnmount(() => {
   display: grid;
   grid-template-columns: 1fr 1fr;
   gap: 14px;
-  padding: 8px 16px 110px;
+  padding: 8px 16px 120px;
 }
 
 .call-stage.audioOnly {
@@ -1009,15 +1150,16 @@ onBeforeUnmount(() => {
   z-index: 5;
   display: flex;
   justify-content: center;
-  gap: 12px;
-  padding: 0 16px;
+  gap: 10px;
+  padding: 0 14px;
+  flex-wrap: wrap;
 }
 
 .control-btn {
   border: 0;
-  min-width: 98px;
+  min-width: 88px;
   height: 52px;
-  padding: 0 18px;
+  padding: 0 16px;
   color: #fff;
   cursor: pointer;
   font-weight: 800;
@@ -1127,7 +1269,7 @@ onBeforeUnmount(() => {
 
   .call-stage {
     gap: 10px;
-    padding: 6px 12px 110px;
+    padding: 6px 12px 128px;
   }
 
   .video-card {
@@ -1135,11 +1277,11 @@ onBeforeUnmount(() => {
   }
 
   .control-btn {
-    min-width: 88px;
-    height: 50px;
-    padding: 0 14px;
+    min-width: 82px;
+    height: 48px;
+    padding: 0 12px;
     border-radius: 16px;
-    font-size: 14px;
+    font-size: 13px;
   }
 
   .call-title {
