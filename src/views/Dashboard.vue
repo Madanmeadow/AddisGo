@@ -81,10 +81,6 @@
           <div class="panel dockCard">
             <div class="panel-head">
               <div class="panel-title">🔴 Live Now</div>
-
-              <!-- ✅ IMPORTANT FIX:
-                   Do NOT emit live:create here (Dashboard socket != Live socket).
-                   Just navigate; Live.vue will emit live:create on its own connection. -->
               <button class="btn btn-primary" @click="startLive" :disabled="!token">Go Live</button>
             </div>
 
@@ -169,6 +165,10 @@
             </template>
           </div>
         </section>
+      </main>
+    </div>
+  </Layout>
+</template>
 
         <!-- TOOLS PANEL (EXTRA POWER) -->
         <section v-if="toolsOpen" class="panel toolsPanel">
