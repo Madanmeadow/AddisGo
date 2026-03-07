@@ -392,11 +392,17 @@ function createSocket() {
   })
 
   socket.value.on("call:ended", ({ reason }) => {
-    console.log("📴 call ended:", reason)
+  console.log("📴 call ended:", reason)
+
+  // only really end if remote rejected/canceled/ended
+  if (reason === "rejected" || reason === "canceled" || reason === "ended") {
     cleanupAll()
     router.back()
-  })
+    return
+  }
 
+  statusText.value = "Call ended"
+  })
   socket.value.on("call:error", ({ message }) => {
     console.error("call:error", message)
     statusText.value = message || "Error"
