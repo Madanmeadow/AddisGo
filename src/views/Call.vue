@@ -3,12 +3,9 @@
     <div class="call-page">
       <div class="bg"></div>
 
-      <!-- Incoming Call Modal -->
       <div v-if="incomingCall && !inCall" class="incoming-overlay">
         <div class="incoming-card">
-          <div class="incoming-avatar">
-            {{ callerInitial }}
-          </div>
+          <div class="incoming-avatar">{{ callerInitial }}</div>
 
           <div class="incoming-text">
             <h2>{{ incomingCall.fromName || "Incoming Call" }}</h2>
@@ -22,14 +19,11 @@
         </div>
       </div>
 
-      <!-- Top Bar -->
       <header class="topbar">
         <button class="icon-btn" @click="goBack" aria-label="Back">←</button>
 
         <div class="title-wrap">
-          <div class="call-title">
-            {{ callModeLabel }}
-          </div>
+          <div class="call-title">{{ callModeLabel }}</div>
           <div class="call-subtitle">
             {{ callPartnerName }}
             <span v-if="inCall && callSeconds > 0"> • {{ formattedDuration }}</span>
@@ -37,15 +31,11 @@
         </div>
 
         <div class="topbar-actions">
-          <span class="status-pill" :class="{ live: inCall }">
-            {{ connectionLabel }}
-          </span>
+          <span class="status-pill" :class="{ live: inCall }">{{ connectionLabel }}</span>
         </div>
       </header>
 
-      <!-- Video Area -->
       <main class="call-stage" :class="{ audioOnly: isAudioOnly }">
-        <!-- Remote -->
         <section class="video-card remote-card">
           <div class="video-label">Remote</div>
 
@@ -63,7 +53,6 @@
           </div>
         </section>
 
-        <!-- Local -->
         <section class="video-card local-card">
           <div class="video-label">You</div>
 
@@ -83,7 +72,6 @@
         </section>
       </main>
 
-      <!-- Controls -->
       <footer class="controls">
         <button
           class="control-btn"
@@ -104,9 +92,7 @@
           {{ cameraOff ? "Camera Off" : "Camera" }}
         </button>
 
-        <button class="control-btn danger" @click="endCall">
-          End
-        </button>
+        <button class="control-btn danger" @click="endCall">End</button>
       </footer>
     </div>
   </Layout>
@@ -120,9 +106,6 @@ import { io } from "socket.io-client"
 const route = useRoute()
 const router = useRouter()
 
-/* =========================
-   CONFIG
-========================= */
 const API_BASE =
   import.meta.env.VITE_API_URL ||
   import.meta.env.VITE_SERVER_URL ||
@@ -139,7 +122,7 @@ const me = (() => {
 })()
 
 /* =========================
-   ROUTE PARAMS
+   ROUTE / STATE
 ========================= */
 const roomId = ref(route.query.roomId || "")
 const kind = ref(route.query.kind || "video")
@@ -147,9 +130,6 @@ const mode = ref(route.query.mode || route.query.role || "caller")
 const toUserId = ref(route.query.toUserId || "")
 const initialPartnerName = ref(route.query.name || "User")
 
-/* =========================
-   STATE
-========================= */
 const socket = ref(null)
 const pc = ref(null)
 
@@ -165,21 +145,22 @@ const inCall = ref(false)
 const micMuted = ref(false)
 const cameraOff = ref(kind.value === "audio")
 
+const hasRemoteDescription = ref(false)
+const cleaningUp = ref(false)
+const hasJoinedRoom = ref(false)
+const madeOffer = ref(false)
+const requestSent = ref(false)
+const reconnectAttempted = ref(false)
+
+const statusText = ref("Ready")
+const hostUserId = ref("")
+const isCaller = ref(mode.value === "caller")
+
+const pendingCandidates = []
+
 const callStartedAt = ref(null)
 const callSeconds = ref(0)
 let callTimer = null
-
-const hasRemoteDescription = ref(false)
-const cleaningUp = ref(false)
-const reconnectAttempted = ref(false)
-
-const hasJoinedRoom = ref(false)
-const madeOffer = ref(false)
-const isCaller = ref(mode.value === "caller")
-const hostUserId = ref("")
-const statusText = ref("Ready")
-
-const pendingCandidates = []
 
 /* =========================
    COMPUTED
@@ -193,19 +174,10 @@ const callPartnerName = computed(() => {
 
 const callModeLabel = computed(() => {
   if (incomingCall.value && !inCall.value) return "Incoming Call"
-  if (isAudioOnly.value) return "Audio Call"
-  return "Video Call"
+  return isAudioOnly.value ? "Audio Call" : "Video Call"
 })
 
-const connectionLabel = computed(() => {
-  if (statusText.value) return statusText.value
-  const state = pc.value?.connectionState || ""
-  if (inCall.value && state === "connected") return "Connected"
-  if (state === "connecting") return "Connecting"
-  if (state === "disconnected") return "Reconnecting"
-  if (state === "failed") return "Connection Problem"
-  return inCall.value ? "Live" : "Ready"
-})
+const connectionLabel = computed(() => statusText.value || "Ready")
 
 const formattedDuration = computed(() => {
   const total = callSeconds.value
@@ -216,8 +188,7 @@ const formattedDuration = computed(() => {
 
 const showRemotePlaceholder = computed(() => {
   if (isAudioOnly.value) return true
-  const stream = remoteStream.value
-  const track = stream?.getVideoTracks?.()?.[0]
+  const track = remoteStream.value?.getVideoTracks?.()?.[0]
   return !track
 })
 
@@ -264,10 +235,11 @@ function createSocket() {
     console.log("⚠️ socket disconnected:", reason)
   })
 
-  socket.value.on("call:ringing", ({ roomId: incomingRoomId, kind: incomingKind, isCaller: callerFlag }) => {
-    if (incomingRoomId) roomId.value = String(incomingRoomId)
-    if (incomingKind) kind.value = incomingKind
-    isCaller.value = !!callerFlag
+  socket.value.on("call:ringing", (data) => {
+    console.log("📳 call:ringing", data)
+    if (data?.roomId) roomId.value = String(data.roomId)
+    if (data?.kind) kind.value = data.kind
+    isCaller.value = !!data?.isCaller
     statusText.value = "Ringing..."
   })
 
@@ -276,6 +248,8 @@ function createSocket() {
   })
 
   socket.value.on("call:incoming", async (data) => {
+    console.log("📲 call:incoming", data)
+
     incomingCall.value = {
       roomId: String(data.roomId),
       fromUserId: String(data.fromUserId || ""),
@@ -286,14 +260,19 @@ function createSocket() {
     roomId.value = String(data.roomId)
     kind.value = data.kind || "video"
     initialPartnerName.value = data.fromName || "Caller"
+    hostUserId.value = String(data.hostUserId || data.fromUserId || "")
     mode.value = "receiver"
     isCaller.value = false
-    hostUserId.value = String(data.hostUserId || data.fromUserId || "")
     statusText.value = "Incoming"
+
+    // IMPORTANT:
+    // Do not auto-answer.
+    // Do not auto-join.
+    // Wait for user to tap Answer.
   })
 
   socket.value.on("call:accepted", async (data) => {
-    console.log("✅ call accepted", data)
+    console.log("✅ call:accepted", data)
 
     if (data?.roomId) roomId.value = String(data.roomId)
     if (data?.kind) kind.value = data.kind
@@ -305,13 +284,16 @@ function createSocket() {
     joinCallRoom()
   })
 
-  socket.value.on("call:peer-joined", async () => {
+  socket.value.on("call:peer-joined", async (data) => {
+    console.log("👤 call:peer-joined", data)
     if (!pc.value) {
       await createPeerConnection()
     }
   })
 
   socket.value.on("call:ready", async (data) => {
+    console.log("🚀 call:ready", data)
+
     if (data?.roomId) roomId.value = String(data.roomId)
     if (data?.kind) kind.value = data.kind
     if (data?.hostUserId) hostUserId.value = String(data.hostUserId)
@@ -323,7 +305,9 @@ function createSocket() {
     }
 
     const myUserId = String(me?.id || "")
-    const callerOwnsOffer = hostUserId.value ? hostUserId.value === myUserId : isCaller.value
+    const callerOwnsOffer = hostUserId.value
+      ? hostUserId.value === myUserId
+      : isCaller.value
 
     if (callerOwnsOffer && !madeOffer.value) {
       madeOffer.value = true
@@ -347,6 +331,8 @@ function createSocket() {
   })
 
   socket.value.on("call:webrtc:offer", async ({ roomId: incomingRoomId, offer, from }) => {
+    console.log("📡 got offer", incomingRoomId, from)
+
     try {
       if (incomingRoomId) roomId.value = String(incomingRoomId)
       statusText.value = "Answering..."
@@ -373,6 +359,8 @@ function createSocket() {
   })
 
   socket.value.on("call:webrtc:answer", async ({ answer }) => {
+    console.log("📡 got answer", answer)
+
     try {
       if (!pc.value) return
 
@@ -388,6 +376,8 @@ function createSocket() {
   })
 
   socket.value.on("call:webrtc:ice", async ({ candidate }) => {
+    console.log("🧊 got ice", candidate)
+
     try {
       if (!candidate || !pc.value) return
 
@@ -403,7 +393,6 @@ function createSocket() {
 
   socket.value.on("call:ended", ({ reason }) => {
     console.log("📴 call ended:", reason)
-    statusText.value = "Ended"
     cleanupAll()
     router.back()
   })
@@ -452,12 +441,6 @@ async function createPeerConnection() {
     iceCandidatePoolSize: 10,
   })
 
-  remoteStream.value = new MediaStream()
-
-  if (remoteVideo.value) {
-    remoteVideo.value.srcObject = remoteStream.value
-  }
-
   if (localStream.value) {
     const senders = pc.value.getSenders()
     localStream.value.getTracks().forEach((track) => {
@@ -478,7 +461,7 @@ async function createPeerConnection() {
   }
 
   pc.value.ontrack = (event) => {
-    const [stream] = event.streams
+    const stream = event.streams?.[0]
     if (!stream) return
 
     remoteStream.value = stream
@@ -500,23 +483,19 @@ async function createPeerConnection() {
       reconnectAttempted.value = false
       statusText.value = "Connected"
       markCallStarted()
-    }
-
-    if (state === "connecting") {
+    } else if (state === "connecting") {
       statusText.value = "Connecting..."
-    }
-
-    if (state === "disconnected") {
+    } else if (state === "disconnected") {
       statusText.value = "Reconnecting..."
-    }
-
-    if (state === "failed" && !reconnectAttempted.value) {
+    } else if (state === "failed" && !reconnectAttempted.value) {
       reconnectAttempted.value = true
       statusText.value = "Recovering..."
 
       try {
         const myUserId = String(me?.id || "")
-        const callerOwnsOffer = hostUserId.value ? hostUserId.value === myUserId : isCaller.value
+        const callerOwnsOffer = hostUserId.value
+          ? hostUserId.value === myUserId
+          : isCaller.value
 
         if (callerOwnsOffer) {
           const offer = await pc.value.createOffer({ iceRestart: true })
@@ -530,9 +509,7 @@ async function createPeerConnection() {
       } catch (err) {
         console.error("ICE restart failed", err)
       }
-    }
-
-    if (state === "closed") {
+    } else if (state === "closed") {
       statusText.value = "Closed"
     }
   }
@@ -598,20 +575,28 @@ async function flushPendingIceCandidates() {
 /* =========================
    CALL FLOW
 ========================= */
+async function requestOutgoingCall() {
+  if (!socket.value) return
+  if (!toUserId.value) return
+  if (requestSent.value) return
+
+  requestSent.value = true
+  isCaller.value = true
+  statusText.value = "Starting..."
+
+  await ensureLocalMedia()
+
+  socket.value.emit("call:request", {
+    toUserId: String(toUserId.value),
+    kind: kind.value,
+  })
+}
+
 function joinCallRoom() {
   if (!roomId.value || hasJoinedRoom.value) return
   socket.value?.emit("call:join", { roomId: roomId.value })
   hasJoinedRoom.value = true
   statusText.value = "Joining..."
-}
-
-async function prepareCallerIfNeeded() {
-  if (!roomId.value) return
-  await nextTick()
-  await ensureLocalMedia()
-  if (mode.value === "caller") {
-    isCaller.value = true
-  }
 }
 
 function markCallStarted() {
@@ -636,6 +621,7 @@ async function acceptIncoming() {
     mode.value = "receiver"
     isCaller.value = false
     hostUserId.value = String(incomingCall.value.fromUserId || "")
+    statusText.value = "Accepted"
 
     await ensureLocalMedia()
 
@@ -645,7 +631,6 @@ async function acceptIncoming() {
 
     joinCallRoom()
     incomingCall.value = null
-    statusText.value = "Accepted"
   } catch (err) {
     console.error("acceptIncoming error", err)
     alert("Could not answer the call.")
@@ -760,6 +745,7 @@ function cleanupAll() {
   statusText.value = "Ready"
   hasJoinedRoom.value = false
   madeOffer.value = false
+  requestSent.value = false
   reconnectAttempted.value = false
 
   cleaningUp.value = false
@@ -773,8 +759,14 @@ onMounted(async () => {
     createSocket()
     await nextTick()
 
-    if (roomId.value) {
-      await prepareCallerIfNeeded()
+    if (mode.value === "caller") {
+      await ensureLocalMedia()
+
+      if (toUserId.value) {
+        await requestOutgoingCall()
+      } else if (roomId.value) {
+        statusText.value = "Waiting..."
+      }
     }
   } catch (err) {
     console.error("Call mount error", err)
