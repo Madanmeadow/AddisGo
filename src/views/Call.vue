@@ -675,7 +675,33 @@ function toggleCamera() {
     track.enabled = !cameraOff.value
   })
 }
+async function createPeerConnection() {
 
+  const iceServers = await getIceServers()
+
+  pc.value = new RTCPeerConnection({
+    iceServers,
+    iceCandidatePoolSize: 10
+  })
+
+  pc.value.onconnectionstatechange = () => {
+    const state = pc.value.connectionState
+
+    console.log("Connection state:", state)
+
+    if (state === "connected") {
+      console.log("✅ Call connected")
+    }
+
+    if (state === "disconnected") {
+      console.log("⚠️ Network lost, trying to reconnect…")
+    }
+
+    if (state === "failed") {
+      console.log("❌ Connection failed")
+    }
+  }
+}
 function endCall() {
   if (roomId.value) {
     socket.value?.emit("call:end", {
