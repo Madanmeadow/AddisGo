@@ -754,48 +754,84 @@ function openUserProfile(u) {
 }
 
 /* ================= CALLS ================= */
-const incomingCall = ref(null);
-const callBusy = ref(false);
-const callingToast = ref("");
-const pendingRoomId = ref("");
-const pendingKind = ref("audio");
+const incomingCall = ref(null)
+const callBusy = ref(false)
+const callingToast = ref("")
+const pendingRoomId = ref("")
+const pendingKind = ref("audio")
+const pendingUserId = ref("")
+const pendingUserName = ref("")
 
 function startCall(user, kind = "audio") {
-  if (!socket) return;
-  if (!token) return alert("Login again to call.");
-  if (!isOnline(user.id)) return alert("User is offline.");
+  if (!socket) return
+  if (!token) return alert("Login again to call.")
+  if (!user?.id) return alert("User not found.")
+  if (!isOnline(user.id)) return alert("User is offline.")
+  if (callBusy.value) return alert("You already have a call in progress.")
 
-  callBusy.value = true;
-  pendingKind.value = kind;
-  callingToast.value = `Calling ${user.display_name || user.username || "user"}…`;
-  pendingRoomId.value = "";
+  const displayName =
+    user.display_name ||
+    user.username ||
+    `User ${user.id}`
 
-  socket.emit("call:request", { toUserId: String(user.id), kind });
+  callBusy.value = true
+  pendingKind.value = kind === "video" ? "video" : "audio"
+  pendingUserId.value = String(user.id)
+  pendingUserName.value = displayName
+  callingToast.value = `Calling ${displayName}…`
+  pendingRoomId.value = ""
+
+  socket.emit("call:request", {
+    toUserId: String(user.id),
+    kind: pendingKind.value,
+  })
 }
 
 function cancelCall() {
-  callingToast.value = "";
-  callBusy.value = false;
-  if (pendingRoomId.value) socket?.emit("call:cancel", { roomId: pendingRoomId.value });
-  pendingRoomId.value = "";
+  callingToast.value = ""
+  callBusy.value = false
+
+  if (pendingRoomId.value) {
+    socket?.emit("call:cancel", { roomId: pendingRoomId.value })
+  }
+
+  pendingRoomId.value = ""
+  pendingUserId.value = ""
+  pendingUserName.value = ""
 }
 
 function acceptIncoming() {
-  if (!incomingCall.value || !socket) return;
-  const roomId = incomingCall.value.roomId;
-  const kind = incomingCall.value.kind || "audio";
+  if (!incomingCall.value || !socket) return
 
-  socket.emit("call:accept", { roomId });
-  router.push(`/call?roomId=${encodeURIComponent(roomId)}&role=callee&kind=${encodeURIComponent(kind)}`);
-  incomingCall.value = null;
+  const roomId = String(incomingCall.value.roomId || "")
+  const kind = incomingCall.value.kind === "video" ? "video" : "audio"
+  const callerName = incomingCall.value.fromName || "User"
+
+  socket.emit("call:accept", { roomId })
+
+  router.push({
+    path: "/call",
+    query: {
+      roomId,
+      role: "receiver",
+      mode: "receiver",
+      kind,
+      name: callerName,
+    },
+  })
+
+  incomingCall.value = null
 }
 
 function rejectIncoming() {
-  if (!incomingCall.value || !socket) return;
-  socket.emit("call:reject", { roomId: incomingCall.value.roomId });
-  incomingCall.value = null;
-}
+  if (!incomingCall.value || !socket) return
 
+  socket.emit("call:reject", {
+    roomId: incomingCall.value.roomId,
+  })
+
+  incomingCall.value = null
+}
 /* ================= POSTS ================= */
 const posts = ref([]);
 const loading = ref(true);
@@ -1516,66 +1552,112 @@ onMounted(async () => {
     onlinePairs.value = Array.isArray(pairs) ? pairs : [];
   });
 
-  // ✅ Call handling
-  socket.on("call:ringing", ({ roomId, kind }) => {
-    pendingRoomId.value = String(roomId || "");
-    callingToast.value = `Calling… (${kind || pendingKind.value})`;
+// ✅ Call handling
+socket.on("call:ringing", ({ roomId, kind, isCaller } = {}) => {
+  pendingRoomId.value = String(roomId || "")
+  pendingKind.value = kind === "video" ? "video" : (kind || pendingKind.value || "audio")
+  callingToast.value = `Calling ${pendingUserName.value || "user"}…`
 
-    if (pendingRoomId.value) {
-      router.push(`/call?roomId=${encodeURIComponent(pendingRoomId.value)}&role=caller&kind=${encodeURIComponent(kind || pendingKind.value)}`);
-    }
-  });
-
-  socket.on("call:incoming", (p) => {
-    incomingCall.value = p || null;
-  });
-
-  socket.on("call:accepted", () => {
-    callingToast.value = "";
-    callBusy.value = false;
-  });
-
-  socket.on("call:ended", () => {
-    callingToast.value = "";
-    callBusy.value = false;
-    incomingCall.value = null;
-    pendingRoomId.value = "";
-  });
-
-  socket.on("call:busy", ({ message } = {}) => {
-    callingToast.value = "";
-    callBusy.value = false;
-    pendingRoomId.value = "";
-    alert(message || "User is busy.");
-  });
-
-  socket.on("call:error", ({ message } = {}) => {
-    callingToast.value = "";
-    callBusy.value = false;
-    incomingCall.value = null;
-    pendingRoomId.value = "";
-    alert(message || "Call error");
-  });
-
-  await nextTick();
-  if (feedMode.value === "foryou") {
-    setupLoadMoreObserver();
-    setupVideoObserver();
-    applyMuteToAllVideos();
+  if (pendingRoomId.value) {
+    router.push({
+      path: "/call",
+      query: {
+        roomId: pendingRoomId.value,
+        role: "caller",
+        mode: "caller",
+        kind: pendingKind.value,
+        toUserId: pendingUserId.value,
+        name: pendingUserName.value || "User",
+      },
+    })
   }
-});
+})
+
+socket.on("call:incoming", (p) => {
+  incomingCall.value = p || null
+})
+
+socket.on("call:accepted", ({ roomId, kind, hostUserId } = {}) => {
+  callingToast.value = ""
+  callBusy.value = false
+
+  if (roomId) {
+    pendingRoomId.value = String(roomId)
+  }
+
+  // caller side: keep route aligned with the active room
+  if (pendingRoomId.value) {
+    router.push({
+      path: "/call",
+      query: {
+        roomId: pendingRoomId.value,
+        role: "caller",
+        mode: "caller",
+        kind: kind === "video" ? "video" : (kind || pendingKind.value || "audio"),
+        toUserId: pendingUserId.value,
+        name: pendingUserName.value || "User",
+      },
+    })
+  }
+})
+
+socket.on("call:ended", () => {
+  callingToast.value = ""
+  callBusy.value = false
+  incomingCall.value = null
+  pendingRoomId.value = ""
+  pendingUserId.value = ""
+  pendingUserName.value = ""
+})
+
+socket.on("call:busy", ({ message } = {}) => {
+  callingToast.value = ""
+  callBusy.value = false
+  pendingRoomId.value = ""
+  pendingUserId.value = ""
+  pendingUserName.value = ""
+  alert(message || "User is busy.")
+})
+
+socket.on("call:error", ({ message } = {}) => {
+  callingToast.value = ""
+  callBusy.value = false
+  incomingCall.value = null
+  pendingRoomId.value = ""
+  pendingUserId.value = ""
+  pendingUserName.value = ""
+  alert(message || "Call error")
+})
+
+await nextTick()
+if (feedMode.value === "foryou") {
+  setupLoadMoreObserver()
+  setupVideoObserver()
+  applyMuteToAllVideos()
+}
+})
 
 onBeforeUnmount(() => {
-  try { socket?.disconnect(); } catch {}
-  socket = null;
+  try {
+    socket?.off("call:ringing")
+    socket?.off("call:incoming")
+    socket?.off("call:accepted")
+    socket?.off("call:ended")
+    socket?.off("call:busy")
+    socket?.off("call:error")
+    socket?.disconnect()
+  } catch {}
 
-  try { loadMoreObserver?.disconnect(); } catch {}
-  try { reelsLoadMoreObserver?.disconnect(); } catch {}
-  try { videoObserver?.disconnect(); } catch {}
-  loadMoreObserver = null;
-  reelsLoadMoreObserver = null;
-  videoObserver = null;
-});
+  socket = null
+
+  try { loadMoreObserver?.disconnect() } catch {}
+  try { reelsLoadMoreObserver?.disconnect() } catch {}
+  try { videoObserver?.disconnect() } catch {}
+
+  loadMoreObserver = null
+  reelsLoadMoreObserver = null
+  videoObserver = null
+})
 </script>
 
 <!-- ✅ keep your exact same CSS -->
