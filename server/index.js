@@ -515,7 +515,7 @@ function scheduleMissedTimer(roomId) {
     const count = room ? room.size : 0;
     const joinedCount = s.joinedUserIds ? s.joinedUserIds.size : 0;
 
-    // ✅ If the call is already active, do NOT end it
+    // ✅ active call — do nothing
     if (count >= 2 || joinedCount >= 2) {
       if (s.ringTimer) {
         clearTimeout(s.ringTimer);
