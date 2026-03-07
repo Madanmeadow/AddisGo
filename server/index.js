@@ -629,14 +629,14 @@ function scheduleMissedTimer(roomId) {
     });
   });
   /* =========================
+/* =========================
    ✅ CALLS
 ========================= */
+
 socket.on("call:request", async ({ toUserId, kind = "audio" }) => {
   const from = socket.data.user;
   if (!from?.id) {
-    return socket.emit("call:error", {
-      message: "Not online. (JWT auth or emit user:online)",
-    });
+    return socket.emit("call:error", { message: "Not online." });
   }
 
   if (!toUserId) {
@@ -647,8 +647,6 @@ socket.on("call:request", async ({ toUserId, kind = "audio" }) => {
   const calleeUserId = String(toUserId);
   const callKind = kind === "video" ? "video" : "audio";
 
-  logCALL("call:request", { from: callerUserId, to: calleeUserId, kind: callKind });
-
   if (calleeUserId === callerUserId) {
     return socket.emit("call:error", { message: "You cannot call yourself." });
   }
@@ -657,31 +655,12 @@ socket.on("call:request", async ({ toUserId, kind = "audio" }) => {
     return socket.emit("call:error", { message: "You are already in a call." });
   }
 
-  if (isUserBusy(calleeUserId)) {
-    return socket.emit("call:busy", { message: "User is busy." });
-  }
-
   const roomId = String(makeCallRoomId(socket));
 
   const invitedUserIds = new Set([callerUserId, calleeUserId]);
   const joinedUserIds = new Set();
 
   const dbCallId = await dbEnsureCall(roomId, callKind, from.id);
-  if (dbCallId) {
-    await dbUpsertParticipant(dbCallId, from.id, "host", "invited");
-    await dbUpsertParticipant(dbCallId, calleeUserId, "member", "invited");
-  }
-
-  const incomingPayload = {
-    roomId,
-    kind: callKind,
-    fromUserId: callerUserId,
-    fromName: from.username || `User${from.id}`,
-    isGroup: false,
-    from: callerUserId,
-    callerSocketId: socket.id,
-    hostUserId: callerUserId,
-  };
 
   callSessions.set(roomId, {
     roomId,
@@ -690,7 +669,7 @@ socket.on("call:request", async ({ toUserId, kind = "audio" }) => {
     invitedUserIds,
     joinedUserIds,
     createdAt: Date.now(),
-    dbCallId: dbCallId || null,
+    dbCallId,
     ringTimer: null,
   });
 
@@ -705,29 +684,28 @@ socket.on("call:request", async ({ toUserId, kind = "audio" }) => {
     isCaller: true,
   });
 
-  ringToUser(callerUserId, roomId, callKind, "caller");
+  const incomingPayload = {
+    roomId,
+    kind: callKind,
+    fromUserId: callerUserId,
+    fromName: from.username || `User${from.id}`,
+    hostUserId: callerUserId,
+  };
 
   const calleeSocketId = onlineUsers.get(calleeUserId);
 
   if (!calleeSocketId) {
     queueIncomingCall(calleeUserId, incomingPayload);
-    await dbNotifyIncomingCall(calleeUserId, incomingPayload);
-
-    socket.emit("call:status", {
-      roomId,
-      calleeOnline: false,
-    });
     return;
   }
 
   io.to(`user:${calleeUserId}`).emit("call:incoming", incomingPayload);
-  ringToUser(calleeUserId, roomId, callKind, "callee");
-
-  socket.emit("call:status", {
-    roomId,
-    calleeOnline: true,
-  });
 });
+
+
+/* =========================
+   ACCEPT CALL
+========================= */
 
 socket.on("call:accept", async ({ roomId }) => {
   const sess = callSessions.get(String(roomId));
@@ -740,60 +718,35 @@ socket.on("call:accept", async ({ roomId }) => {
     kind: sess.kind,
     hostUserId: sess.hostUserId,
   });
-
-  for (const uid of sess.invitedUserIds || []) {
-    io.to(`user:${uid}`).emit("call:accepted", {
-      roomId: String(roomId),
-      kind: sess.kind,
-      hostUserId: sess.hostUserId,
-    });
-    stopRingToUser(uid, roomId);
-  }
 });
 
-socket.on("call:reject", async ({ roomId }) => {
-  const sess = callSessions.get(String(roomId));
-  if (!sess) return;
 
-  stopRingForSession(sess);
-  clearBusyForSession(sess);
-
-  for (const uid of sess.invitedUserIds || []) {
-    removeQueuedIncomingCall(uid, sess.roomId);
-  }
-
-  io.to(`call:${roomId}`).emit("call:ended", {
-    roomId: String(roomId),
-    reason: "rejected",
-  });
-
-  for (const uid of sess.invitedUserIds || []) {
-    io.to(`user:${uid}`).emit("call:ended", {
-      roomId: String(roomId),
-      reason: "rejected",
-    });
-    stopRingToUser(uid, roomId);
-  }
-
-  if (sess.ringTimer) clearTimeout(sess.ringTimer);
-  callSessions.delete(String(roomId));
-});
+/* =========================
+   JOIN CALL
+========================= */
 
 socket.on("call:join", async ({ roomId }) => {
+
   const sess = callSessions.get(String(roomId));
   if (!sess) {
-    return socket.emit("call:error", { message: "Call session not found." });
+    return socket.emit("call:error", { message: "Call not found" });
   }
 
   const meId = socket.data.user?.id ? String(socket.data.user.id) : null;
+
   socket.join(`call:${roomId}`);
 
   if (meId) {
+
     sess.joinedUserIds.add(meId);
     callSessions.set(String(roomId), sess);
 
-    removeQueuedIncomingCall(meId, roomId);
     setUserBusy(meId, roomId);
+
+    if (sess.ringTimer) {
+      clearTimeout(sess.ringTimer);
+      sess.ringTimer = null;
+    }
 
     if (sess.dbCallId) {
       await dbMarkJoined(sess.dbCallId, meId);
@@ -807,7 +760,7 @@ socket.on("call:join", async ({ roomId }) => {
   io.to(`call:${roomId}`).emit("call:presence", {
     roomId: String(roomId),
     count,
-    joinedUserIds: Array.from(sess.joinedUserIds || []),
+    joinedUserIds: Array.from(sess.joinedUserIds),
     hostUserId: sess.hostUserId,
   });
 
@@ -815,36 +768,37 @@ socket.on("call:join", async ({ roomId }) => {
     roomId: String(roomId),
     peerSocketId: socket.id,
     peerUserId: meId,
-    hostUserId: sess.hostUserId,
   });
 
-  emitCallParticipants(roomId);
-
+  /* ✅ call ready when 2+ users */
   if (count >= 2) {
-    stopRingForSession(sess);
 
     io.to(`call:${roomId}`).emit("call:ready", {
       roomId: String(roomId),
       kind: sess.kind,
       hostUserId: sess.hostUserId,
-      joinedUserIds: Array.from(sess.joinedUserIds || []),
+      joinedUserIds: Array.from(sess.joinedUserIds),
     });
+
   }
+
 });
 
+
+/* =========================
+   END CALL
+========================= */
+
 socket.on("call:end", async ({ roomId }) => {
+
   const sess = callSessions.get(String(roomId));
-  logCALL("call:end", { roomId: String(roomId) });
 
   await dbEndCall(roomId);
 
   if (sess) {
+
     stopRingForSession(sess);
     clearBusyForSession(sess);
-
-    for (const uid of sess.invitedUserIds || []) {
-      removeQueuedIncomingCall(uid, sess.roomId);
-    }
 
     if (sess.ringTimer) clearTimeout(sess.ringTimer);
 
@@ -853,8 +807,8 @@ socket.on("call:end", async ({ roomId }) => {
         roomId: String(roomId),
         reason: "ended",
       });
-      stopRingToUser(uid, roomId);
     }
+
   }
 
   io.to(`call:${roomId}`).emit("call:ended", {
@@ -863,90 +817,49 @@ socket.on("call:end", async ({ roomId }) => {
   });
 
   callSessions.delete(String(roomId));
+
 });
 
-socket.on("call:cancel", async ({ roomId }) => {
-  const sess = callSessions.get(String(roomId));
-  if (!sess) return;
-
-  logCALL("call:cancel", { roomId: String(roomId) });
-  await dbEndCall(roomId);
-
-  stopRingForSession(sess);
-  clearBusyForSession(sess);
-
-  for (const uid of sess.invitedUserIds || []) {
-    removeQueuedIncomingCall(uid, sess.roomId);
-  }
-
-  io.to(`call:${roomId}`).emit("call:ended", {
-    roomId: String(roomId),
-    reason: "canceled",
-  });
-
-  for (const uid of sess.invitedUserIds || []) {
-    io.to(`user:${uid}`).emit("call:ended", {
-      roomId: String(roomId),
-      reason: "canceled",
-    });
-    stopRingToUser(uid, roomId);
-  }
-
-  if (sess.ringTimer) clearTimeout(sess.ringTimer);
-  callSessions.delete(String(roomId));
-});
 
 /* =========================
-   ✅ CALLS: WebRTC RELAY
+   WEBRTC RELAY (GROUP SAFE)
 ========================= */
-socket.on("call:webrtc:offer", ({ roomId, offer, to }) => {
+
+socket.on("call:webrtc:offer", ({ roomId, offer }) => {
+
   if (!roomId || !offer) return;
 
-  const payload = {
+  socket.to(`call:${roomId}`).emit("call:webrtc:offer", {
     roomId: String(roomId),
     offer,
     from: socket.id,
-  };
+  });
 
-  if (to) {
-    return io.to(String(to)).emit("call:webrtc:offer", payload);
-  }
-
-  socket.to(`call:${roomId}`).emit("call:webrtc:offer", payload);
 });
 
-socket.on("call:webrtc:answer", ({ roomId, answer, to }) => {
+socket.on("call:webrtc:answer", ({ roomId, answer }) => {
+
   if (!roomId || !answer) return;
 
-  const payload = {
+  socket.to(`call:${roomId}`).emit("call:webrtc:answer", {
     roomId: String(roomId),
     answer,
     from: socket.id,
-  };
+  });
 
-  if (to) {
-    return io.to(String(to)).emit("call:webrtc:answer", payload);
-  }
-
-  socket.to(`call:${roomId}`).emit("call:webrtc:answer", payload);
 });
 
-socket.on("call:webrtc:ice", ({ roomId, candidate, to }) => {
+socket.on("call:webrtc:ice", ({ roomId, candidate }) => {
+
   if (!roomId || !candidate) return;
 
-  const payload = {
+  socket.to(`call:${roomId}`).emit("call:webrtc:ice", {
     roomId: String(roomId),
     candidate,
     from: socket.id,
-  };
+  });
 
-  if (to) {
-    return io.to(String(to)).emit("call:webrtc:ice", payload);
-  }
-
-  socket.to(`call:${roomId}`).emit("call:webrtc:ice", payload);
 });
-
   /* =========================
      ✅ LIVE: WebRTC RELAY (host <-> viewer)
   ========================= */
