@@ -388,7 +388,15 @@ function stopRingToUser(userId, roomId) {
 }
 function stopRingForSession(sess) {
   if (!sess) return;
-  for (const uid of sess.invitedUserIds || []) stopRingToUser(uid, sess.roomId);
+
+  if (sess.ringTimer) {
+    clearTimeout(sess.ringTimer);
+    sess.ringTimer = null;
+  }
+
+  for (const uid of sess.invitedUserIds || []) {
+    stopRingToUser(uid, sess.roomId);
+  }
 }
 
 function isUserBusy(userId) {
@@ -494,28 +502,58 @@ function scheduleMissedTimer(roomId) {
   const sess = callSessions.get(String(roomId));
   if (!sess) return;
 
-  if (sess.ringTimer) clearTimeout(sess.ringTimer);
+  if (sess.ringTimer) {
+    clearTimeout(sess.ringTimer);
+    sess.ringTimer = null;
+  }
 
   sess.ringTimer = setTimeout(async () => {
     const s = callSessions.get(String(roomId));
     if (!s) return;
 
+    const room = io.sockets.adapter.rooms.get(`call:${roomId}`);
+    const count = room ? room.size : 0;
+    const joinedCount = s.joinedUserIds ? s.joinedUserIds.size : 0;
+
+    // ✅ If the call is already active, do NOT end it
+    if (count >= 2 || joinedCount >= 2) {
+      if (s.ringTimer) {
+        clearTimeout(s.ringTimer);
+        s.ringTimer = null;
+      }
+      callSessions.set(String(roomId), s);
+      return;
+    }
+
     stopRingForSession(s);
     clearBusyForSession(s);
 
-    for (const uid of s.invitedUserIds || []) removeQueuedIncomingCall(uid, s.roomId);
+    for (const uid of s.invitedUserIds || []) {
+      removeQueuedIncomingCall(uid, s.roomId);
+    }
 
-    const room = io.sockets.adapter.rooms.get(`call:${roomId}`);
-    const count = room ? room.size : 0;
-    if (count < 2) callSessions.delete(String(roomId));
+    await dbEndCall(roomId);
 
-    io.to(`call:${roomId}`).emit("call:ended", { roomId: String(roomId), reason: "timeout" });
+    io.to(`call:${roomId}`).emit("call:ended", {
+      roomId: String(roomId),
+      reason: "timeout",
+    });
+
+    for (const uid of s.invitedUserIds || []) {
+      io.to(`user:${uid}`).emit("call:ended", {
+        roomId: String(roomId),
+        reason: "timeout",
+      });
+      stopRingToUser(uid, roomId);
+    }
+
+    callSessions.delete(String(roomId));
   }, RING_TIMEOUT_MS);
 
   callSessions.set(String(roomId), sess);
 }
 
-io.on("connection", (socket) => {
+  io.on("connection", (socket) => {
   logSOCK("Socket connected:", socket.id);
   socket.data.user = null;
 
@@ -528,6 +566,7 @@ io.on("connection", (socket) => {
     flushQueuedIncomingCallsToUser(socket.userId);
   }
 
+  
   /* =========================
      ✅ PRESENCE
   ========================= */
