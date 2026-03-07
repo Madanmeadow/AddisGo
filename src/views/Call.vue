@@ -127,7 +127,7 @@ defineOptions({ name: "Call" })
 import { ref, computed, watch, onMounted, onBeforeUnmount, nextTick } from "vue"
 import { useRoute, useRouter } from "vue-router"
 import { io } from "socket.io-client"
-import { useCallOverlay } from "@/composables/useCallOverlay"
+import { useCallOverlay } from "../composables/useCallOverlay"
 
 const route = useRoute()
 const router = useRouter()

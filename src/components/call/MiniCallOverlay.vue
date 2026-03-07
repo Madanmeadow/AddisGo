@@ -52,7 +52,7 @@
 <script setup>
 import { ref, computed, watch, onMounted, onBeforeUnmount } from "vue"
 import { useRouter } from "vue-router"
-import { useCallOverlay } from "@/composables/useCallOverlay"
+import { useCallOverlay } from "../../composables/useCallOverlay"
 
 const router = useRouter()
 
