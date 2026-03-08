@@ -38,6 +38,44 @@
         </div>
       </header>
 
+      <!-- HERO STRIP -->
+      <section class="heroStrip">
+        <div class="heroCard glassy">
+          <div class="heroLeft">
+            <div class="heroEyebrow">WELCOME BACK</div>
+            <div class="heroTitle">{{ meName }}</div>
+            <div class="heroSub">
+              Build, post, call, stream, and chat from one place.
+            </div>
+
+            <div class="heroActions">
+              <button class="btn btn-primary" @click="focusComposer">Create Post</button>
+              <button class="btn ghostBtn" @click="setFeedMode('rooms')">Open Rooms</button>
+              <button class="btn ghostBtn" @click="setFeedMode('live')">Go Live Area</button>
+            </div>
+          </div>
+
+          <div class="heroStats">
+            <div class="heroStat">
+              <div class="heroStatNum">{{ posts.length }}</div>
+              <div class="heroStatLab">Posts</div>
+            </div>
+            <div class="heroStat">
+              <div class="heroStatNum">{{ reelsPosts.length }}</div>
+              <div class="heroStatLab">Videos</div>
+            </div>
+            <div class="heroStat">
+              <div class="heroStatNum">{{ onlineCount }}</div>
+              <div class="heroStatLab">Online</div>
+            </div>
+            <div class="heroStat">
+              <div class="heroStatNum">{{ liveStreams.length }}</div>
+              <div class="heroStatLab">Live</div>
+            </div>
+          </div>
+        </div>
+      </section>
+
       <!-- MODEBAR -->
       <div class="modebar">
         <button class="mode" :class="{ on: feedMode === 'foryou' }" @click="setFeedMode('foryou')">🎬 For You</button>
@@ -48,7 +86,18 @@
         <button class="mode" :class="{ on: feedMode === 'live' }" @click="setFeedMode('live')">🔴 Live</button>
 
         <div class="mode-right">
-          <input v-model="search" class="search" placeholder="Search…" />
+          <div class="searchWrap">
+            <input v-model="search" class="search" placeholder="Search…" />
+            <button v-if="search" class="searchClear" @click="search = ''">✕</button>
+          </div>
+
+          <select v-model="sortMode" class="selectControl">
+            <option value="latest">Latest</option>
+            <option value="popular">Popular</option>
+            <option value="media">Media First</option>
+            <option value="text">Text First</option>
+          </select>
+
           <button
             v-if="feedMode === 'foryou' || feedMode === 'reels'"
             class="chip ghost"
@@ -56,6 +105,21 @@
           >
             {{ globalMuted ? "🔇 Muted" : "🔊 Sound" }}
           </button>
+
+          <button class="chip ghost" @click="surpriseMe">✨ Surprise Me</button>
+        </div>
+      </div>
+
+      <!-- FILTER CHIPS -->
+      <div class="filterbar">
+        <button class="filterChip" :class="{ on: postFilter === 'all' }" @click="postFilter = 'all'">All</button>
+        <button class="filterChip" :class="{ on: postFilter === 'video' }" @click="postFilter = 'video'">Videos</button>
+        <button class="filterChip" :class="{ on: postFilter === 'image' }" @click="postFilter = 'image'">Images</button>
+        <button class="filterChip" :class="{ on: postFilter === 'text' }" @click="postFilter = 'text'">Text</button>
+
+        <div class="filterHint">
+          <span class="badgePill accent">{{ feedModeLabel }}</span>
+          <span class="badgePill">{{ filteredBaseCount }} shown</span>
         </div>
       </div>
 
@@ -83,6 +147,25 @@
           </div>
 
           <div v-if="statusNote" class="hint mt10">{{ statusNote }}</div>
+        </section>
+
+        <!-- TRENDING TAGS -->
+        <section v-if="trendingTags.length" class="panel glassy">
+          <div class="panel-head">
+            <div class="panel-title">🔥 Trending</div>
+            <button class="btn ghostBtn" @click="search = ''">Clear Search</button>
+          </div>
+
+          <div class="trendingRow">
+            <button
+              v-for="tag in trendingTags"
+              :key="tag"
+              class="trendChip"
+              @click="applyTrendTag(tag)"
+            >
+              {{ tag }}
+            </button>
+          </div>
         </section>
 
         <!-- TOP DOCK -->
@@ -240,13 +323,12 @@
             <button class="toolBtn" @click="setFeedMode('reels')">🎞️ Go Reels</button>
             <button class="toolBtn" @click="setFeedMode('rooms')">🎧 Go Rooms</button>
             <button class="toolBtn" @click="setFeedMode('live')">🔴 Go Live Tab</button>
-            
-        
+
             <button class="toolBtn" @click="scrollToTop">⬆️ Scroll Top</button>
             <button class="toolBtn" @click="focusComposer">✍️ Focus Composer</button>
             <button class="toolBtn" @click="clearDraft">🧹 Clear Draft</button>
             <button class="toolBtn" @click="refreshAll" :disabled="loading">🔁 Refresh All</button>
-            
+
             <button class="toolBtn" @click="testTurn">🧊 Test TURN</button>
             <button class="toolBtn" @click="requestNotifications">🔔 Enable Notifications</button>
             <button class="toolBtn dangerTool" @click="hardResetApp">💣 Hard Reset (Local)</button>
@@ -281,6 +363,19 @@
             rows="3"
           ></textarea>
 
+          <div class="composerMetaRow">
+            <div class="charCount" :class="{ warn: captionLength > 220 }">
+              {{ captionLength }} chars
+            </div>
+
+            <div class="quickTags">
+              <button class="quickTag" @click="appendQuickTag('#Pulse')">#Pulse</button>
+              <button class="quickTag" @click="appendQuickTag('#Reels')">#Reels</button>
+              <button class="quickTag" @click="appendQuickTag('#Live')">#Live</button>
+              <button class="quickTag" @click="appendQuickTag('#Update')">#Update</button>
+            </div>
+          </div>
+
           <div class="upload-row">
             <label class="file-pill">
               <input type="file" accept="image/*" @change="onPickImage" />
@@ -299,6 +394,7 @@
             <button class="btn ghostBtn" :disabled="posting" @click="clearDraft">Clear</button>
           </div>
 
+          <div v-if="draftSavedNote" class="hint mt10">{{ draftSavedNote }}</div>
           <div v-if="error" class="alert">{{ error }}</div>
         </section>
 
@@ -333,11 +429,11 @@
             <button class="room" :class="{ on: chatRoom === 'support' }" @click="selectChat('support')">🛠 support</button>
             <button class="room" :class="{ on: chatRoom === 'dev' }" @click="selectChat('dev')">💻 dev</button>
             <button class="room" :class="{ on: chatRoom === 'random' }" @click="selectChat('random')">🎲 random</button>
-            <button class="mode" @click="router.push('/call-rooms')">📞 Call Rooms</button>
+            <button class="room" :class="{ on: chatRoom === 'callrooms' }" @click="selectChat('callrooms')">📞 Call Rooms</button>
             <div class="rooms-hint">Real-time chat via Socket.io</div>
           </aside>
 
-          <div class="rooms-main glassy">
+          <div class="rooms-main glassy" v-if="chatRoom !== 'callrooms'">
             <div class="rooms-top">
               <div class="rooms-title"># {{ chatRoom }}</div>
               <button class="chip ghost" @click="toggleChat">Toggle Chat Drawer</button>
@@ -358,13 +454,55 @@
               <button class="btn btn-primary" @click="sendChat">Send</button>
             </div>
           </div>
+
+          <div class="rooms-main glassy" v-else>
+            <div class="rooms-top">
+              <div class="rooms-title">📞 Call Rooms</div>
+              <button class="chip ghost" @click="refreshCallRooms">Refresh</button>
+            </div>
+
+            <div class="callrooms-create">
+              <input v-model="callRoomName" class="roomInput" placeholder="Room name" />
+              <select v-model="callRoomKind" class="roomInput roomSelect">
+                <option value="audio">Audio Room</option>
+                <option value="video">Video Room</option>
+              </select>
+              <button class="btn btn-primary" @click="createCallRoom" :disabled="creatingCallRoom">
+                {{ creatingCallRoom ? "Creating..." : "Create Room" }}
+              </button>
+            </div>
+
+            <div v-if="callRoomsError" class="alert">{{ callRoomsError }}</div>
+
+            <div v-if="callRooms.length === 0" class="state miniState">
+              <div class="state-emoji">📞</div>
+              <div class="state-title">No call rooms yet</div>
+              <div class="state-sub">Create one and invite others.</div>
+            </div>
+
+            <div v-else class="callrooms-list">
+              <div v-for="room in callRooms" :key="room.roomId" class="callroom-card">
+                <div class="callroom-main">
+                  <div class="callroom-name">{{ room.name }}</div>
+                  <div class="callroom-sub">
+                    {{ room.kind === "video" ? "🎥 Video Room" : "🎙 Audio Room" }}
+                    • {{ room.participantCount }} inside
+                  </div>
+                </div>
+
+                <button class="btn btn-primary" @click="joinCallRoom(room)">
+                  Join
+                </button>
+              </div>
+            </div>
+          </div>
         </section>
 
         <!-- THREADS MODE -->
         <section v-else-if="feedMode === 'threads'" class="feed threads">
           <div v-if="loading" class="state">Loading…</div>
 
-          <div v-else-if="baseFiltered.length === 0" class="state">
+          <div v-else-if="sortedFilteredPosts.length === 0" class="state">
             <div class="state-emoji">✍️</div>
             <div class="state-title">No threads yet</div>
             <div class="state-sub">Write something to start the conversation.</div>
@@ -376,6 +514,12 @@
               <div class="who">
                 <div class="name">{{ displayPostUser(post) }}</div>
                 <div class="time">{{ formatDate(post.created_at) }}</div>
+              </div>
+
+              <div class="postPills">
+                <span class="miniPostPill" v-if="post.video_url">VIDEO</span>
+                <span class="miniPostPill" v-else-if="post.image_url">IMAGE</span>
+                <span class="miniPostPill ghostPill" v-else>TEXT</span>
               </div>
             </header>
 
@@ -476,7 +620,7 @@
             <div class="state">Loading…</div>
           </template>
 
-          <div v-else-if="baseFiltered.length === 0" class="state">
+          <div v-else-if="sortedFilteredPosts.length === 0" class="state">
             <div class="state-emoji">📸</div>
             <div class="state-title">No posts yet</div>
             <div class="state-sub">Be the first to post.</div>
@@ -488,6 +632,12 @@
               <div class="who">
                 <div class="name">{{ displayPostUser(post) }}</div>
                 <div class="time">{{ formatDate(post.created_at) }}</div>
+              </div>
+
+              <div class="postPills">
+                <span class="miniPostPill" v-if="post.video_url">VIDEO</span>
+                <span class="miniPostPill" v-else-if="post.image_url">IMAGE</span>
+                <span class="miniPostPill ghostPill" v-else>TEXT</span>
               </div>
             </header>
 
@@ -525,7 +675,7 @@
             <div class="state">Loading…</div>
           </template>
 
-          <div v-else-if="baseFiltered.length === 0" class="state">
+          <div v-else-if="sortedFilteredPosts.length === 0" class="state">
             <div class="state-emoji">🎬</div>
             <div class="state-title">No videos yet</div>
             <div class="state-sub">Post a video and it will autoplay here.</div>
@@ -657,11 +807,11 @@
 </template>
 
 <script setup>
-import { ref, computed, onMounted, onBeforeUnmount, nextTick } from "vue"
+import { ref, computed, onMounted, onBeforeUnmount, nextTick, watch } from "vue"
 import { useRouter } from "vue-router"
 import Layout from "../components/Layout.vue"
 import TikTokFeed from "../components/TikTokFeed.vue"
-import CommentsPanel from "../components/Comments.vue"
+import CommentsPanel from "../components/comments.vue"
 import { createSocket } from "../api/socket"
 
 const router = useRouter()
@@ -671,6 +821,22 @@ const token = localStorage.getItem("token") || ""
 const me = (() => {
   try { return JSON.parse(localStorage.getItem("user") || "null") } catch { return null }
 })()
+
+/* =========================
+   LOCAL PREFS
+========================= */
+const DASH_PREFS_KEY = "pulse_dashboard_prefs_v1"
+const DASH_DRAFT_KEY = "pulse_dashboard_draft_v1"
+
+function readPrefs() {
+  try {
+    return JSON.parse(localStorage.getItem(DASH_PREFS_KEY) || "{}")
+  } catch {
+    return {}
+  }
+}
+
+const savedPrefs = readPrefs()
 
 /* =========================
    HELPERS
@@ -733,10 +899,33 @@ function scrollToTop() {
   window.scrollTo({ top: 0, behavior: "smooth" })
 }
 
+function appendQuickTag(tag) {
+  const current = String(caption.value || "")
+  if (current.includes(tag)) return
+  caption.value = current.trim() ? `${current.trim()} ${tag}` : `${tag} `
+}
+
+function persistPrefs() {
+  try {
+    localStorage.setItem(
+      DASH_PREFS_KEY,
+      JSON.stringify({
+        feedMode: feedMode.value,
+        search: search.value,
+        globalMuted: globalMuted.value,
+        sortMode: sortMode.value,
+        postFilter: postFilter.value,
+      })
+    )
+  } catch {}
+}
+
 /* =========================
    MODEBAR
 ========================= */
-const feedMode = ref("foryou")
+const feedMode = ref(savedPrefs.feedMode || "foryou")
+const sortMode = ref(savedPrefs.sortMode || "latest")
+const postFilter = ref(savedPrefs.postFilter || "all")
 
 function setFeedMode(mode) {
   feedMode.value = mode
@@ -791,14 +980,19 @@ function safeRegisterOnline() {
 
   socket.emit("user:online", { userId: String(me.id), username })
   socket.emit("register-user", { id: String(me.id), username })
-  socket.emit("join-room", chatRoom.value)
+
+  if (chatRoom.value !== "callrooms") {
+    socket.emit("join-room", chatRoom.value)
+  }
+
   socket.emit("get-live-list")
   socket.emit("presence:get")
+  socket.emit("callroom:list:get")
 }
 
 function reconnectSocket() {
   statusNote.value = "Reconnecting socket…"
-  try { socket?.disconnect() } catch {}
+  try { socket?.cleanupPulseSocket?.() } catch {}
   socket = null
   connectSocket()
 }
@@ -830,12 +1024,11 @@ const peopleOpen = ref(false)
 const people = ref([])
 const peopleLoading = ref(false)
 const peopleError = ref("")
+const search = ref(savedPrefs.search || "")
 
 function togglePeople() {
   peopleOpen.value = !peopleOpen.value
 }
-
-const search = ref("")
 
 const filteredPeople = computed(() => {
   const q = (search.value || "").trim().toLowerCase()
@@ -880,7 +1073,7 @@ function openUserProfile(u) {
 }
 
 /* =========================
-   CALLS
+   DIRECT CALLS
 ========================= */
 const incomingCall = ref(null)
 const callBusy = ref(false)
@@ -959,6 +1152,38 @@ function rejectIncoming() {
 }
 
 /* =========================
+   CALL ROOMS
+========================= */
+const callRooms = ref([])
+const callRoomName = ref("")
+const callRoomKind = ref("audio")
+const creatingCallRoom = ref(false)
+const callRoomsError = ref("")
+
+function refreshCallRooms() {
+  callRoomsError.value = ""
+  socket?.emit("callroom:list:get")
+}
+
+function createCallRoom() {
+  if (!socket) return
+  if (!token) return alert("Login again first.")
+
+  creatingCallRoom.value = true
+  callRoomsError.value = ""
+
+  socket.emit("callroom:create", {
+    name: callRoomName.value,
+    kind: callRoomKind.value,
+  })
+}
+
+function joinCallRoom(room) {
+  if (!room?.roomId) return
+  router.push(`/room-call?roomId=${encodeURIComponent(room.roomId)}`)
+}
+
+/* =========================
    POSTS
 ========================= */
 const posts = ref([])
@@ -966,13 +1191,15 @@ const loading = ref(true)
 const posting = ref(false)
 const error = ref("")
 
+const composerRef = ref(null)
 const caption = ref("")
 const imageFile = ref(null)
 const videoFile = ref(null)
-const composerRef = ref(null)
+const draftSavedNote = ref("")
 
 const meName = computed(() => me?.display_name || me?.username || "You")
 const myInitial = computed(() => String(meName.value || "Y").trim().charAt(0).toUpperCase() || "Y")
+const captionLength = computed(() => String(caption.value || "").length)
 
 function focusComposer() {
   try { composerRef.value?.focus?.() } catch {}
@@ -982,6 +1209,8 @@ function clearDraft() {
   caption.value = ""
   imageFile.value = null
   videoFile.value = null
+  draftSavedNote.value = "Draft cleared"
+  try { localStorage.removeItem(DASH_DRAFT_KEY) } catch {}
 }
 
 async function fetchPosts() {
@@ -1059,6 +1288,7 @@ async function submitPost() {
     }
 
     clearDraft()
+    draftSavedNote.value = "Posted successfully"
 
     await nextTick()
     if (feedMode.value === "foryou" || feedMode.value === "reels") {
@@ -1103,6 +1333,7 @@ async function submitReel() {
     }
 
     clearDraft()
+    draftSavedNote.value = "Reel posted successfully"
 
     await nextTick()
     setupVideoObserver()
@@ -1127,23 +1358,103 @@ async function refreshAll() {
   if (token) await fetchPeople()
   try { socket?.emit("get-live-list") } catch {}
   try { socket?.emit("presence:get") } catch {}
+  try { socket?.emit("callroom:list:get") } catch {}
 }
 
 /* =========================
-   FILTERED BASE
+   FILTERS / SORT / TRENDING
 ========================= */
+const filteredBaseCount = computed(() => sortedFilteredPosts.value.length)
+
 const baseFiltered = computed(() => {
   const q = search.value.trim().toLowerCase()
-  if (!q) return posts.value
-  return posts.value.filter((p) => {
-    const text = `${p.caption || ""} ${displayPostUser(p)}`.toLowerCase()
-    return text.includes(q)
-  })
+
+  let list = posts.value
+
+  if (postFilter.value === "video") {
+    list = list.filter((p) => !!p.video_url)
+  } else if (postFilter.value === "image") {
+    list = list.filter((p) => !!p.image_url && !p.video_url)
+  } else if (postFilter.value === "text") {
+    list = list.filter((p) => !p.image_url && !p.video_url)
+  }
+
+  if (q) {
+    list = list.filter((p) => {
+      const text = `${p.caption || ""} ${displayPostUser(p)}`.toLowerCase()
+      return text.includes(q)
+    })
+  }
+
+  return list
 })
 
-const followingPosts = computed(() => baseFiltered.value.slice(0, 40))
-const threadsPosts = computed(() => baseFiltered.value.slice(0, 60))
-const reelsPosts = computed(() => baseFiltered.value.filter((p) => !!p.video_url))
+const sortedFilteredPosts = computed(() => {
+  const list = [...baseFiltered.value]
+
+  if (sortMode.value === "popular") {
+    return list.sort((a, b) => (likesByPost.value[b.id]?.count ?? 0) - (likesByPost.value[a.id]?.count ?? 0))
+  }
+
+  if (sortMode.value === "media") {
+    return list.sort((a, b) => {
+      const am = a.video_url || a.image_url ? 1 : 0
+      const bm = b.video_url || b.image_url ? 1 : 0
+      if (bm !== am) return bm - am
+      return new Date(b.created_at) - new Date(a.created_at)
+    })
+  }
+
+  if (sortMode.value === "text") {
+    return list.sort((a, b) => {
+      const at = !a.video_url && !a.image_url ? 1 : 0
+      const bt = !b.video_url && !b.image_url ? 1 : 0
+      if (bt !== at) return bt - at
+      return new Date(b.created_at) - new Date(a.created_at)
+    })
+  }
+
+  return list.sort((a, b) => new Date(b.created_at) - new Date(a.created_at))
+})
+
+const followingPosts = computed(() => sortedFilteredPosts.value.slice(0, 40))
+const threadsPosts = computed(() => sortedFilteredPosts.value.slice(0, 60))
+const reelsPosts = computed(() => sortedFilteredPosts.value.filter((p) => !!p.video_url))
+
+const trendingTags = computed(() => {
+  const counts = new Map()
+
+  posts.value.forEach((p) => {
+    const text = String(p.caption || "")
+    const tags = text.match(/#[a-zA-Z0-9_]+/g) || []
+    tags.forEach((tag) => {
+      counts.set(tag, (counts.get(tag) || 0) + 1)
+    })
+  })
+
+  return Array.from(counts.entries())
+    .sort((a, b) => b[1] - a[1])
+    .slice(0, 8)
+    .map(([tag]) => tag)
+})
+
+function applyTrendTag(tag) {
+  search.value = tag
+  scrollToTop()
+}
+
+function surpriseMe() {
+  const modes = ["foryou", "reels", "following", "threads", "rooms", "live"]
+  const next = modes[Math.floor(Math.random() * modes.length)]
+  setFeedMode(next)
+
+  if (next === "rooms") {
+    const roomChoices = ["global", "support", "dev", "random", "callrooms"]
+    selectChat(roomChoices[Math.floor(Math.random() * roomChoices.length)])
+  }
+
+  scrollToTop()
+}
 
 /* =========================
    THREAD MEDIA
@@ -1314,7 +1625,7 @@ async function copyPostText(post) {
 }
 
 /* =========================
-   CHAT
+   CHAT / ROOMS
 ========================= */
 const chatOpen = ref(false)
 const chatRoom = ref("global")
@@ -1329,6 +1640,12 @@ function toggleChat() {
 
 function selectChat(room) {
   chatRoom.value = room
+
+  if (room === "callrooms") {
+    refreshCallRooms()
+    return
+  }
+
   socket?.emit("join-room", room)
   chatMessages.value.push({
     from: "system",
@@ -1353,12 +1670,15 @@ function scrollRoomsToBottom() {
 }
 
 function sendChat() {
+  if (chatRoom.value === "callrooms") return
   if (!chatText.value.trim()) return
+
   socket?.emit("send-room-message", {
     room: chatRoom.value,
     from: me?.username || me?.display_name || "me",
     text: chatText.value,
   })
+
   chatText.value = ""
 }
 
@@ -1381,7 +1701,7 @@ function joinLive(liveId) {
 function logout() {
   localStorage.removeItem("token")
   localStorage.removeItem("user")
-  try { socket?.disconnect() } catch {}
+  try { socket?.cleanupPulseSocket?.() } catch {}
   router.push("/login")
 }
 
@@ -1418,8 +1738,8 @@ const pageSize = ref(8)
 const infiniteLoading = ref(false)
 const loadMoreRef = ref(null)
 
-const visiblePosts = computed(() => baseFiltered.value.slice(0, pageSize.value))
-const canLoadMore = computed(() => baseFiltered.value.length > visiblePosts.value.length)
+const visiblePosts = computed(() => sortedFilteredPosts.value.slice(0, pageSize.value))
+const canLoadMore = computed(() => sortedFilteredPosts.value.length > visiblePosts.value.length)
 
 let loadMoreObserver = null
 
@@ -1493,7 +1813,7 @@ function loadMoreReels() {
    VIDEO AUTOPLAY
 ========================= */
 const activePostId = ref(null)
-const globalMuted = ref(true)
+const globalMuted = ref(savedPrefs.globalMuted ?? true)
 const videoMutedByPost = ref({})
 
 function isVideoMuted(postId) {
@@ -1590,6 +1910,9 @@ async function copyDiagnostics() {
     onlineCount: onlineCount.value,
     liveCount: liveStreams.value.length,
     feedMode: feedMode.value,
+    currentRoom: chatRoom.value,
+    sortMode: sortMode.value,
+    postFilter: postFilter.value,
   }
 
   try {
@@ -1633,9 +1956,29 @@ function hardResetApp() {
 }
 
 /* =========================
+   WATCHERS
+========================= */
+watch([feedMode, search, globalMuted, sortMode, postFilter], persistPrefs)
+
+watch(caption, (v) => {
+  try {
+    localStorage.setItem(DASH_DRAFT_KEY, JSON.stringify({ caption: v || "" }))
+    draftSavedNote.value = v ? "Draft saved locally" : ""
+  } catch {}
+})
+
+/* =========================
    LIFECYCLE
 ========================= */
 onMounted(async () => {
+  try {
+    const savedDraft = JSON.parse(localStorage.getItem(DASH_DRAFT_KEY) || "{}")
+    if (savedDraft?.caption) {
+      caption.value = savedDraft.caption
+      draftSavedNote.value = "Recovered saved draft"
+    }
+  } catch {}
+
   await fetchPosts()
   if (token) await fetchPeople()
 
@@ -1735,10 +2078,32 @@ onMounted(async () => {
     alert(message || "Call error")
   })
 
+  socket.on("callroom:list", (list) => {
+    callRooms.value = Array.isArray(list) ? list : []
+  })
+
+  socket.on("callroom:created", ({ roomId } = {}) => {
+    creatingCallRoom.value = false
+    callRoomName.value = ""
+    if (!roomId) return
+    router.push(`/room-call?roomId=${encodeURIComponent(roomId)}`)
+  })
+
+  socket.on("callroom:error", ({ message } = {}) => {
+    creatingCallRoom.value = false
+    callRoomsError.value = message || "Call room error"
+  })
+
   await nextTick()
 
   if (feedMode.value === "foryou") {
     setupLoadMoreObserver()
+    setupVideoObserver()
+    applyMuteToAllVideos()
+  }
+
+  if (feedMode.value === "reels") {
+    setupReelsLoadMoreObserver()
     setupVideoObserver()
     applyMuteToAllVideos()
   }
@@ -1752,7 +2117,10 @@ onBeforeUnmount(() => {
     socket?.off("call:ended")
     socket?.off("call:busy")
     socket?.off("call:error")
-    socket?.disconnect()
+    socket?.off("callroom:list")
+    socket?.off("callroom:created")
+    socket?.off("callroom:error")
+    socket?.cleanupPulseSocket?.()
   } catch {}
 
   socket = null
@@ -1898,6 +2266,76 @@ onBeforeUnmount(() => {
   justify-content: flex-end;
 }
 
+/* HERO */
+.heroStrip {
+  position: relative;
+  z-index: 2;
+  max-width: 1100px;
+  margin: 12px auto 0;
+  padding: 0 16px;
+}
+
+.heroCard {
+  padding: 18px;
+  border-radius: 24px;
+  display: grid;
+  grid-template-columns: 1.5fr 1fr;
+  gap: 16px;
+  align-items: center;
+}
+
+.heroEyebrow {
+  font-size: 11px;
+  opacity: .72;
+  letter-spacing: .18em;
+  font-weight: 900;
+}
+
+.heroTitle {
+  font-size: 28px;
+  font-weight: 950;
+  margin-top: 4px;
+}
+
+.heroSub {
+  margin-top: 8px;
+  opacity: .8;
+  max-width: 540px;
+  line-height: 1.5;
+}
+
+.heroActions {
+  display: flex;
+  gap: 10px;
+  flex-wrap: wrap;
+  margin-top: 14px;
+}
+
+.heroStats {
+  display: grid;
+  grid-template-columns: repeat(2, 1fr);
+  gap: 10px;
+}
+
+.heroStat {
+  padding: 14px;
+  border-radius: 18px;
+  background: rgba(255,255,255,0.06);
+  border: 1px solid rgba(255,255,255,0.10);
+  text-align: center;
+}
+
+.heroStatNum {
+  font-size: 24px;
+  font-weight: 950;
+}
+
+.heroStatLab {
+  margin-top: 4px;
+  font-size: 12px;
+  opacity: .72;
+}
+
 .modebar {
   position: relative;
   z-index: 2;
@@ -1920,7 +2358,6 @@ onBeforeUnmount(() => {
   font-weight: 950;
   opacity: .92;
   transition: all .18s ease;
-  position: relative;
 }
 
 .mode:hover {
@@ -1948,11 +2385,15 @@ onBeforeUnmount(() => {
   flex-wrap: wrap;
 }
 
+.searchWrap {
+  position: relative;
+}
+
 .search {
   background: rgba(0,0,0,0.35);
   border: 1px solid rgba(255,255,255,0.12);
   color: white;
-  padding: 10px 12px;
+  padding: 10px 40px 10px 12px;
   border-radius: 999px;
   outline: none;
 }
@@ -1962,6 +2403,65 @@ onBeforeUnmount(() => {
   box-shadow: 0 0 0 3px rgba(255,75,43,0.12);
 }
 
+.searchClear {
+  position: absolute;
+  right: 8px;
+  top: 50%;
+  transform: translateY(-50%);
+  border: none;
+  background: rgba(255,255,255,0.12);
+  color: white;
+  width: 26px;
+  height: 26px;
+  border-radius: 999px;
+  cursor: pointer;
+}
+
+.selectControl {
+  background: rgba(0,0,0,0.35);
+  border: 1px solid rgba(255,255,255,0.12);
+  color: white;
+  padding: 10px 12px;
+  border-radius: 999px;
+  outline: none;
+}
+
+/* FILTER BAR */
+.filterbar {
+  position: relative;
+  z-index: 2;
+  max-width: 1100px;
+  margin: 10px auto 0;
+  padding: 0 16px;
+  display: flex;
+  gap: 10px;
+  align-items: center;
+  flex-wrap: wrap;
+}
+
+.filterChip {
+  border: 1px solid rgba(255,255,255,0.14);
+  background: rgba(255,255,255,0.08);
+  color: white;
+  padding: 8px 12px;
+  border-radius: 999px;
+  cursor: pointer;
+  font-weight: 800;
+}
+
+.filterChip.on {
+  background: rgba(255,75,43,0.18);
+  border-color: rgba(255,75,43,0.35);
+}
+
+.filterHint {
+  margin-left: auto;
+  display: flex;
+  gap: 8px;
+  flex-wrap: wrap;
+}
+
+/* MAIN */
 .main {
   position: relative;
   z-index: 2;
@@ -2003,6 +2503,7 @@ onBeforeUnmount(() => {
   align-items: center;
 }
 
+/* BUTTONS */
 .btn,
 .chip {
   border: none;
@@ -2043,6 +2544,24 @@ onBeforeUnmount(() => {
   font-size: 12px;
 }
 
+/* TRENDING */
+.trendingRow {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 10px;
+}
+
+.trendChip {
+  border: 1px solid rgba(255,255,255,0.14);
+  background: linear-gradient(135deg, rgba(124,58,237,0.25), rgba(255,75,43,0.20));
+  color: white;
+  padding: 10px 14px;
+  border-radius: 999px;
+  cursor: pointer;
+  font-weight: 900;
+}
+
+/* LIVE */
 .live-strip {
   display: grid;
   gap: 10px;
@@ -2086,6 +2605,7 @@ onBeforeUnmount(() => {
   font-size: 22px;
 }
 
+/* PEOPLE */
 .miniAvatars {
   display: flex;
   gap: 10px;
@@ -2205,6 +2725,7 @@ onBeforeUnmount(() => {
   cursor: not-allowed;
 }
 
+/* COMPOSER */
 .composer {
   transition: all .25s ease;
 }
@@ -2265,6 +2786,41 @@ onBeforeUnmount(() => {
   resize: none;
 }
 
+.composerMetaRow {
+  display: flex;
+  justify-content: space-between;
+  gap: 12px;
+  flex-wrap: wrap;
+  margin-top: 10px;
+}
+
+.charCount {
+  font-size: 12px;
+  opacity: .75;
+}
+
+.charCount.warn {
+  color: #ffd166;
+  opacity: 1;
+}
+
+.quickTags {
+  display: flex;
+  gap: 8px;
+  flex-wrap: wrap;
+}
+
+.quickTag {
+  border: 1px solid rgba(255,255,255,0.12);
+  background: rgba(255,255,255,0.08);
+  color: white;
+  padding: 6px 10px;
+  border-radius: 999px;
+  cursor: pointer;
+  font-size: 12px;
+  font-weight: 800;
+}
+
 .upload-row {
   display: flex;
   gap: 10px;
@@ -2289,6 +2845,7 @@ onBeforeUnmount(() => {
   opacity: .9;
 }
 
+/* FEED */
 .feed {
   display: grid;
   gap: 14px;
@@ -2360,6 +2917,27 @@ onBeforeUnmount(() => {
   border: 1px solid rgba(255,255,255,0.14);
 }
 
+.postPills {
+  margin-left: auto;
+  display: flex;
+  gap: 8px;
+  flex-wrap: wrap;
+}
+
+.miniPostPill {
+  font-size: 11px;
+  font-weight: 900;
+  padding: 6px 8px;
+  border-radius: 999px;
+  background: rgba(255,75,43,0.16);
+  border: 1px solid rgba(255,75,43,0.28);
+}
+
+.ghostPill {
+  background: rgba(255,255,255,0.08);
+  border-color: rgba(255,255,255,0.12);
+}
+
 .actions {
   display: flex;
   align-items: center;
@@ -2394,6 +2972,7 @@ onBeforeUnmount(() => {
   margin-top: -4px;
 }
 
+/* ROOMS */
 .rooms {
   display: grid;
   grid-template-columns: 220px 1fr;
@@ -2498,7 +3077,8 @@ onBeforeUnmount(() => {
 }
 
 .rooms-input input,
-.chat-input input {
+.chat-input input,
+.roomInput {
   flex: 1;
   background: rgba(0,0,0,0.35);
   border: 1px solid rgba(255,255,255,0.12);
@@ -2508,6 +3088,53 @@ onBeforeUnmount(() => {
   outline: none;
 }
 
+.callrooms-create {
+  display: flex;
+  gap: 10px;
+  flex-wrap: wrap;
+  margin-bottom: 14px;
+}
+
+.roomSelect {
+  flex: 0 0 160px;
+}
+
+.callrooms-list {
+  display: grid;
+  gap: 12px;
+}
+
+.callroom-card {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  gap: 12px;
+  padding: 14px;
+  border-radius: 16px;
+  background: rgba(255,255,255,0.06);
+  border: 1px solid rgba(255,255,255,0.10);
+}
+
+.callroom-main {
+  min-width: 0;
+}
+
+.callroom-name {
+  font-weight: 950;
+  font-size: 16px;
+}
+
+.callroom-sub {
+  margin-top: 4px;
+  font-size: 13px;
+  opacity: .72;
+}
+
+.miniState {
+  padding: 18px;
+}
+
+/* CHAT DRAWER */
 .chatDrawer {
   position: fixed;
   right: 16px;
@@ -2579,6 +3206,7 @@ onBeforeUnmount(() => {
   margin-top: 10px;
 }
 
+/* MESSAGES */
 .alert {
   margin-top: 10px;
   padding: 10px;
@@ -2624,6 +3252,7 @@ onBeforeUnmount(() => {
   margin-top: 10px;
 }
 
+/* MODAL */
 .modal-backdrop {
   position: fixed;
   inset: 0;
@@ -2672,6 +3301,7 @@ onBeforeUnmount(() => {
   font-size: 12px;
 }
 
+/* TOAST */
 .toast {
   position: fixed;
   left: 50%;
@@ -2709,6 +3339,7 @@ onBeforeUnmount(() => {
   opacity: .75;
 }
 
+/* BOTTOM NAV */
 .bottomNav {
   position: fixed;
   left: 0;
@@ -2753,6 +3384,7 @@ onBeforeUnmount(() => {
   font-weight: 850;
 }
 
+/* LIVE GRID */
 .live-grid {
   display: grid;
   grid-template-columns: repeat(auto-fit, minmax(210px, 1fr));
@@ -2793,6 +3425,7 @@ onBeforeUnmount(() => {
   font-size: 13px;
 }
 
+/* STATUS */
 .miniPanel {
   padding: 12px;
 }
@@ -2828,6 +3461,7 @@ onBeforeUnmount(() => {
   background: rgba(255,75,43,0.14);
 }
 
+/* TOOLS */
 .toolsPanel {
   margin-top: -4px;
 }
@@ -2862,6 +3496,10 @@ onBeforeUnmount(() => {
 }
 
 @media (max-width: 900px) {
+  .heroCard {
+    grid-template-columns: 1fr;
+  }
+
   .dock {
     grid-template-columns: 1fr;
   }
@@ -2886,17 +3524,32 @@ onBeforeUnmount(() => {
 }
 
 @media (max-width: 500px) {
-  .modebar {
+  .modebar,
+  .filterbar {
     overflow-x: auto;
     scrollbar-width: none;
   }
 
-  .modebar::-webkit-scrollbar {
+  .modebar::-webkit-scrollbar,
+  .filterbar::-webkit-scrollbar {
     display: none;
   }
 
   .toolsGrid {
     grid-template-columns: 1fr;
+  }
+
+  .callroom-card {
+    flex-direction: column;
+    align-items: stretch;
+  }
+
+  .heroActions {
+    flex-direction: column;
+  }
+
+  .heroStats {
+    grid-template-columns: repeat(2, 1fr);
   }
 }
 </style>
