@@ -246,7 +246,7 @@
             <button class="toolBtn" @click="focusComposer">✍️ Focus Composer</button>
             <button class="toolBtn" @click="clearDraft">🧹 Clear Draft</button>
             <button class="toolBtn" @click="refreshAll" :disabled="loading">🔁 Refresh All</button>
-
+            
             <button class="toolBtn" @click="testTurn">🧊 Test TURN</button>
             <button class="toolBtn" @click="requestNotifications">🔔 Enable Notifications</button>
             <button class="toolBtn dangerTool" @click="hardResetApp">💣 Hard Reset (Local)</button>
@@ -333,7 +333,7 @@
             <button class="room" :class="{ on: chatRoom === 'support' }" @click="selectChat('support')">🛠 support</button>
             <button class="room" :class="{ on: chatRoom === 'dev' }" @click="selectChat('dev')">💻 dev</button>
             <button class="room" :class="{ on: chatRoom === 'random' }" @click="selectChat('random')">🎲 random</button>
-            <button class="toolBtn" @click="router.push('/call-rooms')">📞 Open Call Rooms</button>
+            <button class="mode" @click="router.push('/call-rooms')">📞 Call Rooms</button>
             <div class="rooms-hint">Real-time chat via Socket.io</div>
           </aside>
 
