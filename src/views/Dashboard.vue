@@ -240,7 +240,8 @@
             <button class="toolBtn" @click="setFeedMode('reels')">🎞️ Go Reels</button>
             <button class="toolBtn" @click="setFeedMode('rooms')">🎧 Go Rooms</button>
             <button class="toolBtn" @click="setFeedMode('live')">🔴 Go Live Tab</button>
-
+            
+        
             <button class="toolBtn" @click="scrollToTop">⬆️ Scroll Top</button>
             <button class="toolBtn" @click="focusComposer">✍️ Focus Composer</button>
             <button class="toolBtn" @click="clearDraft">🧹 Clear Draft</button>
@@ -332,6 +333,7 @@
             <button class="room" :class="{ on: chatRoom === 'support' }" @click="selectChat('support')">🛠 support</button>
             <button class="room" :class="{ on: chatRoom === 'dev' }" @click="selectChat('dev')">💻 dev</button>
             <button class="room" :class="{ on: chatRoom === 'random' }" @click="selectChat('random')">🎲 random</button>
+            <button class="mode" @click="router.push('/call-rooms')">📞 Call Rooms</button>
             <div class="rooms-hint">Real-time chat via Socket.io</div>
           </aside>
 
