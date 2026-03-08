@@ -333,7 +333,7 @@
             <button class="room" :class="{ on: chatRoom === 'support' }" @click="selectChat('support')">🛠 support</button>
             <button class="room" :class="{ on: chatRoom === 'dev' }" @click="selectChat('dev')">💻 dev</button>
             <button class="room" :class="{ on: chatRoom === 'random' }" @click="selectChat('random')">🎲 random</button>
-            <button class="mode" @click="router.push('/call-rooms')">📞 Call Rooms</button>
+            <button class="toolBtn" @click="router.push('/call-rooms')">📞 Open Call Rooms</button>
             <div class="rooms-hint">Real-time chat via Socket.io</div>
           </aside>
 
