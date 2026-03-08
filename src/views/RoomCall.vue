@@ -6,7 +6,6 @@
       <div class="bg-orb orb2"></div>
       <div class="bg-orb orb3"></div>
 
-      <!-- TOP -->
       <header class="topbar glassy">
         <div class="left">
           <button class="iconBtn" @click="goBack">←</button>
@@ -29,11 +28,10 @@
 
         <div class="right">
           <button class="chip" @click="copyRoomLink">🔗 Share</button>
-          <button class="chip ghost" @click="refreshRoom">↻ Refresh</button>
+          <button class="chip ghost" @click="refreshRoom" :disabled="!socketReady">↻ Refresh</button>
         </div>
       </header>
 
-      <!-- INFO STRIP -->
       <section class="infoStrip">
         <div class="miniCard glassy">
           <div class="miniLabel">You</div>
@@ -46,8 +44,8 @@
         </div>
 
         <div class="miniCard glassy">
-          <div class="miniLabel">Connection</div>
-          <div class="miniValue">{{ socketConnected ? "Connected" : "Reconnecting..." }}</div>
+          <div class="miniLabel">Socket</div>
+          <div class="miniValue">{{ socketConnected ? "Connected" : "Connecting..." }}</div>
         </div>
 
         <div class="miniCard glassy">
@@ -56,10 +54,16 @@
         </div>
       </section>
 
-      <!-- MAIN -->
       <main class="main">
+        <div v-if="fatalError" class="banner error glassy">
+          {{ fatalError }}
+        </div>
+
+        <div v-else-if="booting" class="banner glassy">
+          Loading room…
+        </div>
+
         <section class="stageWrap">
-          <!-- PARTICIPANT SIDEBAR -->
           <aside class="participants glassy">
             <div class="panelHead">
               <div class="panelTitle">👥 Participants</div>
@@ -72,7 +76,7 @@
             <div v-else class="participantList">
               <div
                 v-for="p in participants"
-                :key="p.userId"
+                :key="String(p.userId)"
                 class="participantItem"
                 :class="{ me: isMe(p.userId) }"
               >
@@ -96,7 +100,6 @@
             </div>
           </aside>
 
-          <!-- VIDEO GRID -->
           <section class="videoArea">
             <div class="grid" :class="gridClass">
               <!-- LOCAL -->
@@ -141,7 +144,7 @@
 
                   <div class="statePills">
                     <span v-if="peer.isHost" class="miniPill host">Host</span>
-                    <span class="miniPill ok">{{ peer.connectionState || "connected" }}</span>
+                    <span class="miniPill ok">{{ peer.connectionState || "connecting" }}</span>
                   </div>
                 </div>
 
@@ -171,9 +174,8 @@
         </section>
       </main>
 
-      <!-- CONTROLS -->
       <footer class="controls glassy">
-        <button class="controlBtn" :class="{ off: micMuted }" @click="toggleMic" :disabled="!localStream">
+        <button class="controlBtn" :class="{ off: micMuted }" @click="toggleMic" :disabled="!localStream || !joined">
           {{ micMuted ? "🎙 Off" : "🎙 Mic" }}
         </button>
 
@@ -182,7 +184,7 @@
           class="controlBtn"
           :class="{ off: cameraOff }"
           @click="toggleCamera"
-          :disabled="!localStream"
+          :disabled="!localStream || !joined"
         >
           {{ cameraOff ? "📷 Off" : "📷 Camera" }}
         </button>
@@ -191,7 +193,7 @@
           v-if="roomKind === 'video'"
           class="controlBtn"
           @click="switchCamera"
-          :disabled="!localStream || switchingCamera"
+          :disabled="!localStream || !joined || switchingCamera"
         >
           {{ switchingCamera ? "Switching…" : "🔄 Switch" }}
         </button>
@@ -200,7 +202,12 @@
           🔗 Invite
         </button>
 
-        <button v-if="!joined" class="controlBtn primary" @click="joinRoom" :disabled="joining">
+        <button
+          v-if="!joined"
+          class="controlBtn primary"
+          @click="joinRoom"
+          :disabled="joining || !socketReady || !!fatalError"
+        >
           {{ joining ? "Joining…" : "Join Room" }}
         </button>
 
@@ -232,6 +239,9 @@ const roomId = ref(String(route.query.roomId || ""))
 const roomName = ref(String(route.query.name || "Call Room"))
 const roomKind = ref(String(route.query.kind || "video"))
 
+const booting = ref(true)
+const fatalError = ref("")
+const socketReady = ref(false)
 const socketConnected = ref(false)
 const statusText = ref("Ready")
 const joining = ref(false)
@@ -247,12 +257,6 @@ const switchingCamera = ref(false)
 const socketRef = ref(null)
 const participants = ref([])
 
-/**
- * pcByUserId:
- * {
- *   [userId]: { pc, stream, name, username, connectionState, isHost }
- * }
- */
 const pcByUserId = ref({})
 const remoteVideoEls = ref({})
 
@@ -316,15 +320,30 @@ function wireSocket() {
 
   socket.on("connect", () => {
     socketConnected.value = true
+    socketReady.value = true
     statusText.value = joined.value ? "Connected" : "Ready"
+
+    if (me?.id) {
+      const username = me?.username || me?.display_name || me?.name || me?.email || `User${me.id}`
+      socket.emit("user:online", { userId: String(me.id), username })
+      socket.emit("register-user", { id: String(me.id), username })
+    }
+
+    if (roomId.value) {
+      socket.emit("callroom:get", { roomId: roomId.value })
+    }
   })
 
   socket.on("disconnect", () => {
     socketConnected.value = false
+    socketReady.value = false
     statusText.value = "Reconnecting..."
   })
 
   socket.on("callroom:error", ({ message } = {}) => {
+    fatalError.value = message || "Room error"
+    joining.value = false
+    booting.value = false
     statusText.value = message || "Room error"
   })
 
@@ -334,19 +353,15 @@ function wireSocket() {
     if (payload.kind) roomKind.value = payload.kind
 
     participants.value = Array.isArray(payload.participants) ? payload.participants : []
-    joined.value = true
-    joining.value = false
-    statusText.value = "Joined"
+    booting.value = false
 
-    const otherUsers = participants.value.filter((p) => String(p.userId) !== myUserId.value)
+    if (joined.value) {
+      statusText.value = "Joined"
+    }
 
-    for (const p of otherUsers) {
+    const others = participants.value.filter((p) => String(p.userId) !== myUserId.value)
+    for (const p of others) {
       await ensurePeerConnection(String(p.userId), p)
-
-      // Offer from current user to any peer not yet connected if I joined after
-      if (!pcByUserId.value[String(p.userId)]?.remoteDescriptionSet) {
-        await makeOfferTo(String(p.userId))
-      }
     }
   })
 
@@ -358,7 +373,10 @@ function wireSocket() {
     statusText.value = `${payload.name || "Someone"} joined`
 
     await ensurePeerConnection(userId, payload)
-    await makeOfferTo(userId)
+
+    if (joined.value) {
+      await makeOfferTo(userId)
+    }
   })
 
   socket.on("callroom:user-left", ({ userId } = {}) => {
@@ -391,7 +409,7 @@ function wireSocket() {
         answer: item.pc.localDescription,
       })
     } catch (err) {
-      console.error("room offer error", err)
+      console.error("callroom offer error", err)
     }
   })
 
@@ -406,7 +424,7 @@ function wireSocket() {
       await item.pc.setRemoteDescription(new RTCSessionDescription(answer))
       item.remoteDescriptionSet = true
     } catch (err) {
-      console.error("room answer error", err)
+      console.error("callroom answer error", err)
     }
   })
 
@@ -420,7 +438,7 @@ function wireSocket() {
     try {
       await item.pc.addIceCandidate(new RTCIceCandidate(candidate))
     } catch (err) {
-      console.error("room ice error", err)
+      console.error("callroom ice error", err)
     }
   })
 }
@@ -481,7 +499,6 @@ async function switchCamera() {
     const newVideoTrack = newStream.getVideoTracks()[0]
     if (!newVideoTrack) return
 
-    // replace for all peers
     for (const userId of Object.keys(pcByUserId.value)) {
       const sender = pcByUserId.value[userId]?.pc
         ?.getSenders()
@@ -502,6 +519,7 @@ async function switchCamera() {
     }
 
     cameraOff.value = false
+    emitMediaState()
   } catch (err) {
     console.error("switch camera error", err)
   } finally {
@@ -515,6 +533,7 @@ function toggleMic() {
   localStream.value.getAudioTracks().forEach((t) => {
     t.enabled = !micMuted.value
   })
+  emitMediaState()
 }
 
 function toggleCamera() {
@@ -522,6 +541,15 @@ function toggleCamera() {
   cameraOff.value = !cameraOff.value
   localStream.value.getVideoTracks().forEach((t) => {
     t.enabled = !cameraOff.value
+  })
+  emitMediaState()
+}
+
+function emitMediaState() {
+  socketRef.value?.emit("callroom:media-state", {
+    roomId: roomId.value,
+    micOn: !micMuted.value,
+    camOn: roomKind.value === "video" ? !cameraOff.value : false,
   })
 }
 
@@ -640,6 +668,7 @@ async function makeOfferTo(userId) {
       meta: {
         userId: myUserId.value,
         name: myName.value,
+        username: me?.username || myName.value,
       },
     })
   } catch (err) {
@@ -650,34 +679,42 @@ async function makeOfferTo(userId) {
 /* =========================
    ROOM FLOW
 ========================= */
-async function refreshRoom() {
-  if (!roomId.value) return
+function refreshRoom() {
+  if (!roomId.value || !socketReady.value) return
   socketRef.value?.emit("callroom:get", { roomId: roomId.value })
 }
 
 async function joinRoom() {
   if (!roomId.value) {
-    alert("Missing roomId")
+    fatalError.value = "Missing room id."
+    return
+  }
+  if (!socketReady.value) {
+    statusText.value = "Socket not ready yet"
     return
   }
 
   joining.value = true
+  fatalError.value = ""
   statusText.value = "Getting media..."
 
   try {
     await ensureLocalMedia()
     statusText.value = "Joining..."
     socketRef.value?.emit("callroom:join", { roomId: roomId.value })
+    joined.value = true
+    joining.value = false
+    emitMediaState()
   } catch (err) {
     console.error("joinRoom error", err)
     joining.value = false
     statusText.value = "Could not join"
-    alert("Camera/mic permission failed.")
+    fatalError.value = "Camera/mic permission failed or browser blocked media access."
   }
 }
 
 function leaveRoom() {
-  if (roomId.value) {
+  if (roomId.value && joined.value) {
     socketRef.value?.emit("callroom:leave", { roomId: roomId.value })
   }
   cleanupAll()
@@ -689,7 +726,7 @@ function goBack() {
 }
 
 async function copyRoomLink() {
-  const url = `${window.location.origin}/#/room-call?roomId=${encodeURIComponent(roomId.value)}`
+  const url = `${window.location.origin}/room-call?roomId=${encodeURIComponent(roomId.value)}`
   try {
     await navigator.clipboard.writeText(url)
     statusText.value = "Room link copied"
@@ -741,15 +778,14 @@ function cleanupAll() {
    LIFECYCLE
 ========================= */
 onMounted(async () => {
+  if (!roomId.value) {
+    fatalError.value = "Missing roomId in URL."
+    booting.value = false
+    return
+  }
+
   wireSocket()
   await nextTick()
-
-  if (roomId.value) {
-    refreshRoom()
-    await joinRoom()
-  } else {
-    statusText.value = "Missing room id"
-  }
 })
 
 onBeforeUnmount(() => {
@@ -934,6 +970,17 @@ onBeforeUnmount(() => {
   position: relative;
   z-index: 2;
   padding: 0 16px 16px;
+}
+
+.banner {
+  margin-bottom: 14px;
+  border-radius: 18px;
+  padding: 14px 16px;
+  font-weight: 800;
+}
+.banner.error {
+  border-color: rgba(255,80,80,0.35);
+  background: rgba(255,80,80,0.14);
 }
 
 .stageWrap {
