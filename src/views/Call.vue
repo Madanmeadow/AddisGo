@@ -54,6 +54,9 @@
           <div v-if="showRemotePlaceholder" class="video-placeholder">
             <div class="avatar-big">{{ remoteInitial }}</div>
             <div class="placeholder-name">{{ callPartnerName }}</div>
+            <div class="placeholder-sub">
+              {{ remoteVideoOff ? "Camera off" : remoteAudioOnly ? "Audio only" : "Waiting for video..." }}
+            </div>
           </div>
         </section>
 
@@ -73,6 +76,9 @@
           <div v-if="showLocalPlaceholder" class="video-placeholder">
             <div class="avatar-big">{{ myInitial }}</div>
             <div class="placeholder-name">You</div>
+            <div class="placeholder-sub">
+              {{ cameraOff ? "Camera off" : isAudioOnly ? "Audio only" : "Preparing camera..." }}
+            </div>
           </div>
         </section>
       </main>
@@ -105,6 +111,14 @@
           :disabled="!localStream || switchingCamera"
         >
           {{ switchingCamera ? "Switching…" : "Switch" }}
+        </button>
+
+        <button
+          class="control-btn"
+          @click="recoverMedia"
+          :disabled="recoveringMedia"
+        >
+          {{ recoveringMedia ? "Recovering…" : "Recover" }}
         </button>
 
         <button
@@ -174,6 +188,7 @@ const inCall = ref(false)
 const micMuted = ref(false)
 const cameraOff = ref(kind.value === "audio")
 const switchingCamera = ref(false)
+const recoveringMedia = ref(false)
 const currentFacingMode = ref("user")
 
 const hasRemoteDescription = ref(false)
@@ -182,6 +197,8 @@ const hasJoinedRoom = ref(false)
 const madeOffer = ref(false)
 const requestSent = ref(false)
 const reconnectAttempted = ref(false)
+const negotiationBusy = ref(false)
+const makingOffer = ref(false)
 
 const statusText = ref("Ready")
 const hostUserId = ref("")
@@ -192,6 +209,11 @@ const pendingCandidates = []
 const callStartedAt = ref(null)
 const callSeconds = ref(0)
 let callTimer = null
+
+const remoteAudioOnly = ref(false)
+const remoteVideoOff = ref(false)
+
+let statsTimer = null
 
 const {
   syncCallOverlay,
@@ -226,7 +248,7 @@ const formattedDuration = computed(() => {
 const showRemotePlaceholder = computed(() => {
   if (isAudioOnly.value) return true
   const track = remoteStream.value?.getVideoTracks?.()?.[0]
-  return !track || track.readyState !== "live"
+  return !track || track.readyState !== "live" || !track.enabled
 })
 
 const showLocalPlaceholder = computed(() => {
@@ -249,6 +271,30 @@ const callerInitial = computed(() => {
   const name = incomingCall.value?.fromName || "C"
   return String(name).trim().charAt(0).toUpperCase() || "C"
 })
+
+/* =========================
+   HELPERS
+========================= */
+function getMyUserId() {
+  return String(me?.id || "")
+}
+
+function isOfferOwner() {
+  const myUserId = getMyUserId()
+  return hostUserId.value ? hostUserId.value === myUserId : isCaller.value
+}
+
+function safePlay(videoEl) {
+  if (!videoEl) return
+  videoEl.play?.().catch(() => {})
+}
+
+function authHeaders(json = false) {
+  const h = {}
+  if (json) h["Content-Type"] = "application/json"
+  if (token) h["Authorization"] = `Bearer ${token}`
+  return h
+}
 
 /* =========================
    OVERLAY SYNC
@@ -287,13 +333,23 @@ function createSocket() {
     auth: token ? { token } : undefined,
     withCredentials: true,
     reconnection: true,
-    reconnectionAttempts: 20,
+    reconnectionAttempts: 30,
     reconnectionDelay: 1000,
     reconnectionDelayMax: 5000,
+    timeout: 20000,
   })
 
-  socket.value.on("connect", () => {
+  socket.value.on("connect", async () => {
     console.log("✅ socket connected", socket.value.id)
+
+    if (roomId.value && inCall.value) {
+      try {
+        joinCallRoom()
+        await maybeRecoverConnection("socket reconnect")
+      } catch (err) {
+        console.error("socket reconnect recovery error", err)
+      }
+    }
   })
 
   socket.value.on("disconnect", (reason) => {
@@ -345,8 +401,8 @@ function createSocket() {
     joinCallRoom()
   })
 
-  socket.value.on("call:peer-joined", async (data = {}) => {
-    console.log("👤 call:peer-joined", data)
+  socket.value.on("call:peer-joined", async () => {
+    console.log("👤 call:peer-joined")
     if (!pc.value) {
       await createPeerConnection()
     }
@@ -365,29 +421,9 @@ function createSocket() {
       await createPeerConnection()
     }
 
-    const myUserId = String(me?.id || "")
-    const callerOwnsOffer = hostUserId.value
-      ? hostUserId.value === myUserId
-      : isCaller.value
-
-    if (callerOwnsOffer && !madeOffer.value) {
+    if (isOfferOwner() && !madeOffer.value) {
       madeOffer.value = true
-
-      try {
-        const offer = await pc.value.createOffer({
-          offerToReceiveAudio: true,
-          offerToReceiveVideo: !isAudioOnly.value,
-        })
-
-        await pc.value.setLocalDescription(offer)
-
-        socket.value?.emit("call:webrtc:offer", {
-          roomId: roomId.value,
-          offer: pc.value.localDescription,
-        })
-      } catch (err) {
-        console.error("call:ready offer error", err)
-      }
+      await createAndSendOffer(false)
     }
   })
 
@@ -400,6 +436,17 @@ function createSocket() {
 
       if (!pc.value) {
         await createPeerConnection()
+      }
+
+      const offerCollision =
+        offer &&
+        makingOffer.value
+
+      const polite = !isOfferOwner()
+
+      if (offerCollision && !polite) {
+        console.log("Ignoring offer collision (impolite peer)")
+        return
       }
 
       await pc.value.setRemoteDescription(new RTCSessionDescription(offer))
@@ -424,11 +471,9 @@ function createSocket() {
 
     try {
       if (!pc.value) return
-
       await pc.value.setRemoteDescription(new RTCSessionDescription(answer))
       hasRemoteDescription.value = true
       await flushPendingIceCandidates()
-
       statusText.value = "Connected"
       markCallStarted()
     } catch (err) {
@@ -437,8 +482,6 @@ function createSocket() {
   })
 
   socket.value.on("call:webrtc:ice", async ({ candidate } = {}) => {
-    console.log("🧊 got ice")
-
     try {
       if (!candidate || !pc.value) return
 
@@ -476,7 +519,7 @@ function createSocket() {
 async function getIceServers() {
   try {
     const res = await fetch(`${API_BASE}/api/turn`, {
-      headers: token ? { Authorization: `Bearer ${token}` } : {},
+      headers: authHeaders(false),
     })
 
     if (res.ok) {
@@ -493,6 +536,37 @@ async function getIceServers() {
     { urls: "stun:stun.l.google.com:19302" },
     { urls: "stun:stun1.l.google.com:19302" },
   ]
+}
+
+async function applySenderParameters() {
+  if (!pc.value) return
+
+  const senders = pc.value.getSenders()
+
+  for (const sender of senders) {
+    if (!sender?.track) continue
+
+    try {
+      const params = sender.getParameters() || {}
+      if (!params.encodings) params.encodings = [{}]
+
+      if (sender.track.kind === "video") {
+        params.degradationPreference = "balanced"
+        params.encodings[0].maxBitrate = 1200 * 1000
+        params.encodings[0].maxFramerate = 30
+        params.encodings[0].scaleResolutionDownBy = 1
+      }
+
+      if (sender.track.kind === "audio") {
+        params.degradationPreference = "maintain-framerate"
+        params.encodings[0].maxBitrate = 64 * 1000
+      }
+
+      await sender.setParameters(params)
+    } catch (err) {
+      console.log("sender parameter skip", err?.message || err)
+    }
+  }
 }
 
 async function createPeerConnection() {
@@ -528,9 +602,34 @@ async function createPeerConnection() {
 
     remoteStream.value = stream
 
+    const remoteVideoTrack = stream.getVideoTracks?.()[0]
+    const remoteAudioTrack = stream.getAudioTracks?.()[0]
+
+    remoteAudioOnly.value = !remoteVideoTrack
+    remoteVideoOff.value = remoteVideoTrack ? !remoteVideoTrack.enabled : true
+
+    if (remoteVideoTrack) {
+      remoteVideoTrack.onmute = () => {
+        remoteVideoOff.value = true
+      }
+      remoteVideoTrack.onunmute = () => {
+        remoteVideoOff.value = false
+      }
+      remoteVideoTrack.onended = async () => {
+        remoteVideoOff.value = true
+        await maybeRecoverConnection("remote video ended")
+      }
+    }
+
+    if (remoteAudioTrack) {
+      remoteAudioTrack.onended = async () => {
+        await maybeRecoverConnection("remote audio ended")
+      }
+    }
+
     if (remoteVideo.value) {
       remoteVideo.value.srcObject = stream
-      remoteVideo.value.play?.().catch(() => {})
+      safePlay(remoteVideo.value)
     }
 
     statusText.value = "Connected"
@@ -545,6 +644,7 @@ async function createPeerConnection() {
       reconnectAttempted.value = false
       statusText.value = "Connected"
       markCallStarted()
+      await applySenderParameters()
       return
     }
 
@@ -554,7 +654,6 @@ async function createPeerConnection() {
     }
 
     if (state === "disconnected") {
-      console.log("⚠️ Network lost, trying to reconnect…")
       statusText.value = "Reconnecting..."
       return
     }
@@ -562,25 +661,7 @@ async function createPeerConnection() {
     if (state === "failed" && !reconnectAttempted.value) {
       reconnectAttempted.value = true
       statusText.value = "Recovering..."
-
-      try {
-        const myUserId = String(me?.id || "")
-        const callerOwnsOffer = hostUserId.value
-          ? hostUserId.value === myUserId
-          : isCaller.value
-
-        if (callerOwnsOffer) {
-          const offer = await pc.value.createOffer({ iceRestart: true })
-          await pc.value.setLocalDescription(offer)
-
-          socket.value?.emit("call:webrtc:offer", {
-            roomId: roomId.value,
-            offer: pc.value.localDescription,
-          })
-        }
-      } catch (err) {
-        console.error("ICE restart failed", err)
-      }
+      await maybeRecoverConnection("connection failed")
       return
     }
 
@@ -589,46 +670,152 @@ async function createPeerConnection() {
     }
   }
 
-  pc.value.oniceconnectionstatechange = () => {
-    console.log("pc.iceConnectionState =", pc.value?.iceConnectionState)
+  pc.value.oniceconnectionstatechange = async () => {
+    const state = pc.value?.iceConnectionState
+    console.log("pc.iceConnectionState =", state)
+
+    if (state === "failed") {
+      statusText.value = "Recovering..."
+      await maybeRecoverConnection("ice failed")
+    } else if (state === "disconnected") {
+      statusText.value = "Reconnecting..."
+    }
+  }
+
+  pc.value.onnegotiationneeded = async () => {
+    if (!roomId.value || !isOfferOwner()) return
+    if (negotiationBusy.value) return
+
+    try {
+      negotiationBusy.value = true
+      await createAndSendOffer(false)
+    } catch (err) {
+      console.error("onnegotiationneeded error", err)
+    } finally {
+      negotiationBusy.value = false
+    }
+  }
+
+  await applySenderParameters()
+}
+
+async function createAndSendOffer(iceRestart = false) {
+  if (!pc.value || !socket.value || !roomId.value) return
+
+  try {
+    makingOffer.value = true
+
+    const offer = await pc.value.createOffer({
+      iceRestart,
+      offerToReceiveAudio: true,
+      offerToReceiveVideo: !isAudioOnly.value,
+    })
+
+    if (pc.value.signalingState !== "stable" && !iceRestart) {
+      console.log("Skipping offer because signalingState is not stable")
+      return
+    }
+
+    await pc.value.setLocalDescription(offer)
+
+    socket.value.emit("call:webrtc:offer", {
+      roomId: roomId.value,
+      offer: pc.value.localDescription,
+    })
+  } finally {
+    makingOffer.value = false
   }
 }
 
-async function ensureLocalMedia() {
-  if (localStream.value) return localStream.value
+function getAudioConstraints() {
+  return {
+    echoCancellation: true,
+    noiseSuppression: true,
+    autoGainControl: true,
+    channelCount: 1,
+    sampleRate: 48000,
+    sampleSize: 16,
+  }
+}
+
+function getVideoConstraints() {
+  if (isAudioOnly.value) return false
+
+  return {
+    facingMode: currentFacingMode.value,
+    width: { ideal: 1280, max: 1280 },
+    height: { ideal: 720, max: 720 },
+    frameRate: { ideal: 24, max: 30 },
+  }
+}
+
+async function enhanceLocalTracks(stream) {
+  const audioTrack = stream.getAudioTracks?.()[0]
+  const videoTrack = stream.getVideoTracks?.()[0]
+
+  if (audioTrack) {
+    audioTrack.onended = async () => {
+      console.log("Local audio track ended, recovering...")
+      await recoverMedia()
+    }
+  }
+
+  if (videoTrack) {
+    videoTrack.onended = async () => {
+      console.log("Local video track ended, recovering...")
+      if (!isAudioOnly.value && !cameraOff.value) {
+        await recoverMedia()
+      }
+    }
+
+    try {
+      await videoTrack.applyConstraints({
+        width: { ideal: 1280, max: 1280 },
+        height: { ideal: 720, max: 720 },
+        frameRate: { ideal: 24, max: 30 },
+      })
+    } catch (err) {
+      console.log("video applyConstraints skip", err?.message || err)
+    }
+  }
+}
+
+async function ensureLocalMedia(force = false) {
+  if (localStream.value && !force) return localStream.value
+
+  if (force && localStream.value) {
+    stopStream(localStream.value)
+    localStream.value = null
+  }
 
   const constraints = {
-    audio: {
-      echoCancellation: true,
-      noiseSuppression: true,
-      autoGainControl: true,
-    },
-    video: isAudioOnly.value
-      ? false
-      : {
-          facingMode: currentFacingMode.value,
-          width: { ideal: 1280 },
-          height: { ideal: 720 },
-          frameRate: { ideal: 24, max: 30 },
-        },
+    audio: getAudioConstraints(),
+    video: getVideoConstraints(),
   }
 
   const stream = await navigator.mediaDevices.getUserMedia(constraints)
+  await enhanceLocalTracks(stream)
+
   localStream.value = stream
 
   if (localVideo.value && !isAudioOnly.value) {
     localVideo.value.srcObject = stream
-    localVideo.value.play?.().catch(() => {})
+    safePlay(localVideo.value)
   }
 
   if (pc.value) {
     const senders = pc.value.getSenders()
-    stream.getTracks().forEach((track) => {
-      const alreadySending = senders.some((s) => s.track && s.track.kind === track.kind)
-      if (!alreadySending) {
+
+    for (const track of stream.getTracks()) {
+      const sender = senders.find((s) => s.track && s.track.kind === track.kind)
+      if (sender) {
+        await sender.replaceTrack(track)
+      } else {
         pc.value.addTrack(track, stream)
       }
-    })
+    }
+
+    await applySenderParameters()
   }
 
   return stream
@@ -657,8 +844,8 @@ async function switchCamera() {
       audio: false,
       video: {
         facingMode: currentFacingMode.value,
-        width: { ideal: 1280 },
-        height: { ideal: 720 },
+        width: { ideal: 1280, max: 1280 },
+        height: { ideal: 720, max: 720 },
         frameRate: { ideal: 24, max: 30 },
       },
     })
@@ -684,13 +871,19 @@ async function switchCamera() {
     })
 
     localStream.value = new MediaStream([...audioTracks, newVideoTrack])
+    await enhanceLocalTracks(localStream.value)
 
     if (localVideo.value) {
       localVideo.value.srcObject = localStream.value
-      localVideo.value.play?.().catch(() => {})
+      safePlay(localVideo.value)
     }
 
     cameraOff.value = false
+    await applySenderParameters()
+
+    if (isOfferOwner()) {
+      await createAndSendOffer(false)
+    }
   } catch (err) {
     console.error("switchCamera error", err)
   } finally {
@@ -708,6 +901,81 @@ async function flushPendingIceCandidates() {
     } catch (err) {
       console.error("flush candidate error", err)
     }
+  }
+}
+
+async function maybeRecoverConnection(reason = "") {
+  try {
+    console.log("Recovering connection because:", reason)
+
+    if (!pc.value) {
+      await createPeerConnection()
+    }
+
+    if (isOfferOwner()) {
+      await createAndSendOffer(true)
+    }
+  } catch (err) {
+    console.error("maybeRecoverConnection error", err)
+  }
+}
+
+async function recoverMedia() {
+  if (recoveringMedia.value) return
+
+  recoveringMedia.value = true
+  statusText.value = "Recovering media..."
+
+  try {
+    await ensureLocalMedia(true)
+
+    if (pc.value && isOfferOwner()) {
+      await createAndSendOffer(true)
+    }
+
+    statusText.value = "Connected"
+  } catch (err) {
+    console.error("recoverMedia error", err)
+    statusText.value = "Recovery failed"
+  } finally {
+    recoveringMedia.value = false
+  }
+}
+
+async function startStatsWatcher() {
+  stopStatsWatcher()
+
+  statsTimer = setInterval(async () => {
+    if (!pc.value) return
+
+    try {
+      const stats = await pc.value.getStats()
+      let inboundVideoFound = false
+      let inboundAudioFound = false
+
+      stats.forEach((report) => {
+        if (report.type === "inbound-rtp" && report.kind === "video") {
+          inboundVideoFound = true
+        }
+        if (report.type === "inbound-rtp" && report.kind === "audio") {
+          inboundAudioFound = true
+        }
+      })
+
+      remoteAudioOnly.value = inboundAudioFound && !inboundVideoFound
+      if (!inboundVideoFound && !isAudioOnly.value && inCall.value) {
+        remoteVideoOff.value = true
+      }
+    } catch (err) {
+      console.log("stats watcher skip", err?.message || err)
+    }
+  }, 4000)
+}
+
+function stopStatsWatcher() {
+  if (statsTimer) {
+    clearInterval(statsTimer)
+    statsTimer = null
   }
 }
 
@@ -732,23 +1000,25 @@ async function requestOutgoingCall() {
 }
 
 function joinCallRoom() {
-  if (!roomId.value || hasJoinedRoom.value) return
+  if (!roomId.value) return
   socket.value?.emit("call:join", { roomId: roomId.value })
   hasJoinedRoom.value = true
   statusText.value = "Joining..."
 }
 
 function markCallStarted() {
-  if (inCall.value) return
-
-  inCall.value = true
-  callStartedAt.value = Date.now()
+  if (!inCall.value) {
+    inCall.value = true
+    callStartedAt.value = Date.now()
+  }
 
   if (callTimer) clearInterval(callTimer)
   callTimer = setInterval(() => {
     if (!callStartedAt.value) return
     callSeconds.value = Math.floor((Date.now() - callStartedAt.value) / 1000)
   }, 1000)
+
+  startStatsWatcher()
 }
 
 async function acceptIncoming() {
@@ -801,7 +1071,7 @@ function toggleMic() {
   })
 }
 
-function toggleCamera() {
+async function toggleCamera() {
   if (!localStream.value) return
   const videoTracks = localStream.value.getVideoTracks()
   if (!videoTracks.length) return
@@ -810,6 +1080,10 @@ function toggleCamera() {
   videoTracks.forEach(track => {
     track.enabled = !cameraOff.value
   })
+
+  if (pc.value && isOfferOwner()) {
+    await createAndSendOffer(false)
+  }
 }
 
 function minimizeCurrentCall() {
@@ -866,6 +1140,7 @@ function cleanupPeer() {
       pc.value.onicecandidate = null
       pc.value.onconnectionstatechange = null
       pc.value.oniceconnectionstatechange = null
+      pc.value.onnegotiationneeded = null
       pc.value.close()
     } catch {}
     pc.value = null
@@ -878,6 +1153,8 @@ function cleanupPeer() {
 function cleanupAll() {
   if (cleaningUp.value) return
   cleaningUp.value = true
+
+  stopStatsWatcher()
 
   if (callTimer) {
     clearInterval(callTimer)
@@ -901,12 +1178,17 @@ function cleanupAll() {
   micMuted.value = false
   cameraOff.value = kind.value === "audio"
   switchingCamera.value = false
+  recoveringMedia.value = false
   statusText.value = "Ready"
   hasJoinedRoom.value = false
   madeOffer.value = false
   requestSent.value = false
   reconnectAttempted.value = false
   currentFacingMode.value = "user"
+  remoteAudioOnly.value = false
+  remoteVideoOff.value = false
+  negotiationBusy.value = false
+  makingOffer.value = false
 
   resetOverlay()
 
@@ -914,10 +1196,30 @@ function cleanupAll() {
 }
 
 /* =========================
-   GLOBAL EVENT
+   GLOBAL EVENTS
 ========================= */
 function onOverlayEndCall() {
   endCall()
+}
+
+async function onVisibilityChange() {
+  if (document.visibilityState === "visible" && inCall.value) {
+    try {
+      if (localVideo.value && localStream.value && !isAudioOnly.value) {
+        localVideo.value.srcObject = localStream.value
+        safePlay(localVideo.value)
+      }
+
+      if (remoteVideo.value && remoteStream.value && !isAudioOnly.value) {
+        remoteVideo.value.srcObject = remoteStream.value
+        safePlay(remoteVideo.value)
+      }
+
+      await maybeRecoverConnection("tab visible")
+    } catch (err) {
+      console.error("visibility recovery error", err)
+    }
+  }
 }
 
 /* =========================
@@ -926,6 +1228,7 @@ function onOverlayEndCall() {
 onMounted(async () => {
   try {
     window.addEventListener("pulse:end-call", onOverlayEndCall)
+    document.addEventListener("visibilitychange", onVisibilityChange)
 
     createSocket()
     await nextTick()
@@ -947,6 +1250,7 @@ onMounted(async () => {
 
 onBeforeUnmount(() => {
   window.removeEventListener("pulse:end-call", onOverlayEndCall)
+  document.removeEventListener("visibilitychange", onVisibilityChange)
 
   cleanupAll()
 
@@ -1118,7 +1422,7 @@ onBeforeUnmount(() => {
   display: grid;
   place-items: center;
   align-content: center;
-  gap: 14px;
+  gap: 10px;
   background:
     radial-gradient(circle at 50% 20%, rgba(255, 255, 255, 0.08), transparent 24%),
     linear-gradient(180deg, rgba(255,255,255,0.04), rgba(255,255,255,0.02));
@@ -1140,6 +1444,11 @@ onBeforeUnmount(() => {
   font-size: 16px;
   font-weight: 700;
   opacity: 0.92;
+}
+
+.placeholder-sub {
+  font-size: 13px;
+  opacity: 0.72;
 }
 
 .controls {
