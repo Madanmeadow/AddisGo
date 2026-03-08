@@ -663,6 +663,7 @@ onBeforeUnmount(() => {
   color: rgba(255,255,255,0.98);
   display: -webkit-box;
   -webkit-line-clamp: 2;
+  line-clamp: 2;
   -webkit-box-orient: vertical;
   overflow: hidden;
   max-width: 100%;
@@ -671,6 +672,7 @@ onBeforeUnmount(() => {
 .tt-caption.expanded {
   display: block;
   -webkit-line-clamp: unset;
+  line-clamp: unset;
   overflow: visible;
 }
 

@@ -645,6 +645,7 @@ room shape:
   participants: Map<userId, {
     userId,
     username,
+    name,
     socketId,
     joinedAt,
     micOn,
@@ -652,6 +653,28 @@ room shape:
   }>
 }
 */
+
+function roomTarget(roomId) {
+  return `callroom:${String(roomId)}`;
+}
+
+function getRoomParticipant(room, userId) {
+  return room?.participants?.get(String(userId)) || null;
+}
+
+function normalizeCallRoomParticipant(room, p) {
+  return {
+    userId: String(p.userId),
+    username: p.username || `User${p.userId}`,
+    name: p.name || p.username || `User ${p.userId}`,
+    socketId: p.socketId,
+    joinedAt: p.joinedAt,
+    micOn: !!p.micOn,
+    camOn: !!p.camOn,
+    isHost: String(p.userId) === String(room.hostUserId),
+    connected: true,
+  };
+}
 
 function emitCallRoomList(toSocket = null) {
   const rooms = Array.from(callRooms.values()).map((r) => ({
@@ -671,17 +694,11 @@ function emitCallRoomState(roomId) {
   const room = callRooms.get(String(roomId));
   if (!room) return;
 
-  const participants = Array.from(room.participants.values()).map((p) => ({
-    userId: String(p.userId),
-    username: p.username || `User${p.userId}`,
-    socketId: p.socketId,
-    joinedAt: p.joinedAt,
-    micOn: !!p.micOn,
-    camOn: !!p.camOn,
-    isHost: String(p.userId) === String(room.hostUserId),
-  }));
+  const participants = Array.from(room.participants.values()).map((p) =>
+    normalizeCallRoomParticipant(room, p)
+  );
 
-  io.to(`callroom:${roomId}`).emit("callroom:state", {
+  io.to(roomTarget(roomId)).emit("callroom:state", {
     roomId: String(room.roomId),
     name: room.name,
     kind: room.kind,
@@ -698,9 +715,17 @@ function removeParticipantFromCallRooms(socket) {
     if (!room.participants.has(meId)) continue;
 
     room.participants.delete(meId);
-    socket.leave(`callroom:${roomId}`);
+    socket.leave(roomTarget(roomId));
 
-    socket.to(`callroom:${roomId}`).emit("callroom:peer-left", {
+    socket.to(roomTarget(roomId)).emit("callroom:user-left", {
+      roomId: String(roomId),
+      userId: String(meId),
+      name: socket.data.user?.username || `User ${meId}`,
+      username: socket.data.user?.username || `User${meId}`,
+      socketId: socket.id,
+    });
+
+    socket.to(roomTarget(roomId)).emit("callroom:peer-left", {
       roomId: String(roomId),
       userId: String(meId),
       socketId: socket.id,
@@ -731,7 +756,7 @@ function removeParticipantFromCallRooms(socket) {
 ========================= */
 io.on("connection", (socket) => {
   logSOCK("Socket connected:", socket.id);
-  socket.data.user = null;
+  socket.data.user = socket.data.user || null;
 
   /* ✅ Auto-register if JWT auth succeeded */
   if (socket.userId) {
@@ -1169,6 +1194,25 @@ io.on("connection", (socket) => {
     emitCallRoomList(socket);
   });
 
+  socket.on("callroom:get", ({ roomId } = {}) => {
+    const room = callRooms.get(String(roomId));
+    if (!room) {
+      return socket.emit("callroom:error", { message: "Room not found." });
+    }
+
+    const participants = Array.from(room.participants.values()).map((p) =>
+      normalizeCallRoomParticipant(room, p)
+    );
+
+    socket.emit("callroom:state", {
+      roomId: String(room.roomId),
+      name: room.name,
+      kind: room.kind,
+      hostUserId: String(room.hostUserId || ""),
+      participants,
+    });
+  });
+
   socket.on("callroom:create", ({ name, kind = "audio" } = {}) => {
     const me = socket.data.user;
     if (!me?.id) {
@@ -1196,6 +1240,7 @@ io.on("connection", (socket) => {
     room.participants.set(userId, {
       userId,
       username: me.username || `User${userId}`,
+      name: me.username || `User ${userId}`,
       socketId: socket.id,
       joinedAt: new Date().toISOString(),
       micOn: true,
@@ -1203,7 +1248,7 @@ io.on("connection", (socket) => {
     });
 
     callRooms.set(roomId, room);
-    socket.join(`callroom:${roomId}`);
+    socket.join(roomTarget(roomId));
 
     socket.emit("callroom:created", {
       roomId,
@@ -1232,6 +1277,7 @@ io.on("connection", (socket) => {
     room.participants.set(userId, {
       userId,
       username: me.username || `User${userId}`,
+      name: me.username || `User ${userId}`,
       socketId: socket.id,
       joinedAt: new Date().toISOString(),
       micOn: true,
@@ -1239,14 +1285,19 @@ io.on("connection", (socket) => {
     });
 
     callRooms.set(String(roomId), room);
-    socket.join(`callroom:${roomId}`);
+    socket.join(roomTarget(roomId));
 
-    socket.to(`callroom:${roomId}`).emit("callroom:peer-joined", {
+    const joinedPayload = {
       roomId: String(roomId),
       userId,
-      socketId: socket.id,
+      name: me.username || `User ${userId}`,
       username: me.username || `User${userId}`,
-    });
+      socketId: socket.id,
+      isHost: String(room.hostUserId) === userId,
+    };
+
+    socket.to(roomTarget(roomId)).emit("callroom:user-joined", joinedPayload);
+    socket.to(roomTarget(roomId)).emit("callroom:peer-joined", joinedPayload);
 
     emitCallRoomState(roomId);
     emitCallRoomList();
@@ -1262,13 +1313,18 @@ io.on("connection", (socket) => {
 
     const userId = String(me.id);
     room.participants.delete(userId);
-    socket.leave(`callroom:${roomId}`);
+    socket.leave(roomTarget(roomId));
 
-    socket.to(`callroom:${roomId}`).emit("callroom:peer-left", {
+    const leftPayload = {
       roomId: String(roomId),
       userId,
+      name: me.username || `User ${userId}`,
+      username: me.username || `User${userId}`,
       socketId: socket.id,
-    });
+    };
+
+    socket.to(roomTarget(roomId)).emit("callroom:user-left", leftPayload);
+    socket.to(roomTarget(roomId)).emit("callroom:peer-left", leftPayload);
 
     if (room.participants.size === 0) {
       callRooms.delete(String(roomId));
@@ -1310,29 +1366,48 @@ io.on("connection", (socket) => {
     emitCallRoomState(roomId);
   });
 
-  socket.on("callroom:webrtc:offer", ({ roomId, to, offer } = {}) => {
-    if (!roomId || !to || !offer) return;
-    io.to(String(to)).emit("callroom:webrtc:offer", {
+  socket.on("callroom:webrtc:offer", ({ roomId, toUserId, offer, meta } = {}) => {
+    if (!roomId || !toUserId || !offer) return;
+
+    const fromUserId = socket.data.user?.id ? String(socket.data.user.id) : null;
+    const fromName =
+      meta?.name ||
+      socket.data.user?.username ||
+      (fromUserId ? `User ${fromUserId}` : "User");
+
+    io.to(`user:${String(toUserId)}`).emit("callroom:webrtc:offer", {
       roomId: String(roomId),
-      from: socket.id,
+      fromUserId,
+      fromName,
       offer,
+      meta: {
+        userId: fromUserId,
+        name: fromName,
+        username: socket.data.user?.username || fromName,
+      },
     });
   });
 
-  socket.on("callroom:webrtc:answer", ({ roomId, to, answer } = {}) => {
-    if (!roomId || !to || !answer) return;
-    io.to(String(to)).emit("callroom:webrtc:answer", {
+  socket.on("callroom:webrtc:answer", ({ roomId, toUserId, answer } = {}) => {
+    if (!roomId || !toUserId || !answer) return;
+
+    const fromUserId = socket.data.user?.id ? String(socket.data.user.id) : null;
+
+    io.to(`user:${String(toUserId)}`).emit("callroom:webrtc:answer", {
       roomId: String(roomId),
-      from: socket.id,
+      fromUserId,
       answer,
     });
   });
 
-  socket.on("callroom:webrtc:ice", ({ roomId, to, candidate } = {}) => {
-    if (!roomId || !to || !candidate) return;
-    io.to(String(to)).emit("callroom:webrtc:ice", {
+  socket.on("callroom:webrtc:ice", ({ roomId, toUserId, candidate } = {}) => {
+    if (!roomId || !toUserId || !candidate) return;
+
+    const fromUserId = socket.data.user?.id ? String(socket.data.user.id) : null;
+
+    io.to(`user:${String(toUserId)}`).emit("callroom:webrtc:ice", {
       roomId: String(roomId),
-      from: socket.id,
+      fromUserId,
       candidate,
     });
   });
