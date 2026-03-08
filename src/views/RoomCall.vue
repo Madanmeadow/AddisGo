@@ -6,6 +6,7 @@
       <div class="bg-orb orb2"></div>
       <div class="bg-orb orb3"></div>
 
+      <!-- TOP -->
       <header class="topbar glassy">
         <div class="left">
           <button class="iconBtn" @click="goBack">←</button>
@@ -28,10 +29,13 @@
 
         <div class="right">
           <button class="chip" @click="copyRoomLink">🔗 Share</button>
-          <button class="chip ghost" @click="refreshRoom" :disabled="!socketReady">↻ Refresh</button>
+          <button class="chip ghost" @click="joinRoom" :disabled="joining || !socketConnected || joined">
+            {{ joining ? "Joining…" : joined ? "Joined" : "Join" }}
+          </button>
         </div>
       </header>
 
+      <!-- INFO STRIP -->
       <section class="infoStrip">
         <div class="miniCard glassy">
           <div class="miniLabel">You</div>
@@ -44,8 +48,8 @@
         </div>
 
         <div class="miniCard glassy">
-          <div class="miniLabel">Socket</div>
-          <div class="miniValue">{{ socketConnected ? "Connected" : "Connecting..." }}</div>
+          <div class="miniLabel">Connection</div>
+          <div class="miniValue">{{ socketConnected ? "Connected" : "Reconnecting..." }}</div>
         </div>
 
         <div class="miniCard glassy">
@@ -54,16 +58,15 @@
         </div>
       </section>
 
+      <!-- ALERTS -->
+      <section v-if="errorText" class="alertBox glassy">
+        {{ errorText }}
+      </section>
+
+      <!-- MAIN -->
       <main class="main">
-        <div v-if="fatalError" class="banner error glassy">
-          {{ fatalError }}
-        </div>
-
-        <div v-else-if="booting" class="banner glassy">
-          Loading room…
-        </div>
-
         <section class="stageWrap">
+          <!-- PARTICIPANT SIDEBAR -->
           <aside class="participants glassy">
             <div class="panelHead">
               <div class="panelTitle">👥 Participants</div>
@@ -81,12 +84,12 @@
                 :class="{ me: isMe(p.userId) }"
               >
                 <div class="avatar">
-                  {{ getInitial(p.name || p.username || p.userId) }}
+                  {{ getInitial(p.username || p.userId) }}
                 </div>
 
                 <div class="meta">
                   <div class="nameRow">
-                    <span class="name">{{ p.name || p.username || `User ${p.userId}` }}</span>
+                    <span class="name">{{ p.username || `User ${p.userId}` }}</span>
                     <span v-if="isMe(p.userId)" class="mePill">You</span>
                     <span v-if="p.isHost" class="hostPill">Host</span>
                   </div>
@@ -100,6 +103,7 @@
             </div>
           </aside>
 
+          <!-- VIDEO GRID -->
           <section class="videoArea">
             <div class="grid" :class="gridClass">
               <!-- LOCAL -->
@@ -134,12 +138,12 @@
               <!-- REMOTES -->
               <article
                 v-for="peer in remotePeers"
-                :key="peer.userId"
+                :key="peer.socketId"
                 class="videoCard glassy"
               >
                 <div class="cardTop">
                   <div class="cardLabel">
-                    {{ peer.name || peer.username || `User ${peer.userId}` }}
+                    {{ peer.username || `User ${peer.userId}` }}
                   </div>
 
                   <div class="statePills">
@@ -149,8 +153,8 @@
                 </div>
 
                 <video
-                  v-if="roomKind === 'video' && peer.stream && hasRemoteVideo(peer.userId)"
-                  :ref="(el) => setRemoteVideoRef(peer.userId, el)"
+                  v-if="roomKind === 'video' && peer.stream && hasRemoteVideo(peer.socketId)"
+                  :ref="(el) => setRemoteVideoRef(peer.socketId, el)"
                   class="videoEl"
                   autoplay
                   playsinline
@@ -158,10 +162,10 @@
 
                 <div v-else class="placeholder">
                   <div class="bigAvatar">
-                    {{ getInitial(peer.name || peer.username || peer.userId) }}
+                    {{ getInitial(peer.username || peer.userId) }}
                   </div>
                   <div class="placeholderName">
-                    {{ peer.name || peer.username || `User ${peer.userId}` }}
+                    {{ peer.username || `User ${peer.userId}` }}
                   </div>
                 </div>
               </article>
@@ -174,6 +178,7 @@
         </section>
       </main>
 
+      <!-- CONTROLS -->
       <footer class="controls glassy">
         <button class="controlBtn" :class="{ off: micMuted }" @click="toggleMic" :disabled="!localStream || !joined">
           {{ micMuted ? "🎙 Off" : "🎙 Mic" }}
@@ -193,7 +198,7 @@
           v-if="roomKind === 'video'"
           class="controlBtn"
           @click="switchCamera"
-          :disabled="!localStream || !joined || switchingCamera"
+          :disabled="!localStream || switchingCamera || !joined"
         >
           {{ switchingCamera ? "Switching…" : "🔄 Switch" }}
         </button>
@@ -202,12 +207,7 @@
           🔗 Invite
         </button>
 
-        <button
-          v-if="!joined"
-          class="controlBtn primary"
-          @click="joinRoom"
-          :disabled="joining || !socketReady || !!fatalError"
-        >
+        <button v-if="!joined" class="controlBtn primary" @click="joinRoom" :disabled="joining || !socketConnected">
           {{ joining ? "Joining…" : "Join Room" }}
         </button>
 
@@ -231,6 +231,8 @@ const route = useRoute()
 const router = useRouter()
 
 const token = localStorage.getItem("token") || ""
+const apiUrl = (import.meta.env.VITE_API_URL || "").trim()
+
 const me = (() => {
   try { return JSON.parse(localStorage.getItem("user") || "null") } catch { return null }
 })()
@@ -239,11 +241,9 @@ const roomId = ref(String(route.query.roomId || ""))
 const roomName = ref(String(route.query.name || "Call Room"))
 const roomKind = ref(String(route.query.kind || "video"))
 
-const booting = ref(true)
-const fatalError = ref("")
-const socketReady = ref(false)
 const socketConnected = ref(false)
 const statusText = ref("Ready")
+const errorText = ref("")
 const joining = ref(false)
 const joined = ref(false)
 
@@ -257,7 +257,22 @@ const switchingCamera = ref(false)
 const socketRef = ref(null)
 const participants = ref([])
 
-const pcByUserId = ref({})
+/**
+ * peersBySocketId:
+ * {
+ *   [socketId]: {
+ *     socketId,
+ *     userId,
+ *     username,
+ *     isHost,
+ *     pc,
+ *     stream,
+ *     connectionState,
+ *     remoteDescriptionSet
+ *   }
+ * }
+ */
+const peersBySocketId = ref({})
 const remoteVideoEls = ref({})
 
 const myUserId = computed(() => String(me?.id || ""))
@@ -265,10 +280,7 @@ const myName = computed(() => me?.display_name || me?.username || "You")
 const participantCount = computed(() => participants.value.length)
 
 const remotePeers = computed(() =>
-  Object.entries(pcByUserId.value).map(([userId, item]) => ({
-    userId,
-    ...item,
-  }))
+  Object.values(peersBySocketId.value).filter((p) => String(p.userId) !== myUserId.value)
 )
 
 const gridClass = computed(() => {
@@ -294,21 +306,56 @@ function isMe(userId) {
   return String(userId) === myUserId.value
 }
 
-function setRemoteVideoRef(userId, el) {
+function setRemoteVideoRef(socketId, el) {
   if (!el) return
-  remoteVideoEls.value = { ...remoteVideoEls.value, [String(userId)]: el }
+  remoteVideoEls.value = { ...remoteVideoEls.value, [String(socketId)]: el }
 
-  const peer = pcByUserId.value[String(userId)]
+  const peer = peersBySocketId.value[String(socketId)]
   if (peer?.stream) {
     el.srcObject = peer.stream
     el.play?.().catch(() => {})
   }
 }
 
-function hasRemoteVideo(userId) {
-  const peer = pcByUserId.value[String(userId)]
+function hasRemoteVideo(socketId) {
+  const peer = peersBySocketId.value[String(socketId)]
   const track = peer?.stream?.getVideoTracks?.()?.[0]
   return !!track && track.readyState === "live"
+}
+
+function getParticipantBySocketId(socketId) {
+  return participants.value.find((p) => String(p.socketId) === String(socketId)) || null
+}
+
+function syncPeersFromParticipants() {
+  const next = { ...peersBySocketId.value }
+
+  for (const p of participants.value) {
+    const sid = String(p.socketId || "")
+    if (!sid) continue
+
+    const old = next[sid]
+    next[sid] = {
+      socketId: sid,
+      userId: String(p.userId || ""),
+      username: p.username || `User ${p.userId || "?"}`,
+      isHost: !!p.isHost,
+      pc: old?.pc || null,
+      stream: old?.stream || null,
+      connectionState: old?.connectionState || "new",
+      remoteDescriptionSet: old?.remoteDescriptionSet || false,
+    }
+  }
+
+  for (const sid of Object.keys(next)) {
+    const stillExists = participants.value.some((p) => String(p.socketId) === sid)
+    if (!stillExists) {
+      cleanupPeer(sid)
+      delete next[sid]
+    }
+  }
+
+  peersBySocketId.value = next
 }
 
 /* =========================
@@ -320,7 +367,6 @@ function wireSocket() {
 
   socket.on("connect", () => {
     socketConnected.value = true
-    socketReady.value = true
     statusText.value = joined.value ? "Connected" : "Ready"
 
     if (me?.id) {
@@ -328,23 +374,17 @@ function wireSocket() {
       socket.emit("user:online", { userId: String(me.id), username })
       socket.emit("register-user", { id: String(me.id), username })
     }
-
-    if (roomId.value) {
-      socket.emit("callroom:get", { roomId: roomId.value })
-    }
   })
 
   socket.on("disconnect", () => {
     socketConnected.value = false
-    socketReady.value = false
     statusText.value = "Reconnecting..."
   })
 
   socket.on("callroom:error", ({ message } = {}) => {
-    fatalError.value = message || "Room error"
-    joining.value = false
-    booting.value = false
+    errorText.value = message || "Room error"
     statusText.value = message || "Room error"
+    joining.value = false
   })
 
   socket.on("callroom:state", async (payload = {}) => {
@@ -353,47 +393,68 @@ function wireSocket() {
     if (payload.kind) roomKind.value = payload.kind
 
     participants.value = Array.isArray(payload.participants) ? payload.participants : []
-    booting.value = false
+    syncPeersFromParticipants()
 
-    if (joined.value) {
-      statusText.value = "Joined"
-    }
+    statusText.value = joined.value ? "Joined" : "Room ready"
 
-    const others = participants.value.filter((p) => String(p.userId) !== myUserId.value)
-    for (const p of others) {
-      await ensurePeerConnection(String(p.userId), p)
-    }
-  })
-
-  socket.on("callroom:user-joined", async (payload = {}) => {
-    const userId = String(payload.userId || "")
-    if (!userId || userId === myUserId.value) return
-
-    upsertParticipant(payload)
-    statusText.value = `${payload.name || "Someone"} joined`
-
-    await ensurePeerConnection(userId, payload)
-
-    if (joined.value) {
-      await makeOfferTo(userId)
+    for (const p of participants.value) {
+      const sid = String(p.socketId || "")
+      if (!sid) continue
+      if (String(p.userId) === myUserId.value) continue
+      await ensurePeerConnectionBySocketId(sid, p)
     }
   })
 
-  socket.on("callroom:user-left", ({ userId } = {}) => {
-    const uid = String(userId || "")
-    if (!uid) return
+  socket.on("callroom:peer-joined", async ({ roomId: incomingRoomId, userId, socketId, username } = {}) => {
+    if (incomingRoomId && String(incomingRoomId) !== roomId.value) return
+    if (!socketId) return
+    if (String(userId || "") === myUserId.value) return
 
-    participants.value = participants.value.filter((p) => String(p.userId) !== uid)
-    cleanupPeer(uid)
+    statusText.value = `${username || "Someone"} joined`
+
+    upsertParticipant({
+      userId: String(userId || ""),
+      socketId: String(socketId),
+      username: username || `User ${userId || "?"}`,
+      isHost: false,
+      connected: true,
+    })
+
+    await ensurePeerConnectionBySocketId(String(socketId), {
+      userId: String(userId || ""),
+      socketId: String(socketId),
+      username: username || `User ${userId || "?"}`,
+      isHost: false,
+    })
+
+    if (joined.value) {
+      await makeOfferToSocket(String(socketId))
+    }
+  })
+
+  socket.on("callroom:peer-left", ({ socketId } = {}) => {
+    const sid = String(socketId || "")
+    if (!sid) return
+
+    participants.value = participants.value.filter((p) => String(p.socketId) !== sid)
+    cleanupPeer(sid)
     statusText.value = "Participant left"
   })
 
-  socket.on("callroom:webrtc:offer", async ({ fromUserId, offer, meta } = {}) => {
-    const uid = String(fromUserId || "")
-    if (!uid || !offer) return
+  socket.on("callroom:webrtc:offer", async ({ from, offer } = {}) => {
+    const fromSocketId = String(from || "")
+    if (!fromSocketId || !offer) return
 
-    await ensurePeerConnection(uid, meta || {})
-    const item = pcByUserId.value[uid]
+    const participant = getParticipantBySocketId(fromSocketId)
+
+    await ensurePeerConnectionBySocketId(fromSocketId, {
+      socketId: fromSocketId,
+      userId: String(participant?.userId || ""),
+      username: participant?.username || `User ${participant?.userId || "?"}`,
+      isHost: !!participant?.isHost,
+    })
+
+    const item = peersBySocketId.value[fromSocketId]
     if (!item?.pc) return
 
     try {
@@ -405,7 +466,7 @@ function wireSocket() {
 
       socket.emit("callroom:webrtc:answer", {
         roomId: roomId.value,
-        toUserId: uid,
+        to: fromSocketId,
         answer: item.pc.localDescription,
       })
     } catch (err) {
@@ -413,11 +474,11 @@ function wireSocket() {
     }
   })
 
-  socket.on("callroom:webrtc:answer", async ({ fromUserId, answer } = {}) => {
-    const uid = String(fromUserId || "")
-    if (!uid || !answer) return
+  socket.on("callroom:webrtc:answer", async ({ from, answer } = {}) => {
+    const fromSocketId = String(from || "")
+    if (!fromSocketId || !answer) return
 
-    const item = pcByUserId.value[uid]
+    const item = peersBySocketId.value[fromSocketId]
     if (!item?.pc) return
 
     try {
@@ -428,11 +489,11 @@ function wireSocket() {
     }
   })
 
-  socket.on("callroom:webrtc:ice", async ({ fromUserId, candidate } = {}) => {
-    const uid = String(fromUserId || "")
-    if (!uid || !candidate) return
+  socket.on("callroom:webrtc:ice", async ({ from, candidate } = {}) => {
+    const fromSocketId = String(from || "")
+    if (!fromSocketId || !candidate) return
 
-    const item = pcByUserId.value[uid]
+    const item = peersBySocketId.value[fromSocketId]
     if (!item?.pc) return
 
     try {
@@ -469,8 +530,12 @@ async function ensureLocalMedia() {
   const stream = await navigator.mediaDevices.getUserMedia(constraints)
   localStream.value = stream
 
+  await nextTick()
+
   if (roomKind.value === "video" && localVideo.value) {
     localVideo.value.srcObject = stream
+    localVideo.value.muted = true
+    localVideo.value.playsInline = true
     localVideo.value.play?.().catch(() => {})
   }
 
@@ -499,8 +564,8 @@ async function switchCamera() {
     const newVideoTrack = newStream.getVideoTracks()[0]
     if (!newVideoTrack) return
 
-    for (const userId of Object.keys(pcByUserId.value)) {
-      const sender = pcByUserId.value[userId]?.pc
+    for (const sid of Object.keys(peersBySocketId.value)) {
+      const sender = peersBySocketId.value[sid]?.pc
         ?.getSenders()
         ?.find((s) => s.track?.kind === "video")
       if (sender) await sender.replaceTrack(newVideoTrack)
@@ -557,7 +622,6 @@ function emitMediaState() {
    WEBRTC
 ========================= */
 async function getIceServers() {
-  const apiUrl = (import.meta.env.VITE_API_URL || "").trim()
   try {
     const res = await fetch(`${apiUrl}/api/turn`, {
       headers: token ? { Authorization: `Bearer ${token}` } : {},
@@ -575,23 +639,33 @@ async function getIceServers() {
 }
 
 function upsertParticipant(payload) {
-  const uid = String(payload.userId || "")
-  if (!uid) return
+  const userId = String(payload.userId || "")
+  const socketId = String(payload.socketId || "")
+  if (!userId && !socketId) return
 
-  const existing = participants.value.find((p) => String(p.userId) === uid)
-  if (existing) {
-    Object.assign(existing, payload)
-    participants.value = [...participants.value]
+  const idx = participants.value.findIndex(
+    (p) =>
+      (socketId && String(p.socketId) === socketId) ||
+      (userId && String(p.userId) === userId)
+  )
+
+  if (idx >= 0) {
+    const clone = [...participants.value]
+    clone[idx] = { ...clone[idx], ...payload }
+    participants.value = clone
   } else {
     participants.value = [...participants.value, payload]
   }
+
+  syncPeersFromParticipants()
 }
 
-async function ensurePeerConnection(userId, meta = {}) {
-  const uid = String(userId)
-  if (!uid || uid === myUserId.value) return
+async function ensurePeerConnectionBySocketId(socketId, meta = {}) {
+  const sid = String(socketId || "")
+  if (!sid) return
 
-  if (pcByUserId.value[uid]?.pc) return pcByUserId.value[uid]
+  const existing = peersBySocketId.value[sid]
+  if (existing?.pc) return existing
 
   const iceServers = await getIceServers()
   const pc = new RTCPeerConnection({
@@ -600,18 +674,21 @@ async function ensurePeerConnection(userId, meta = {}) {
   })
 
   const peerItem = {
+    socketId: sid,
+    userId: String(meta.userId || ""),
+    username: meta.username || `User ${meta.userId || "?"}`,
+    isHost: !!meta.isHost,
     pc,
     stream: null,
-    name: meta.name || meta.username || `User ${uid}`,
-    username: meta.username || "",
-    isHost: !!meta.isHost,
     connectionState: "connecting",
     remoteDescriptionSet: false,
   }
 
   if (localStream.value) {
     localStream.value.getTracks().forEach((track) => {
-      pc.addTrack(track, localStream.value)
+      try {
+        pc.addTrack(track, localStream.value)
+      } catch {}
     })
   }
 
@@ -619,7 +696,7 @@ async function ensurePeerConnection(userId, meta = {}) {
     if (!event.candidate) return
     socketRef.value?.emit("callroom:webrtc:ice", {
       roomId: roomId.value,
-      toUserId: uid,
+      to: sid,
       candidate: event.candidate,
     })
   }
@@ -629,10 +706,10 @@ async function ensurePeerConnection(userId, meta = {}) {
     if (!stream) return
 
     peerItem.stream = stream
-    pcByUserId.value = { ...pcByUserId.value, [uid]: { ...peerItem } }
+    peersBySocketId.value = { ...peersBySocketId.value, [sid]: { ...peerItem } }
 
     nextTick(() => {
-      const el = remoteVideoEls.value[uid]
+      const el = remoteVideoEls.value[sid]
       if (el) {
         el.srcObject = stream
         el.play?.().catch(() => {})
@@ -642,16 +719,16 @@ async function ensurePeerConnection(userId, meta = {}) {
 
   pc.onconnectionstatechange = () => {
     peerItem.connectionState = pc.connectionState || "connecting"
-    pcByUserId.value = { ...pcByUserId.value, [uid]: { ...peerItem } }
+    peersBySocketId.value = { ...peersBySocketId.value, [sid]: { ...peerItem } }
   }
 
-  pcByUserId.value = { ...pcByUserId.value, [uid]: peerItem }
+  peersBySocketId.value = { ...peersBySocketId.value, [sid]: peerItem }
   return peerItem
 }
 
-async function makeOfferTo(userId) {
-  const uid = String(userId)
-  const item = pcByUserId.value[uid]
+async function makeOfferToSocket(socketId) {
+  const sid = String(socketId || "")
+  const item = peersBySocketId.value[sid]
   if (!item?.pc) return
 
   try {
@@ -663,13 +740,8 @@ async function makeOfferTo(userId) {
 
     socketRef.value?.emit("callroom:webrtc:offer", {
       roomId: roomId.value,
-      toUserId: uid,
+      to: sid,
       offer: item.pc.localDescription,
-      meta: {
-        userId: myUserId.value,
-        name: myName.value,
-        username: me?.username || myName.value,
-      },
     })
   } catch (err) {
     console.error("make offer error", err)
@@ -679,29 +751,27 @@ async function makeOfferTo(userId) {
 /* =========================
    ROOM FLOW
 ========================= */
-function refreshRoom() {
-  if (!roomId.value || !socketReady.value) return
-  socketRef.value?.emit("callroom:get", { roomId: roomId.value })
-}
-
 async function joinRoom() {
   if (!roomId.value) {
-    fatalError.value = "Missing room id."
+    errorText.value = "Missing roomId."
     return
   }
-  if (!socketReady.value) {
-    statusText.value = "Socket not ready yet"
+  if (!socketConnected.value) {
+    errorText.value = "Socket not connected yet."
     return
   }
+  if (joined.value || joining.value) return
 
   joining.value = true
-  fatalError.value = ""
+  errorText.value = ""
   statusText.value = "Getting media..."
 
   try {
     await ensureLocalMedia()
+
     statusText.value = "Joining..."
     socketRef.value?.emit("callroom:join", { roomId: roomId.value })
+
     joined.value = true
     joining.value = false
     emitMediaState()
@@ -709,14 +779,17 @@ async function joinRoom() {
     console.error("joinRoom error", err)
     joining.value = false
     statusText.value = "Could not join"
-    fatalError.value = "Camera/mic permission failed or browser blocked media access."
+    errorText.value = "Camera/mic permission failed or browser blocked media."
   }
 }
 
 function leaveRoom() {
-  if (roomId.value && joined.value) {
-    socketRef.value?.emit("callroom:leave", { roomId: roomId.value })
-  }
+  try {
+    if (roomId.value && joined.value) {
+      socketRef.value?.emit("callroom:leave", { roomId: roomId.value })
+    }
+  } catch {}
+
   cleanupAll()
   router.push("/dashboard")
 }
@@ -738,24 +811,30 @@ async function copyRoomLink() {
 /* =========================
    CLEANUP
 ========================= */
-function cleanupPeer(userId) {
-  const uid = String(userId)
-  const item = pcByUserId.value[uid]
+function cleanupPeer(socketId) {
+  const sid = String(socketId || "")
+  const item = peersBySocketId.value[sid]
+
   if (item?.pc) {
-    try { item.pc.close() } catch {}
+    try {
+      item.pc.ontrack = null
+      item.pc.onicecandidate = null
+      item.pc.onconnectionstatechange = null
+      item.pc.close()
+    } catch {}
   }
 
-  const next = { ...pcByUserId.value }
-  delete next[uid]
-  pcByUserId.value = next
+  const next = { ...peersBySocketId.value }
+  delete next[sid]
+  peersBySocketId.value = next
 
   const refs = { ...remoteVideoEls.value }
-  delete refs[uid]
+  delete refs[sid]
   remoteVideoEls.value = refs
 }
 
 function cleanupAll() {
-  Object.keys(pcByUserId.value).forEach((uid) => cleanupPeer(uid))
+  Object.keys(peersBySocketId.value).forEach((sid) => cleanupPeer(sid))
 
   if (localStream.value) {
     localStream.value.getTracks().forEach((t) => {
@@ -779,8 +858,7 @@ function cleanupAll() {
 ========================= */
 onMounted(async () => {
   if (!roomId.value) {
-    fatalError.value = "Missing roomId in URL."
-    booting.value = false
+    errorText.value = "Missing roomId in URL."
     return
   }
 
@@ -802,8 +880,8 @@ onBeforeUnmount(() => {
     socketRef.value?.off("disconnect")
     socketRef.value?.off("callroom:error")
     socketRef.value?.off("callroom:state")
-    socketRef.value?.off("callroom:user-joined")
-    socketRef.value?.off("callroom:user-left")
+    socketRef.value?.off("callroom:peer-joined")
+    socketRef.value?.off("callroom:peer-left")
     socketRef.value?.off("callroom:webrtc:offer")
     socketRef.value?.off("callroom:webrtc:answer")
     socketRef.value?.off("callroom:webrtc:ice")
@@ -966,21 +1044,21 @@ onBeforeUnmount(() => {
   font-weight: 900;
 }
 
+.alertBox {
+  position: relative;
+  z-index: 2;
+  margin: 0 16px 14px;
+  padding: 14px 16px;
+  border-radius: 18px;
+  border-color: rgba(255,80,80,0.35);
+  background: rgba(255,80,80,0.14);
+  font-weight: 800;
+}
+
 .main {
   position: relative;
   z-index: 2;
   padding: 0 16px 16px;
-}
-
-.banner {
-  margin-bottom: 14px;
-  border-radius: 18px;
-  padding: 14px 16px;
-  font-weight: 800;
-}
-.banner.error {
-  border-color: rgba(255,80,80,0.35);
-  background: rgba(255,80,80,0.14);
 }
 
 .stageWrap {
