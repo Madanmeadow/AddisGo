@@ -659,7 +659,7 @@ import { ref, computed, onMounted, onBeforeUnmount, nextTick } from "vue"
 import { useRouter } from "vue-router"
 import Layout from "../components/Layout.vue"
 import TikTokFeed from "../components/TikTokFeed.vue"
-import CommentsPanel from "../components/comments.vue"
+import CommentsPanel from "../components/Comments.vue"
 import { createSocket } from "../api/socket"
 
 const router = useRouter()
