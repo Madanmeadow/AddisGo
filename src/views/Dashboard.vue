@@ -12,7 +12,7 @@
           <div class="logo">⚡</div>
 
           <div class="brand-text">
-            <div class="title">Pulse</div>
+            <div class="title">AddisGo</div>
             <div class="sub">Your Social Universe</div>
           </div>
         </div>
@@ -61,7 +61,7 @@
               <div class="heroStatLab">Posts</div>
             </div>
             <div class="heroStat">
-              <div class="heroStatNum">{{ reelsPosts.length }}</div>
+              <div class="heroStatNum">{{ videoPosts.length }}</div>
               <div class="heroStatLab">Videos</div>
             </div>
             <div class="heroStat">
@@ -675,7 +675,7 @@
             <div class="state">Loading…</div>
           </template>
 
-          <div v-else-if="sortedFilteredPosts.length === 0" class="state">
+          <div v-else-if="forYouPosts.length === 0" class="state">
             <div class="state-emoji">🎬</div>
             <div class="state-title">No videos yet</div>
             <div class="state-sub">Post a video and it will autoplay here.</div>
@@ -811,7 +811,7 @@ import { ref, computed, onMounted, onBeforeUnmount, nextTick, watch } from "vue"
 import { useRouter } from "vue-router"
 import Layout from "../components/Layout.vue"
 import TikTokFeed from "../components/TikTokFeed.vue"
-import CommentsPanel from "../components/Comments.vue"
+import CommentsPanel from "../components/comments.vue"
 import { createSocket } from "../api/socket"
 
 const router = useRouter()
@@ -1401,7 +1401,7 @@ const sortedFilteredPosts = computed(() => {
       const am = a.video_url || a.image_url ? 1 : 0
       const bm = b.video_url || b.image_url ? 1 : 0
       if (bm !== am) return bm - am
-      return new Date(b.created_at) - new Date(a.created_at)
+      return new Date(b.created_at).getTime() - new Date(a.created_at).getTime()
     })
   }
 
@@ -1410,16 +1410,18 @@ const sortedFilteredPosts = computed(() => {
       const at = !a.video_url && !a.image_url ? 1 : 0
       const bt = !b.video_url && !b.image_url ? 1 : 0
       if (bt !== at) return bt - at
-      return new Date(b.created_at) - new Date(a.created_at)
+      return new Date(b.created_at).getTime() - new Date(a.created_at).getTime()
     })
   }
 
-  return list.sort((a, b) => new Date(b.created_at) - new Date(a.created_at))
+  return list.sort((a, b) => new Date(b.created_at).getTime() - new Date(a.created_at).getTime())
 })
 
+const videoPosts = computed(() => sortedFilteredPosts.value.filter((p) => !!p.video_url))
+const forYouPosts = computed(() => videoPosts.value)
 const followingPosts = computed(() => sortedFilteredPosts.value.slice(0, 40))
 const threadsPosts = computed(() => sortedFilteredPosts.value.slice(0, 60))
-const reelsPosts = computed(() => sortedFilteredPosts.value.filter((p) => !!p.video_url))
+const reelsPosts = computed(() => videoPosts.value)
 
 const trendingTags = computed(() => {
   const counts = new Map()
@@ -1598,7 +1600,7 @@ async function sharePost(post) {
   try {
     if (navigator.share) {
       await navigator.share({
-        title: "Pulse Post",
+        title: "AddisGo Post",
         text: post.caption || "Post",
         url,
       })
@@ -1738,8 +1740,8 @@ const pageSize = ref(8)
 const infiniteLoading = ref(false)
 const loadMoreRef = ref(null)
 
-const visiblePosts = computed(() => sortedFilteredPosts.value.slice(0, pageSize.value))
-const canLoadMore = computed(() => sortedFilteredPosts.value.length > visiblePosts.value.length)
+const visiblePosts = computed(() => forYouPosts.value.slice(0, pageSize.value))
+const canLoadMore = computed(() => forYouPosts.value.length > visiblePosts.value.length)
 
 let loadMoreObserver = null
 
@@ -2134,6 +2136,8 @@ onBeforeUnmount(() => {
   videoObserver = null
 })
 </script>
+
+
 
 <style scoped>
 :deep(.sidebar),
