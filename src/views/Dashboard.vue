@@ -34,24 +34,29 @@
             {{ toolsOpen ? "Close Tools" : "Tools" }}
           </button>
 
+          <button class="chip ghost" @click="toggleStudio">
+            {{ studioOpen ? "Close Studio" : "Studio" }}
+          </button>
+
           <button class="chip danger" @click="logout">Logout</button>
         </div>
       </header>
 
-      <!-- HERO STRIP -->
+      <!-- HERO -->
       <section class="heroStrip">
         <div class="heroCard glassy">
           <div class="heroLeft">
             <div class="heroEyebrow">WELCOME BACK</div>
             <div class="heroTitle">{{ meName }}</div>
             <div class="heroSub">
-              Build, post, call, stream, and chat from one place.
+              Build, post, call, stream, chat, save ideas, and run your whole world from one magical dashboard.
             </div>
 
             <div class="heroActions">
               <button class="btn btn-primary" @click="focusComposer">Create Post</button>
               <button class="btn ghostBtn" @click="setFeedMode('rooms')">Open Rooms</button>
               <button class="btn ghostBtn" @click="setFeedMode('live')">Go Live Area</button>
+              <button class="btn ghostBtn" @click="toggleStudio">Creator Studio</button>
             </div>
           </div>
 
@@ -72,6 +77,59 @@
               <div class="heroStatNum">{{ liveStreams.length }}</div>
               <div class="heroStatLab">Live</div>
             </div>
+            <div class="heroStat">
+              <div class="heroStatNum">{{ savedPostIds.length }}</div>
+              <div class="heroStatLab">Saved</div>
+            </div>
+            <div class="heroStat">
+              <div class="heroStatNum">{{ pinnedPostIds.length }}</div>
+              <div class="heroStatLab">Pinned</div>
+            </div>
+          </div>
+        </div>
+      </section>
+
+      <!-- MAGIC STATUS STRIP -->
+      <section class="dock">
+        <div class="panel dockCard glassy">
+          <div class="panel-head">
+            <div class="panel-title">✨ Command Center</div>
+            <div class="dockActions">
+              <button class="btn ghostBtn" @click="copyDiagnostics">Copy Diagnostics</button>
+              <button class="btn ghostBtn" @click="surpriseMe">Surprise Me</button>
+            </div>
+          </div>
+
+          <div class="trendingRow">
+            <span class="badgePill accent">Mode: {{ feedModeLabel }}</span>
+            <span class="badgePill" :class="{ ok: socketConnected, bad: !socketConnected }">
+              {{ socketConnected ? "Connected" : "Disconnected" }}
+            </span>
+            <span class="badgePill">Online {{ onlineCount }}</span>
+            <span class="badgePill">Live {{ liveStreams.length }}</span>
+            <span class="badgePill">Rooms {{ callRooms.length }}</span>
+            <span class="badgePill">Saved {{ savedPostIds.length }}</span>
+          </div>
+
+          <div class="hint mt10">
+            Keyboard shortcuts: <strong>/</strong> search, <strong>c</strong> composer, <strong>r</strong> refresh, <strong>g</strong> go live, <strong>m</strong> mute.
+          </div>
+        </div>
+
+        <div class="panel dockCard glassy">
+          <div class="panel-head">
+            <div class="panel-title">🚀 Quick Launch</div>
+          </div>
+
+          <div class="toolsGrid">
+            <button class="toolBtn" @click="setFeedMode('foryou')">🎬 For You</button>
+            <button class="toolBtn" @click="setFeedMode('reels')">🎞️ Reels</button>
+            <button class="toolBtn" @click="setFeedMode('threads')">✍️ Threads</button>
+            <button class="toolBtn" @click="setFeedMode('rooms')">🎧 Rooms</button>
+            <button class="toolBtn" @click="setFeedMode('live')">🔴 Live</button>
+            <button class="toolBtn" @click="openSavedMode">💾 Saved</button>
+            <button class="toolBtn" @click="openPinnedMode">📌 Pinned</button>
+            <button class="toolBtn" @click="toggleStudio">🪄 Studio</button>
           </div>
         </div>
       </section>
@@ -84,10 +142,12 @@
         <button class="mode" :class="{ on: feedMode === 'threads' }" @click="setFeedMode('threads')">✍️ Threads</button>
         <button class="mode" :class="{ on: feedMode === 'rooms' }" @click="setFeedMode('rooms')">🎧 Rooms</button>
         <button class="mode" :class="{ on: feedMode === 'live' }" @click="setFeedMode('live')">🔴 Live</button>
+        <button class="mode" :class="{ on: feedMode === 'saved' }" @click="setFeedMode('saved')">💾 Saved</button>
+        <button class="mode" :class="{ on: feedMode === 'pinned' }" @click="setFeedMode('pinned')">📌 Pinned</button>
 
         <div class="mode-right">
           <div class="searchWrap">
-            <input v-model="search" class="search" placeholder="Search…" />
+            <input ref="searchRef" v-model="search" class="search" placeholder="Search…" />
             <button v-if="search" class="searchClear" @click="search = ''">✕</button>
           </div>
 
@@ -110,7 +170,7 @@
         </div>
       </div>
 
-      <!-- FILTER CHIPS -->
+      <!-- FILTER BAR -->
       <div class="filterbar">
         <button class="filterChip" :class="{ on: postFilter === 'all' }" @click="postFilter = 'all'">All</button>
         <button class="filterChip" :class="{ on: postFilter === 'video' }" @click="postFilter = 'video'">Videos</button>
@@ -123,9 +183,8 @@
         </div>
       </div>
 
-      <!-- MAIN -->
       <main class="main">
-        <!-- SOCKET STATUS -->
+        <!-- STATUS -->
         <section v-if="token" class="panel miniPanel glassy">
           <div class="panel-head">
             <div class="panel-title">🛰️ Status</div>
@@ -136,6 +195,7 @@
               </span>
               <span class="badgePill">{{ onlineCount }} online</span>
               <span class="badgePill">{{ liveStreams.length }} live</span>
+              <span class="badgePill">{{ callRooms.length }} call rooms</span>
               <span class="badgePill accent">{{ feedModeLabel }}</span>
             </div>
 
@@ -149,7 +209,7 @@
           <div v-if="statusNote" class="hint mt10">{{ statusNote }}</div>
         </section>
 
-        <!-- TRENDING TAGS -->
+        <!-- TRENDING -->
         <section v-if="trendingTags.length" class="panel glassy">
           <div class="panel-head">
             <div class="panel-title">🔥 Trending</div>
@@ -166,6 +226,36 @@
               {{ tag }}
             </button>
           </div>
+        </section>
+
+        <!-- STUDIO -->
+        <section v-if="studioOpen" class="panel toolsPanel glassy">
+          <div class="panel-head">
+            <div class="panel-title">🪄 Creator Studio</div>
+            <div class="dockActions">
+              <button class="btn ghostBtn" @click="toggleStudio">Close</button>
+            </div>
+          </div>
+
+          <div class="toolsGrid">
+            <button class="toolBtn" @click="focusComposer">✍️ New Post</button>
+            <button class="toolBtn" @click="setFeedMode('reels')">🎞️ Create Reel</button>
+            <button class="toolBtn" @click="startLive">🔴 Start Live</button>
+            <button class="toolBtn" @click="openSavedMode">💾 Open Saved</button>
+            <button class="toolBtn" @click="openPinnedMode">📌 Open Pinned</button>
+            <button class="toolBtn" @click="refreshCallRooms">📞 Refresh Rooms</button>
+            <button class="toolBtn" @click="requestNotifications">🔔 Notifications</button>
+            <button class="toolBtn" @click="testTurn">🧊 Test TURN</button>
+          </div>
+
+          <div class="trendingRow">
+            <span class="badgePill">Posts {{ posts.length }}</span>
+            <span class="badgePill">Videos {{ videoPosts.length }}</span>
+            <span class="badgePill">Saved {{ savedPosts.length }}</span>
+            <span class="badgePill">Pinned {{ pinnedPosts.length }}</span>
+          </div>
+
+          <div v-if="turnNote" class="hint mt10">{{ turnNote }}</div>
         </section>
 
         <!-- TOP DOCK -->
@@ -323,12 +413,12 @@
             <button class="toolBtn" @click="setFeedMode('reels')">🎞️ Go Reels</button>
             <button class="toolBtn" @click="setFeedMode('rooms')">🎧 Go Rooms</button>
             <button class="toolBtn" @click="setFeedMode('live')">🔴 Go Live Tab</button>
-
+            <button class="toolBtn" @click="openSavedMode">💾 Open Saved</button>
+            <button class="toolBtn" @click="openPinnedMode">📌 Open Pinned</button>
             <button class="toolBtn" @click="scrollToTop">⬆️ Scroll Top</button>
             <button class="toolBtn" @click="focusComposer">✍️ Focus Composer</button>
             <button class="toolBtn" @click="clearDraft">🧹 Clear Draft</button>
             <button class="toolBtn" @click="refreshAll" :disabled="loading">🔁 Refresh All</button>
-
             <button class="toolBtn" @click="testTurn">🧊 Test TURN</button>
             <button class="toolBtn" @click="requestNotifications">🔔 Enable Notifications</button>
             <button class="toolBtn dangerTool" @click="hardResetApp">💣 Hard Reset (Local)</button>
@@ -474,7 +564,13 @@
 
             <div v-if="callRoomsError" class="alert">{{ callRoomsError }}</div>
 
-            <div v-if="callRooms.length === 0" class="state miniState">
+            <div v-if="callRoomsLoading" class="state miniState">
+              <div class="state-emoji">⏳</div>
+              <div class="state-title">Loading call rooms</div>
+              <div class="state-sub">Fetching active rooms…</div>
+            </div>
+
+            <div v-else-if="callRooms.length === 0" class="state miniState">
               <div class="state-emoji">📞</div>
               <div class="state-title">No call rooms yet</div>
               <div class="state-sub">Create one and invite others.</div>
@@ -496,6 +592,92 @@
               </div>
             </div>
           </div>
+        </section>
+
+        <!-- SAVED MODE -->
+        <section v-else-if="feedMode === 'saved'" class="feed following">
+          <template v-if="loading">
+            <div class="state">Loading…</div>
+          </template>
+
+          <div v-else-if="savedPosts.length === 0" class="state">
+            <div class="state-emoji">💾</div>
+            <div class="state-title">No saved posts yet</div>
+            <div class="state-sub">Tap Save on any post to keep it here.</div>
+          </div>
+
+          <article v-else v-for="post in savedPosts" :key="'s-'+post.id" class="post glassy">
+            <header class="post-head">
+              <div class="avatar">{{ getInitial(post) }}</div>
+              <div class="who">
+                <div class="name">{{ displayPostUser(post) }}</div>
+                <div class="time">{{ formatDate(post.created_at) }}</div>
+              </div>
+
+              <div class="postPills">
+                <span class="miniPostPill">SAVED</span>
+              </div>
+            </header>
+
+            <div v-if="post.caption" class="text">{{ post.caption }}</div>
+
+            <img v-if="post.image_url" class="media" :src="getMedia(post.image_url)" loading="lazy" />
+            <video v-if="post.video_url" class="media" :src="getMedia(post.video_url)" controls playsinline preload="metadata"></video>
+
+            <div class="actions">
+              <button class="action-btn" @click="toggleSavePost(post)">
+                💾 <span class="label">{{ isSaved(post.id) ? "Saved" : "Save" }}</span>
+              </button>
+              <button class="action-btn" @click="togglePinPost(post)">
+                📌 <span class="label">{{ isPinned(post.id) ? "Pinned" : "Pin" }}</span>
+              </button>
+              <div class="spacer"></div>
+              <button class="action-btn ghost" @click="sharePost(post)">🔗 <span class="label">Share</span></button>
+            </div>
+          </article>
+        </section>
+
+        <!-- PINNED MODE -->
+        <section v-else-if="feedMode === 'pinned'" class="feed threads">
+          <template v-if="loading">
+            <div class="state">Loading…</div>
+          </template>
+
+          <div v-else-if="pinnedPosts.length === 0" class="state">
+            <div class="state-emoji">📌</div>
+            <div class="state-title">No pinned posts yet</div>
+            <div class="state-sub">Pin your favorite posts here.</div>
+          </div>
+
+          <article v-else v-for="post in pinnedPosts" :key="'pin-'+post.id" class="post thread glassy">
+            <header class="post-head">
+              <div class="avatar">{{ getInitial(post) }}</div>
+              <div class="who">
+                <div class="name">{{ displayPostUser(post) }}</div>
+                <div class="time">{{ formatDate(post.created_at) }}</div>
+              </div>
+
+              <div class="postPills">
+                <span class="miniPostPill">PINNED</span>
+              </div>
+            </header>
+
+            <div v-if="post.caption" class="text thread-text">{{ post.caption }}</div>
+
+            <img v-if="post.image_url" class="media" :src="getMedia(post.image_url)" loading="lazy" />
+            <video v-if="post.video_url" class="media" :src="getMedia(post.video_url)" controls playsinline preload="metadata"></video>
+
+            <div class="actions">
+              <button class="action-btn" @click="togglePinPost(post)">
+                📌 <span class="label">{{ isPinned(post.id) ? "Pinned" : "Pin" }}</span>
+              </button>
+              <button class="action-btn" @click="toggleSavePost(post)">
+                💾 <span class="label">{{ isSaved(post.id) ? "Saved" : "Save" }}</span>
+              </button>
+              <div class="spacer"></div>
+              <button class="action-btn ghost" @click="sharePost(post)">🔗 <span class="label">Share</span></button>
+            </div>
+          </article>
         </section>
 
         <!-- THREADS MODE -->
@@ -545,6 +727,14 @@
 
               <button class="action-btn" @click="toggleComments(post.id)">
                 💬 <span class="label">{{ commentCount(post.id) }}</span>
+              </button>
+
+              <button class="action-btn" @click="toggleSavePost(post)">
+                💾 <span class="label">{{ isSaved(post.id) ? "Saved" : "Save" }}</span>
+              </button>
+
+              <button class="action-btn" @click="togglePinPost(post)">
+                📌 <span class="label">{{ isPinned(post.id) ? "Pinned" : "Pin" }}</span>
               </button>
 
               <div class="spacer"></div>
@@ -655,6 +845,14 @@
                 💬 <span class="label">{{ commentCount(post.id) }}</span>
               </button>
 
+              <button class="action-btn" @click="toggleSavePost(post)">
+                💾 <span class="label">{{ isSaved(post.id) ? "Saved" : "Save" }}</span>
+              </button>
+
+              <button class="action-btn" @click="togglePinPost(post)">
+                📌 <span class="label">{{ isPinned(post.id) ? "Pinned" : "Pin" }}</span>
+              </button>
+
               <div class="spacer"></div>
 
               <button class="action-btn ghost" @click="sharePost(post)">🔗 <span class="label">Share</span></button>
@@ -720,6 +918,24 @@
 
             <CommentsPanel :post-id="post.id" @changed="handleCommentsChanged(post.id)" />
           </section>
+        </section>
+
+        <!-- ACTIVITY FEED -->
+        <section v-if="activityFeed.length" class="panel glassy">
+          <div class="panel-head">
+            <div class="panel-title">📝 Activity Feed</div>
+            <button class="btn ghostBtn" @click="clearActivity">Clear</button>
+          </div>
+
+          <div class="rooms-messages">
+            <div v-for="(a, i) in activityFeed" :key="'activity-'+i" class="rm">
+              <div class="rm-top">
+                <span class="rm-user">{{ a.title }}</span>
+                <span class="rm-time">{{ formatDate(a.created_at) }}</span>
+              </div>
+              <div class="rm-text">{{ a.text }}</div>
+            </div>
+          </div>
         </section>
       </main>
 
@@ -823,20 +1039,29 @@ const me = (() => {
 })()
 
 /* =========================
-   LOCAL PREFS
+   STORAGE KEYS
 ========================= */
-const DASH_PREFS_KEY = "pulse_dashboard_prefs_v1"
-const DASH_DRAFT_KEY = "pulse_dashboard_draft_v1"
+const DASH_PREFS_KEY = "pulse_dashboard_prefs_v2"
+const DASH_DRAFT_KEY = "pulse_dashboard_draft_v2"
+const DASH_SAVED_POSTS_KEY = "pulse_dashboard_saved_posts_v1"
+const DASH_PINNED_POSTS_KEY = "pulse_dashboard_pinned_posts_v1"
+const DASH_ACTIVITY_KEY = "pulse_dashboard_activity_v1"
 
-function readPrefs() {
+/* =========================
+   READ HELPERS
+========================= */
+function readJson(key, fallback) {
   try {
-    return JSON.parse(localStorage.getItem(DASH_PREFS_KEY) || "{}")
+    return JSON.parse(localStorage.getItem(key) || JSON.stringify(fallback))
   } catch {
-    return {}
+    return fallback
   }
 }
 
-const savedPrefs = readPrefs()
+const savedPrefs = readJson(DASH_PREFS_KEY, {})
+const initialSavedIds = readJson(DASH_SAVED_POSTS_KEY, [])
+const initialPinnedIds = readJson(DASH_PINNED_POSTS_KEY, [])
+const initialActivity = readJson(DASH_ACTIVITY_KEY, [])
 
 /* =========================
    HELPERS
@@ -920,6 +1145,20 @@ function persistPrefs() {
   } catch {}
 }
 
+function persistActivity() {
+  try {
+    localStorage.setItem(DASH_ACTIVITY_KEY, JSON.stringify(activityFeed.value.slice(0, 40)))
+  } catch {}
+}
+
+function addActivity(title, text) {
+  activityFeed.value = [
+    { title, text, created_at: new Date().toISOString() },
+    ...activityFeed.value,
+  ].slice(0, 40)
+  persistActivity()
+}
+
 /* =========================
    MODEBAR
 ========================= */
@@ -946,6 +1185,16 @@ function setFeedMode(mode) {
   })
 }
 
+function openSavedMode() {
+  setFeedMode("saved")
+  scrollToTop()
+}
+
+function openPinnedMode() {
+  setFeedMode("pinned")
+  scrollToTop()
+}
+
 const feedModeLabel = computed(() => {
   if (feedMode.value === "foryou") return "For You"
   if (feedMode.value === "reels") return "Reels"
@@ -953,6 +1202,8 @@ const feedModeLabel = computed(() => {
   if (feedMode.value === "threads") return "Threads"
   if (feedMode.value === "rooms") return "Rooms"
   if (feedMode.value === "live") return "Live"
+  if (feedMode.value === "saved") return "Saved"
+  if (feedMode.value === "pinned") return "Pinned"
   return "Feed"
 })
 
@@ -981,7 +1232,7 @@ function safeRegisterOnline() {
   socket.emit("user:online", { userId: String(me.id), username })
   socket.emit("register-user", { id: String(me.id), username })
 
-  if (chatRoom.value !== "callrooms") {
+  if (chatRoom.value && chatRoom.value !== "callrooms") {
     socket.emit("join-room", chatRoom.value)
   }
 
@@ -1004,16 +1255,21 @@ function connectSocket() {
     socketConnected.value = true
     statusNote.value = ""
     safeRegisterOnline()
+    refreshCallRooms()
+    addActivity("Socket", "Connected to AddisGo realtime service")
   })
 
   socket.on("disconnect", () => {
     socketConnected.value = false
     if (token) statusNote.value = "Socket disconnected. Tap Reconnect."
+    addActivity("Socket", "Disconnected from realtime service")
   })
 
   socket.io?.on?.("reconnect", () => {
     socketConnected.value = true
     safeRegisterOnline()
+    refreshCallRooms()
+    addActivity("Socket", "Reconnected successfully")
   })
 }
 
@@ -1025,6 +1281,7 @@ const people = ref([])
 const peopleLoading = ref(false)
 const peopleError = ref("")
 const search = ref(savedPrefs.search || "")
+const searchRef = ref(null)
 
 function togglePeople() {
   peopleOpen.value = !peopleOpen.value
@@ -1099,6 +1356,7 @@ function startCall(user, kind = "audio") {
   callingToast.value = `Calling ${displayName}…`
   pendingRoomId.value = ""
 
+  addActivity("Call", `Calling ${displayName}`)
   socket.emit("call:request", {
     toUserId: String(user.id),
     kind: pendingKind.value,
@@ -1138,6 +1396,7 @@ function acceptIncoming() {
     },
   })
 
+  addActivity("Call", `Accepted ${kind} call from ${callerName}`)
   incomingCall.value = null
 }
 
@@ -1148,6 +1407,7 @@ function rejectIncoming() {
     roomId: incomingCall.value.roomId,
   })
 
+  addActivity("Call", "Rejected incoming call")
   incomingCall.value = null
 }
 
@@ -1159,10 +1419,41 @@ const callRoomName = ref("")
 const callRoomKind = ref("audio")
 const creatingCallRoom = ref(false)
 const callRoomsError = ref("")
+const callRoomsLoading = ref(false)
+
+function normalizeCallRoom(room) {
+  if (!room || typeof room !== "object") return null
+
+  return {
+    roomId: String(room.roomId || room.id || ""),
+    name: String(room.name || room.roomId || room.id || "Untitled Room"),
+    kind: room.kind === "video" ? "video" : "audio",
+    participantCount: Number(room.participantCount ?? room.count ?? room.users?.length ?? 0),
+    users: Array.isArray(room.users) ? room.users : [],
+  }
+}
 
 function refreshCallRooms() {
+  if (!socket) return
+  callRoomsLoading.value = true
   callRoomsError.value = ""
-  socket?.emit("callroom:list:get")
+
+  socket.emit("callroom:list:get", {}, (res) => {
+    if (res?.error) {
+      callRoomsLoading.value = false
+      callRoomsError.value = res.error
+      return
+    }
+
+    if (Array.isArray(res?.rooms)) {
+      callRooms.value = res.rooms.map(normalizeCallRoom).filter(Boolean)
+      callRoomsLoading.value = false
+    }
+  })
+
+  setTimeout(() => {
+    callRoomsLoading.value = false
+  }, 1200)
 }
 
 function createCallRoom() {
@@ -1172,15 +1463,34 @@ function createCallRoom() {
   creatingCallRoom.value = true
   callRoomsError.value = ""
 
-  socket.emit("callroom:create", {
-    name: callRoomName.value,
-    kind: callRoomKind.value,
+  const payload = {
+    name: (callRoomName.value || "").trim() || `Room ${Date.now().toString().slice(-4)}`,
+    kind: callRoomKind.value === "video" ? "video" : "audio",
+  }
+
+  addActivity("Call Room", `Creating ${payload.kind} room: ${payload.name}`)
+
+  socket.emit("callroom:create", payload, (res) => {
+    if (res?.error) {
+      creatingCallRoom.value = false
+      callRoomsError.value = res.error
+      return
+    }
+
+    const roomId = res?.room?.roomId || res?.roomId
+    if (roomId) {
+      creatingCallRoom.value = false
+      callRoomName.value = ""
+      router.push(`/room-call?roomId=${encodeURIComponent(roomId)}`)
+    }
   })
 }
 
 function joinCallRoom(room) {
-  if (!room?.roomId) return
-  router.push(`/room-call?roomId=${encodeURIComponent(room.roomId)}`)
+  const roomId = String(room?.roomId || "")
+  if (!roomId) return
+  addActivity("Call Room", `Joining room ${room.name || roomId}`)
+  router.push(`/room-call?roomId=${encodeURIComponent(roomId)}`)
 }
 
 /* =========================
@@ -1285,6 +1595,7 @@ async function submitPost() {
     if (clean) {
       posts.value.unshift(clean)
       await ensureLikeState(clean.id)
+      addActivity("Post", "Created a new post")
     }
 
     clearDraft()
@@ -1330,6 +1641,7 @@ async function submitReel() {
     if (clean) {
       posts.value.unshift(clean)
       await ensureLikeState(clean.id)
+      addActivity("Reel", "Created a new reel")
     }
 
     clearDraft()
@@ -1356,9 +1668,12 @@ function onPickVideo(e) {
 async function refreshAll() {
   await fetchPosts()
   if (token) await fetchPeople()
+
   try { socket?.emit("get-live-list") } catch {}
   try { socket?.emit("presence:get") } catch {}
-  try { socket?.emit("callroom:list:get") } catch {}
+  try { refreshCallRooms() } catch {}
+
+  addActivity("Dashboard", "Refreshed all sections")
 }
 
 /* =========================
@@ -1388,6 +1703,9 @@ const baseFiltered = computed(() => {
 
   return list
 })
+
+const likesByPost = ref({})
+const likeBusyByPost = ref({})
 
 const sortedFilteredPosts = computed(() => {
   const list = [...baseFiltered.value]
@@ -1446,7 +1764,7 @@ function applyTrendTag(tag) {
 }
 
 function surpriseMe() {
-  const modes = ["foryou", "reels", "following", "threads", "rooms", "live"]
+  const modes = ["foryou", "reels", "following", "threads", "rooms", "live", "saved", "pinned"]
   const next = modes[Math.floor(Math.random() * modes.length)]
   setFeedMode(next)
 
@@ -1455,8 +1773,71 @@ function surpriseMe() {
     selectChat(roomChoices[Math.floor(Math.random() * roomChoices.length)])
   }
 
+  addActivity("Magic", `Surprise mode opened: ${next}`)
   scrollToTop()
 }
+
+/* =========================
+   SAVED / PINNED
+========================= */
+const savedPostIds = ref(Array.isArray(initialSavedIds) ? initialSavedIds.map(Number) : [])
+const pinnedPostIds = ref(Array.isArray(initialPinnedIds) ? initialPinnedIds.map(Number) : [])
+
+function persistSaved() {
+  try { localStorage.setItem(DASH_SAVED_POSTS_KEY, JSON.stringify(savedPostIds.value)) } catch {}
+}
+
+function persistPinned() {
+  try { localStorage.setItem(DASH_PINNED_POSTS_KEY, JSON.stringify(pinnedPostIds.value)) } catch {}
+}
+
+function isSaved(postId) {
+  return savedPostIds.value.includes(Number(postId))
+}
+
+function isPinned(postId) {
+  return pinnedPostIds.value.includes(Number(postId))
+}
+
+function toggleSavePost(post) {
+  const id = Number(post?.id)
+  if (!id) return
+
+  if (isSaved(id)) {
+    savedPostIds.value = savedPostIds.value.filter((x) => x !== id)
+    addActivity("Saved", `Removed post #${id} from saved`)
+  } else {
+    savedPostIds.value = [id, ...savedPostIds.value].slice(0, 300)
+    addActivity("Saved", `Saved post #${id}`)
+  }
+
+  persistSaved()
+}
+
+function togglePinPost(post) {
+  const id = Number(post?.id)
+  if (!id) return
+
+  if (isPinned(id)) {
+    pinnedPostIds.value = pinnedPostIds.value.filter((x) => x !== id)
+    addActivity("Pinned", `Unpinned post #${id}`)
+  } else {
+    pinnedPostIds.value = [id, ...pinnedPostIds.value].slice(0, 100)
+    addActivity("Pinned", `Pinned post #${id}`)
+  }
+
+  persistPinned()
+}
+
+const savedPosts = computed(() => {
+  const ids = new Set(savedPostIds.value)
+  return posts.value.filter((p) => ids.has(Number(p.id)))
+})
+
+const pinnedPosts = computed(() => {
+  const ids = new Set(pinnedPostIds.value)
+  return posts.value.filter((p) => ids.has(Number(p.id)))
+})
 
 /* =========================
    THREAD MEDIA
@@ -1472,9 +1853,6 @@ function toggleThreadMedia(postId) {
 /* =========================
    LIKES
 ========================= */
-const likesByPost = ref({})
-const likeBusyByPost = ref({})
-
 async function preloadLikesForPosts(list) {
   if (!token) return
   await Promise.allSettled(list.map((p) => ensureLikeState(p.id)))
@@ -1655,6 +2033,8 @@ function selectChat(room) {
     created_at: new Date().toISOString(),
   })
 
+  addActivity("Chat", `Joined room ${room}`)
+
   nextTick(() => {
     scrollChatToBottom()
     scrollRoomsToBottom()
@@ -1681,6 +2061,7 @@ function sendChat() {
     text: chatText.value,
   })
 
+  addActivity("Chat", `Sent message in #${chatRoom.value}`)
   chatText.value = ""
 }
 
@@ -1690,10 +2071,12 @@ function sendChat() {
 function startLive() {
   if (!token) return alert("Login again to go live.")
   const liveId = `live-${me?.id || Math.random().toString(36).slice(2, 8)}-${Date.now().toString().slice(-4)}`
+  addActivity("Live", `Started live setup: ${liveId}`)
   router.push(`/live?mode=host&liveId=${encodeURIComponent(liveId)}`)
 }
 
 function joinLive(liveId) {
+  addActivity("Live", `Joined live: ${liveId}`)
   router.push(`/live?mode=watch&liveId=${encodeURIComponent(liveId)}`)
 }
 
@@ -1711,7 +2094,7 @@ function logout() {
    BOTTOM NAV
 ========================= */
 const isHomeActive = computed(() =>
-  ["foryou", "reels", "following", "threads", "rooms"].includes(feedMode.value)
+  ["foryou", "reels", "following", "threads", "rooms", "saved", "pinned"].includes(feedMode.value)
 )
 
 function goHome() {
@@ -1825,6 +2208,7 @@ function isVideoMuted(postId) {
 function toggleGlobalMute() {
   globalMuted.value = !globalMuted.value
   applyMuteToAllVideos()
+  addActivity("Video", globalMuted.value ? "Muted all feed videos" : "Unmuted feed videos")
 }
 
 function applyMuteToVideo(postId) {
@@ -1886,10 +2270,21 @@ function setupVideoObserver() {
    TOOLS / DIAGNOSTICS
 ========================= */
 const toolsOpen = ref(false)
+const studioOpen = ref(false)
 const turnNote = ref("")
+const activityFeed = ref(Array.isArray(initialActivity) ? initialActivity : [])
 
 function toggleTools() {
   toolsOpen.value = !toolsOpen.value
+}
+
+function toggleStudio() {
+  studioOpen.value = !studioOpen.value
+}
+
+function clearActivity() {
+  activityFeed.value = []
+  persistActivity()
 }
 
 async function copyMyProfileLink() {
@@ -1915,6 +2310,8 @@ async function copyDiagnostics() {
     currentRoom: chatRoom.value,
     sortMode: sortMode.value,
     postFilter: postFilter.value,
+    savedCount: savedPostIds.value.length,
+    pinnedCount: pinnedPostIds.value.length,
   }
 
   try {
@@ -1932,6 +2329,7 @@ async function testTurn() {
     const data = await res.json()
     if (data?.ok && Array.isArray(data.iceServers)) {
       turnNote.value = `TURN OK: ${data.note || "iceServers received"} • servers=${data.iceServers.length}`
+      addActivity("TURN", "TURN credentials fetched successfully")
     } else {
       turnNote.value = "TURN failed (fallback STUN will still work)."
     }
@@ -1968,6 +2366,36 @@ watch(caption, (v) => {
     draftSavedNote.value = v ? "Draft saved locally" : ""
   } catch {}
 })
+
+/* =========================
+   KEYBOARD SHORTCUTS
+========================= */
+function handleKeydown(e) {
+  const tag = (e.target?.tagName || "").toLowerCase()
+  const typing = tag === "input" || tag === "textarea"
+
+  if (e.key === "/" && !typing) {
+    e.preventDefault()
+    searchRef.value?.focus?.()
+    return
+  }
+
+  if (typing) return
+
+  if (e.key === "c") {
+    e.preventDefault()
+    focusComposer()
+  } else if (e.key === "r") {
+    e.preventDefault()
+    refreshAll()
+  } else if (e.key === "g") {
+    e.preventDefault()
+    goLiveTab()
+  } else if (e.key === "m") {
+    e.preventDefault()
+    toggleGlobalMute()
+  }
+}
 
 /* =========================
    LIFECYCLE
@@ -2081,18 +2509,55 @@ onMounted(async () => {
   })
 
   socket.on("callroom:list", (list) => {
-    callRooms.value = Array.isArray(list) ? list : []
+    callRoomsLoading.value = false
+    callRooms.value = Array.isArray(list)
+      ? list.map(normalizeCallRoom).filter(Boolean)
+      : []
   })
 
-  socket.on("callroom:created", ({ roomId } = {}) => {
+  socket.on("callroom:created", (payload = {}) => {
     creatingCallRoom.value = false
     callRoomName.value = ""
-    if (!roomId) return
+
+    const roomId = payload?.roomId || payload?.room?.roomId
+    if (!roomId) {
+      refreshCallRooms()
+      return
+    }
+
     router.push(`/room-call?roomId=${encodeURIComponent(roomId)}`)
+  })
+
+  socket.on("callroom:state", (payload = {}) => {
+    const roomId = String(payload?.roomId || "")
+    if (!roomId) {
+      refreshCallRooms()
+      return
+    }
+
+    callRooms.value = callRooms.value.map((room) => {
+      if (room.roomId !== roomId) return room
+      return normalizeCallRoom({
+        ...room,
+        users: payload.users || room.users || [],
+        participantCount: Array.isArray(payload.users)
+          ? payload.users.length
+          : room.participantCount,
+      })
+    })
+  })
+
+  socket.on("callroom:user-joined", () => {
+    refreshCallRooms()
+  })
+
+  socket.on("callroom:user-left", () => {
+    refreshCallRooms()
   })
 
   socket.on("callroom:error", ({ message } = {}) => {
     creatingCallRoom.value = false
+    callRoomsLoading.value = false
     callRoomsError.value = message || "Call room error"
   })
 
@@ -2109,21 +2574,33 @@ onMounted(async () => {
     setupVideoObserver()
     applyMuteToAllVideos()
   }
+
+  window.addEventListener("keydown", handleKeydown)
 })
 
 onBeforeUnmount(() => {
-  try {
-    socket?.off("call:ringing")
-    socket?.off("call:incoming")
-    socket?.off("call:accepted")
-    socket?.off("call:ended")
-    socket?.off("call:busy")
-    socket?.off("call:error")
-    socket?.off("callroom:list")
-    socket?.off("callroom:created")
-    socket?.off("callroom:error")
-    socket?.cleanupPulseSocket?.()
-  } catch {}
+  window.removeEventListener("keydown", handleKeydown)
+
+  try { socket?.off("call:ringing") } catch {}
+  try { socket?.off("call:incoming") } catch {}
+  try { socket?.off("call:accepted") } catch {}
+  try { socket?.off("call:ended") } catch {}
+  try { socket?.off("call:busy") } catch {}
+  try { socket?.off("call:error") } catch {}
+
+  try { socket?.off("callroom:list") } catch {}
+  try { socket?.off("callroom:created") } catch {}
+  try { socket?.off("callroom:state") } catch {}
+  try { socket?.off("callroom:user-joined") } catch {}
+  try { socket?.off("callroom:user-left") } catch {}
+  try { socket?.off("callroom:error") } catch {}
+
+  try { socket?.off("receive-message") } catch {}
+  try { socket?.off("live-list") } catch {}
+  try { socket?.off("presence:list") } catch {}
+  try { socket?.off("online-users") } catch {}
+
+  try { socket?.cleanupPulseSocket?.() } catch {}
 
   socket = null
 
@@ -2135,10 +2612,9 @@ onBeforeUnmount(() => {
   reelsLoadMoreObserver = null
   videoObserver = null
 })
+</script>
 
-
-
-
+<!-- KEEP YOUR CURRENT <style scoped> BLOCK EXACTLY THE SAME -->
 <style scoped>
 :deep(.sidebar),
 :deep(.layout-sidebar),
