@@ -1,9 +1,23 @@
 <!-- src/views/RoomCall.vue -->
 <template>
-  <div class="roomcall-page">
+  <div
+    class="roomcall-page"
+    :class="{
+      compactMode,
+      cinematicMode,
+      focusOnly: !!focusedTileId
+    }"
+  >
     <div class="bg-layer bg1"></div>
     <div class="bg-layer bg2"></div>
     <div class="bg-layer bg3"></div>
+
+    <!-- FLOATING REACTION -->
+    <transition name="pop-reaction">
+      <div v-if="reactionBurst" class="reaction-burst">
+        {{ reactionBurst }}
+      </div>
+    </transition>
 
     <!-- TOPBAR -->
     <header class="topbar glassy">
@@ -13,12 +27,16 @@
         <div class="room-pill">
           <span class="live-dot"></span>
           <div class="room-pill-meta">
-            <div class="room-pill-title">{{ roomName }}</div>
+            <div class="room-pill-title">{{ roomName || "Room Call" }}</div>
             <div class="room-pill-sub">
               {{ roomKindLabel }} • {{ participantCount }} participant{{ participantCount === 1 ? "" : "s" }}
             </div>
           </div>
         </div>
+
+        <button class="chip ghost miniChip" @click="copyRoomId">
+          🆔 {{ shortRoomId }}
+        </button>
       </div>
 
       <div class="top-right">
@@ -35,21 +53,25 @@
     <section class="hero glassy">
       <div class="hero-left">
         <div class="eyebrow">ADDISGO ROOM CALL</div>
-        <h1 class="hero-title">{{ roomName }}</h1>
+        <h1 class="hero-title">{{ roomName || "Future Room" }}</h1>
         <div class="hero-sub">
-          {{ roomKindLabel }} room with camera, mic, screen share, invite link, reconnect recovery, and stronger WebRTC signaling.
+          {{ roomKindLabel }} with camera, mic, screen sharing, repair tools,
+          visual focus mode, cinematic mode, and stronger WebRTC signaling.
         </div>
 
         <div class="hero-badges">
           <span class="badge" :class="{ ok: socketConnected, bad: !socketConnected }">
             {{ socketConnected ? "Socket Connected" : "Socket Disconnected" }}
           </span>
+
           <span class="badge" :class="{ ok: joinedRoom, bad: !joinedRoom }">
             {{ joinedRoom ? "Joined Room" : "Not Joined" }}
           </span>
+
           <span class="badge">{{ participantCount }} in room</span>
           <span class="badge">{{ roomKindLabel }}</span>
           <span class="badge">{{ turnReady ? "TURN Ready" : "STUN Only" }}</span>
+          <span class="badge accent">⏱ {{ sessionDurationLabel }}</span>
         </div>
       </div>
 
@@ -66,6 +88,53 @@
           <div class="hero-num">{{ screenSharing ? "ON" : "OFF" }}</div>
           <div class="hero-lab">Share</div>
         </div>
+        <div class="hero-stat">
+          <div class="hero-num">{{ compactMode ? "ON" : "OFF" }}</div>
+          <div class="hero-lab">Compact</div>
+        </div>
+      </div>
+    </section>
+
+    <!-- PARTICIPANT STRIP -->
+    <section class="presence-strip glassy">
+      <div class="strip-head">
+        <div class="panel-title">⚡ Live Presence</div>
+        <div class="strip-actions">
+          <button class="chip ghost miniChip" @click="toggleCompactMode">
+            {{ compactMode ? "Normal View" : "Compact View" }}
+          </button>
+          <button class="chip ghost miniChip" @click="toggleCinematicMode">
+            {{ cinematicMode ? "Standard Mode" : "Cinematic" }}
+          </button>
+          <button class="chip ghost miniChip" @click="toggleMirrorMode">
+            {{ mirrorLocal ? "Mirror On" : "Mirror Off" }}
+          </button>
+        </div>
+      </div>
+
+      <div class="presence-list">
+        <button class="presenceCard self" @click="focusTile('local')">
+          <div class="presenceAvatar">{{ myInitial }}</div>
+          <div class="presenceMeta">
+            <div class="presenceName">{{ myName }}</div>
+            <div class="presenceSub">You</div>
+          </div>
+        </button>
+
+        <button
+          v-for="p in remoteParticipants"
+          :key="'presence-' + p.socketId"
+          class="presenceCard"
+          @click="focusTile(p.socketId)"
+        >
+          <div class="presenceAvatar alt">
+            {{ getInitialName(p.displayName || p.username || p.userId) }}
+          </div>
+          <div class="presenceMeta">
+            <div class="presenceName">{{ trimName(p.displayName || p.username || `User #${p.userId || "?"}`) }}</div>
+            <div class="presenceSub">{{ peerStatus[p.socketId] || "Connected" }}</div>
+          </div>
+        </button>
       </div>
     </section>
 
@@ -108,12 +177,31 @@
           </div>
         </div>
 
-        <div class="video-stage" :class="{ focused: !!focusedTileId }">
+        <!-- MAGIC BAR -->
+        <div class="magic-toolbar glassy">
+          <div class="magic-left">
+            <button class="magicBtn" @click="sendReaction('🔥')">🔥</button>
+            <button class="magicBtn" @click="sendReaction('👏')">👏</button>
+            <button class="magicBtn" @click="sendReaction('🚀')">🚀</button>
+            <button class="magicBtn" @click="sendReaction('💎')">💎</button>
+            <button class="magicBtn" @click="sendReaction('🎉')">🎉</button>
+          </div>
+
+          <div class="magic-right">
+            <button class="magicChip" @click="copyDiagnostics">🧾 Diagnostics</button>
+            <button class="magicChip" @click="copyInvite">🔗 Copy Invite</button>
+            <button class="magicChip" @click="togglePanel">
+              {{ sidePanelOpen ? "📚 Hide Panel" : "📚 Show Panel" }}
+            </button>
+          </div>
+        </div>
+
+        <div class="video-stage" :class="{ focused: !!focusedTileId, cinematic: cinematicMode }">
           <!-- LOCAL -->
           <article
             v-if="!focusedTileId || focusedTileId === 'local'"
             class="tile selfTile glassy"
-            :class="{ big: focusedTileId === 'local' }"
+            :class="{ big: focusedTileId === 'local', compact: compactMode }"
             @click="focusTile('local')"
           >
             <div class="tile-head">
@@ -132,6 +220,7 @@
                 <span v-if="roomKind === 'video'" class="pill" :class="{ off: !camEnabled && !screenSharing }">
                   {{ screenSharing ? "Screen" : (camEnabled ? "Cam" : "Cam Off") }}
                 </span>
+                <span class="pill">{{ sessionDurationLabel }}</span>
               </div>
             </div>
 
@@ -140,6 +229,7 @@
                 v-if="roomKind === 'video' || screenSharing"
                 ref="localVideoRef"
                 class="media"
+                :class="{ mirrored: mirrorLocal }"
                 autoplay
                 playsinline
                 muted
@@ -160,7 +250,7 @@
             v-for="p in visibleRemoteParticipants"
             :key="p.socketId"
             class="tile remoteTile glassy"
-            :class="{ big: focusedTileId === p.socketId }"
+            :class="{ big: focusedTileId === p.socketId, compact: compactMode }"
             @click="focusTile(p.socketId)"
           >
             <div class="tile-head">
@@ -176,6 +266,7 @@
 
               <div class="tile-pills">
                 <span class="pill">{{ roomKind === "video" ? "Video" : "Audio" }}</span>
+                <span class="pill ghostState">{{ peerConnectionState[p.socketId] || "online" }}</span>
               </div>
             </div>
 
@@ -214,6 +305,7 @@
             <div class="empty-actions">
               <button class="btn btn-primary" @click="copyInvite">Copy Invite</button>
               <button class="btn ghostBtn" @click="refreshRoomState">Refresh</button>
+              <button class="btn ghostBtn" @click="sendReaction('🚀')">Launch Vibe</button>
             </div>
           </div>
         </div>
@@ -263,6 +355,7 @@
 
           <div class="tools-grid">
             <button class="toolBtn" @click="copyInvite">🔗 Copy Invite</button>
+            <button class="toolBtn" @click="copyRoomId">🆔 Copy Room ID</button>
             <button class="toolBtn" @click="refreshRoomState">🔄 Refresh State</button>
             <button class="toolBtn" @click="toggleMic">{{ micEnabled ? "🔇 Mute Mic" : "🎙 Unmute" }}</button>
             <button class="toolBtn" :disabled="roomKind !== 'video'" @click="toggleCamera">
@@ -270,6 +363,15 @@
             </button>
             <button class="toolBtn" :disabled="roomKind !== 'video'" @click="toggleScreenShare">
               {{ screenSharing ? "🖥 Stop Share" : "🖥 Share Screen" }}
+            </button>
+            <button class="toolBtn" @click="toggleMirrorMode">
+              {{ mirrorLocal ? "🪞 Mirror On" : "🪞 Mirror Off" }}
+            </button>
+            <button class="toolBtn" @click="toggleCompactMode">
+              {{ compactMode ? "🧩 Normal View" : "🧩 Compact View" }}
+            </button>
+            <button class="toolBtn" @click="toggleCinematicMode">
+              {{ cinematicMode ? "🎬 Standard Mode" : "🎬 Cinematic" }}
             </button>
             <button class="toolBtn" @click="forceReconnectPeers">🛠 Repair Peers</button>
             <button class="toolBtn" @click="copyDiagnostics">🧾 Copy Diagnostics</button>
@@ -311,7 +413,7 @@
             </div>
             <div class="diag-row">
               <span>Cam</span>
-              <strong>{{ roomKind === "video" ? (camEnabled ? "On" : "Off") : "Audio Room" }}</strong>
+              <strong>{{ roomKind === 'video' ? (camEnabled ? 'On' : 'Off') : 'Audio Room' }}</strong>
             </div>
             <div class="diag-row">
               <span>Screen</span>
@@ -320,6 +422,10 @@
             <div class="diag-row">
               <span>TURN</span>
               <strong>{{ turnReady ? "Ready" : "No" }}</strong>
+            </div>
+            <div class="diag-row">
+              <span>Timer</span>
+              <strong>{{ sessionDurationLabel }}</strong>
             </div>
           </div>
         </section>
@@ -352,6 +458,7 @@
 
       <button class="fab invite" @click="copyInvite">🔗</button>
       <button class="fab invite" @click="forceReconnectPeers">🛠</button>
+      <button class="fab invite" @click="sendReaction('🔥')">🔥</button>
       <button class="fab end" @click="leaveRoom">❌</button>
     </footer>
   </div>
@@ -383,9 +490,25 @@ const focusedTileId = ref("")
 const notice = ref("")
 const errorText = ref("")
 
+const compactMode = ref(false)
+const cinematicMode = ref(false)
+const mirrorLocal = ref(true)
+const reactionBurst = ref("")
+const sessionStartedAt = ref(Date.now())
+let sessionTimer = null
+
 const roomKindLabel = computed(() => roomKind.value === "audio" ? "Audio Room" : "Video Room")
 const myName = computed(() => me?.display_name || me?.username || me?.name || me?.email || "You")
 const myInitial = computed(() => getInitialName(myName.value))
+const shortRoomId = computed(() => String(roomId.value || "").slice(-8) || "room")
+
+const sessionDurationMs = ref(0)
+const sessionDurationLabel = computed(() => {
+  const total = Math.floor(sessionDurationMs.value / 1000)
+  const m = Math.floor(total / 60)
+  const s = total % 60
+  return `${String(m).padStart(2, "0")}:${String(s).padStart(2, "0")}`
+})
 
 /* =========================
    SOCKET
@@ -457,6 +580,11 @@ function getInitialName(v) {
   return String(v || "U").trim().charAt(0).toUpperCase() || "U"
 }
 
+function trimName(v) {
+  const s = String(v || "")
+  return s.length > 16 ? `${s.slice(0, 16)}…` : s
+}
+
 function togglePanel() {
   sidePanelOpen.value = !sidePanelOpen.value
 }
@@ -471,6 +599,30 @@ function focusTile(id) {
 
 function clearFocus() {
   focusedTileId.value = ""
+}
+
+function toggleCompactMode() {
+  compactMode.value = !compactMode.value
+  setNotice(compactMode.value ? "Compact mode enabled." : "Compact mode disabled.")
+}
+
+function toggleCinematicMode() {
+  cinematicMode.value = !cinematicMode.value
+  setNotice(cinematicMode.value ? "Cinematic mode enabled." : "Cinematic mode disabled.")
+}
+
+function toggleMirrorMode() {
+  mirrorLocal.value = !mirrorLocal.value
+  setNotice(mirrorLocal.value ? "Mirror mode on." : "Mirror mode off.")
+}
+
+function sendReaction(emoji) {
+  reactionBurst.value = emoji
+  window.clearTimeout(sendReaction._t)
+  sendReaction._t = window.setTimeout(() => {
+    reactionBurst.value = ""
+  }, 1200)
+  setNotice(`Reaction sent ${emoji}`)
 }
 
 function setNotice(text = "") {
@@ -562,6 +714,22 @@ function refreshRemoteVideoAudio() {
     el.muted = false
     el.volume = speakerEnabled.value ? 1 : 0.2
   })
+}
+
+function startSessionTimer() {
+  if (sessionTimer) window.clearInterval(sessionTimer)
+  sessionStartedAt.value = Date.now()
+  sessionDurationMs.value = 0
+  sessionTimer = window.setInterval(() => {
+    sessionDurationMs.value = Date.now() - sessionStartedAt.value
+  }, 1000)
+}
+
+function stopSessionTimer() {
+  if (sessionTimer) {
+    window.clearInterval(sessionTimer)
+    sessionTimer = null
+  }
 }
 
 /* =========================
@@ -855,9 +1023,7 @@ async function handleOfferPayload(payload = {}) {
     (makingOffer.get(from) || pc.signalingState !== "stable")
 
   ignoreOffer.set(from, !polite && offerCollision)
-  if (ignoreOffer.get(from)) {
-    return
-  }
+  if (ignoreOffer.get(from)) return
 
   try {
     if (offerCollision) {
@@ -1102,6 +1268,15 @@ async function copyInvite() {
   }
 }
 
+async function copyRoomId() {
+  try {
+    await navigator.clipboard.writeText(String(roomId.value))
+    setNotice("Room ID copied.")
+  } catch {
+    window.prompt("Copy room ID:", String(roomId.value))
+  }
+}
+
 async function copyDiagnostics() {
   const diag = {
     roomId: roomId.value,
@@ -1122,6 +1297,10 @@ async function copyDiagnostics() {
     camEnabled: camEnabled.value,
     screenSharing: screenSharing.value,
     turnReady: turnReady.value,
+    compactMode: compactMode.value,
+    cinematicMode: cinematicMode.value,
+    mirrorLocal: mirrorLocal.value,
+    sessionDuration: sessionDurationLabel.value,
     at: new Date().toISOString(),
   }
 
@@ -1168,6 +1347,7 @@ async function joinRoom() {
       }
 
       joinedRoom.value = true
+      startSessionTimer()
 
       const room = res?.room || {}
       roomName.value = String(room?.name || roomId.value)
@@ -1217,6 +1397,7 @@ function leaveRoom() {
 
 function cleanupAll() {
   joinedRoom.value = false
+  stopSessionTimer()
 
   for (const id of Array.from(peerConnections.keys())) {
     cleanupPeer(id)
@@ -1260,6 +1441,7 @@ function attachSocketListeners() {
   socket.on("disconnect", () => {
     socketConnected.value = false
     joinedRoom.value = false
+    stopSessionTimer()
     scheduleSocketReconnect()
   })
 
@@ -1370,6 +1552,7 @@ onBeforeUnmount(() => {
     reconnectTimer = null
   }
 
+  stopSessionTimer()
   cleanupAll()
   socket = null
 })
@@ -1387,6 +1570,18 @@ onBeforeUnmount(() => {
   position: relative;
   overflow-x: hidden;
   padding: 18px 18px 110px;
+}
+
+.roomcall-page.cinematicMode .side {
+  opacity: 0.92;
+}
+
+.roomcall-page.compactMode .tile {
+  min-height: 220px;
+}
+
+.roomcall-page.focusOnly .video-stage.focused .tile.big {
+  min-height: 68vh;
 }
 
 .bg-layer {
@@ -1432,8 +1627,10 @@ onBeforeUnmount(() => {
 .topbar,
 .hero,
 .stage-toolbar,
+.magic-toolbar,
 .panel,
-.bottomBar {
+.bottomBar,
+.presence-strip {
   position: relative;
   z-index: 2;
   border-radius: 24px;
@@ -1461,7 +1658,10 @@ onBeforeUnmount(() => {
 .control,
 .btn,
 .toolBtn,
-.fab {
+.fab,
+.magicBtn,
+.magicChip,
+.presenceCard {
   border: none;
   color: #fff;
   cursor: pointer;
@@ -1475,11 +1675,19 @@ onBeforeUnmount(() => {
   font-weight: 800;
 }
 
+.miniChip {
+  font-size: 12px;
+  padding: 10px 12px;
+}
+
 .chip:hover,
 .control:hover,
 .btn:hover,
 .toolBtn:hover,
-.fab:hover {
+.fab:hover,
+.magicBtn:hover,
+.magicChip:hover,
+.presenceCard:hover {
   transform: translateY(-1px);
 }
 
@@ -1570,9 +1778,13 @@ onBeforeUnmount(() => {
   color: #ff9aaa;
 }
 
+.badge.accent {
+  background: linear-gradient(135deg, rgba(0,210,255,0.22), rgba(124,58,237,0.22));
+}
+
 .hero-right {
   display: grid;
-  grid-template-columns: repeat(3, 1fr);
+  grid-template-columns: repeat(2, 1fr);
   gap: 12px;
   align-content: start;
 }
@@ -1593,6 +1805,81 @@ onBeforeUnmount(() => {
   font-size: 12px;
   opacity: 0.72;
   margin-top: 6px;
+}
+
+.presence-strip {
+  padding: 14px;
+  margin-bottom: 16px;
+  z-index: 2;
+}
+
+.strip-head {
+  display: flex;
+  justify-content: space-between;
+  gap: 12px;
+  align-items: center;
+  flex-wrap: wrap;
+  margin-bottom: 12px;
+}
+
+.strip-actions {
+  display: flex;
+  gap: 8px;
+  flex-wrap: wrap;
+}
+
+.presence-list {
+  display: flex;
+  gap: 10px;
+  overflow-x: auto;
+  padding-bottom: 4px;
+}
+
+.presenceCard {
+  min-width: 150px;
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  background: rgba(255,255,255,0.06);
+  border-radius: 18px;
+  padding: 10px 12px;
+  text-align: left;
+}
+
+.presenceCard.self {
+  background: rgba(0,210,255,0.1);
+}
+
+.presenceAvatar {
+  width: 38px;
+  height: 38px;
+  border-radius: 999px;
+  display: grid;
+  place-items: center;
+  font-weight: 900;
+  background: linear-gradient(135deg, #00d2ff, #7c3aed);
+  flex: 0 0 auto;
+}
+
+.presenceAvatar.alt {
+  background: linear-gradient(135deg, #ff7a18, #ff416c);
+}
+
+.presenceMeta {
+  min-width: 0;
+}
+
+.presenceName {
+  font-weight: 800;
+  font-size: 13px;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
+.presenceSub {
+  font-size: 11px;
+  opacity: 0.72;
 }
 
 .main {
@@ -1616,11 +1903,37 @@ onBeforeUnmount(() => {
   margin-bottom: 14px;
 }
 
+.magic-toolbar {
+  padding: 12px 14px;
+  display: flex;
+  justify-content: space-between;
+  gap: 12px;
+  flex-wrap: wrap;
+  margin-bottom: 14px;
+}
+
+.magic-left,
+.magic-right,
 .stage-left,
 .stage-right {
   display: flex;
   gap: 10px;
   flex-wrap: wrap;
+}
+
+.magicBtn {
+  width: 44px;
+  height: 44px;
+  border-radius: 14px;
+  background: rgba(255,255,255,0.1);
+  font-size: 20px;
+}
+
+.magicChip {
+  padding: 11px 14px;
+  border-radius: 14px;
+  background: rgba(255,255,255,0.08);
+  font-weight: 800;
 }
 
 .control {
@@ -1645,7 +1958,7 @@ onBeforeUnmount(() => {
 
 .video-stage {
   display: grid;
-  grid-template-columns: repeat(auto-fit, minmax(260px, 1fr));
+  grid-template-columns: repeat(auto-fit, minmax(280px, 1fr));
   gap: 16px;
 }
 
@@ -1653,13 +1966,22 @@ onBeforeUnmount(() => {
   grid-template-columns: 1fr;
 }
 
+.video-stage.cinematic .tile {
+  background: rgba(255,255,255,0.06);
+  border-color: rgba(0,210,255,0.15);
+}
+
 .tile {
   border-radius: 26px;
   overflow: hidden;
   padding: 14px;
-  min-height: 260px;
+  min-height: 280px;
   display: flex;
   flex-direction: column;
+}
+
+.tile.compact {
+  min-height: 220px;
 }
 
 .tile.big {
@@ -1746,6 +2068,10 @@ onBeforeUnmount(() => {
   color: #ffb4c1;
 }
 
+.pill.ghostState {
+  text-transform: capitalize;
+}
+
 .media-wrap {
   position: relative;
   flex: 1;
@@ -1760,6 +2086,10 @@ onBeforeUnmount(() => {
   border-radius: 22px;
   object-fit: cover;
   background: #02060c;
+}
+
+.media.mirrored {
+  transform: scaleX(-1);
 }
 
 .audio-room-card {
@@ -2002,7 +2332,7 @@ onBeforeUnmount(() => {
   left: 50%;
   bottom: 16px;
   transform: translateX(-50%);
-  width: min(92vw, 680px);
+  width: min(92vw, 760px);
   padding: 12px;
   border-radius: 999px;
   display: flex;
@@ -2034,6 +2364,28 @@ onBeforeUnmount(() => {
   background: linear-gradient(135deg, #ff4d6d, #d90429);
 }
 
+.reaction-burst {
+  position: fixed;
+  inset: 0;
+  display: grid;
+  place-items: center;
+  font-size: 88px;
+  z-index: 30;
+  pointer-events: none;
+  text-shadow: 0 10px 40px rgba(0,0,0,0.45);
+}
+
+.pop-reaction-enter-active,
+.pop-reaction-leave-active {
+  transition: all 0.28s ease;
+}
+
+.pop-reaction-enter-from,
+.pop-reaction-leave-to {
+  opacity: 0;
+  transform: scale(0.8) translateY(16px);
+}
+
 @media (max-width: 1100px) {
   .main {
     grid-template-columns: 1fr;
@@ -2050,14 +2402,15 @@ onBeforeUnmount(() => {
   }
 
   .hero-right {
-    grid-template-columns: repeat(3, 1fr);
+    grid-template-columns: repeat(2, 1fr);
   }
 
   .tools-grid {
     grid-template-columns: 1fr 1fr;
   }
 
-  .stage-toolbar {
+  .stage-toolbar,
+  .magic-toolbar {
     flex-direction: column;
     align-items: stretch;
   }
@@ -2071,12 +2424,10 @@ onBeforeUnmount(() => {
   .topbar,
   .hero,
   .panel,
-  .stage-toolbar {
+  .stage-toolbar,
+  .magic-toolbar,
+  .presence-strip {
     border-radius: 20px;
-  }
-
-  .hero-right {
-    grid-template-columns: repeat(2, 1fr);
   }
 
   .video-stage {
@@ -2100,6 +2451,14 @@ onBeforeUnmount(() => {
     width: 50px;
     height: 50px;
     font-size: 20px;
+  }
+
+  .presenceCard {
+    min-width: 132px;
+  }
+
+  .hero-title {
+    font-size: 30px;
   }
 }
 </style>

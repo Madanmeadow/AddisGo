@@ -12,7 +12,7 @@
           <div class="logo">⚡</div>
 
           <div class="brand-text">
-            <div class="title">Pulse</div>
+            <div class="title">AddisGo</div>
             <div class="sub">Your Social Universe</div>
           </div>
         </div>
@@ -38,6 +38,10 @@
             {{ studioOpen ? "Close Studio" : "Studio" }}
           </button>
 
+          <button class="chip ghost" @click="toggleFocusMode">
+            {{ focusMode ? "Exit Focus" : "Focus Mode" }}
+          </button>
+
           <button class="chip danger" @click="logout">Logout</button>
         </div>
       </header>
@@ -49,7 +53,7 @@
             <div class="heroEyebrow">WELCOME BACK</div>
             <div class="heroTitle">{{ meName }}</div>
             <div class="heroSub">
-              Build, post, call, stream, chat, save ideas, and run your whole world from one magical dashboard.
+              {{ moodGreeting }} Build, post, call, stream, chat, save ideas, and run your whole world from one magical dashboard.
             </div>
 
             <div class="heroActions">
@@ -57,6 +61,13 @@
               <button class="btn ghostBtn" @click="setFeedMode('rooms')">Open Rooms</button>
               <button class="btn ghostBtn" @click="setFeedMode('live')">Go Live Area</button>
               <button class="btn ghostBtn" @click="toggleStudio">Creator Studio</button>
+              <button class="btn ghostBtn" @click="createFastRoom">Start Room</button>
+            </div>
+
+            <div class="trendingRow mt10">
+              <span class="badgePill accent">Creator Score {{ creatorScore }}</span>
+              <span class="badgePill">Streak {{ todayStreak }} day{{ todayStreak === 1 ? "" : "s" }}</span>
+              <span class="badgePill">{{ quickStatusText }}</span>
             </div>
           </div>
 
@@ -89,7 +100,7 @@
         </div>
       </section>
 
-      <!-- MAGIC STATUS STRIP -->
+      <!-- COMMAND CENTER -->
       <section class="dock">
         <div class="panel dockCard glassy">
           <div class="panel-head">
@@ -109,27 +120,73 @@
             <span class="badgePill">Live {{ liveStreams.length }}</span>
             <span class="badgePill">Rooms {{ callRooms.length }}</span>
             <span class="badgePill">Saved {{ savedPostIds.length }}</span>
+            <span class="badgePill">Pinned {{ pinnedPostIds.length }}</span>
           </div>
 
           <div class="hint mt10">
-            Keyboard shortcuts: <strong>/</strong> search, <strong>c</strong> composer, <strong>r</strong> refresh, <strong>g</strong> go live, <strong>m</strong> mute.
+            Keyboard shortcuts: <strong>/</strong> search, <strong>c</strong> composer, <strong>r</strong> refresh, <strong>g</strong> go live, <strong>m</strong> mute, <strong>f</strong> focus mode.
           </div>
         </div>
 
         <div class="panel dockCard glassy">
           <div class="panel-head">
-            <div class="panel-title">🚀 Quick Launch</div>
+            <div class="panel-title">🚀 Smart Launch</div>
           </div>
 
           <div class="toolsGrid">
-            <button class="toolBtn" @click="setFeedMode('foryou')">🎬 For You</button>
-            <button class="toolBtn" @click="setFeedMode('reels')">🎞️ Reels</button>
-            <button class="toolBtn" @click="setFeedMode('threads')">✍️ Threads</button>
-            <button class="toolBtn" @click="setFeedMode('rooms')">🎧 Rooms</button>
-            <button class="toolBtn" @click="setFeedMode('live')">🔴 Live</button>
-            <button class="toolBtn" @click="openSavedMode">💾 Saved</button>
-            <button class="toolBtn" @click="openPinnedMode">📌 Pinned</button>
-            <button class="toolBtn" @click="toggleStudio">🪄 Studio</button>
+            <button
+              v-for="item in smartLaunchCards"
+              :key="item.id"
+              class="toolBtn"
+              @click="runSmartLaunch(item.id)"
+            >
+              {{ item.label }}
+            </button>
+          </div>
+        </div>
+      </section>
+
+      <!-- SPOTLIGHT -->
+      <section class="dock">
+        <div class="panel dockCard glassy">
+          <div class="panel-head">
+            <div class="panel-title">🌟 Spotlight</div>
+            <div class="dockActions">
+              <button class="btn ghostBtn" @click="refreshAll">Refresh</button>
+            </div>
+          </div>
+
+          <div class="toolsGrid">
+            <div class="toolBtn">
+              🔥 Trending Tag: {{ spotlightTag || "Nothing yet" }}
+            </div>
+            <div class="toolBtn">
+              👥 Most Active: {{ spotlightPerson }}
+            </div>
+            <div class="toolBtn">
+              📞 Rooms Ready: {{ callRooms.length }}
+            </div>
+            <div class="toolBtn">
+              🎬 Feed Power: {{ videoPosts.length > 0 ? "Video Active" : "Text Active" }}
+            </div>
+          </div>
+        </div>
+
+        <div class="panel dockCard glassy">
+          <div class="panel-head">
+            <div class="panel-title">📈 Creator Pulse</div>
+          </div>
+
+          <div class="trendingRow">
+            <span class="badgePill accent">Posts {{ posts.length }}</span>
+            <span class="badgePill">Comments {{ totalCommentCount }}</span>
+            <span class="badgePill">Likes {{ totalLikesCount }}</span>
+            <span class="badgePill">Saved {{ savedPostIds.length }}</span>
+            <span class="badgePill">Pinned {{ pinnedPostIds.length }}</span>
+          </div>
+
+          <div class="hint mt10">
+            {{ creatorInsight }}
           </div>
         </div>
       </section>
@@ -241,11 +298,13 @@
             <button class="toolBtn" @click="focusComposer">✍️ New Post</button>
             <button class="toolBtn" @click="setFeedMode('reels')">🎞️ Create Reel</button>
             <button class="toolBtn" @click="startLive">🔴 Start Live</button>
+            <button class="toolBtn" @click="createFastRoom">📞 Start Room</button>
             <button class="toolBtn" @click="openSavedMode">💾 Open Saved</button>
             <button class="toolBtn" @click="openPinnedMode">📌 Open Pinned</button>
             <button class="toolBtn" @click="refreshCallRooms">📞 Refresh Rooms</button>
             <button class="toolBtn" @click="requestNotifications">🔔 Notifications</button>
             <button class="toolBtn" @click="testTurn">🧊 Test TURN</button>
+            <button class="toolBtn" @click="toggleFocusMode">{{ focusMode ? "🧘 Exit Focus" : "🧘 Enter Focus" }}</button>
           </div>
 
           <div class="trendingRow">
@@ -253,13 +312,14 @@
             <span class="badgePill">Videos {{ videoPosts.length }}</span>
             <span class="badgePill">Saved {{ savedPosts.length }}</span>
             <span class="badgePill">Pinned {{ pinnedPosts.length }}</span>
+            <span class="badgePill accent">Score {{ creatorScore }}</span>
           </div>
 
           <div v-if="turnNote" class="hint mt10">{{ turnNote }}</div>
         </section>
 
         <!-- TOP DOCK -->
-        <section class="dock">
+        <section v-if="!focusMode" class="dock">
           <!-- Live -->
           <div class="panel dockCard glassy">
             <div class="panel-head">
@@ -421,6 +481,7 @@
             <button class="toolBtn" @click="refreshAll" :disabled="loading">🔁 Refresh All</button>
             <button class="toolBtn" @click="testTurn">🧊 Test TURN</button>
             <button class="toolBtn" @click="requestNotifications">🔔 Enable Notifications</button>
+            <button class="toolBtn" @click="toggleFocusMode">{{ focusMode ? "🧘 Exit Focus" : "🧘 Focus Mode" }}</button>
             <button class="toolBtn dangerTool" @click="hardResetApp">💣 Hard Reset (Local)</button>
           </div>
 
@@ -1041,11 +1102,13 @@ const me = (() => {
 /* =========================
    STORAGE KEYS
 ========================= */
-const DASH_PREFS_KEY = "pulse_dashboard_prefs_v2"
-const DASH_DRAFT_KEY = "pulse_dashboard_draft_v2"
+const DASH_PREFS_KEY = "pulse_dashboard_prefs_v3"
+const DASH_DRAFT_KEY = "pulse_dashboard_draft_v3"
 const DASH_SAVED_POSTS_KEY = "pulse_dashboard_saved_posts_v1"
 const DASH_PINNED_POSTS_KEY = "pulse_dashboard_pinned_posts_v1"
-const DASH_ACTIVITY_KEY = "pulse_dashboard_activity_v1"
+const DASH_ACTIVITY_KEY = "pulse_dashboard_activity_v2"
+const DASH_STREAK_KEY = "pulse_dashboard_streak_v1"
+const DASH_FOCUS_KEY = "pulse_dashboard_focus_v1"
 
 /* =========================
    READ HELPERS
@@ -1062,6 +1125,8 @@ const savedPrefs = readJson(DASH_PREFS_KEY, {})
 const initialSavedIds = readJson(DASH_SAVED_POSTS_KEY, [])
 const initialPinnedIds = readJson(DASH_PINNED_POSTS_KEY, [])
 const initialActivity = readJson(DASH_ACTIVITY_KEY, [])
+const initialStreak = readJson(DASH_STREAK_KEY, { days: 1, lastOpenDate: "" })
+const initialFocus = readJson(DASH_FOCUS_KEY, { focusMode: false })
 
 /* =========================
    HELPERS
@@ -1157,6 +1222,38 @@ function addActivity(title, text) {
     ...activityFeed.value,
   ].slice(0, 40)
   persistActivity()
+}
+
+function persistFocusMode() {
+  try {
+    localStorage.setItem(DASH_FOCUS_KEY, JSON.stringify({ focusMode: focusMode.value }))
+  } catch {}
+}
+
+function todayDateKey() {
+  const d = new Date()
+  return `${d.getFullYear()}-${d.getMonth() + 1}-${d.getDate()}`
+}
+
+function updateDailyStreak() {
+  const today = todayDateKey()
+  const prev = initialStreak?.lastOpenDate || ""
+  if (!prev) {
+    streak.value = { days: 1, lastOpenDate: today }
+  } else if (prev !== today) {
+    const prevDate = new Date(prev)
+    const now = new Date(today)
+    const diff = Math.round((now - prevDate) / 86400000)
+    if (diff === 1) {
+      streak.value = { days: Math.max(1, Number(streak.value.days || 1) + 1), lastOpenDate: today }
+    } else if (diff > 1) {
+      streak.value = { days: 1, lastOpenDate: today }
+    }
+  }
+
+  try {
+    localStorage.setItem(DASH_STREAK_KEY, JSON.stringify(streak.value))
+  } catch {}
 }
 
 /* =========================
@@ -1486,6 +1583,12 @@ function createCallRoom() {
   })
 }
 
+function createFastRoom() {
+  callRoomKind.value = "video"
+  callRoomName.value = `${meName.value}'s Elite Room`
+  createCallRoom()
+}
+
 function joinCallRoom(room) {
   const roomId = String(room?.roomId || "")
   if (!roomId) return
@@ -1680,6 +1783,8 @@ async function refreshAll() {
    FILTERS / SORT / TRENDING
 ========================= */
 const filteredBaseCount = computed(() => sortedFilteredPosts.value.length)
+const likesByPost = ref({})
+const likeBusyByPost = ref({})
 
 const baseFiltered = computed(() => {
   const q = search.value.trim().toLowerCase()
@@ -1703,9 +1808,6 @@ const baseFiltered = computed(() => {
 
   return list
 })
-
-const likesByPost = ref({})
-const likeBusyByPost = ref({})
 
 const sortedFilteredPosts = computed(() => {
   const list = [...baseFiltered.value]
@@ -1838,6 +1940,101 @@ const pinnedPosts = computed(() => {
   const ids = new Set(pinnedPostIds.value)
   return posts.value.filter((p) => ids.has(Number(p.id)))
 })
+
+/* =========================
+   INTELLIGENCE LAYER
+========================= */
+const focusMode = ref(!!initialFocus.focusMode)
+const streak = ref({
+  days: Number(initialStreak?.days || 1),
+  lastOpenDate: initialStreak?.lastOpenDate || "",
+})
+
+const todayStreak = computed(() => Math.max(1, Number(streak.value.days || 1)))
+
+const moodGreeting = computed(() => {
+  const h = new Date().getHours()
+  if (h < 12) return "Good morning."
+  if (h < 18) return "Good afternoon."
+  return "Good evening."
+})
+
+const totalLikesCount = computed(() =>
+  Object.values(likesByPost.value).reduce((sum, item) => sum + Number(item?.count || 0), 0)
+)
+
+const totalCommentCount = computed(() =>
+  posts.value.reduce((sum, p) => sum + Number(commentCount(p.id) || 0), 0)
+)
+
+const creatorScore = computed(() => {
+  return (
+    posts.value.length * 10 +
+    videoPosts.value.length * 12 +
+    savedPostIds.value.length * 4 +
+    pinnedPostIds.value.length * 5 +
+    totalLikesCount.value * 2 +
+    totalCommentCount.value * 3 +
+    onlineCount.value * 2
+  )
+})
+
+const creatorInsight = computed(() => {
+  if (videoPosts.value.length >= 3) return "Your video engine is warming up. Keep feeding Reels and live rooms."
+  if (savedPostIds.value.length >= 5) return "You are curating your own content library like a creator operating system."
+  if (posts.value.length >= 5) return "Momentum is building. Add more reels and room activity for a stronger growth loop."
+  return "Post more consistently, create one room, and go live once to unlock the next level of engagement."
+})
+
+const spotlightTag = computed(() => trendingTags.value[0] || "")
+const spotlightPerson = computed(() => {
+  const onlineUser = people.value.find((u) => isOnline(u.id))
+  return onlineUser ? displayUserName(onlineUser) : "You"
+})
+
+const quickStatusText = computed(() => {
+  if (!socketConnected.value) return "Realtime sleeping"
+  if (liveStreams.value.length > 0) return "Live world active"
+  if (callRooms.value.length > 0) return "Rooms buzzing"
+  if (posts.value.length > 0) return "Creator mode online"
+  return "Ready to build"
+})
+
+const smartLaunchCards = computed(() => {
+  return [
+    { id: "post", label: "✍️ Create a post" },
+    { id: "room", label: callRooms.value.length ? "📞 Join a room" : "📞 Start a room" },
+    { id: "live", label: liveStreams.value.length ? "🔴 Watch live" : "🔴 Start live" },
+    { id: "saved", label: savedPostIds.value.length ? "💾 Open saved" : "💾 Build saved list" },
+    { id: "reels", label: videoPosts.value.length ? "🎞️ Open reels" : "🎞️ Create first reel" },
+    { id: "focus", label: focusMode.value ? "🧘 Exit focus mode" : "🧘 Enter focus mode" },
+  ]
+})
+
+function runSmartLaunch(id) {
+  if (id === "post") {
+    focusComposer()
+    scrollToTop()
+  } else if (id === "room") {
+    if (callRooms.value.length) joinCallRoom(callRooms.value[0])
+    else createFastRoom()
+  } else if (id === "live") {
+    if (liveStreams.value.length) joinLive(liveStreams.value[0])
+    else startLive()
+  } else if (id === "saved") {
+    openSavedMode()
+  } else if (id === "reels") {
+    setFeedMode("reels")
+  } else if (id === "focus") {
+    toggleFocusMode()
+  }
+}
+
+function toggleFocusMode() {
+  focusMode.value = !focusMode.value
+  persistFocusMode()
+  addActivity("Focus", focusMode.value ? "Entered focus mode" : "Exited focus mode")
+}
 
 /* =========================
    THREAD MEDIA
@@ -2312,6 +2509,9 @@ async function copyDiagnostics() {
     postFilter: postFilter.value,
     savedCount: savedPostIds.value.length,
     pinnedCount: pinnedPostIds.value.length,
+    creatorScore: creatorScore.value,
+    streak: todayStreak.value,
+    focusMode: focusMode.value,
   }
 
   try {
@@ -2367,6 +2567,8 @@ watch(caption, (v) => {
   } catch {}
 })
 
+watch(focusMode, persistFocusMode)
+
 /* =========================
    KEYBOARD SHORTCUTS
 ========================= */
@@ -2394,6 +2596,9 @@ function handleKeydown(e) {
   } else if (e.key === "m") {
     e.preventDefault()
     toggleGlobalMute()
+  } else if (e.key === "f") {
+    e.preventDefault()
+    toggleFocusMode()
   }
 }
 
@@ -2401,6 +2606,8 @@ function handleKeydown(e) {
    LIFECYCLE
 ========================= */
 onMounted(async () => {
+  updateDailyStreak()
+
   try {
     const savedDraft = JSON.parse(localStorage.getItem(DASH_DRAFT_KEY) || "{}")
     if (savedDraft?.caption) {
