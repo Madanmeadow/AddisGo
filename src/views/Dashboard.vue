@@ -12,7 +12,7 @@
           <div class="logo">⚡</div>
 
           <div class="brand-text">
-            <div class="title">AddisGo</div>
+            <div class="title">Pulse</div>
             <div class="sub">Your Social Universe</div>
           </div>
         </div>

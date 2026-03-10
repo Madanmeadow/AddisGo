@@ -31,13 +31,13 @@
       </div>
     </header>
 
-    <!-- BANNER -->
+    <!-- HERO -->
     <section class="hero glassy">
       <div class="hero-left">
         <div class="eyebrow">ADDISGO ROOM CALL</div>
         <h1 class="hero-title">{{ roomName }}</h1>
         <div class="hero-sub">
-          {{ roomKindLabel }} room with live mesh connections, camera, mic, screen share, invite link, and participant tiles.
+          {{ roomKindLabel }} room with camera, mic, screen share, invite link, reconnect recovery, and stronger WebRTC signaling.
         </div>
 
         <div class="hero-badges">
@@ -49,6 +49,7 @@
           </span>
           <span class="badge">{{ participantCount }} in room</span>
           <span class="badge">{{ roomKindLabel }}</span>
+          <span class="badge">{{ turnReady ? "TURN Ready" : "STUN Only" }}</span>
         </div>
       </div>
 
@@ -86,7 +87,12 @@
               {{ camEnabled ? "📷 Camera On" : "🚫 Camera Off" }}
             </button>
 
-            <button class="control" :class="{ active: screenSharing }" @click="toggleScreenShare">
+            <button
+              class="control"
+              :class="{ active: screenSharing }"
+              :disabled="roomKind !== 'video'"
+              @click="toggleScreenShare"
+            >
               {{ screenSharing ? "🖥 Stop Share" : "🖥 Share Screen" }}
             </button>
 
@@ -98,11 +104,12 @@
           <div class="stage-right">
             <button class="control ghost" @click="focusTile('local')">Focus Me</button>
             <button class="control ghost" @click="clearFocus">Show All</button>
+            <button class="control ghost" @click="forceReconnectPeers">Repair Peers</button>
           </div>
         </div>
 
         <div class="video-stage" :class="{ focused: !!focusedTileId }">
-          <!-- LOCAL TILE -->
+          <!-- LOCAL -->
           <article
             v-if="!focusedTileId || focusedTileId === 'local'"
             class="tile selfTile glassy"
@@ -148,7 +155,7 @@
             </div>
           </article>
 
-          <!-- REMOTE TILES -->
+          <!-- REMOTE -->
           <article
             v-for="p in visibleRemoteParticipants"
             :key="p.socketId"
@@ -168,7 +175,7 @@
               </div>
 
               <div class="tile-pills">
-                <span class="pill">{{ p.kind === "video" ? "Video" : roomKindLabel }}</span>
+                <span class="pill">{{ roomKind === "video" ? "Video" : "Audio" }}</span>
               </div>
             </div>
 
@@ -196,7 +203,10 @@
           </article>
 
           <!-- EMPTY -->
-          <div v-if="visibleRemoteParticipants.length === 0 && (!focusedTileId || focusedTileId === 'local')" class="empty-state glassy">
+          <div
+            v-if="visibleRemoteParticipants.length === 0 && (!focusedTileId || focusedTileId === 'local')"
+            class="empty-state glassy"
+          >
             <div class="empty-emoji">✨</div>
             <div class="empty-title">Room is ready</div>
             <div class="empty-sub">Share the invite link so others can join your AddisGo room call.</div>
@@ -258,9 +268,10 @@
             <button class="toolBtn" :disabled="roomKind !== 'video'" @click="toggleCamera">
               {{ camEnabled ? "🚫 Stop Camera" : "📷 Start Camera" }}
             </button>
-            <button class="toolBtn" @click="toggleScreenShare">
+            <button class="toolBtn" :disabled="roomKind !== 'video'" @click="toggleScreenShare">
               {{ screenSharing ? "🖥 Stop Share" : "🖥 Share Screen" }}
             </button>
+            <button class="toolBtn" @click="forceReconnectPeers">🛠 Repair Peers</button>
             <button class="toolBtn" @click="copyDiagnostics">🧾 Copy Diagnostics</button>
           </div>
 
@@ -306,6 +317,10 @@
               <span>Screen</span>
               <strong>{{ screenSharing ? "Sharing" : "Off" }}</strong>
             </div>
+            <div class="diag-row">
+              <span>TURN</span>
+              <strong>{{ turnReady ? "Ready" : "No" }}</strong>
+            </div>
           </div>
         </section>
       </aside>
@@ -326,12 +341,17 @@
         {{ camEnabled ? "📷" : "🚫" }}
       </button>
 
-      <button class="fab share" :class="{ on: screenSharing }" @click="toggleScreenShare">
+      <button
+        class="fab share"
+        :class="{ on: screenSharing }"
+        :disabled="roomKind !== 'video'"
+        @click="toggleScreenShare"
+      >
         🖥
       </button>
 
       <button class="fab invite" @click="copyInvite">🔗</button>
-
+      <button class="fab invite" @click="forceReconnectPeers">🛠</button>
       <button class="fab end" @click="leaveRoom">❌</button>
     </footer>
   </div>
@@ -352,7 +372,7 @@ const me = (() => {
 })()
 
 /* =========================
-   ROUTE / ROOM
+   ROOM / ROUTE
 ========================= */
 const roomId = computed(() => String(route.query.roomId || "").trim())
 const roomName = ref("")
@@ -375,6 +395,15 @@ const socketConnected = ref(false)
 const mySocketId = ref("")
 
 /* =========================
+   TURN / ICE
+========================= */
+const turnReady = ref(false)
+const rtcIceServers = ref([
+  { urls: "stun:stun.l.google.com:19302" },
+  { urls: "stun:stun1.l.google.com:19302" },
+])
+
+/* =========================
    MEDIA
 ========================= */
 const localVideoRef = ref(null)
@@ -390,7 +419,7 @@ const speakerEnabled = ref(true)
 /* =========================
    PARTICIPANTS
 ========================= */
-const roomUsers = ref([]) // includes self + others
+const roomUsers = ref([])
 const remoteParticipants = computed(() =>
   roomUsers.value.filter((u) => String(u.socketId) !== String(mySocketId.value))
 )
@@ -407,31 +436,41 @@ const visibleRemoteParticipants = computed(() => {
 })
 
 /* =========================
-   WEBRTC
+   WEBRTC STATE
 ========================= */
-const peerConnections = new Map()          // socketId -> RTCPeerConnection
-const remoteStreams = new Map()            // socketId -> MediaStream
-const remoteVideoRefs = new Map()          // socketId -> HTMLVideoElement
-const pendingIceCandidates = new Map()     // socketId -> RTCIceCandidateInit[]
+const peerConnections = new Map()
+const remoteStreams = new Map()
+const remoteVideoRefs = new Map()
+const pendingIceCandidates = new Map()
 const peerStatus = ref({})
 const peerConnectionState = ref({})
-
-const politeByPeer = new Map()
-
-function getRtcConfig() {
-  return {
-    iceServers: [
-      { urls: "stun:stun.l.google.com:19302" },
-      { urls: "stun:stun1.l.google.com:19302" },
-    ],
-  }
-}
+const makingOffer = new Map()
+const ignoreOffer = new Map()
+const isSettingRemoteAnswerPending = new Map()
+const peerMeta = new Map()
+let reconnectTimer = null
 
 /* =========================
    HELPERS
 ========================= */
 function getInitialName(v) {
   return String(v || "U").trim().charAt(0).toUpperCase() || "U"
+}
+
+function togglePanel() {
+  sidePanelOpen.value = !sidePanelOpen.value
+}
+
+function goBack() {
+  router.push("/dashboard")
+}
+
+function focusTile(id) {
+  focusedTileId.value = id
+}
+
+function clearFocus() {
+  focusedTileId.value = ""
 }
 
 function setNotice(text = "") {
@@ -452,20 +491,8 @@ function setError(text = "") {
   }, 4000)
 }
 
-function togglePanel() {
-  sidePanelOpen.value = !sidePanelOpen.value
-}
-
-function goBack() {
-  router.push("/dashboard")
-}
-
-function focusTile(id) {
-  focusedTileId.value = id
-}
-
-function clearFocus() {
-  focusedTileId.value = ""
+function currentUsername() {
+  return me?.username || me?.display_name || me?.name || me?.email || "User"
 }
 
 function safeReplaceRoomUsers(users = []) {
@@ -480,19 +507,52 @@ function safeReplaceRoomUsers(users = []) {
     : []
 }
 
+function mergeUserIntoRoom(user) {
+  if (!user?.socketId) return
+  const sid = String(user.socketId)
+  const existing = roomUsers.value.find((u) => String(u.socketId) === sid)
+
+  if (existing) {
+    roomUsers.value = roomUsers.value.map((u) =>
+      String(u.socketId) === sid
+        ? {
+            ...u,
+            userId: String(user.userId || u.userId || ""),
+            socketId: sid,
+            displayName: user.displayName || user.username || user.name || u.displayName || "",
+            username: user.username || u.username || "",
+            kind: user.kind || u.kind || roomKind.value,
+          }
+        : u
+    )
+  } else {
+    roomUsers.value = [
+      ...roomUsers.value,
+      {
+        userId: String(user.userId || ""),
+        socketId: sid,
+        displayName: user.displayName || user.username || user.name || "",
+        username: user.username || "",
+        kind: user.kind || roomKind.value,
+      },
+    ]
+  }
+}
+
 function setRemoteVideoRef(socketId, el) {
-  if (!socketId) return
+  const sid = String(socketId || "")
+  if (!sid) return
 
   if (el) {
-    remoteVideoRefs.set(String(socketId), el)
-    const stream = remoteStreams.get(String(socketId))
+    remoteVideoRefs.set(sid, el)
+    const stream = remoteStreams.get(sid)
     if (stream) {
       el.srcObject = stream
-      el.muted = !speakerEnabled.value
+      el.muted = false
       el.volume = speakerEnabled.value ? 1 : 0.2
     }
   } else {
-    remoteVideoRefs.delete(String(socketId))
+    remoteVideoRefs.delete(sid)
   }
 }
 
@@ -505,7 +565,29 @@ function refreshRemoteVideoAudio() {
 }
 
 /* =========================
-   MEDIA SETUP
+   TURN
+========================= */
+async function loadTurnServers() {
+  try {
+    const res = await fetch(`${apiUrl}/api/turn`)
+    const data = await res.json()
+
+    if (res.ok && data?.ok && Array.isArray(data?.iceServers) && data.iceServers.length) {
+      rtcIceServers.value = data.iceServers
+      turnReady.value = true
+      return
+    }
+  } catch {}
+
+  turnReady.value = false
+}
+
+function getRtcConfig() {
+  return { iceServers: rtcIceServers.value }
+}
+
+/* =========================
+   LOCAL MEDIA
 ========================= */
 async function initLocalMedia() {
   try {
@@ -517,22 +599,39 @@ async function initLocalMedia() {
       video: wantsVideo,
     })
 
+    if (cameraStream.value) {
+      try { cameraStream.value.getTracks().forEach((t) => t.stop()) } catch {}
+    }
+
     cameraStream.value = stream
     localStream.value = stream
 
-    micEnabled.value = true
-    camEnabled.value = wantsVideo
+    const audioTrack = stream.getAudioTracks?.()[0]
+    const videoTrack = stream.getVideoTracks?.()[0]
 
-    if (localVideoRef.value && wantsVideo) {
-      localVideoRef.value.srcObject = stream
-    }
+    micEnabled.value = !!audioTrack
+    camEnabled.value = wantsVideo ? !!videoTrack : false
 
+    if (audioTrack) audioTrack.enabled = micEnabled.value
+    if (videoTrack) videoTrack.enabled = camEnabled.value
+
+    updateLocalPreview()
     return stream
   } catch (err) {
     console.error("initLocalMedia error:", err)
     setError("Camera or microphone permission failed.")
     throw err
   }
+}
+
+async function ensureLocalTracksReady() {
+  if (roomKind.value === "audio") {
+    if (!localStream.value) await initLocalMedia()
+    return
+  }
+
+  if (screenSharing.value && screenStream.value) return
+  if (!localStream.value) await initLocalMedia()
 }
 
 function getCurrentSendStream() {
@@ -542,17 +641,16 @@ function getCurrentSendStream() {
 function updateLocalPreview() {
   if (!localVideoRef.value) return
   if (roomKind.value !== "video" && !screenSharing.value) return
-  localVideoRef.value.srcObject = getCurrentSendStream()
-}
-
-async function ensureLocalTracksReady() {
-  if (localStream.value || screenStream.value) return
-  await initLocalMedia()
+  const stream = getCurrentSendStream()
+  if (stream) localVideoRef.value.srcObject = stream
 }
 
 function getActiveAudioTrack() {
-  const s = localStream.value
-  return s?.getAudioTracks?.()[0] || null
+  if (screenSharing.value && screenStream.value) {
+    const displayAudio = screenStream.value.getAudioTracks?.()[0]
+    if (displayAudio) return displayAudio
+  }
+  return localStream.value?.getAudioTracks?.()[0] || null
 }
 
 function getActiveVideoTrack() {
@@ -563,109 +661,153 @@ function getActiveVideoTrack() {
 /* =========================
    PEER CONNECTIONS
 ========================= */
-function shouldInitiateTo(socketId) {
+function isPolitePeer(socketId) {
   const mine = String(mySocketId.value || "")
   const theirs = String(socketId || "")
   if (!mine || !theirs) return false
-  return mine < theirs
+  return mine > theirs
 }
 
 function buildPeerConnection(targetSocketId) {
-  const id = String(targetSocketId)
-  if (peerConnections.has(id)) return peerConnections.get(id)
+  const sid = String(targetSocketId)
+  if (peerConnections.has(sid)) return peerConnections.get(sid)
 
   const pc = new RTCPeerConnection(getRtcConfig())
-  politeByPeer.set(id, !shouldInitiateTo(id))
+  peerMeta.set(sid, { polite: isPolitePeer(sid) })
+  makingOffer.set(sid, false)
+  ignoreOffer.set(sid, false)
+  isSettingRemoteAnswerPending.set(sid, false)
 
-  const activeStream = getCurrentSendStream()
-  if (activeStream) {
-    activeStream.getTracks().forEach((track) => {
-      pc.addTrack(track, activeStream)
-    })
-  } else if (localStream.value) {
-    localStream.value.getTracks().forEach((track) => {
-      pc.addTrack(track, localStream.value)
+  const sendStream = getCurrentSendStream() || localStream.value
+  if (sendStream) {
+    sendStream.getTracks().forEach((track) => {
+      pc.addTrack(track, sendStream)
     })
   }
 
   pc.onicecandidate = (event) => {
-    if (event.candidate && socket) {
-      socket.emit("callroom:webrtc:ice", {
-        roomId: roomId.value,
-        to: id,
-        candidate: event.candidate,
-      })
-    }
+    if (!event.candidate || !socket) return
+
+    socket.emit("callroom:webrtc:ice", {
+      roomId: roomId.value,
+      to: sid,
+      targetSocketId: sid,
+      candidate: event.candidate,
+      from: mySocketId.value,
+    })
   }
 
   pc.ontrack = (event) => {
-    let stream = remoteStreams.get(id)
+    let stream = remoteStreams.get(sid)
     if (!stream) {
       stream = new MediaStream()
-      remoteStreams.set(id, stream)
+      remoteStreams.set(sid, stream)
     }
 
-    const incoming = event.streams?.[0]
-    if (incoming) {
-      incoming.getTracks().forEach((track) => {
+    if (event.streams?.[0]) {
+      event.streams[0].getTracks().forEach((track) => {
         const exists = stream.getTracks().some((t) => t.id === track.id)
         if (!exists) stream.addTrack(track)
       })
-    } else {
-      const [track] = event.track ? [event.track] : []
-      if (track) {
-        const exists = stream.getTracks().some((t) => t.id === track.id)
-        if (!exists) stream.addTrack(track)
-      }
+    } else if (event.track) {
+      const exists = stream.getTracks().some((t) => t.id === event.track.id)
+      if (!exists) stream.addTrack(event.track)
     }
 
-    const el = remoteVideoRefs.get(id)
+    const el = remoteVideoRefs.get(sid)
     if (el) {
       el.srcObject = stream
       el.muted = false
       el.volume = speakerEnabled.value ? 1 : 0.2
     }
 
-    peerStatus.value = { ...peerStatus.value, [id]: "Receiving media" }
+    peerStatus.value = { ...peerStatus.value, [sid]: "Receiving media" }
   }
 
   pc.onconnectionstatechange = () => {
     const st = pc.connectionState || "unknown"
-    peerConnectionState.value = { ...peerConnectionState.value, [id]: st }
-    peerStatus.value = { ...peerStatus.value, [id]: st }
+    peerConnectionState.value = { ...peerConnectionState.value, [sid]: st }
+    peerStatus.value = { ...peerStatus.value, [sid]: st }
 
-    if (["failed", "closed", "disconnected"].includes(st)) {
-      cleanupPeer(id)
+    if (st === "failed") {
+      retryPeer(sid)
+    }
+
+    if (["closed"].includes(st)) {
+      cleanupPeer(sid)
     }
   }
 
   pc.oniceconnectionstatechange = () => {
     const st = pc.iceConnectionState || "unknown"
-    peerStatus.value = { ...peerStatus.value, [id]: st }
+    peerStatus.value = { ...peerStatus.value, [sid]: st }
+
+    if (["failed", "disconnected"].includes(st)) {
+      retryPeer(sid)
+    }
   }
 
-  peerConnections.set(id, pc)
+  pc.onnegotiationneeded = async () => {
+    try {
+      if (!socketConnected.value || !joinedRoom.value) return
+      await negotiateWithPeer(sid)
+    } catch (err) {
+      console.warn("negotiationneeded failed", err)
+    }
+  }
+
+  peerConnections.set(sid, pc)
   return pc
 }
 
-async function replaceOutgoingTracks() {
-  const videoTrack = getActiveVideoTrack()
-  const audioTrack = getActiveAudioTrack()
+async function negotiateWithPeer(socketId) {
+  const sid = String(socketId)
+  const pc = buildPeerConnection(sid)
+  if (!pc) return
 
-  for (const [, pc] of peerConnections.entries()) {
+  try {
+    makingOffer.set(sid, true)
+
+    const offer = await pc.createOffer()
+    if (pc.signalingState !== "stable") return
+
+    await pc.setLocalDescription(offer)
+
+    socket.emit("callroom:webrtc:offer", {
+      roomId: roomId.value,
+      to: sid,
+      targetSocketId: sid,
+      offer: pc.localDescription,
+      from: mySocketId.value,
+    })
+
+    peerStatus.value = { ...peerStatus.value, [sid]: "Offer sent" }
+  } catch (err) {
+    console.error("negotiateWithPeer error:", err)
+  } finally {
+    makingOffer.set(sid, false)
+  }
+}
+
+async function replaceOutgoingTracks() {
+  const audioTrack = getActiveAudioTrack()
+  const videoTrack = roomKind.value === "video" ? getActiveVideoTrack() : null
+
+  for (const [sid, pc] of peerConnections.entries()) {
     const senders = pc.getSenders()
 
-    const videoSender = senders.find((s) => s.track?.kind === "video")
     const audioSender = senders.find((s) => s.track?.kind === "audio")
+    const videoSender = senders.find((s) => s.track?.kind === "video")
 
     try {
       if (audioSender && audioTrack) {
         await audioSender.replaceTrack(audioTrack)
       } else if (!audioSender && audioTrack) {
-        pc.addTrack(audioTrack, localStream.value || getCurrentSendStream())
+        const stream = getCurrentSendStream() || localStream.value
+        if (stream) pc.addTrack(audioTrack, stream)
       }
-    } catch (e) {
-      console.warn("replace audio track failed", e)
+    } catch (err) {
+      console.warn("replace audio failed", err)
     }
 
     try {
@@ -674,137 +816,206 @@ async function replaceOutgoingTracks() {
       } else if (videoSender && !videoTrack) {
         await videoSender.replaceTrack(null)
       } else if (!videoSender && videoTrack) {
-        pc.addTrack(videoTrack, getCurrentSendStream())
+        const stream = getCurrentSendStream() || localStream.value
+        if (stream) pc.addTrack(videoTrack, stream)
       }
-    } catch (e) {
-      console.warn("replace video track failed", e)
+    } catch (err) {
+      console.warn("replace video failed", err)
     }
+
+    try {
+      await negotiateWithPeer(sid)
+    } catch {}
   }
 
   updateLocalPreview()
 }
 
-async function sendOffer(targetSocketId) {
-  const id = String(targetSocketId)
-  try {
-    await ensureLocalTracksReady()
-    const pc = buildPeerConnection(id)
+async function handleOfferPayload(payload = {}) {
+  const rid = String(payload?.roomId || "")
+  if (rid && rid !== roomId.value) return
 
-    peerStatus.value = { ...peerStatus.value, [id]: "Creating offer" }
+  const from = String(
+    payload?.from ||
+    payload?.fromSocketId ||
+    payload?.socketId ||
+    payload?.senderSocketId ||
+    ""
+  )
 
-    const offer = await pc.createOffer({
-      offerToReceiveAudio: true,
-      offerToReceiveVideo: roomKind.value === "video",
-    })
-    await pc.setLocalDescription(offer)
+  const offer = payload?.offer || payload?.sdp || null
+  if (!from || !offer) return
 
-    socket.emit("callroom:webrtc:offer", {
-      roomId: roomId.value,
-      to: id,
-      offer,
-    })
-  } catch (err) {
-    console.error("sendOffer error:", err)
-    setError("Failed to create room connection.")
+  await ensureLocalTracksReady()
+  const pc = buildPeerConnection(from)
+  const polite = !!peerMeta.get(from)?.polite
+
+  const offerCollision =
+    offer.type === "offer" &&
+    (makingOffer.get(from) || pc.signalingState !== "stable")
+
+  ignoreOffer.set(from, !polite && offerCollision)
+  if (ignoreOffer.get(from)) {
+    return
   }
-}
 
-async function handleOffer(fromSocketId, offer) {
-  const id = String(fromSocketId)
   try {
-    await ensureLocalTracksReady()
-    const pc = buildPeerConnection(id)
-
-    peerStatus.value = { ...peerStatus.value, [id]: "Answering offer" }
-
-    await pc.setRemoteDescription(new RTCSessionDescription(offer))
-
-    const queued = pendingIceCandidates.get(id) || []
-    for (const candidate of queued) {
-      try { await pc.addIceCandidate(new RTCIceCandidate(candidate)) } catch {}
+    if (offerCollision) {
+      await Promise.all([
+        pc.setLocalDescription({ type: "rollback" }),
+        pc.setRemoteDescription(new RTCSessionDescription(offer)),
+      ])
+    } else {
+      await pc.setRemoteDescription(new RTCSessionDescription(offer))
     }
-    pendingIceCandidates.delete(id)
 
-    const answer = await pc.createAnswer()
-    await pc.setLocalDescription(answer)
+    const queued = pendingIceCandidates.get(from) || []
+    for (const c of queued) {
+      try { await pc.addIceCandidate(new RTCIceCandidate(c)) } catch {}
+    }
+    pendingIceCandidates.delete(from)
+
+    await pc.setLocalDescription(await pc.createAnswer())
 
     socket.emit("callroom:webrtc:answer", {
       roomId: roomId.value,
-      to: id,
-      answer,
+      to: from,
+      targetSocketId: from,
+      answer: pc.localDescription,
+      from: mySocketId.value,
     })
+
+    peerStatus.value = { ...peerStatus.value, [from]: "Answered" }
   } catch (err) {
-    console.error("handleOffer error:", err)
-    setError("Failed to answer room offer.")
+    console.error("handleOfferPayload error:", err)
+    setError("Failed to answer incoming room offer.")
   }
 }
 
-async function handleAnswer(fromSocketId, answer) {
-  const id = String(fromSocketId)
+async function handleAnswerPayload(payload = {}) {
+  const rid = String(payload?.roomId || "")
+  if (rid && rid !== roomId.value) return
+
+  const from = String(
+    payload?.from ||
+    payload?.fromSocketId ||
+    payload?.socketId ||
+    payload?.senderSocketId ||
+    ""
+  )
+
+  const answer = payload?.answer || payload?.sdp || null
+  if (!from || !answer) return
+
+  const pc = peerConnections.get(from)
+  if (!pc) return
+
   try {
-    const pc = peerConnections.get(id)
-    if (!pc) return
+    isSettingRemoteAnswerPending.set(from, true)
     await pc.setRemoteDescription(new RTCSessionDescription(answer))
+    isSettingRemoteAnswerPending.set(from, false)
 
-    const queued = pendingIceCandidates.get(id) || []
-    for (const candidate of queued) {
-      try { await pc.addIceCandidate(new RTCIceCandidate(candidate)) } catch {}
+    const queued = pendingIceCandidates.get(from) || []
+    for (const c of queued) {
+      try { await pc.addIceCandidate(new RTCIceCandidate(c)) } catch {}
     }
-    pendingIceCandidates.delete(id)
+    pendingIceCandidates.delete(from)
 
-    peerStatus.value = { ...peerStatus.value, [id]: "Connected" }
+    peerStatus.value = { ...peerStatus.value, [from]: "Connected" }
   } catch (err) {
-    console.error("handleAnswer error:", err)
+    console.error("handleAnswerPayload error:", err)
+  } finally {
+    isSettingRemoteAnswerPending.set(from, false)
   }
 }
 
-async function handleIce(fromSocketId, candidate) {
-  const id = String(fromSocketId)
-  const pc = peerConnections.get(id)
+async function handleIcePayload(payload = {}) {
+  const rid = String(payload?.roomId || "")
+  if (rid && rid !== roomId.value) return
 
+  const from = String(
+    payload?.from ||
+    payload?.fromSocketId ||
+    payload?.socketId ||
+    payload?.senderSocketId ||
+    ""
+  )
+
+  const candidate = payload?.candidate || payload?.ice || null
+  if (!from || !candidate) return
+  if (ignoreOffer.get(from)) return
+
+  const pc = peerConnections.get(from)
   if (!pc || !pc.remoteDescription) {
-    const current = pendingIceCandidates.get(id) || []
-    current.push(candidate)
-    pendingIceCandidates.set(id, current)
+    const queued = pendingIceCandidates.get(from) || []
+    queued.push(candidate)
+    pendingIceCandidates.set(from, queued)
     return
   }
 
   try {
     await pc.addIceCandidate(new RTCIceCandidate(candidate))
   } catch (err) {
-    console.warn("ICE add failed:", err)
+    console.warn("addIceCandidate failed", err)
   }
 }
 
 function cleanupPeer(socketId) {
-  const id = String(socketId)
-  const pc = peerConnections.get(id)
+  const sid = String(socketId)
+  const pc = peerConnections.get(sid)
+
   if (pc) {
     try {
       pc.onicecandidate = null
       pc.ontrack = null
+      pc.onnegotiationneeded = null
       pc.close()
     } catch {}
   }
 
-  peerConnections.delete(id)
-  remoteStreams.delete(id)
-  pendingIceCandidates.delete(id)
-  politeByPeer.delete(id)
+  peerConnections.delete(sid)
+  remoteStreams.delete(sid)
+  pendingIceCandidates.delete(sid)
+  makingOffer.delete(sid)
+  ignoreOffer.delete(sid)
+  isSettingRemoteAnswerPending.delete(sid)
+  peerMeta.delete(sid)
 
-  const el = remoteVideoRefs.get(id)
+  const el = remoteVideoRefs.get(sid)
   if (el) {
     try { el.srcObject = null } catch {}
   }
-  remoteVideoRefs.delete(id)
+  remoteVideoRefs.delete(sid)
 
-  const peerStatusCopy = { ...peerStatus.value }
-  delete peerStatusCopy[id]
-  peerStatus.value = peerStatusCopy
+  const statusCopy = { ...peerStatus.value }
+  delete statusCopy[sid]
+  peerStatus.value = statusCopy
 
-  const peerConnCopy = { ...peerConnectionState.value }
-  delete peerConnCopy[id]
-  peerConnectionState.value = peerConnCopy
+  const connCopy = { ...peerConnectionState.value }
+  delete connCopy[sid]
+  peerConnectionState.value = connCopy
+}
+
+async function retryPeer(socketId) {
+  const sid = String(socketId)
+  if (!sid || sid === String(mySocketId.value)) return
+
+  cleanupPeer(sid)
+  await nextTick()
+
+  buildPeerConnection(sid)
+  setTimeout(async () => {
+    try {
+      await negotiateWithPeer(sid)
+    } catch {}
+  }, 250)
+}
+
+async function forceReconnectPeers() {
+  for (const p of remoteParticipants.value) {
+    await retryPeer(p.socketId)
+  }
+  setNotice("Peer repair started.")
 }
 
 /* =========================
@@ -824,8 +1035,6 @@ async function startScreenShare() {
 
     screenStream.value = stream
     screenSharing.value = true
-    updateLocalPreview()
-    await replaceOutgoingTracks()
 
     const track = stream.getVideoTracks?.()[0]
     if (track) {
@@ -834,6 +1043,8 @@ async function startScreenShare() {
       }
     }
 
+    updateLocalPreview()
+    await replaceOutgoingTracks()
     setNotice("Screen sharing started.")
   } catch (err) {
     console.error("startScreenShare error:", err)
@@ -862,7 +1073,7 @@ async function toggleScreenShare() {
    CONTROLS
 ========================= */
 function toggleMic() {
-  const track = getActiveAudioTrack()
+  const track = getActiveAudioTrack() || localStream.value?.getAudioTracks?.()[0]
   if (!track) return
   micEnabled.value = !micEnabled.value
   track.enabled = micEnabled.value
@@ -905,10 +1116,12 @@ async function copyDiagnostics() {
       userId: p.userId,
       displayName: p.displayName,
       state: peerConnectionState.value[p.socketId] || "",
+      status: peerStatus.value[p.socketId] || "",
     })),
     micEnabled: micEnabled.value,
     camEnabled: camEnabled.value,
     screenSharing: screenSharing.value,
+    turnReady: turnReady.value,
     at: new Date().toISOString(),
   }
 
@@ -925,13 +1138,14 @@ async function copyDiagnostics() {
 ========================= */
 async function refreshRoomState() {
   if (!socket || !roomId.value) return
+
   socket.emit("callroom:get", { roomId: roomId.value }, (res) => {
     if (res?.error) {
       setError(res.error)
       return
     }
 
-    const room = res?.room || res
+    const room = res?.room || res || {}
     if (room?.name) roomName.value = String(room.name)
     if (room?.kind) roomKind.value = room.kind === "audio" ? "audio" : "video"
     if (Array.isArray(room?.users)) safeReplaceRoomUsers(room.users)
@@ -965,17 +1179,32 @@ async function joinRoom() {
       updateLocalPreview()
 
       for (const user of roomUsers.value) {
-        if (!user.socketId || user.socketId === mySocketId.value) continue
-        if (shouldInitiateTo(user.socketId)) {
-          await sendOffer(user.socketId)
-        } else {
-          buildPeerConnection(user.socketId)
-        }
+        const sid = String(user.socketId || "")
+        if (!sid || sid === String(mySocketId.value)) continue
+        buildPeerConnection(sid)
       }
+
+      setTimeout(async () => {
+        for (const user of roomUsers.value) {
+          const sid = String(user.socketId || "")
+          if (!sid || sid === String(mySocketId.value)) continue
+          await negotiateWithPeer(sid)
+        }
+      }, 200)
 
       setNotice("Joined room.")
     })
   } catch {}
+}
+
+function scheduleSocketReconnect() {
+  if (reconnectTimer) return
+  reconnectTimer = window.setTimeout(() => {
+    reconnectTimer = null
+    try {
+      socket?.connect?.()
+    } catch {}
+  }, 1200)
 }
 
 function leaveRoom() {
@@ -993,15 +1222,9 @@ function cleanupAll() {
     cleanupPeer(id)
   }
 
-  try {
-    localStream.value?.getTracks?.().forEach((t) => t.stop())
-  } catch {}
-  try {
-    cameraStream.value?.getTracks?.().forEach((t) => t.stop())
-  } catch {}
-  try {
-    screenStream.value?.getTracks?.().forEach((t) => t.stop())
-  } catch {}
+  try { localStream.value?.getTracks?.().forEach((t) => t.stop()) } catch {}
+  try { cameraStream.value?.getTracks?.().forEach((t) => t.stop()) } catch {}
+  try { screenStream.value?.getTracks?.().forEach((t) => t.stop()) } catch {}
 
   localStream.value = null
   cameraStream.value = null
@@ -1013,6 +1236,96 @@ function cleanupAll() {
   }
 
   roomUsers.value = []
+}
+
+/* =========================
+   SOCKET LISTENERS
+========================= */
+function attachSocketListeners() {
+  socket.on("connect", async () => {
+    socketConnected.value = true
+    mySocketId.value = String(socket.id || "")
+
+    try {
+      if (me?.id) {
+        socket.emit("user:online", { userId: String(me.id), username: currentUsername() })
+        socket.emit("register-user", { id: String(me.id), username: currentUsername() })
+      }
+    } catch {}
+
+    await refreshRoomState()
+    await joinRoom()
+  })
+
+  socket.on("disconnect", () => {
+    socketConnected.value = false
+    joinedRoom.value = false
+    scheduleSocketReconnect()
+  })
+
+  socket.on("callroom:state", async (payload = {}) => {
+    const rid = String(payload?.roomId || "")
+    if (rid && rid !== roomId.value) return
+
+    if (payload?.name) roomName.value = String(payload.name)
+    if (payload?.kind) roomKind.value = payload.kind === "audio" ? "audio" : "video"
+
+    safeReplaceRoomUsers(payload?.users || [])
+
+    for (const user of roomUsers.value) {
+      const sid = String(user.socketId || "")
+      if (!sid || sid === String(mySocketId.value)) continue
+      buildPeerConnection(sid)
+    }
+
+    setTimeout(async () => {
+      for (const user of roomUsers.value) {
+        const sid = String(user.socketId || "")
+        if (!sid || sid === String(mySocketId.value)) continue
+        if (!peerConnections.has(sid)) continue
+        await negotiateWithPeer(sid)
+      }
+    }, 200)
+  })
+
+  socket.on("callroom:user-joined", async ({ roomId: rid, user } = {}) => {
+    if (String(rid || "") !== roomId.value) return
+    if (!user?.socketId) return
+
+    const sid = String(user.socketId)
+    if (sid === String(mySocketId.value)) return
+
+    mergeUserIntoRoom(user)
+    buildPeerConnection(sid)
+
+    setTimeout(async () => {
+      if (!peerConnections.has(sid)) return
+      await negotiateWithPeer(sid)
+    }, 250)
+
+    setNotice("A participant joined.")
+  })
+
+  socket.on("callroom:user-left", ({ roomId: rid, socketId } = {}) => {
+    if (String(rid || "") !== roomId.value) return
+
+    const sid = String(socketId || "")
+    if (!sid) return
+
+    roomUsers.value = roomUsers.value.filter((u) => String(u.socketId) !== sid)
+
+    if (focusedTileId.value === sid) focusedTileId.value = ""
+    cleanupPeer(sid)
+    setNotice("A participant left.")
+  })
+
+  socket.on("callroom:webrtc:offer", handleOfferPayload)
+  socket.on("callroom:webrtc:answer", handleAnswerPayload)
+  socket.on("callroom:webrtc:ice", handleIcePayload)
+
+  socket.on("callroom:error", ({ message } = {}) => {
+    setError(message || "Room call error.")
+  })
 }
 
 /* =========================
@@ -1029,109 +1342,10 @@ onMounted(async () => {
     return
   }
 
+  await loadTurnServers()
+
   socket = createSocket()
-
-  socket.on("connect", async () => {
-    socketConnected.value = true
-    mySocketId.value = String(socket.id || "")
-
-    try {
-      const username = me?.username || me?.display_name || me?.name || me?.email || "User"
-      if (me?.id) {
-        socket.emit("user:online", { userId: String(me.id), username })
-        socket.emit("register-user", { id: String(me.id), username })
-      }
-    } catch {}
-
-    await refreshRoomState()
-    await joinRoom()
-  })
-
-  socket.on("disconnect", () => {
-    socketConnected.value = false
-  })
-
-  socket.on("callroom:state", async (payload = {}) => {
-    const rid = String(payload?.roomId || "")
-    if (rid !== roomId.value) return
-
-    if (payload?.name) roomName.value = String(payload.name)
-    if (payload?.kind) roomKind.value = payload.kind === "audio" ? "audio" : "video"
-
-    safeReplaceRoomUsers(payload?.users || [])
-
-    for (const user of roomUsers.value) {
-      if (!user.socketId || user.socketId === mySocketId.value) continue
-      if (!peerConnections.has(user.socketId)) {
-        buildPeerConnection(user.socketId)
-        if (shouldInitiateTo(user.socketId)) {
-          await sendOffer(user.socketId)
-        }
-      }
-    }
-  })
-
-  socket.on("callroom:user-joined", async ({ roomId: rid, user } = {}) => {
-    if (String(rid || "") !== roomId.value) return
-    if (!user?.socketId) return
-
-    const exists = roomUsers.value.some((u) => String(u.socketId) === String(user.socketId))
-    if (!exists) {
-      roomUsers.value = [
-        ...roomUsers.value,
-        {
-          userId: String(user.userId || ""),
-          socketId: String(user.socketId || ""),
-          displayName: user.displayName || user.username || user.name || "",
-          username: user.username || "",
-          kind: user.kind || roomKind.value,
-        },
-      ]
-    }
-
-    if (String(user.socketId) !== String(mySocketId.value)) {
-      buildPeerConnection(user.socketId)
-      if (shouldInitiateTo(user.socketId)) {
-        await sendOffer(user.socketId)
-      }
-    }
-
-    setNotice("A participant joined.")
-  })
-
-  socket.on("callroom:user-left", ({ roomId: rid, socketId } = {}) => {
-    if (String(rid || "") !== roomId.value) return
-    const id = String(socketId || "")
-    if (!id) return
-
-    roomUsers.value = roomUsers.value.filter((u) => String(u.socketId) !== id)
-
-    if (focusedTileId.value === id) focusedTileId.value = ""
-    cleanupPeer(id)
-    setNotice("A participant left.")
-  })
-
-  socket.on("callroom:webrtc:offer", async ({ roomId: rid, from, offer } = {}) => {
-    if (String(rid || "") !== roomId.value) return
-    if (!from || !offer) return
-    await handleOffer(from, offer)
-  })
-
-  socket.on("callroom:webrtc:answer", async ({ roomId: rid, from, answer } = {}) => {
-    if (String(rid || "") !== roomId.value) return
-    if (!from || !answer) return
-    await handleAnswer(from, answer)
-  })
-
-  socket.on("callroom:webrtc:ice", async ({ roomId: rid, from, candidate } = {}) => {
-    if (String(rid || "") !== roomId.value) return
-    if (!from || !candidate) return
-    await handleIce(from, candidate)
-  })
-
-  socket.on("callroom:error", ({ message } = {}) => {
-    setError(message || "Room call error.")
-  })
+  attachSocketListeners()
 })
 
 onBeforeUnmount(() => {
@@ -1144,11 +1358,17 @@ onBeforeUnmount(() => {
   try { socket?.off("callroom:state") } catch {}
   try { socket?.off("callroom:user-joined") } catch {}
   try { socket?.off("callroom:user-left") } catch {}
-  try { socket?.off("callroom:webrtc:offer") } catch {}
-  try { socket?.off("callroom:webrtc:answer") } catch {}
-  try { socket?.off("callroom:webrtc:ice") } catch {}
+  try { socket?.off("callroom:webrtc:offer", handleOfferPayload) } catch {}
+  try { socket?.off("callroom:webrtc:answer", handleAnswerPayload) } catch {}
+  try { socket?.off("callroom:webrtc:ice", handleIcePayload) } catch {}
   try { socket?.off("callroom:error") } catch {}
   try { socket?.cleanupPulseSocket?.() } catch {}
+  try { socket?.disconnect?.() } catch {}
+
+  if (reconnectTimer) {
+    window.clearTimeout(reconnectTimer)
+    reconnectTimer = null
+  }
 
   cleanupAll()
   socket = null
@@ -1782,7 +2002,7 @@ onBeforeUnmount(() => {
   left: 50%;
   bottom: 16px;
   transform: translateX(-50%);
-  width: min(92vw, 620px);
+  width: min(92vw, 680px);
   padding: 12px;
   border-radius: 999px;
   display: flex;
