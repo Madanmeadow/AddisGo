@@ -229,6 +229,21 @@ app.get("/api/health", async (req, res) => {
   }
 });
 
+app.get("/api/server-stats", (req, res) => {
+  try {
+    res.json({
+      ok: true,
+      onlineUsers: onlineUsers.size,
+      liveStreams: liveStreams.size,
+      directCalls: callSessions.size,
+      callRooms: callRooms.size,
+      now: new Date().toISOString(),
+    });
+  } catch {
+    res.status(500).json({ ok: false });
+  }
+});
+
 /* =========================
    TURN (ICE servers)
 ========================= */
@@ -642,15 +657,18 @@ room shape:
   hostUserId,
   hostSocketId,
   createdAt,
-  participants: Map<userId, {
-    userId,
-    username,
-    name,
-    socketId,
-    joinedAt,
-    micOn,
-    camOn
-  }>
+  users: [
+    {
+      userId,
+      username,
+      displayName,
+      name,
+      socketId,
+      joinedAt,
+      micOn,
+      camOn
+    }
+  ]
 }
 */
 
@@ -658,33 +676,81 @@ function roomTarget(roomId) {
   return `callroom:${String(roomId)}`;
 }
 
-function getRoomParticipant(room, userId) {
-  return room?.participants?.get(String(userId)) || null;
+function getSocketUser(socket) {
+  const userId = canon(socket.data.user?.id || socket.userId);
+  const username =
+    socket.data.user?.username ||
+    socket.username ||
+    (userId ? `User${userId}` : "User");
+
+  return {
+    userId,
+    username,
+    displayName: username,
+    name: username,
+  };
 }
 
 function normalizeCallRoomParticipant(room, p) {
   return {
-    userId: String(p.userId),
-    username: p.username || `User${p.userId}`,
-    name: p.name || p.username || `User ${p.userId}`,
-    socketId: p.socketId,
+    userId: String(p.userId || ""),
+    username: p.username || `User${p.userId || ""}`,
+    displayName:
+      p.displayName ||
+      p.name ||
+      p.username ||
+      `User ${p.userId || ""}`,
+    name:
+      p.name ||
+      p.displayName ||
+      p.username ||
+      `User ${p.userId || ""}`,
+    socketId: String(p.socketId || ""),
     joinedAt: p.joinedAt,
     micOn: !!p.micOn,
     camOn: !!p.camOn,
-    isHost: String(p.userId) === String(room.hostUserId),
+    isHost: String(p.userId || "") === String(room.hostUserId || ""),
     connected: true,
+    kind: room.kind,
+  };
+}
+
+function normalizeCallRoomForClient(room) {
+  if (!room) return null;
+
+  const users = Array.isArray(room.users)
+    ? room.users.map((p) => normalizeCallRoomParticipant(room, p))
+    : [];
+
+  return {
+    roomId: String(room.roomId),
+    name: room.name || room.roomId,
+    kind: room.kind === "video" ? "video" : "audio",
+    hostUserId: String(room.hostUserId || ""),
+    hostSocketId: String(room.hostSocketId || ""),
+    participantCount: users.length,
+    count: users.length,
+    createdAt: room.createdAt,
+    users,
+    participants: users, // backward + forward compat
   };
 }
 
 function emitCallRoomList(toSocket = null) {
-  const rooms = Array.from(callRooms.values()).map((r) => ({
-    roomId: String(r.roomId),
-    name: r.name,
-    kind: r.kind,
-    hostUserId: String(r.hostUserId || ""),
-    participantCount: r.participants?.size || 0,
-    createdAt: r.createdAt,
-  }));
+  const rooms = Array.from(callRooms.values()).map((r) => {
+    const users = Array.isArray(r.users) ? r.users : [];
+    return {
+      roomId: String(r.roomId),
+      id: String(r.roomId),
+      name: r.name,
+      kind: r.kind,
+      hostUserId: String(r.hostUserId || ""),
+      participantCount: users.length,
+      count: users.length,
+      users: users.map((u) => normalizeCallRoomParticipant(r, u)),
+      createdAt: r.createdAt,
+    };
+  });
 
   if (toSocket) toSocket.emit("callroom:list", rooms);
   else io.emit("callroom:list", rooms);
@@ -694,61 +760,95 @@ function emitCallRoomState(roomId) {
   const room = callRooms.get(String(roomId));
   if (!room) return;
 
-  const participants = Array.from(room.participants.values()).map((p) =>
-    normalizeCallRoomParticipant(room, p)
-  );
+  const state = normalizeCallRoomForClient(room);
 
   io.to(roomTarget(roomId)).emit("callroom:state", {
-    roomId: String(room.roomId),
-    name: room.name,
-    kind: room.kind,
-    hostUserId: String(room.hostUserId || ""),
-    participants,
+    roomId: state.roomId,
+    name: state.name,
+    kind: state.kind,
+    hostUserId: state.hostUserId,
+    hostSocketId: state.hostSocketId,
+    users: state.users,
+    participants: state.participants,
   });
 }
 
+function findRoomBySocketId(socketId) {
+  const sid = String(socketId);
+  for (const room of callRooms.values()) {
+    const found = (room.users || []).find((u) => String(u.socketId) === sid);
+    if (found) return { room, user: found };
+  }
+  return null;
+}
+
 function removeParticipantFromCallRooms(socket) {
-  const meId = socket.data.user?.id ? String(socket.data.user.id) : null;
-  if (!meId) return;
+  const sid = String(socket.id);
 
   for (const [roomId, room] of callRooms.entries()) {
-    if (!room.participants.has(meId)) continue;
+    const before = Array.isArray(room.users) ? room.users.length : 0;
+    room.users = (room.users || []).filter((u) => String(u.socketId) !== sid);
 
-    room.participants.delete(meId);
+    if (room.users.length === before) continue;
+
     socket.leave(roomTarget(roomId));
 
-    socket.to(roomTarget(roomId)).emit("callroom:user-left", {
+    io.to(roomTarget(roomId)).emit("callroom:user-left", {
       roomId: String(roomId),
-      userId: String(meId),
-      name: socket.data.user?.username || `User ${meId}`,
-      username: socket.data.user?.username || `User${meId}`,
-      socketId: socket.id,
+      socketId: sid,
     });
 
-    socket.to(roomTarget(roomId)).emit("callroom:peer-left", {
+    io.to(roomTarget(roomId)).emit("callroom:peer-left", {
       roomId: String(roomId),
-      userId: String(meId),
-      socketId: socket.id,
+      socketId: sid,
     });
 
-    if (room.participants.size === 0) {
-      callRooms.delete(roomId);
+    if (room.users.length === 0) {
+      callRooms.delete(String(roomId));
       emitCallRoomList();
       continue;
     }
 
-    if (String(room.hostUserId) === meId) {
-      const next = Array.from(room.participants.values())[0];
+    if (!room.users.some((u) => String(u.userId) === String(room.hostUserId || ""))) {
+      const next = room.users[0];
       if (next) {
-        room.hostUserId = String(next.userId);
-        room.hostSocketId = next.socketId;
+        room.hostUserId = String(next.userId || "");
+        room.hostSocketId = String(next.socketId || "");
       }
     }
 
-    callRooms.set(roomId, room);
+    callRooms.set(String(roomId), room);
     emitCallRoomState(roomId);
     emitCallRoomList();
   }
+}
+
+function upsertRoomUser(room, inputUser) {
+  const sid = String(inputUser.socketId || "");
+  room.users = Array.isArray(room.users) ? room.users : [];
+
+  room.users = room.users.filter((u) => String(u.socketId) !== sid);
+
+  room.users.push({
+    userId: String(inputUser.userId || ""),
+    username: inputUser.username || `User${inputUser.userId || ""}`,
+    displayName:
+      inputUser.displayName ||
+      inputUser.name ||
+      inputUser.username ||
+      `User ${inputUser.userId || ""}`,
+    name:
+      inputUser.name ||
+      inputUser.displayName ||
+      inputUser.username ||
+      `User ${inputUser.userId || ""}`,
+    socketId: sid,
+    joinedAt: inputUser.joinedAt || new Date().toISOString(),
+    micOn: typeof inputUser.micOn === "boolean" ? inputUser.micOn : true,
+    camOn: typeof inputUser.camOn === "boolean" ? inputUser.camOn : room.kind === "video",
+  });
+
+  return room;
 }
 
 /* =========================
@@ -792,6 +892,25 @@ io.on("connection", (socket) => {
     broadcastPresenceUpdate(userId, true);
     emitOnlineUsersLegacy();
     flushQueuedIncomingCallsToUser(userId);
+  });
+
+  socket.on("server:ping", (_, cb) => {
+    cb?.({
+      ok: true,
+      socketId: socket.id,
+      now: new Date().toISOString(),
+    });
+  });
+
+  socket.on("server:stats:get", (_, cb) => {
+    cb?.({
+      ok: true,
+      onlineUsers: onlineUsers.size,
+      liveStreams: liveStreams.size,
+      directCalls: callSessions.size,
+      callRooms: callRooms.size,
+      now: new Date().toISOString(),
+    });
   });
 
   /* =========================
@@ -1190,226 +1309,351 @@ io.on("connection", (socket) => {
   /* =========================
      CALL ROOMS
   ========================= */
-  socket.on("callroom:list:get", () => {
-    emitCallRoomList(socket);
+  socket.on("callroom:list:get", (_payload = {}, cb) => {
+    try {
+      const rooms = Array.from(callRooms.values()).map((r) => {
+        const normalized = normalizeCallRoomForClient(r);
+        return {
+          roomId: normalized.roomId,
+          id: normalized.roomId,
+          name: normalized.name,
+          kind: normalized.kind,
+          hostUserId: normalized.hostUserId,
+          participantCount: normalized.participantCount,
+          count: normalized.participantCount,
+          users: normalized.users,
+          createdAt: normalized.createdAt,
+        };
+      });
+
+      cb?.({ rooms });
+      emitCallRoomList(socket);
+    } catch (err) {
+      logERR("callroom:list:get error:", err);
+      cb?.({ error: "Failed to list rooms" });
+      socket.emit("callroom:error", { message: "Failed to list rooms" });
+    }
   });
 
-  socket.on("callroom:get", ({ roomId } = {}) => {
-    const room = callRooms.get(String(roomId));
-    if (!room) {
-      return socket.emit("callroom:error", { message: "Room not found." });
-    }
-
-    const participants = Array.from(room.participants.values()).map((p) =>
-      normalizeCallRoomParticipant(room, p)
-    );
-
-    socket.emit("callroom:state", {
-      roomId: String(room.roomId),
-      name: room.name,
-      kind: room.kind,
-      hostUserId: String(room.hostUserId || ""),
-      participants,
-    });
-  });
-
-  socket.on("callroom:create", ({ name, kind = "audio" } = {}) => {
-    const me = socket.data.user;
-    if (!me?.id) {
-      return socket.emit("callroom:error", { message: "Login required." });
-    }
-
-    const roomKind = kind === "video" ? "video" : "audio";
-    const roomName =
-      String(name || "").trim() ||
-      `${me.username || "User"}'s ${roomKind === "video" ? "Video" : "Audio"} Room`;
-
-    const roomId = `cr-${Date.now()}-${Math.random().toString(36).slice(2, 8)}`;
-    const userId = String(me.id);
-
-    const room = {
-      roomId,
-      name: roomName,
-      kind: roomKind,
-      hostUserId: userId,
-      hostSocketId: socket.id,
-      createdAt: new Date().toISOString(),
-      participants: new Map(),
-    };
-
-    room.participants.set(userId, {
-      userId,
-      username: me.username || `User${userId}`,
-      name: me.username || `User ${userId}`,
-      socketId: socket.id,
-      joinedAt: new Date().toISOString(),
-      micOn: true,
-      camOn: roomKind === "video",
-    });
-
-    callRooms.set(roomId, room);
-    socket.join(roomTarget(roomId));
-
-    socket.emit("callroom:created", {
-      roomId,
-      name: roomName,
-      kind: roomKind,
-    });
-
-    emitCallRoomState(roomId);
-    emitCallRoomList();
-    logROOM("callroom:create", { roomId, roomName, roomKind, host: userId });
-  });
-
-  socket.on("callroom:join", ({ roomId } = {}) => {
-    const me = socket.data.user;
-    if (!me?.id) {
-      return socket.emit("callroom:error", { message: "Login required." });
-    }
-
-    const room = callRooms.get(String(roomId));
-    if (!room) {
-      return socket.emit("callroom:error", { message: "Room not found." });
-    }
-
-    const userId = String(me.id);
-
-    room.participants.set(userId, {
-      userId,
-      username: me.username || `User${userId}`,
-      name: me.username || `User ${userId}`,
-      socketId: socket.id,
-      joinedAt: new Date().toISOString(),
-      micOn: true,
-      camOn: room.kind === "video",
-    });
-
-    callRooms.set(String(roomId), room);
-    socket.join(roomTarget(roomId));
-
-    const joinedPayload = {
-      roomId: String(roomId),
-      userId,
-      name: me.username || `User ${userId}`,
-      username: me.username || `User${userId}`,
-      socketId: socket.id,
-      isHost: String(room.hostUserId) === userId,
-    };
-
-    socket.to(roomTarget(roomId)).emit("callroom:user-joined", joinedPayload);
-    socket.to(roomTarget(roomId)).emit("callroom:peer-joined", joinedPayload);
-
-    emitCallRoomState(roomId);
-    emitCallRoomList();
-    logROOM("callroom:join", { roomId: String(roomId), userId });
-  });
-
-  socket.on("callroom:leave", ({ roomId } = {}) => {
-    const me = socket.data.user;
-    if (!me?.id) return;
-
-    const room = callRooms.get(String(roomId));
-    if (!room) return;
-
-    const userId = String(me.id);
-    room.participants.delete(userId);
-    socket.leave(roomTarget(roomId));
-
-    const leftPayload = {
-      roomId: String(roomId),
-      userId,
-      name: me.username || `User ${userId}`,
-      username: me.username || `User${userId}`,
-      socketId: socket.id,
-    };
-
-    socket.to(roomTarget(roomId)).emit("callroom:user-left", leftPayload);
-    socket.to(roomTarget(roomId)).emit("callroom:peer-left", leftPayload);
-
-    if (room.participants.size === 0) {
-      callRooms.delete(String(roomId));
-      emitCallRoomList();
-      logROOM("callroom:deleted-empty", { roomId: String(roomId) });
-      return;
-    }
-
-    if (String(room.hostUserId) === userId) {
-      const next = Array.from(room.participants.values())[0];
-      if (next) {
-        room.hostUserId = String(next.userId);
-        room.hostSocketId = next.socketId;
+  socket.on("callroom:get", ({ roomId } = {}, cb) => {
+    try {
+      const room = callRooms.get(String(roomId || ""));
+      if (!room) {
+        cb?.({ error: "Room not found" });
+        return socket.emit("callroom:error", { message: "Room not found." });
       }
-    }
 
-    callRooms.set(String(roomId), room);
-    emitCallRoomState(roomId);
-    emitCallRoomList();
-    logROOM("callroom:leave", { roomId: String(roomId), userId });
+      const normalized = normalizeCallRoomForClient(room);
+
+      cb?.({ room: normalized });
+
+      socket.emit("callroom:state", {
+        roomId: normalized.roomId,
+        name: normalized.name,
+        kind: normalized.kind,
+        hostUserId: normalized.hostUserId,
+        hostSocketId: normalized.hostSocketId,
+        users: normalized.users,
+        participants: normalized.participants,
+      });
+    } catch (err) {
+      logERR("callroom:get error:", err);
+      cb?.({ error: "Failed to get room" });
+      socket.emit("callroom:error", { message: "Failed to get room." });
+    }
+  });
+
+  socket.on("callroom:create", ({ name, kind = "audio" } = {}, cb) => {
+    try {
+      const me = getSocketUser(socket);
+      if (!me?.userId) {
+        cb?.({ error: "Login required." });
+        return socket.emit("callroom:error", { message: "Login required." });
+      }
+
+      const roomKind = kind === "video" ? "video" : "audio";
+      const roomName =
+        String(name || "").trim() ||
+        `${me.username || "User"}'s ${roomKind === "video" ? "Video" : "Audio"} Room`;
+
+      const roomId = `cr-${Date.now()}-${Math.random().toString(36).slice(2, 8)}`;
+
+      const room = {
+        roomId,
+        name: roomName,
+        kind: roomKind,
+        hostUserId: String(me.userId),
+        hostSocketId: String(socket.id),
+        createdAt: new Date().toISOString(),
+        users: [],
+      };
+
+      upsertRoomUser(room, {
+        userId: String(me.userId),
+        username: me.username,
+        displayName: me.displayName,
+        name: me.name,
+        socketId: socket.id,
+        joinedAt: new Date().toISOString(),
+        micOn: true,
+        camOn: roomKind === "video",
+      });
+
+      callRooms.set(roomId, room);
+      socket.join(roomTarget(roomId));
+
+      const normalized = normalizeCallRoomForClient(room);
+
+      cb?.({ room: normalized });
+
+      socket.emit("callroom:created", {
+        roomId,
+        room: normalized,
+      });
+
+      emitCallRoomState(roomId);
+      emitCallRoomList();
+      logROOM("callroom:create", { roomId, roomName, roomKind, host: me.userId });
+    } catch (err) {
+      logERR("callroom:create error:", err);
+      cb?.({ error: "Failed to create room" });
+      socket.emit("callroom:error", { message: "Failed to create room." });
+    }
+  });
+
+  socket.on("callroom:join", ({ roomId } = {}, cb) => {
+    try {
+      const me = getSocketUser(socket);
+      if (!me?.userId) {
+        cb?.({ error: "Login required." });
+        return socket.emit("callroom:error", { message: "Login required." });
+      }
+
+      const room = callRooms.get(String(roomId || ""));
+      if (!room) {
+        cb?.({ error: "Room not found" });
+        return socket.emit("callroom:error", { message: "Room not found." });
+      }
+
+      upsertRoomUser(room, {
+        userId: String(me.userId),
+        username: me.username,
+        displayName: me.displayName,
+        name: me.name,
+        socketId: socket.id,
+        joinedAt: new Date().toISOString(),
+        micOn: true,
+        camOn: room.kind === "video",
+      });
+
+      callRooms.set(String(roomId), room);
+      socket.join(roomTarget(roomId));
+
+      const joinedUser = normalizeCallRoomParticipant(
+        room,
+        room.users.find((u) => String(u.socketId) === String(socket.id))
+      );
+
+      const normalized = normalizeCallRoomForClient(room);
+
+      cb?.({ room: normalized });
+
+      io.to(roomTarget(roomId)).emit("callroom:user-joined", {
+        roomId: String(roomId),
+        user: joinedUser,
+      });
+
+      io.to(roomTarget(roomId)).emit("callroom:peer-joined", {
+        roomId: String(roomId),
+        user: joinedUser,
+      });
+
+      emitCallRoomState(roomId);
+      emitCallRoomList();
+      logROOM("callroom:join", { roomId: String(roomId), userId: String(me.userId), socketId: socket.id });
+    } catch (err) {
+      logERR("callroom:join error:", err);
+      cb?.({ error: "Failed to join room" });
+      socket.emit("callroom:error", { message: "Failed to join room." });
+    }
+  });
+
+  socket.on("callroom:leave", ({ roomId } = {}, cb) => {
+    try {
+      const rid = String(roomId || "");
+      const room = callRooms.get(rid);
+      if (!room) {
+        cb?.({ ok: true });
+        return;
+      }
+
+      const sid = String(socket.id);
+      const leavingUser = (room.users || []).find((u) => String(u.socketId) === sid) || null;
+
+      room.users = (room.users || []).filter((u) => String(u.socketId) !== sid);
+      socket.leave(roomTarget(rid));
+
+      io.to(roomTarget(rid)).emit("callroom:user-left", {
+        roomId: rid,
+        socketId: sid,
+      });
+
+      io.to(roomTarget(rid)).emit("callroom:peer-left", {
+        roomId: rid,
+        socketId: sid,
+      });
+
+      if (room.users.length === 0) {
+        callRooms.delete(rid);
+        emitCallRoomList();
+        cb?.({ ok: true });
+        logROOM("callroom:deleted-empty", { roomId: rid });
+        return;
+      }
+
+      if (leavingUser && String(room.hostUserId || "") === String(leavingUser.userId || "")) {
+        const next = room.users[0];
+        if (next) {
+          room.hostUserId = String(next.userId || "");
+          room.hostSocketId = String(next.socketId || "");
+        }
+      }
+
+      callRooms.set(rid, room);
+      emitCallRoomState(rid);
+      emitCallRoomList();
+      cb?.({ ok: true });
+      logROOM("callroom:leave", { roomId: rid, socketId: sid });
+    } catch (err) {
+      logERR("callroom:leave error:", err);
+      cb?.({ error: "Failed to leave room" });
+      socket.emit("callroom:error", { message: "Failed to leave room." });
+    }
   });
 
   socket.on("callroom:media-state", ({ roomId, micOn, camOn } = {}) => {
-    const me = socket.data.user;
-    if (!me?.id) return;
+    try {
+      const rid = String(roomId || "");
+      const room = callRooms.get(rid);
+      if (!room) return;
 
-    const room = callRooms.get(String(roomId));
-    if (!room) return;
+      const sid = String(socket.id);
+      const idx = (room.users || []).findIndex((u) => String(u.socketId) === sid);
+      if (idx < 0) return;
 
-    const userId = String(me.id);
-    const p = room.participants.get(userId);
-    if (!p) return;
+      if (typeof micOn === "boolean") room.users[idx].micOn = micOn;
+      if (typeof camOn === "boolean") room.users[idx].camOn = camOn;
 
-    if (typeof micOn === "boolean") p.micOn = micOn;
-    if (typeof camOn === "boolean") p.camOn = camOn;
-
-    room.participants.set(userId, p);
-    callRooms.set(String(roomId), room);
-    emitCallRoomState(roomId);
+      callRooms.set(rid, room);
+      emitCallRoomState(rid);
+    } catch (err) {
+      logERR("callroom:media-state error:", err);
+    }
   });
 
-  socket.on("callroom:webrtc:offer", ({ roomId, toUserId, offer, meta } = {}) => {
-    if (!roomId || !toUserId || !offer) return;
+  socket.on("callroom:webrtc:offer", (payload = {}) => {
+    try {
+      const rid = String(payload?.roomId || "");
+      const targetSocketId = String(
+        payload?.to ||
+        payload?.targetSocketId ||
+        ""
+      );
+      const targetUserId = String(payload?.toUserId || "");
+      const offer = payload?.offer || payload?.sdp || null;
 
-    const fromUserId = socket.data.user?.id ? String(socket.data.user.id) : null;
-    const fromName =
-      meta?.name ||
-      socket.data.user?.username ||
-      (fromUserId ? `User ${fromUserId}` : "User");
+      if (!offer) return;
 
-    io.to(`user:${String(toUserId)}`).emit("callroom:webrtc:offer", {
-      roomId: String(roomId),
-      fromUserId,
-      fromName,
-      offer,
-      meta: {
-        userId: fromUserId,
-        name: fromName,
-        username: socket.data.user?.username || fromName,
-      },
-    });
+      let target = targetSocketId;
+      if (!target && targetUserId) {
+        target = onlineUsers.get(targetUserId) || "";
+      }
+
+      if (!target) return;
+
+      io.to(String(target)).emit("callroom:webrtc:offer", {
+        roomId: rid,
+        from: String(payload?.from || socket.id),
+        fromSocketId: String(socket.id),
+        socketId: String(socket.id),
+        senderSocketId: String(socket.id),
+        fromUserId: socket.data.user?.id ? String(socket.data.user.id) : null,
+        offer,
+        sdp: offer,
+      });
+    } catch (err) {
+      logERR("callroom:webrtc:offer error:", err);
+    }
   });
 
-  socket.on("callroom:webrtc:answer", ({ roomId, toUserId, answer } = {}) => {
-    if (!roomId || !toUserId || !answer) return;
+  socket.on("callroom:webrtc:answer", (payload = {}) => {
+    try {
+      const rid = String(payload?.roomId || "");
+      const targetSocketId = String(
+        payload?.to ||
+        payload?.targetSocketId ||
+        ""
+      );
+      const targetUserId = String(payload?.toUserId || "");
+      const answer = payload?.answer || payload?.sdp || null;
 
-    const fromUserId = socket.data.user?.id ? String(socket.data.user.id) : null;
+      if (!answer) return;
 
-    io.to(`user:${String(toUserId)}`).emit("callroom:webrtc:answer", {
-      roomId: String(roomId),
-      fromUserId,
-      answer,
-    });
+      let target = targetSocketId;
+      if (!target && targetUserId) {
+        target = onlineUsers.get(targetUserId) || "";
+      }
+
+      if (!target) return;
+
+      io.to(String(target)).emit("callroom:webrtc:answer", {
+        roomId: rid,
+        from: String(payload?.from || socket.id),
+        fromSocketId: String(socket.id),
+        socketId: String(socket.id),
+        senderSocketId: String(socket.id),
+        fromUserId: socket.data.user?.id ? String(socket.data.user.id) : null,
+        answer,
+        sdp: answer,
+      });
+    } catch (err) {
+      logERR("callroom:webrtc:answer error:", err);
+    }
   });
 
-  socket.on("callroom:webrtc:ice", ({ roomId, toUserId, candidate } = {}) => {
-    if (!roomId || !toUserId || !candidate) return;
+  socket.on("callroom:webrtc:ice", (payload = {}) => {
+    try {
+      const rid = String(payload?.roomId || "");
+      const targetSocketId = String(
+        payload?.to ||
+        payload?.targetSocketId ||
+        ""
+      );
+      const targetUserId = String(payload?.toUserId || "");
+      const candidate = payload?.candidate || payload?.ice || null;
 
-    const fromUserId = socket.data.user?.id ? String(socket.data.user.id) : null;
+      if (!candidate) return;
 
-    io.to(`user:${String(toUserId)}`).emit("callroom:webrtc:ice", {
-      roomId: String(roomId),
-      fromUserId,
-      candidate,
-    });
+      let target = targetSocketId;
+      if (!target && targetUserId) {
+        target = onlineUsers.get(targetUserId) || "";
+      }
+
+      if (!target) return;
+
+      io.to(String(target)).emit("callroom:webrtc:ice", {
+        roomId: rid,
+        from: String(payload?.from || socket.id),
+        fromSocketId: String(socket.id),
+        socketId: String(socket.id),
+        senderSocketId: String(socket.id),
+        fromUserId: socket.data.user?.id ? String(socket.data.user.id) : null,
+        candidate,
+        ice: candidate,
+      });
+    } catch (err) {
+      logERR("callroom:webrtc:ice error:", err);
+    }
   });
 
   /* =========================
