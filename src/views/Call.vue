@@ -1,26 +1,48 @@
+<!-- src/views/Call.vue -->
 <template>
   <Layout>
-    <div class="call-page">
-      <div class="bg"></div>
+    <div
+      class="call-page"
+      :class="{
+        audioMode: isAudioOnly,
+        connected: inCall,
+        reconnecting: isRecoveringState
+      }"
+    >
+      <div class="bg bg1"></div>
+      <div class="bg bg2"></div>
+      <div class="bg bg3"></div>
 
-      <!-- Incoming Call Modal -->
-      <div v-if="incomingCall && !inCall" class="incoming-overlay">
-        <div class="incoming-card">
-          <div class="incoming-avatar">{{ callerInitial }}</div>
+      <!-- INCOMING CALL -->
+      <transition name="fadeUp">
+        <div v-if="incomingCall && !inCall" class="incoming-overlay">
+          <div class="incoming-card">
+            <div class="incoming-top">
+              <div class="incoming-live-dot"></div>
+              <div class="incoming-small">ADDISGO CALL</div>
+            </div>
 
-          <div class="incoming-text">
-            <h2>{{ incomingCall.fromName || "Incoming Call" }}</h2>
-            <p>{{ incomingCall.kind === "audio" ? "Audio call" : "Video call" }}</p>
-          </div>
+            <div class="incoming-avatar">{{ callerInitial }}</div>
 
-          <div class="incoming-actions">
-            <button class="btn reject" @click="rejectIncoming">Decline</button>
-            <button class="btn accept" @click="acceptIncoming">Answer</button>
+            <div class="incoming-text">
+              <h2>{{ incomingCall.fromName || "Incoming Call" }}</h2>
+              <p>{{ incomingCall.kind === "audio" ? "Audio call" : "Video call" }}</p>
+            </div>
+
+            <div class="incoming-meta">
+              <span class="meta-pill">{{ incomingCall.kind === "audio" ? "Audio" : "Video" }}</span>
+              <span class="meta-pill">Secure RTC</span>
+            </div>
+
+            <div class="incoming-actions">
+              <button class="btn reject" @click="rejectIncoming">Decline</button>
+              <button class="btn accept" @click="acceptIncoming">Answer</button>
+            </div>
           </div>
         </div>
-      </div>
+      </transition>
 
-      <!-- Top Bar -->
+      <!-- TOPBAR -->
       <header class="topbar">
         <button class="icon-btn" @click="goBack" aria-label="Back">←</button>
 
@@ -33,15 +55,106 @@
         </div>
 
         <div class="topbar-actions">
-          <span class="status-pill" :class="{ live: inCall }">{{ connectionLabel }}</span>
+          <span class="status-pill" :class="statusPillClass">{{ connectionLabel }}</span>
         </div>
       </header>
 
-      <!-- Video Area -->
-      <main class="call-stage" :class="{ audioOnly: isAudioOnly }">
-        <!-- Remote -->
-        <section class="video-card remote-card">
-          <div class="video-label">Remote</div>
+      <!-- DYNAMIC STATUS STRIP -->
+      <section class="dynamic-strip glassy">
+        <div class="dynamic-left">
+          <div class="signal-wrap">
+            <span class="signal-dot" :class="{ on: socketConnected }"></span>
+            <span class="dynamic-text">
+              {{ socketConnected ? "Realtime Connected" : "Realtime Offline" }}
+            </span>
+          </div>
+        </div>
+
+        <div class="dynamic-center">
+          <button class="dyn-btn" @click="recoverMedia" :disabled="recoveringMedia">
+            {{ recoveringMedia ? "Recovering…" : "Recover" }}
+          </button>
+
+          <button class="dyn-btn" @click="toggleSpeaker">
+            {{ speakerEnabled ? "Speaker On" : "Speaker Low" }}
+          </button>
+
+          <button class="dyn-btn" @click="copyCallDiagnostics">
+            Copy Debug
+          </button>
+        </div>
+
+        <div class="dynamic-right">
+          <span class="mini-pill">{{ isAudioOnly ? "Audio" : "Video" }}</span>
+          <span class="mini-pill">{{ qualityLabel }}</span>
+          <span class="mini-pill">{{ remoteTrackSummary }}</span>
+        </div>
+      </section>
+
+      <!-- CALL HERO -->
+      <section class="call-hero glassy">
+        <div class="hero-left">
+          <div class="hero-kicker">ADDISGO DIRECT CALL</div>
+          <h1 class="hero-title">{{ callPartnerName }}</h1>
+          <div class="hero-sub">
+            {{ isAudioOnly ? "Crystal audio call" : "Video call with smart recovery, reconnect logic, and camera switching." }}
+          </div>
+
+          <div class="hero-badges">
+            <span class="hero-badge" :class="{ ok: socketConnected, bad: !socketConnected }">
+              {{ socketConnected ? "Socket OK" : "Socket Lost" }}
+            </span>
+            <span class="hero-badge" :class="{ ok: !!localStream, bad: !localStream }">
+              {{ localStream ? "Local Media" : "No Media" }}
+            </span>
+            <span class="hero-badge" :class="{ ok: !!remoteStream, bad: !remoteStream && inCall }">
+              {{ remoteStream ? "Remote Media" : "Waiting Remote" }}
+            </span>
+            <span class="hero-badge accent">⏱ {{ formattedDuration }}</span>
+          </div>
+        </div>
+
+        <div class="hero-right">
+          <div class="hero-stat">
+            <div class="hero-stat-num">{{ inCall ? "LIVE" : "IDLE" }}</div>
+            <div class="hero-stat-lab">Call State</div>
+          </div>
+          <div class="hero-stat">
+            <div class="hero-stat-num">{{ micMuted ? "OFF" : "ON" }}</div>
+            <div class="hero-stat-lab">Mic</div>
+          </div>
+          <div class="hero-stat">
+            <div class="hero-stat-num">{{ isAudioOnly ? "AUDIO" : (cameraOff ? "OFF" : "ON") }}</div>
+            <div class="hero-stat-lab">Camera</div>
+          </div>
+          <div class="hero-stat">
+            <div class="hero-stat-num">{{ speakerEnabled ? "ON" : "LOW" }}</div>
+            <div class="hero-stat-lab">Speaker</div>
+          </div>
+        </div>
+      </section>
+
+      <!-- VIDEO STAGE -->
+      <main class="call-stage" :class="{ audioOnly: isAudioOnly, focusedRemote: focusRemote }">
+        <!-- REMOTE -->
+        <section
+          class="video-card remote-card"
+          :class="{
+            activeCard: focusRemote,
+            speaking: remoteSpeaking,
+            reconnecting: isRecoveringState
+          }"
+          @click="focusRemote = true"
+        >
+          <div class="video-topbar">
+            <div class="video-label">Remote</div>
+            <div class="video-chip-row">
+              <span class="video-chip">{{ remoteTrackSummary }}</span>
+              <span class="video-chip" :class="{ badchip: remoteVideoOff }">
+                {{ remoteVideoOff ? "Video Off" : "Video On" }}
+              </span>
+            </div>
+          </div>
 
           <video
             v-show="!isAudioOnly && !showRemotePlaceholder"
@@ -52,17 +165,43 @@
           ></video>
 
           <div v-if="showRemotePlaceholder" class="video-placeholder">
-            <div class="avatar-big">{{ remoteInitial }}</div>
+            <div class="avatar-big remote">{{ remoteInitial }}</div>
             <div class="placeholder-name">{{ callPartnerName }}</div>
             <div class="placeholder-sub">
-              {{ remoteVideoOff ? "Camera off" : remoteAudioOnly ? "Audio only" : "Waiting for video..." }}
+              {{
+                remoteVideoOff
+                  ? "Camera off"
+                  : remoteAudioOnly
+                    ? "Audio only"
+                    : "Waiting for video..."
+              }}
             </div>
+          </div>
+
+          <div class="video-bottom-state">
+            <span class="state-dot" :class="{ on: !!remoteStream }"></span>
+            <span>{{ peerStateLabel }}</span>
           </div>
         </section>
 
-        <!-- Local -->
-        <section class="video-card local-card">
-          <div class="video-label">You</div>
+        <!-- LOCAL -->
+        <section
+          class="video-card local-card"
+          :class="{
+            activeCard: !focusRemote,
+            speaking: localSpeaking
+          }"
+          @click="focusRemote = false"
+        >
+          <div class="video-topbar">
+            <div class="video-label">You</div>
+            <div class="video-chip-row">
+              <span class="video-chip">{{ micMuted ? "Muted" : "Mic Live" }}</span>
+              <span class="video-chip" v-if="!isAudioOnly">
+                {{ cameraOff ? "Cam Off" : "Cam On" }}
+              </span>
+            </div>
+          </div>
 
           <video
             v-show="!isAudioOnly && !showLocalPlaceholder"
@@ -80,10 +219,36 @@
               {{ cameraOff ? "Camera off" : isAudioOnly ? "Audio only" : "Preparing camera..." }}
             </div>
           </div>
+
+          <div class="video-bottom-state">
+            <span class="state-dot" :class="{ on: !!localStream }"></span>
+            <span>{{ localMediaLabel }}</span>
+          </div>
         </section>
       </main>
 
-      <!-- Controls -->
+      <!-- QUALITY / TOOLS -->
+      <section class="tools-strip glassy">
+        <div class="tools-col">
+          <div class="tools-title">Connection</div>
+          <div class="tools-pills">
+            <span class="tool-pill">{{ connectionLabel }}</span>
+            <span class="tool-pill">{{ qualityLabel }}</span>
+            <span class="tool-pill">{{ pcConnectionStateLabel }}</span>
+          </div>
+        </div>
+
+        <div class="tools-col">
+          <div class="tools-title">Media</div>
+          <div class="tools-pills">
+            <span class="tool-pill">{{ localMediaLabel }}</span>
+            <span class="tool-pill">{{ remoteTrackSummary }}</span>
+            <span class="tool-pill">{{ currentFacingMode }}</span>
+          </div>
+        </div>
+      </section>
+
+      <!-- CONTROLS -->
       <footer class="controls">
         <button
           class="control-btn"
@@ -115,6 +280,14 @@
 
         <button
           class="control-btn"
+          :class="{ off: !speakerEnabled }"
+          @click="toggleSpeaker"
+        >
+          {{ speakerEnabled ? "Speaker" : "Low" }}
+        </button>
+
+        <button
+          class="control-btn"
           @click="recoverMedia"
           :disabled="recoveringMedia"
         >
@@ -141,14 +314,15 @@ defineOptions({ name: "Call" })
 import { ref, computed, watch, onMounted, onBeforeUnmount, nextTick } from "vue"
 import { useRoute, useRouter } from "vue-router"
 import { io } from "socket.io-client"
+import Layout from "../components/Layout.vue"
 import { useCallOverlay } from "../composables/useCallOverlay"
 
+/* =========================
+   ROUTER / USER
+========================= */
 const route = useRoute()
 const router = useRouter()
 
-/* =========================
-   CONFIG
-========================= */
 const API_BASE =
   import.meta.env.VITE_API_URL ||
   import.meta.env.VITE_SERVER_URL ||
@@ -190,6 +364,8 @@ const cameraOff = ref(kind.value === "audio")
 const switchingCamera = ref(false)
 const recoveringMedia = ref(false)
 const currentFacingMode = ref("user")
+const speakerEnabled = ref(true)
+const focusRemote = ref(true)
 
 const hasRemoteDescription = ref(false)
 const cleaningUp = ref(false)
@@ -199,12 +375,14 @@ const requestSent = ref(false)
 const reconnectAttempted = ref(false)
 const negotiationBusy = ref(false)
 const makingOffer = ref(false)
+const socketConnected = ref(false)
 
 const statusText = ref("Ready")
 const hostUserId = ref("")
 const isCaller = ref(mode.value === "caller")
 
 const pendingCandidates = []
+let healthCheckTimer = null
 
 const callStartedAt = ref(null)
 const callSeconds = ref(0)
@@ -212,8 +390,13 @@ let callTimer = null
 
 const remoteAudioOnly = ref(false)
 const remoteVideoOff = ref(false)
+const localSpeaking = ref(false)
+const remoteSpeaking = ref(false)
 
 let statsTimer = null
+let localAudioMonitor = null
+let remoteAudioMonitor = null
+let audioContext = null
 
 const {
   syncCallOverlay,
@@ -247,14 +430,14 @@ const formattedDuration = computed(() => {
 
 const showRemotePlaceholder = computed(() => {
   if (isAudioOnly.value) return true
-  const track = remoteStream.value?.getVideoTracks?.()?.[0]
+  const track = remoteStream.value?.getVideoTracks?.()[0]
   return !track || track.readyState !== "live" || !track.enabled
 })
 
 const showLocalPlaceholder = computed(() => {
   if (!localStream.value) return true
   if (isAudioOnly.value) return true
-  return !localStream.value.getVideoTracks().some(track => track.enabled && track.readyState === "live")
+  return !localStream.value.getVideoTracks().some((track) => track.enabled && track.readyState === "live")
 })
 
 const myInitial = computed(() => {
@@ -270,6 +453,53 @@ const remoteInitial = computed(() => {
 const callerInitial = computed(() => {
   const name = incomingCall.value?.fromName || "C"
   return String(name).trim().charAt(0).toUpperCase() || "C"
+})
+
+const statusPillClass = computed(() => ({
+  live: inCall.value && !isRecoveringState.value,
+  warn: isRecoveringState.value,
+  bad: !socketConnected.value,
+}))
+
+const isRecoveringState = computed(() =>
+  ["Recovering...", "Recovering media...", "Reconnecting...", "Connecting..."].includes(statusText.value)
+)
+
+const remoteTrackSummary = computed(() => {
+  if (!remoteStream.value) return "No remote stream"
+  const hasAudio = !!remoteStream.value.getAudioTracks?.().length
+  const hasVideo = !!remoteStream.value.getVideoTracks?.().length
+  if (hasAudio && hasVideo) return "Audio + Video"
+  if (hasAudio) return "Audio only"
+  if (hasVideo) return "Video only"
+  return "No tracks"
+})
+
+const localMediaLabel = computed(() => {
+  if (!localStream.value) return "No local media"
+  if (isAudioOnly.value) return "Audio ready"
+  if (cameraOff.value) return "Camera paused"
+  return "Camera ready"
+})
+
+const peerStateLabel = computed(() => {
+  if (!pc.value) return "No peer"
+  return pc.value.connectionState || pc.value.iceConnectionState || "Waiting"
+})
+
+const pcConnectionStateLabel = computed(() => {
+  if (!pc.value) return "No peer"
+  return pc.value.connectionState || "Unknown"
+})
+
+const qualityLabel = computed(() => {
+  if (!pc.value) return "Idle"
+  const state = pc.value.connectionState
+  if (state === "connected") return "Strong"
+  if (state === "connecting") return "Linking"
+  if (state === "disconnected") return "Weak"
+  if (state === "failed") return "Repairing"
+  return "Standby"
 })
 
 /* =========================
@@ -294,6 +524,41 @@ function authHeaders(json = false) {
   if (json) h["Content-Type"] = "application/json"
   if (token) h["Authorization"] = `Bearer ${token}`
   return h
+}
+
+function ensureAudioContext() {
+  if (!audioContext) {
+    const Ctx = window.AudioContext || window.webkitAudioContext
+    if (Ctx) audioContext = new Ctx()
+  }
+  if (audioContext?.state === "suspended") {
+    audioContext.resume().catch(() => {})
+  }
+}
+
+function stopMonitor(refObj) {
+  try { refObj?.value?.source?.disconnect?.() } catch {}
+  try { refObj?.value?.analyser?.disconnect?.() } catch {}
+  if (refObj) refObj.value = null
+}
+
+function createSpeakingMonitor(stream, targetRef, type = "local") {
+  if (!stream?.getAudioTracks?.().length) return
+  try {
+    ensureAudioContext()
+    if (!audioContext) return
+
+    const source = audioContext.createMediaStreamSource(stream)
+    const analyser = audioContext.createAnalyser()
+    analyser.fftSize = 256
+    analyser.smoothingTimeConstant = 0.82
+    const data = new Uint8Array(analyser.frequencyBinCount)
+    source.connect(analyser)
+
+    targetRef.value = { source, analyser, data, type }
+  } catch (err) {
+    console.warn("createSpeakingMonitor failed", type, err)
+  }
 }
 
 /* =========================
@@ -340,6 +605,7 @@ function createSocket() {
   })
 
   socket.value.on("connect", async () => {
+    socketConnected.value = true
     console.log("✅ socket connected", socket.value.id)
 
     if (roomId.value && inCall.value) {
@@ -353,6 +619,7 @@ function createSocket() {
   })
 
   socket.value.on("disconnect", (reason) => {
+    socketConnected.value = false
     console.log("⚠️ socket disconnected:", reason)
     if (inCall.value) statusText.value = "Reconnecting..."
   })
@@ -438,10 +705,7 @@ function createSocket() {
         await createPeerConnection()
       }
 
-      const offerCollision =
-        offer &&
-        makingOffer.value
-
+      const offerCollision = offer && makingOffer.value
       const polite = !isOfferOwner()
 
       if (offerCollision && !polite) {
@@ -601,6 +865,7 @@ async function createPeerConnection() {
     if (!stream) return
 
     remoteStream.value = stream
+    createSpeakingMonitor(stream, remoteAudioMonitor, "remote")
 
     const remoteVideoTrack = stream.getVideoTracks?.()[0]
     const remoteAudioTrack = stream.getAudioTracks?.()[0]
@@ -629,6 +894,8 @@ async function createPeerConnection() {
 
     if (remoteVideo.value) {
       remoteVideo.value.srcObject = stream
+      remoteVideo.value.muted = false
+      remoteVideo.value.volume = speakerEnabled.value ? 1 : 0.25
       safePlay(remoteVideo.value)
     }
 
@@ -797,6 +1064,7 @@ async function ensureLocalMedia(force = false) {
   await enhanceLocalTracks(stream)
 
   localStream.value = stream
+  createSpeakingMonitor(stream, localAudioMonitor, "local")
 
   if (localVideo.value && !isAudioOnly.value) {
     localVideo.value.srcObject = stream
@@ -833,7 +1101,7 @@ async function switchCamera() {
     const cameras = devices.filter((d) => d.kind === "videoinput")
 
     if (cameras.length < 2) {
-      console.log("Only one camera found")
+      setStatusBrief("Only one camera found")
       return
     }
 
@@ -872,6 +1140,7 @@ async function switchCamera() {
 
     localStream.value = new MediaStream([...audioTracks, newVideoTrack])
     await enhanceLocalTracks(localStream.value)
+    createSpeakingMonitor(localStream.value, localAudioMonitor, "local")
 
     if (localVideo.value) {
       localVideo.value.srcObject = localStream.value
@@ -886,6 +1155,7 @@ async function switchCamera() {
     }
   } catch (err) {
     console.error("switchCamera error", err)
+    setStatusBrief("Camera switch failed")
   } finally {
     switchingCamera.value = false
   }
@@ -954,22 +1224,34 @@ async function startStatsWatcher() {
       let inboundAudioFound = false
 
       stats.forEach((report) => {
-        if (report.type === "inbound-rtp" && report.kind === "video") {
-          inboundVideoFound = true
-        }
-        if (report.type === "inbound-rtp" && report.kind === "audio") {
-          inboundAudioFound = true
-        }
+        if (report.type === "inbound-rtp" && report.kind === "video") inboundVideoFound = true
+        if (report.type === "inbound-rtp" && report.kind === "audio") inboundAudioFound = true
       })
 
       remoteAudioOnly.value = inboundAudioFound && !inboundVideoFound
       if (!inboundVideoFound && !isAudioOnly.value && inCall.value) {
         remoteVideoOff.value = true
       }
+
+      if (localAudioMonitor.value?.analyser) {
+        const d = localAudioMonitor.value.data
+        localAudioMonitor.value.analyser.getByteFrequencyData(d)
+        let sum = 0
+        for (let i = 0; i < d.length; i++) sum += d[i]
+        localSpeaking.value = (sum / (d.length * 255)) > 0.08
+      }
+
+      if (remoteAudioMonitor.value?.analyser) {
+        const d = remoteAudioMonitor.value.data
+        remoteAudioMonitor.value.analyser.getByteFrequencyData(d)
+        let sum = 0
+        for (let i = 0; i < d.length; i++) sum += d[i]
+        remoteSpeaking.value = (sum / (d.length * 255)) > 0.08
+      }
     } catch (err) {
       console.log("stats watcher skip", err?.message || err)
     }
-  }, 4000)
+  }, 2500)
 }
 
 function stopStatsWatcher() {
@@ -977,6 +1259,35 @@ function stopStatsWatcher() {
     clearInterval(statsTimer)
     statsTimer = null
   }
+}
+
+function startHealthChecks() {
+  stopHealthChecks()
+  healthCheckTimer = setInterval(async () => {
+    if (!inCall.value) return
+    if (!socketConnected.value) return
+
+    const connectionState = pc.value?.connectionState
+    if (["failed", "disconnected"].includes(connectionState)) {
+      await maybeRecoverConnection("health check")
+    }
+  }, 6000)
+}
+
+function stopHealthChecks() {
+  if (healthCheckTimer) {
+    clearInterval(healthCheckTimer)
+    healthCheckTimer = null
+  }
+}
+
+function setStatusBrief(text) {
+  const old = statusText.value
+  statusText.value = text
+  setTimeout(() => {
+    if (statusText.value === text && inCall.value) statusText.value = "Connected"
+    else if (statusText.value === text) statusText.value = old
+  }, 1800)
 }
 
 /* =========================
@@ -1019,6 +1330,7 @@ function markCallStarted() {
   }, 1000)
 
   startStatsWatcher()
+  startHealthChecks()
 }
 
 async function acceptIncoming() {
@@ -1066,7 +1378,7 @@ function toggleMic() {
   if (!audioTracks.length) return
 
   micMuted.value = !micMuted.value
-  audioTracks.forEach(track => {
+  audioTracks.forEach((track) => {
     track.enabled = !micMuted.value
   })
 }
@@ -1077,12 +1389,20 @@ async function toggleCamera() {
   if (!videoTracks.length) return
 
   cameraOff.value = !cameraOff.value
-  videoTracks.forEach(track => {
+  videoTracks.forEach((track) => {
     track.enabled = !cameraOff.value
   })
 
   if (pc.value && isOfferOwner()) {
     await createAndSendOffer(false)
+  }
+}
+
+function toggleSpeaker() {
+  speakerEnabled.value = !speakerEnabled.value
+  if (remoteVideo.value) {
+    remoteVideo.value.muted = false
+    remoteVideo.value.volume = speakerEnabled.value ? 1 : 0.25
   }
 }
 
@@ -1122,11 +1442,47 @@ function goBack() {
 }
 
 /* =========================
+   COPY DIAGNOSTICS
+========================= */
+async function copyCallDiagnostics() {
+  const diag = {
+    roomId: roomId.value,
+    kind: kind.value,
+    mode: mode.value,
+    toUserId: toUserId.value,
+    partner: callPartnerName.value,
+    socketConnected: socketConnected.value,
+    status: statusText.value,
+    inCall: inCall.value,
+    localStream: !!localStream.value,
+    remoteStream: !!remoteStream.value,
+    micMuted: micMuted.value,
+    cameraOff: cameraOff.value,
+    speakerEnabled: speakerEnabled.value,
+    connectionState: pc.value?.connectionState || "",
+    iceConnectionState: pc.value?.iceConnectionState || "",
+    signalingState: pc.value?.signalingState || "",
+    currentFacingMode: currentFacingMode.value,
+    remoteAudioOnly: remoteAudioOnly.value,
+    remoteVideoOff: remoteVideoOff.value,
+    duration: formattedDuration.value,
+    at: new Date().toISOString(),
+  }
+
+  try {
+    await navigator.clipboard.writeText(JSON.stringify(diag, null, 2))
+    setStatusBrief("Diagnostics copied")
+  } catch {
+    alert(JSON.stringify(diag, null, 2))
+  }
+}
+
+/* =========================
    CLEANUP
 ========================= */
 function stopStream(stream) {
   if (!stream) return
-  stream.getTracks().forEach(track => {
+  stream.getTracks().forEach((track) => {
     try {
       track.stop()
     } catch {}
@@ -1155,6 +1511,7 @@ function cleanupAll() {
   cleaningUp.value = true
 
   stopStatsWatcher()
+  stopHealthChecks()
 
   if (callTimer) {
     clearInterval(callTimer)
@@ -1170,6 +1527,8 @@ function cleanupAll() {
   if (remoteVideo.value) remoteVideo.value.srcObject = null
 
   cleanupPeer()
+  stopMonitor(localAudioMonitor)
+  stopMonitor(remoteAudioMonitor)
 
   incomingCall.value = null
   inCall.value = false
@@ -1189,6 +1548,9 @@ function cleanupAll() {
   remoteVideoOff.value = false
   negotiationBusy.value = false
   makingOffer.value = false
+  socketConnected.value = false
+  localSpeaking.value = false
+  remoteSpeaking.value = false
 
   resetOverlay()
 
@@ -1272,6 +1634,9 @@ onBeforeUnmount(() => {
     socket.value.disconnect()
     socket.value = null
   }
+
+  try { audioContext?.close?.() } catch {}
+  audioContext = null
 })
 </script>
 
@@ -1281,6 +1646,7 @@ onBeforeUnmount(() => {
   min-height: 100vh;
   color: #fff;
   overflow: hidden;
+  padding-bottom: 104px;
   background:
     radial-gradient(circle at top left, rgba(255, 80, 120, 0.16), transparent 28%),
     radial-gradient(circle at top right, rgba(100, 160, 255, 0.15), transparent 24%),
@@ -1288,19 +1654,31 @@ onBeforeUnmount(() => {
 }
 
 .bg {
-  position: absolute;
+  position: fixed;
   inset: 0;
   pointer-events: none;
-  background:
-    radial-gradient(circle at 20% 20%, rgba(255, 70, 70, 0.08), transparent 20%),
-    radial-gradient(circle at 80% 25%, rgba(100, 140, 255, 0.10), transparent 18%),
-    radial-gradient(circle at 50% 80%, rgba(255, 255, 255, 0.03), transparent 18%);
   filter: blur(8px);
 }
 
-.topbar {
+.bg1 {
+  background: radial-gradient(circle at 20% 20%, rgba(255, 70, 70, 0.08), transparent 20%);
+}
+.bg2 {
+  background: radial-gradient(circle at 80% 25%, rgba(100, 140, 255, 0.10), transparent 18%);
+}
+.bg3 {
+  background: radial-gradient(circle at 50% 80%, rgba(255, 255, 255, 0.03), transparent 18%);
+}
+
+.topbar,
+.dynamic-strip,
+.call-hero,
+.tools-strip {
   position: relative;
   z-index: 2;
+}
+
+.topbar {
   display: flex;
   align-items: center;
   gap: 12px;
@@ -1358,23 +1736,184 @@ onBeforeUnmount(() => {
   background: rgba(30, 180, 90, 0.22);
 }
 
+.status-pill.warn {
+  background: rgba(255, 170, 0, 0.20);
+}
+
+.status-pill.bad {
+  background: rgba(255, 90, 90, 0.18);
+}
+
+.glassy {
+  background: rgba(255,255,255,0.075);
+  border: 1px solid rgba(255,255,255,0.08);
+  box-shadow: 0 20px 60px rgba(0,0,0,0.25);
+  backdrop-filter: blur(18px);
+}
+
+.dynamic-strip {
+  margin: 0 16px 14px;
+  padding: 12px 14px;
+  border-radius: 999px;
+  display: flex;
+  justify-content: space-between;
+  gap: 12px;
+  align-items: center;
+  flex-wrap: wrap;
+}
+
+.dynamic-left,
+.dynamic-center,
+.dynamic-right {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  flex-wrap: wrap;
+}
+
+.signal-wrap {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+}
+
+.signal-dot {
+  width: 10px;
+  height: 10px;
+  border-radius: 999px;
+  background: #ff4d6d;
+}
+
+.signal-dot.on {
+  background: #1ce783;
+  box-shadow: 0 0 14px #1ce783;
+}
+
+.dynamic-text {
+  font-size: 12px;
+  opacity: 0.82;
+}
+
+.dyn-btn {
+  border: 0;
+  color: #fff;
+  cursor: pointer;
+  padding: 9px 12px;
+  border-radius: 999px;
+  background: rgba(255,255,255,0.10);
+  font-weight: 700;
+}
+
+.mini-pill {
+  padding: 7px 10px;
+  border-radius: 999px;
+  background: rgba(255,255,255,0.10);
+  font-size: 12px;
+  font-weight: 800;
+}
+
+.call-hero {
+  margin: 0 16px 14px;
+  padding: 18px;
+  border-radius: 26px;
+  display: grid;
+  grid-template-columns: 1.2fr 0.8fr;
+  gap: 18px;
+}
+
+.hero-kicker {
+  font-size: 11px;
+  letter-spacing: 0.18em;
+  font-weight: 900;
+  opacity: 0.72;
+}
+
+.hero-title {
+  margin: 8px 0 8px;
+  font-size: clamp(28px, 4vw, 42px);
+  line-height: 1.02;
+}
+
+.hero-sub {
+  opacity: 0.82;
+  line-height: 1.55;
+  max-width: 680px;
+}
+
+.hero-badges {
+  margin-top: 14px;
+  display: flex;
+  gap: 10px;
+  flex-wrap: wrap;
+}
+
+.hero-badge {
+  padding: 8px 12px;
+  border-radius: 999px;
+  font-size: 12px;
+  font-weight: 800;
+  background: rgba(255,255,255,0.08);
+}
+
+.hero-badge.ok {
+  background: rgba(28,231,131,0.16);
+  color: #9cf1c3;
+}
+
+.hero-badge.bad {
+  background: rgba(255,77,109,0.16);
+  color: #ffb4c1;
+}
+
+.hero-badge.accent {
+  background: linear-gradient(135deg, rgba(0,210,255,0.20), rgba(124,58,237,0.22));
+}
+
+.hero-right {
+  display: grid;
+  grid-template-columns: repeat(2, 1fr);
+  gap: 12px;
+}
+
+.hero-stat {
+  border-radius: 20px;
+  background: rgba(255,255,255,0.06);
+  padding: 16px 12px;
+  text-align: center;
+}
+
+.hero-stat-num {
+  font-size: 22px;
+  font-weight: 900;
+}
+
+.hero-stat-lab {
+  font-size: 12px;
+  opacity: 0.72;
+  margin-top: 6px;
+}
+
 .call-stage {
   position: relative;
   z-index: 2;
   display: grid;
-  grid-template-columns: 1fr 1fr;
+  grid-template-columns: 1.12fr 0.88fr;
   gap: 14px;
-  padding: 8px 16px 120px;
+  padding: 0 16px 14px;
 }
 
 .call-stage.audioOnly {
   grid-template-columns: 1fr;
 }
 
+.call-stage.focusedRemote .remote-card {
+  transform: scale(1.01);
+}
+
 .video-card {
   position: relative;
   min-height: 56vh;
-  border-radius: 24px;
+  border-radius: 28px;
   overflow: hidden;
   background: rgba(255, 255, 255, 0.07);
   border: 1px solid rgba(255, 255, 255, 0.08);
@@ -1382,27 +1921,74 @@ onBeforeUnmount(() => {
     0 10px 40px rgba(0, 0, 0, 0.28),
     inset 0 1px 0 rgba(255, 255, 255, 0.05);
   backdrop-filter: blur(14px);
+  transition: 0.18s ease;
+}
+
+.video-card.activeCard {
+  border-color: rgba(0,210,255,0.18);
+  box-shadow:
+    0 18px 52px rgba(0,0,0,0.28),
+    0 0 0 1px rgba(0,210,255,0.10);
+}
+
+.video-card.speaking {
+  box-shadow:
+    0 18px 52px rgba(0,0,0,0.28),
+    0 0 0 1px rgba(28,231,131,0.14),
+    0 0 26px rgba(28,231,131,0.10);
+}
+
+.video-card.reconnecting {
+  border-color: rgba(255,170,0,0.22);
 }
 
 .remote-card {
-  min-height: 62vh;
+  min-height: 64vh;
 }
 
 .local-card {
-  min-height: 62vh;
+  min-height: 64vh;
 }
 
-.video-label {
+.video-topbar {
   position: absolute;
   top: 12px;
   left: 12px;
-  z-index: 3;
+  right: 12px;
+  z-index: 4;
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 10px;
+}
+
+.video-label {
   padding: 7px 10px;
   border-radius: 999px;
   font-size: 12px;
   font-weight: 800;
   background: rgba(0, 0, 0, 0.35);
   backdrop-filter: blur(8px);
+}
+
+.video-chip-row {
+  display: flex;
+  gap: 8px;
+  flex-wrap: wrap;
+  justify-content: flex-end;
+}
+
+.video-chip {
+  padding: 7px 10px;
+  border-radius: 999px;
+  font-size: 11px;
+  font-weight: 800;
+  background: rgba(0, 0, 0, 0.35);
+  backdrop-filter: blur(8px);
+}
+
+.video-chip.badchip {
+  background: rgba(255,77,109,0.22);
 }
 
 .video-el {
@@ -1440,6 +2026,10 @@ onBeforeUnmount(() => {
   box-shadow: 0 10px 30px rgba(0,0,0,0.25);
 }
 
+.avatar-big.remote {
+  background: linear-gradient(135deg, rgba(0,210,255,0.95), rgba(124,58,237,0.95));
+}
+
 .placeholder-name {
   font-size: 16px;
   font-weight: 700;
@@ -1451,12 +2041,77 @@ onBeforeUnmount(() => {
   opacity: 0.72;
 }
 
+.video-bottom-state {
+  position: absolute;
+  left: 12px;
+  bottom: 12px;
+  z-index: 4;
+  display: inline-flex;
+  align-items: center;
+  gap: 8px;
+  padding: 9px 12px;
+  border-radius: 999px;
+  background: rgba(0,0,0,0.36);
+  font-size: 12px;
+  font-weight: 700;
+  backdrop-filter: blur(10px);
+}
+
+.state-dot {
+  width: 9px;
+  height: 9px;
+  border-radius: 999px;
+  background: rgba(255,255,255,0.35);
+}
+
+.state-dot.on {
+  background: #1ce783;
+  box-shadow: 0 0 12px #1ce783;
+}
+
+.tools-strip {
+  position: relative;
+  z-index: 2;
+  margin: 0 16px 16px;
+  padding: 14px;
+  border-radius: 24px;
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+  gap: 14px;
+}
+
+.tools-col {
+  min-width: 0;
+}
+
+.tools-title {
+  font-size: 12px;
+  font-weight: 900;
+  letter-spacing: 0.12em;
+  opacity: 0.72;
+  margin-bottom: 10px;
+}
+
+.tools-pills {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 10px;
+}
+
+.tool-pill {
+  padding: 8px 11px;
+  border-radius: 999px;
+  background: rgba(255,255,255,0.08);
+  font-size: 12px;
+  font-weight: 800;
+}
+
 .controls {
   position: fixed;
   left: 0;
   right: 0;
   bottom: calc(env(safe-area-inset-bottom) + 18px);
-  z-index: 5;
+  z-index: 6;
   display: flex;
   justify-content: center;
   gap: 10px;
@@ -1498,8 +2153,8 @@ onBeforeUnmount(() => {
 }
 
 .incoming-card {
-  width: min(92vw, 380px);
-  border-radius: 28px;
+  width: min(92vw, 400px);
+  border-radius: 30px;
   padding: 26px 22px;
   text-align: center;
   background:
@@ -1508,11 +2163,33 @@ onBeforeUnmount(() => {
   box-shadow: 0 20px 60px rgba(0,0,0,0.35);
 }
 
+.incoming-top {
+  display: flex;
+  justify-content: center;
+  align-items: center;
+  gap: 8px;
+}
+
+.incoming-live-dot {
+  width: 9px;
+  height: 9px;
+  border-radius: 999px;
+  background: #1ce783;
+  box-shadow: 0 0 12px #1ce783;
+}
+
+.incoming-small {
+  font-size: 11px;
+  font-weight: 900;
+  letter-spacing: 0.14em;
+  opacity: 0.72;
+}
+
 .incoming-avatar {
   width: 92px;
   height: 92px;
   border-radius: 999px;
-  margin: 0 auto 16px;
+  margin: 16px auto 16px;
   display: grid;
   place-items: center;
   font-size: 34px;
@@ -1530,6 +2207,22 @@ onBeforeUnmount(() => {
   margin: 8px 0 0;
   opacity: 0.8;
   font-size: 14px;
+}
+
+.incoming-meta {
+  margin-top: 14px;
+  display: flex;
+  justify-content: center;
+  gap: 10px;
+  flex-wrap: wrap;
+}
+
+.meta-pill {
+  padding: 8px 11px;
+  border-radius: 999px;
+  background: rgba(255,255,255,0.08);
+  font-size: 12px;
+  font-weight: 800;
 }
 
 .incoming-actions {
@@ -1556,17 +2249,33 @@ onBeforeUnmount(() => {
   background: linear-gradient(135deg, #19c46b, #119753);
 }
 
-@media (max-width: 860px) {
+.fadeUp-enter-active,
+.fadeUp-leave-active {
+  transition: all 0.26s ease;
+}
+
+.fadeUp-enter-from,
+.fadeUp-leave-to {
+  opacity: 0;
+  transform: translateY(18px) scale(0.98);
+}
+
+@media (max-width: 980px) {
+  .call-hero {
+    grid-template-columns: 1fr;
+  }
+
+  .tools-strip {
+    grid-template-columns: 1fr;
+  }
+
   .call-stage {
     grid-template-columns: 1fr;
   }
 
-  .remote-card {
-    min-height: 46vh;
-  }
-
+  .remote-card,
   .local-card {
-    min-height: 30vh;
+    min-height: 42vh;
   }
 }
 
@@ -1576,13 +2285,22 @@ onBeforeUnmount(() => {
     padding-right: 12px;
   }
 
+  .dynamic-strip,
+  .call-hero,
+  .tools-strip {
+    margin-left: 12px;
+    margin-right: 12px;
+    border-radius: 22px;
+  }
+
   .call-stage {
     gap: 10px;
-    padding: 6px 12px 128px;
+    padding: 0 12px 128px;
   }
 
   .video-card {
     border-radius: 20px;
+    min-height: 32vh;
   }
 
   .control-btn {
@@ -1599,6 +2317,14 @@ onBeforeUnmount(() => {
 
   .call-subtitle {
     font-size: 12px;
+  }
+
+  .hero-right {
+    grid-template-columns: repeat(2, 1fr);
+  }
+
+  .dynamic-strip {
+    border-radius: 20px;
   }
 }
 </style>
