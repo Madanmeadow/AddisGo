@@ -45,7 +45,56 @@
           <button class="chip danger" @click="logout">Logout</button>
         </div>
       </header>
+            <!-- DYNAMIC ISLAND -->
+      <section class="dynamicIsland glassy">
 
+        <div class="islandLeft">
+
+          <span class="islandDot" :class="{ on: socketConnected }"></span>
+
+          <span class="islandText">
+            {{ socketConnected ? "Realtime Connected" : "Realtime Offline" }}
+          </span>
+
+        </div>
+
+        <div class="islandCenter">
+
+          <button class="islandBtn" @click="refreshAll">
+            🔄 Refresh
+          </button>
+
+          <button class="islandBtn" @click="focusComposer">
+            ✍️ Post
+          </button>
+
+          <button class="islandBtn" @click="startLive">
+            🔴 Live
+          </button>
+
+          <button class="islandBtn" @click="createFastRoom">
+            📞 Room
+          </button>
+
+        </div>
+
+        <div class="islandRight">
+
+          <span class="islandStat">
+            👥 {{ onlineCount }}
+          </span>
+
+          <span class="islandStat">
+            🔴 {{ liveStreams.length }}
+          </span>
+
+          <span class="islandStat">
+            📞 {{ callRooms.length }}
+          </span>
+
+        </div>
+
+      </section>
       <!-- HERO -->
       <section class="heroStrip">
         <div class="heroCard glassy">
@@ -3034,7 +3083,75 @@ onBeforeUnmount(() => {
   flex-wrap: wrap;
   align-items: center;
 }
+/* =============================
+   DYNAMIC ISLAND
+============================= */
 
+.dynamicIsland{
+  position: sticky;
+  top: 64px;
+  z-index: 55;
+
+  max-width:1100px;
+  margin:10px auto;
+  padding:10px 16px;
+
+  border-radius:999px;
+
+  display:flex;
+  align-items:center;
+  justify-content:space-between;
+  gap:12px;
+
+  backdrop-filter:blur(18px);
+}
+
+.islandLeft{
+  display:flex;
+  align-items:center;
+  gap:8px;
+}
+
+.islandDot{
+  width:10px;
+  height:10px;
+  border-radius:50%;
+  background:#ff4444;
+}
+
+.islandDot.on{
+  background:#00e676;
+}
+
+.islandText{
+  font-size:12px;
+  opacity:.8;
+}
+
+.islandCenter{
+  display:flex;
+  gap:8px;
+}
+
+.islandBtn{
+  border:none;
+  background:rgba(255,255,255,0.1);
+  padding:8px 10px;
+  border-radius:999px;
+  cursor:pointer;
+  font-size:12px;
+}
+
+.islandRight{
+  display:flex;
+  gap:10px;
+  font-weight:900;
+}
+
+.islandStat{
+  font-size:12px;
+  opacity:.9;
+}
 .mode {
   border: 1px solid rgba(255,255,255,0.14);
   background: rgba(255,255,255,0.10);
