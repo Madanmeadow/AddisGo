@@ -1,27 +1,31 @@
 // server/routes/posts.routes.js
 import express from "express";
 import multer from "multer";
-import path from "path";
-import { fileURLToPath } from "url";
+import { v2 as cloudinary } from "cloudinary";
+import streamifier from "streamifier";
 import { pool } from "../db.js";
 import { authenticateToken } from "../middleware/auth.middleware.js";
 
 const router = express.Router();
 
 /* =========================
-   MULTER STORAGE (LOCAL UPLOADS)
+   CLOUDINARY
 ========================= */
-const __filename = fileURLToPath(import.meta.url);
-const __dirname = path.dirname(__filename);
-
-const storage = multer.diskStorage({
-  destination: path.join(__dirname, "../uploads"),
-  filename: (req, file, cb) => {
-    cb(null, `${Date.now()}-${String(file.originalname || "file").replace(/\s+/g, "_")}`);
-  },
+cloudinary.config({
+  cloud_name: process.env.CLOUDINARY_CLOUD_NAME,
+  api_key: process.env.CLOUDINARY_API_KEY,
+  api_secret: process.env.CLOUDINARY_API_SECRET,
 });
 
-const upload = multer({ storage });
+/* =========================
+   MULTER (MEMORY, NOT DISK)
+========================= */
+const upload = multer({
+  storage: multer.memoryStorage(),
+  limits: {
+    fileSize: 80 * 1024 * 1024, // 80MB
+  },
+});
 
 /* =========================
    HELPERS
@@ -34,10 +38,25 @@ async function postExists(postId) {
   return !!check.rows[0];
 }
 
+function uploadBufferToCloudinary(fileBuffer, folder, resourceType = "image") {
+  return new Promise((resolve, reject) => {
+    const uploadStream = cloudinary.uploader.upload_stream(
+      {
+        folder,
+        resource_type: resourceType,
+      },
+      (error, result) => {
+        if (error) return reject(error);
+        resolve(result);
+      }
+    );
+
+    streamifier.createReadStream(fileBuffer).pipe(uploadStream);
+  });
+}
+
 /* =========================
    GET POSTS
-   ✅ includes comment_count
-   ✅ includes user display fields
 ========================= */
 router.get("/", async (req, res) => {
   try {
@@ -92,8 +111,26 @@ router.post(
       const imageFile = req.files?.image?.[0] || null;
       const videoFile = req.files?.video?.[0] || null;
 
-      const image_url = imageFile ? `/uploads/${imageFile.filename}` : null;
-      const video_url = videoFile ? `/uploads/${videoFile.filename}` : null;
+      let image_url = null;
+      let video_url = null;
+
+      if (imageFile?.buffer) {
+        const uploadedImage = await uploadBufferToCloudinary(
+          imageFile.buffer,
+          "addisgo/posts/images",
+          "image"
+        );
+        image_url = uploadedImage.secure_url;
+      }
+
+      if (videoFile?.buffer) {
+        const uploadedVideo = await uploadBufferToCloudinary(
+          videoFile.buffer,
+          "addisgo/posts/videos",
+          "video"
+        );
+        video_url = uploadedVideo.secure_url;
+      }
 
       if (!caption && !image_url && !video_url) {
         return res.status(400).json({ error: "caption, image, or video is required" });
@@ -265,10 +302,7 @@ router.delete("/:postId/comments/:commentId", authenticateToken, async (req, res
       return res.status(403).json({ error: "You can only delete your own comment" });
     }
 
-    await pool.query(
-      `DELETE FROM comments WHERE id = $1`,
-      [commentId]
-    );
+    await pool.query(`DELETE FROM comments WHERE id = $1`, [commentId]);
 
     res.json({ ok: true, id: commentId, post_id: postId });
   } catch (err) {
