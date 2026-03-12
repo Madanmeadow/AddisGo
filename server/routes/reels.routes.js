@@ -1,61 +1,100 @@
 import express from "express";
 import multer from "multer";
-import path from "path";
-import { fileURLToPath } from "url";
+import { v2 as cloudinary } from "cloudinary";
+import streamifier from "streamifier";
 import { pool } from "../db.js";
 import { authenticateToken } from "../middleware/auth.middleware.js";
 
 const router = express.Router();
 
-/* ================= MULTER (TEMP LOCAL) ================= */
-const __filename = fileURLToPath(import.meta.url);
-const __dirname = path.dirname(__filename);
-
-const storage = multer.diskStorage({
-  destination: path.join(__dirname, "../uploads"),
-  filename: (req, file, cb) => cb(null, Date.now() + "-" + file.originalname),
+/* ================= CLOUDINARY ================= */
+cloudinary.config({
+  cloud_name: process.env.CLOUDINARY_CLOUD_NAME,
+  api_key: process.env.CLOUDINARY_API_KEY,
+  api_secret: process.env.CLOUDINARY_API_SECRET,
 });
-const upload = multer({ storage });
+
+/* ================= MULTER (MEMORY, NOT DISK) ================= */
+const upload = multer({
+  storage: multer.memoryStorage(),
+  limits: {
+    fileSize: 150 * 1024 * 1024, // 150MB for reels
+  },
+});
+
+function uploadBufferToCloudinary(fileBuffer, folder, resourceType = "video") {
+  return new Promise((resolve, reject) => {
+    const uploadStream = cloudinary.uploader.upload_stream(
+      {
+        folder,
+        resource_type: resourceType,
+      },
+      (error, result) => {
+        if (error) return reject(error);
+        resolve(result);
+      }
+    );
+
+    streamifier.createReadStream(fileBuffer).pipe(uploadStream);
+  });
+}
 
 /* ================= CREATE REEL =================
    Expects: FormData { video, caption? }
-   - Inserts into reels (video_url, thumb_url, duration_sec)
-   - Also inserts into posts (video_url) so it appears in For You
-=============================================== */
+   - Inserts into reels
+   - Also inserts into posts so it appears in For You
+================================================ */
 router.post("/", authenticateToken, upload.single("video"), async (req, res) => {
   try {
-    const userId = req.user.id;
-    const caption = (req.body.caption || "").toString();
+    const userId = Number(req.user?.id);
+    const caption = String(req.body?.caption || "").trim();
 
-    if (!req.file) return res.status(400).json({ error: "Video is required." });
+    if (!userId) {
+      return res.status(401).json({ error: "Unauthorized" });
+    }
 
-    // If you already use Cloudinary upload somewhere else, replace this with that URL.
-    const videoUrl = `/uploads/${req.file.filename}`;
+    if (!req.file?.buffer) {
+      return res.status(400).json({ error: "Video is required." });
+    }
 
-    // optional (you can add later)
-    const thumbUrl = req.body.thumb_url ? String(req.body.thumb_url) : null;
-    const durationSec = req.body.duration_sec ? Number(req.body.duration_sec) : null;
+    const uploadedVideo = await uploadBufferToCloudinary(
+      req.file.buffer,
+      "addisgo/reels/videos",
+      "video"
+    );
 
-    // 1) reels table (MATCH YOUR REAL COLUMNS)
+    const videoUrl = uploadedVideo.secure_url;
+
+    const thumbUrl =
+      typeof uploadedVideo.secure_url === "string"
+        ? uploadedVideo.secure_url.replace("/video/upload/", "/video/upload/so_1/")
+        : null;
+
+    const durationSec =
+      Number.isFinite(Number(uploadedVideo.duration))
+        ? Number(uploadedVideo.duration)
+        : null;
+
+    // 1) reels table
     const reelResult = await pool.query(
       `
       INSERT INTO reels (user_id, caption, video_url, thumb_url, duration_sec)
       VALUES ($1, $2, $3, $4, $5)
       RETURNING *
       `,
-      [userId, caption, videoUrl, thumbUrl, Number.isFinite(durationSec) ? durationSec : null]
+      [userId, caption || null, videoUrl, thumbUrl, durationSec]
     );
 
     const reel = reelResult.rows[0];
 
-    // 2) posts table (so it shows in For You feed)
+    // 2) posts table
     const postResult = await pool.query(
       `
       INSERT INTO posts (user_id, caption, video_url)
       VALUES ($1, $2, $3)
       RETURNING *
       `,
-      [userId, caption, videoUrl]
+      [userId, caption || null, videoUrl]
     );
 
     const post = postResult.rows[0];
@@ -63,7 +102,7 @@ router.post("/", authenticateToken, upload.single("video"), async (req, res) => 
     return res.json({ reel, post });
   } catch (err) {
     console.error("POST /reels ERROR:", err);
-    return res.status(500).json({ error: err.message });
+    return res.status(500).json({ error: err.message || "Failed to create reel." });
   }
 });
 
