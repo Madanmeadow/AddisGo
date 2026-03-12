@@ -5,14 +5,15 @@
     :class="{
       compactMode,
       cinematicMode,
-      focusOnly: !!focusedTileId
+      focusOnly: !!focusedTileId,
+      speakerMode: !!dominantSpeakerId,
     }"
   >
     <div class="bg-layer bg1"></div>
     <div class="bg-layer bg2"></div>
     <div class="bg-layer bg3"></div>
 
-    <!-- FLOATING REACTION -->
+    <!-- REACTION BURST -->
     <transition name="pop-reaction">
       <div v-if="reactionBurst" class="reaction-burst">
         {{ reactionBurst }}
@@ -55,8 +56,8 @@
         <div class="eyebrow">ADDISGO ROOM CALL</div>
         <h1 class="hero-title">{{ roomName || "Future Room" }}</h1>
         <div class="hero-sub">
-          {{ roomKindLabel }} with camera, mic, screen sharing, repair tools,
-          visual focus mode, cinematic mode, and stronger WebRTC signaling.
+          {{ roomKindLabel }} with camera, mic, screen sharing, active speaker glow,
+          compact mode, cinematic mode, focus pinning, and stronger peer recovery.
         </div>
 
         <div class="hero-badges">
@@ -80,14 +81,17 @@
           <div class="hero-num">{{ participantCount }}</div>
           <div class="hero-lab">People</div>
         </div>
+
         <div class="hero-stat">
           <div class="hero-num">{{ remoteParticipants.length }}</div>
           <div class="hero-lab">Remote</div>
         </div>
+
         <div class="hero-stat">
           <div class="hero-num">{{ screenSharing ? "ON" : "OFF" }}</div>
           <div class="hero-lab">Share</div>
         </div>
+
         <div class="hero-stat">
           <div class="hero-num">{{ compactMode ? "ON" : "OFF" }}</div>
           <div class="hero-lab">Compact</div>
@@ -95,17 +99,20 @@
       </div>
     </section>
 
-    <!-- PARTICIPANT STRIP -->
+    <!-- PRESENCE -->
     <section class="presence-strip glassy">
       <div class="strip-head">
         <div class="panel-title">⚡ Live Presence</div>
+
         <div class="strip-actions">
           <button class="chip ghost miniChip" @click="toggleCompactMode">
             {{ compactMode ? "Normal View" : "Compact View" }}
           </button>
+
           <button class="chip ghost miniChip" @click="toggleCinematicMode">
             {{ cinematicMode ? "Standard Mode" : "Cinematic" }}
           </button>
+
           <button class="chip ghost miniChip" @click="toggleMirrorMode">
             {{ mirrorLocal ? "Mirror On" : "Mirror Off" }}
           </button>
@@ -114,10 +121,18 @@
 
       <div class="presence-list">
         <button class="presenceCard self" @click="focusTile('local')">
-          <div class="presenceAvatar">{{ myInitial }}</div>
+          <div
+            class="presenceAvatar"
+            :class="{ speaking: isSpeaking('local') }"
+          >
+            {{ myInitial }}
+          </div>
+
           <div class="presenceMeta">
             <div class="presenceName">{{ myName }}</div>
-            <div class="presenceSub">You</div>
+            <div class="presenceSub">
+              {{ isSpeaking('local') ? "Speaking" : "You" }}
+            </div>
           </div>
         </button>
 
@@ -127,12 +142,20 @@
           class="presenceCard"
           @click="focusTile(p.socketId)"
         >
-          <div class="presenceAvatar alt">
+          <div
+            class="presenceAvatar alt"
+            :class="{ speaking: isSpeaking(p.socketId) }"
+          >
             {{ getInitialName(p.displayName || p.username || p.userId) }}
           </div>
+
           <div class="presenceMeta">
-            <div class="presenceName">{{ trimName(p.displayName || p.username || `User #${p.userId || "?"}`) }}</div>
-            <div class="presenceSub">{{ peerStatus[p.socketId] || "Connected" }}</div>
+            <div class="presenceName">
+              {{ trimName(p.displayName || p.username || `User #${p.userId || "?"}`) }}
+            </div>
+            <div class="presenceSub">
+              {{ isSpeaking(p.socketId) ? "Speaking" : (peerStatus[p.socketId] || "Connected") }}
+            </div>
           </div>
         </button>
       </div>
@@ -172,12 +195,14 @@
 
           <div class="stage-right">
             <button class="control ghost" @click="focusTile('local')">Focus Me</button>
+            <button class="control ghost" @click="focusDominantSpeaker" :disabled="!dominantSpeakerId">
+              Focus Speaker
+            </button>
             <button class="control ghost" @click="clearFocus">Show All</button>
             <button class="control ghost" @click="forceReconnectPeers">Repair Peers</button>
           </div>
         </div>
 
-        <!-- MAGIC BAR -->
         <div class="magic-toolbar glassy">
           <div class="magic-left">
             <button class="magicBtn" @click="sendReaction('🔥')">🔥</button>
@@ -196,28 +221,54 @@
           </div>
         </div>
 
-        <div class="video-stage" :class="{ focused: !!focusedTileId, cinematic: cinematicMode }">
-          <!-- LOCAL -->
+        <div
+          class="video-stage"
+          :class="[
+            gridClass,
+            { focused: !!focusedTileId, cinematic: cinematicMode }
+          ]"
+        >
+          <!-- LOCAL TILE -->
           <article
-            v-if="!focusedTileId || focusedTileId === 'local'"
+            v-if="shouldShowLocalTile"
             class="tile selfTile glassy"
-            :class="{ big: focusedTileId === 'local', compact: compactMode }"
+            :class="{
+              big: focusedTileId === 'local',
+              compact: compactMode,
+              speaking: isSpeaking('local'),
+              dominant: dominantSpeakerId === 'local',
+            }"
             @click="focusTile('local')"
           >
             <div class="tile-head">
               <div class="tile-user">
                 <span class="avatar">{{ myInitial }}</span>
+
                 <div class="tile-meta">
-                  <div class="tile-name">{{ myName }} <span class="me-tag">You</span></div>
+                  <div class="tile-name">
+                    {{ myName }}
+                    <span class="me-tag">You</span>
+                  </div>
+
                   <div class="tile-sub">
-                    {{ screenSharing ? "Screen sharing" : (roomKind === "video" ? "Local camera" : "Local audio") }}
+                    {{
+                      screenSharing
+                        ? "Screen sharing"
+                        : roomKind === "video"
+                          ? "Local camera"
+                          : "Local audio"
+                    }}
                   </div>
                 </div>
               </div>
 
               <div class="tile-pills">
                 <span class="pill" :class="{ off: !micEnabled }">{{ micEnabled ? "Mic" : "Muted" }}</span>
-                <span v-if="roomKind === 'video'" class="pill" :class="{ off: !camEnabled && !screenSharing }">
+                <span
+                  v-if="roomKind === 'video'"
+                  class="pill"
+                  :class="{ off: !camEnabled && !screenSharing }"
+                >
                   {{ screenSharing ? "Screen" : (camEnabled ? "Cam" : "Cam Off") }}
                 </span>
                 <span class="pill">{{ sessionDurationLabel }}</span>
@@ -242,22 +293,34 @@
               </div>
 
               <div class="corner-status">{{ joinedRoom ? "LIVE" : "CONNECTING" }}</div>
+              <div class="speaker-ring" :style="speakerRingStyle('local')"></div>
             </div>
           </article>
 
-          <!-- REMOTE -->
+          <!-- REMOTE TILES -->
           <article
             v-for="p in visibleRemoteParticipants"
             :key="p.socketId"
             class="tile remoteTile glassy"
-            :class="{ big: focusedTileId === p.socketId, compact: compactMode }"
+            :class="{
+              big: focusedTileId === p.socketId,
+              compact: compactMode,
+              speaking: isSpeaking(p.socketId),
+              dominant: dominantSpeakerId === p.socketId,
+            }"
             @click="focusTile(p.socketId)"
           >
             <div class="tile-head">
               <div class="tile-user">
-                <span class="avatar alt">{{ getInitialName(p.displayName || p.username || p.userId) }}</span>
+                <span class="avatar alt">
+                  {{ getInitialName(p.displayName || p.username || p.userId) }}
+                </span>
+
                 <div class="tile-meta">
-                  <div class="tile-name">{{ p.displayName || p.username || `User #${p.userId || "?"}` }}</div>
+                  <div class="tile-name">
+                    {{ p.displayName || p.username || `User #${p.userId || "?"}` }}
+                  </div>
+
                   <div class="tile-sub">
                     {{ peerStatus[p.socketId] || "Connected" }}
                   </div>
@@ -266,7 +329,9 @@
 
               <div class="tile-pills">
                 <span class="pill">{{ roomKind === "video" ? "Video" : "Audio" }}</span>
-                <span class="pill ghostState">{{ peerConnectionState[p.socketId] || "online" }}</span>
+                <span class="pill ghostState">
+                  {{ peerConnectionState[p.socketId] || "online" }}
+                </span>
               </div>
             </div>
 
@@ -283,13 +348,16 @@
                 <div class="audio-room-avatar">
                   {{ getInitialName(p.displayName || p.username || p.userId) }}
                 </div>
-                <div class="audio-room-name">{{ p.displayName || p.username || `User #${p.userId || "?"}` }}</div>
+                <div class="audio-room-name">
+                  {{ p.displayName || p.username || `User #${p.userId || "?"}` }}
+                </div>
                 <div class="audio-room-sub">Audio participant</div>
               </div>
 
               <div class="corner-status remote">
                 {{ peerConnectionState[p.socketId] || "online" }}
               </div>
+              <div class="speaker-ring" :style="speakerRingStyle(p.socketId)"></div>
             </div>
           </article>
 
@@ -300,7 +368,9 @@
           >
             <div class="empty-emoji">✨</div>
             <div class="empty-title">Room is ready</div>
-            <div class="empty-sub">Share the invite link so others can join your AddisGo room call.</div>
+            <div class="empty-sub">
+              Share the invite link so others can join your AddisGo room call.
+            </div>
 
             <div class="empty-actions">
               <button class="btn btn-primary" @click="copyInvite">Copy Invite</button>
@@ -323,7 +393,9 @@
             <div class="person-card self">
               <div class="avatar big">{{ myInitial }}</div>
               <div class="person-meta">
-                <div class="person-name">{{ myName }} <span class="me-tag">You</span></div>
+                <div class="person-name">
+                  {{ myName }} <span class="me-tag">You</span>
+                </div>
                 <div class="person-sub">
                   <span class="status-dot on"></span>
                   {{ joinedRoom ? "In room" : "Joining..." }}
@@ -336,11 +408,19 @@
               :key="'side-' + p.socketId"
               class="person-card"
             >
-              <div class="avatar big alt">{{ getInitialName(p.displayName || p.username || p.userId) }}</div>
+              <div class="avatar big alt">
+                {{ getInitialName(p.displayName || p.username || p.userId) }}
+              </div>
+
               <div class="person-meta">
-                <div class="person-name">{{ p.displayName || p.username || `User #${p.userId || "?"}` }}</div>
+                <div class="person-name">
+                  {{ p.displayName || p.username || `User #${p.userId || "?"}` }}
+                </div>
                 <div class="person-sub">
-                  <span class="status-dot on"></span>
+                  <span
+                    class="status-dot"
+                    :class="{ on: isSpeaking(p.socketId) || (peerConnectionState[p.socketId] === 'connected') }"
+                  ></span>
                   {{ peerStatus[p.socketId] || "Connected" }}
                 </div>
               </div>
@@ -357,7 +437,9 @@
             <button class="toolBtn" @click="copyInvite">🔗 Copy Invite</button>
             <button class="toolBtn" @click="copyRoomId">🆔 Copy Room ID</button>
             <button class="toolBtn" @click="refreshRoomState">🔄 Refresh State</button>
-            <button class="toolBtn" @click="toggleMic">{{ micEnabled ? "🔇 Mute Mic" : "🎙 Unmute" }}</button>
+            <button class="toolBtn" @click="toggleMic">
+              {{ micEnabled ? "🔇 Mute Mic" : "🎙 Unmute" }}
+            </button>
             <button class="toolBtn" :disabled="roomKind !== 'video'" @click="toggleCamera">
               {{ camEnabled ? "🚫 Stop Camera" : "📷 Start Camera" }}
             </button>
@@ -373,6 +455,9 @@
             <button class="toolBtn" @click="toggleCinematicMode">
               {{ cinematicMode ? "🎬 Standard Mode" : "🎬 Cinematic" }}
             </button>
+            <button class="toolBtn" @click="focusDominantSpeaker" :disabled="!dominantSpeakerId">
+              🎯 Focus Speaker
+            </button>
             <button class="toolBtn" @click="forceReconnectPeers">🛠 Repair Peers</button>
             <button class="toolBtn" @click="copyDiagnostics">🧾 Copy Diagnostics</button>
           </div>
@@ -387,46 +472,17 @@
           </div>
 
           <div class="diag-list">
-            <div class="diag-row">
-              <span>Room ID</span>
-              <strong>{{ roomId }}</strong>
-            </div>
-            <div class="diag-row">
-              <span>Kind</span>
-              <strong>{{ roomKindLabel }}</strong>
-            </div>
-            <div class="diag-row">
-              <span>Socket</span>
-              <strong>{{ socketConnected ? "Connected" : "Disconnected" }}</strong>
-            </div>
-            <div class="diag-row">
-              <span>Joined</span>
-              <strong>{{ joinedRoom ? "Yes" : "No" }}</strong>
-            </div>
-            <div class="diag-row">
-              <span>Peers</span>
-              <strong>{{ remoteParticipants.length }}</strong>
-            </div>
-            <div class="diag-row">
-              <span>Mic</span>
-              <strong>{{ micEnabled ? "On" : "Off" }}</strong>
-            </div>
-            <div class="diag-row">
-              <span>Cam</span>
-              <strong>{{ roomKind === 'video' ? (camEnabled ? 'On' : 'Off') : 'Audio Room' }}</strong>
-            </div>
-            <div class="diag-row">
-              <span>Screen</span>
-              <strong>{{ screenSharing ? "Sharing" : "Off" }}</strong>
-            </div>
-            <div class="diag-row">
-              <span>TURN</span>
-              <strong>{{ turnReady ? "Ready" : "No" }}</strong>
-            </div>
-            <div class="diag-row">
-              <span>Timer</span>
-              <strong>{{ sessionDurationLabel }}</strong>
-            </div>
+            <div class="diag-row"><span>Room ID</span><strong>{{ roomId }}</strong></div>
+            <div class="diag-row"><span>Kind</span><strong>{{ roomKindLabel }}</strong></div>
+            <div class="diag-row"><span>Socket</span><strong>{{ socketConnected ? "Connected" : "Disconnected" }}</strong></div>
+            <div class="diag-row"><span>Joined</span><strong>{{ joinedRoom ? "Yes" : "No" }}</strong></div>
+            <div class="diag-row"><span>Peers</span><strong>{{ remoteParticipants.length }}</strong></div>
+            <div class="diag-row"><span>Mic</span><strong>{{ micEnabled ? "On" : "Off" }}</strong></div>
+            <div class="diag-row"><span>Cam</span><strong>{{ roomKind === 'video' ? (camEnabled ? "On" : "Off") : "Audio Room" }}</strong></div>
+            <div class="diag-row"><span>Screen</span><strong>{{ screenSharing ? "Sharing" : "Off" }}</strong></div>
+            <div class="diag-row"><span>TURN</span><strong>{{ turnReady ? "Ready" : "No" }}</strong></div>
+            <div class="diag-row"><span>Timer</span><strong>{{ sessionDurationLabel }}</strong></div>
+            <div class="diag-row"><span>Dominant Speaker</span><strong>{{ dominantSpeakerLabel }}</strong></div>
           </div>
         </section>
       </aside>
@@ -465,7 +521,7 @@
 </template>
 
 <script setup>
-import { ref, computed, nextTick, onMounted, onBeforeUnmount } from "vue"
+import { ref, computed, nextTick, onMounted, onBeforeUnmount, watch } from "vue"
 import { useRoute, useRouter } from "vue-router"
 import { createSocket } from "../api/socket"
 
@@ -558,6 +614,138 @@ const visibleRemoteParticipants = computed(() => {
   return remoteParticipants.value.filter((p) => p.socketId === focusedTileId.value)
 })
 
+const shouldShowLocalTile = computed(() => {
+  return !focusedTileId.value || focusedTileId.value === "local"
+})
+
+/* =========================
+   SPEAKER DETECTION
+========================= */
+const speakerLevelMap = ref({})
+const dominantSpeakerId = ref("")
+
+let audioContext = null
+const analyserMap = new Map()
+const analyserDataMap = new Map()
+const mediaSourceMap = new Map()
+let speakerLoopRaf = null
+
+const dominantSpeakerLabel = computed(() => {
+  if (!dominantSpeakerId.value) return "None"
+  if (dominantSpeakerId.value === "local") return "You"
+  const p = remoteParticipants.value.find(x => String(x.socketId) === String(dominantSpeakerId.value))
+  return p?.displayName || p?.username || `User #${p?.userId || "?"}`
+})
+
+function isSpeaking(id) {
+  return (speakerLevelMap.value[id] || 0) > 0.12
+}
+
+function speakerRingStyle(id) {
+  const level = Math.max(0, Math.min(1, speakerLevelMap.value[id] || 0))
+  return {
+    opacity: String(level > 0.04 ? 0.22 + level * 0.55 : 0),
+    transform: `scale(${1 + level * 0.08})`,
+  }
+}
+
+function ensureAudioContext() {
+  if (!audioContext) {
+    const Ctx = window.AudioContext || window.webkitAudioContext
+    if (Ctx) audioContext = new Ctx()
+  }
+  if (audioContext?.state === "suspended") {
+    audioContext.resume().catch(() => {})
+  }
+}
+
+function attachSpeakerAnalysis(id, stream) {
+  const sid = String(id || "")
+  if (!sid || !stream) return
+  if (!stream.getAudioTracks?.().length) return
+
+  try {
+    ensureAudioContext()
+    if (!audioContext) return
+
+    detachSpeakerAnalysis(sid)
+
+    const source = audioContext.createMediaStreamSource(stream)
+    const analyser = audioContext.createAnalyser()
+    analyser.fftSize = 256
+    analyser.smoothingTimeConstant = 0.82
+
+    const data = new Uint8Array(analyser.frequencyBinCount)
+    source.connect(analyser)
+
+    mediaSourceMap.set(sid, source)
+    analyserMap.set(sid, analyser)
+    analyserDataMap.set(sid, data)
+  } catch (err) {
+    console.warn("attachSpeakerAnalysis failed", sid, err)
+  }
+}
+
+function detachSpeakerAnalysis(id) {
+  const sid = String(id || "")
+  try { mediaSourceMap.get(sid)?.disconnect?.() } catch {}
+  try { analyserMap.get(sid)?.disconnect?.() } catch {}
+  mediaSourceMap.delete(sid)
+  analyserMap.delete(sid)
+  analyserDataMap.delete(sid)
+
+  const nextLevels = { ...speakerLevelMap.value }
+  delete nextLevels[sid]
+  speakerLevelMap.value = nextLevels
+}
+
+function startSpeakerLoop() {
+  stopSpeakerLoop()
+
+  const tick = () => {
+    const next = { ...speakerLevelMap.value }
+    let maxId = ""
+    let maxVal = 0
+
+    for (const [sid, analyser] of analyserMap.entries()) {
+      const data = analyserDataMap.get(sid)
+      if (!data) continue
+
+      analyser.getByteFrequencyData(data)
+
+      let sum = 0
+      for (let i = 0; i < data.length; i++) sum += data[i]
+      const avg = sum / (data.length * 255)
+
+      next[sid] = avg
+
+      if (avg > maxVal) {
+        maxVal = avg
+        maxId = sid
+      }
+    }
+
+    speakerLevelMap.value = next
+    dominantSpeakerId.value = maxVal > 0.08 ? maxId : ""
+
+    speakerLoopRaf = requestAnimationFrame(tick)
+  }
+
+  speakerLoopRaf = requestAnimationFrame(tick)
+}
+
+function stopSpeakerLoop() {
+  if (speakerLoopRaf) {
+    cancelAnimationFrame(speakerLoopRaf)
+    speakerLoopRaf = null
+  }
+}
+
+function focusDominantSpeaker() {
+  if (!dominantSpeakerId.value) return
+  focusedTileId.value = dominantSpeakerId.value
+}
+
 /* =========================
    WEBRTC STATE
 ========================= */
@@ -572,6 +760,21 @@ const ignoreOffer = new Map()
 const isSettingRemoteAnswerPending = new Map()
 const peerMeta = new Map()
 let reconnectTimer = null
+
+/* =========================
+   COMPUTED LAYOUT
+========================= */
+const displayedTileCount = computed(() => {
+  return visibleRemoteParticipants.value.length + (shouldShowLocalTile.value ? 1 : 0)
+})
+
+const gridClass = computed(() => {
+  if (focusedTileId.value) return "grid-focus"
+  if (displayedTileCount.value <= 1) return "grid-one"
+  if (displayedTileCount.value === 2) return "grid-two"
+  if (displayedTileCount.value <= 4) return "grid-four"
+  return "grid-many"
+})
 
 /* =========================
    HELPERS
@@ -594,7 +797,7 @@ function goBack() {
 }
 
 function focusTile(id) {
-  focusedTileId.value = id
+  focusedTileId.value = focusedTileId.value === id ? "" : id
 }
 
 function clearFocus() {
@@ -702,6 +905,7 @@ function setRemoteVideoRef(socketId, el) {
       el.srcObject = stream
       el.muted = false
       el.volume = speakerEnabled.value ? 1 : 0.2
+      attachSpeakerAnalysis(sid, stream)
     }
   } else {
     remoteVideoRefs.delete(sid)
@@ -751,7 +955,10 @@ async function loadTurnServers() {
 }
 
 function getRtcConfig() {
-  return { iceServers: rtcIceServers.value }
+  return {
+    iceServers: rtcIceServers.value,
+    iceCandidatePoolSize: 10,
+  }
 }
 
 /* =========================
@@ -763,8 +970,19 @@ async function initLocalMedia() {
 
     const wantsVideo = roomKind.value === "video"
     const stream = await navigator.mediaDevices.getUserMedia({
-      audio: true,
-      video: wantsVideo,
+      audio: {
+        echoCancellation: true,
+        noiseSuppression: true,
+        autoGainControl: true,
+      },
+      video: wantsVideo
+        ? {
+            width: { ideal: 1280, max: 1280 },
+            height: { ideal: 720, max: 720 },
+            frameRate: { ideal: 24, max: 30 },
+            facingMode: "user",
+          }
+        : false,
     })
 
     if (cameraStream.value) {
@@ -784,6 +1002,7 @@ async function initLocalMedia() {
     if (videoTrack) videoTrack.enabled = camEnabled.value
 
     updateLocalPreview()
+    attachSpeakerAnalysis("local", stream)
     return stream
   } catch (err) {
     console.error("initLocalMedia error:", err)
@@ -889,6 +1108,7 @@ function buildPeerConnection(targetSocketId) {
       el.volume = speakerEnabled.value ? 1 : 0.2
     }
 
+    attachSpeakerAnalysis(sid, stream)
     peerStatus.value = { ...peerStatus.value, [sid]: "Receiving media" }
   }
 
@@ -1146,6 +1366,7 @@ function cleanupPeer(socketId) {
   ignoreOffer.delete(sid)
   isSettingRemoteAnswerPending.delete(sid)
   peerMeta.delete(sid)
+  detachSpeakerAnalysis(sid)
 
   const el = remoteVideoRefs.get(sid)
   if (el) {
@@ -1243,19 +1464,27 @@ function toggleMic() {
   if (!track) return
   micEnabled.value = !micEnabled.value
   track.enabled = micEnabled.value
+  setNotice(micEnabled.value ? "Mic enabled." : "Mic muted.")
 }
 
-function toggleCamera() {
+async function toggleCamera() {
   if (roomKind.value !== "video") return
   const track = localStream.value?.getVideoTracks?.()[0]
   if (!track) return
   camEnabled.value = !camEnabled.value
   track.enabled = camEnabled.value
+
+  try {
+    await replaceOutgoingTracks()
+  } catch {}
+
+  setNotice(camEnabled.value ? "Camera enabled." : "Camera off.")
 }
 
 function toggleSpeaker() {
   speakerEnabled.value = !speakerEnabled.value
   refreshRemoteVideoAudio()
+  setNotice(speakerEnabled.value ? "Speaker on." : "Speaker lower.")
 }
 
 async function copyInvite() {
@@ -1291,7 +1520,8 @@ async function copyDiagnostics() {
       userId: p.userId,
       displayName: p.displayName,
       state: peerConnectionState.value[p.socketId] || "",
-      status: peerStatus.value[p.socketId] || "",
+      status: peerStatus[p.socketId] || "",
+      speakingLevel: speakerLevelMap.value[p.socketId] || 0,
     })),
     micEnabled: micEnabled.value,
     camEnabled: camEnabled.value,
@@ -1300,6 +1530,8 @@ async function copyDiagnostics() {
     compactMode: compactMode.value,
     cinematicMode: cinematicMode.value,
     mirrorLocal: mirrorLocal.value,
+    focusedTileId: focusedTileId.value,
+    dominantSpeakerId: dominantSpeakerId.value,
     sessionDuration: sessionDurationLabel.value,
     at: new Date().toISOString(),
   }
@@ -1398,6 +1630,7 @@ function leaveRoom() {
 function cleanupAll() {
   joinedRoom.value = false
   stopSessionTimer()
+  stopSpeakerLoop()
 
   for (const id of Array.from(peerConnections.keys())) {
     cleanupPeer(id)
@@ -1406,6 +1639,8 @@ function cleanupAll() {
   try { localStream.value?.getTracks?.().forEach((t) => t.stop()) } catch {}
   try { cameraStream.value?.getTracks?.().forEach((t) => t.stop()) } catch {}
   try { screenStream.value?.getTracks?.().forEach((t) => t.stop()) } catch {}
+
+  detachSpeakerAnalysis("local")
 
   localStream.value = null
   cameraStream.value = null
@@ -1417,6 +1652,8 @@ function cleanupAll() {
   }
 
   roomUsers.value = []
+  speakerLevelMap.value = {}
+  dominantSpeakerId.value = ""
 }
 
 /* =========================
@@ -1497,6 +1734,8 @@ function attachSocketListeners() {
     roomUsers.value = roomUsers.value.filter((u) => String(u.socketId) !== sid)
 
     if (focusedTileId.value === sid) focusedTileId.value = ""
+    if (dominantSpeakerId.value === sid) dominantSpeakerId.value = ""
+
     cleanupPeer(sid)
     setNotice("A participant left.")
   })
@@ -1509,6 +1748,29 @@ function attachSocketListeners() {
     setError(message || "Room call error.")
   })
 }
+
+/* =========================
+   WATCHERS
+========================= */
+watch(localStream, (stream) => {
+  if (stream) attachSpeakerAnalysis("local", stream)
+})
+
+watch(
+  () => roomKind.value,
+  async (newKind, oldKind) => {
+    if (!oldKind || newKind === oldKind) return
+    if (!joinedRoom.value) return
+
+    try {
+      await initLocalMedia()
+      await replaceOutgoingTracks()
+      updateLocalPreview()
+    } catch (err) {
+      console.error("roomKind watcher error", err)
+    }
+  }
+)
 
 /* =========================
    LIFECYCLE
@@ -1528,6 +1790,7 @@ onMounted(async () => {
 
   socket = createSocket()
   attachSocketListeners()
+  startSpeakerLoop()
 })
 
 onBeforeUnmount(() => {
@@ -1554,6 +1817,12 @@ onBeforeUnmount(() => {
 
   stopSessionTimer()
   cleanupAll()
+
+  try {
+    audioContext?.close?.()
+  } catch {}
+
+  audioContext = null
   socket = null
 })
 </script>
@@ -1859,10 +2128,15 @@ onBeforeUnmount(() => {
   font-weight: 900;
   background: linear-gradient(135deg, #00d2ff, #7c3aed);
   flex: 0 0 auto;
+  box-shadow: 0 0 0 0 rgba(0,210,255,0.0);
 }
 
 .presenceAvatar.alt {
   background: linear-gradient(135deg, #ff7a18, #ff416c);
+}
+
+.presenceAvatar.speaking {
+  box-shadow: 0 0 0 8px rgba(28,231,131,0.18), 0 0 28px rgba(28,231,131,0.30);
 }
 
 .presenceMeta {
@@ -1958,10 +2232,22 @@ onBeforeUnmount(() => {
 
 .video-stage {
   display: grid;
-  grid-template-columns: repeat(auto-fit, minmax(280px, 1fr));
   gap: 16px;
 }
 
+.video-stage.grid-one {
+  grid-template-columns: 1fr;
+}
+.video-stage.grid-two {
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+}
+.video-stage.grid-four {
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+}
+.video-stage.grid-many {
+  grid-template-columns: repeat(auto-fit, minmax(260px, 1fr));
+}
+.video-stage.grid-focus,
 .video-stage.focused {
   grid-template-columns: 1fr;
 }
@@ -1978,6 +2264,7 @@ onBeforeUnmount(() => {
   min-height: 280px;
   display: flex;
   flex-direction: column;
+  transition: transform 0.18s ease, box-shadow 0.18s ease, border-color 0.18s ease;
 }
 
 .tile.compact {
@@ -1986,6 +2273,22 @@ onBeforeUnmount(() => {
 
 .tile.big {
   min-height: 520px;
+}
+
+.tile.speaking {
+  border-color: rgba(28,231,131,0.22);
+  box-shadow:
+    0 24px 64px rgba(0,0,0,0.30),
+    0 0 0 1px rgba(28,231,131,0.16),
+    0 0 34px rgba(28,231,131,0.10);
+}
+
+.tile.dominant {
+  border-color: rgba(0,210,255,0.24);
+  box-shadow:
+    0 24px 64px rgba(0,0,0,0.30),
+    0 0 0 1px rgba(0,210,255,0.16),
+    0 0 40px rgba(0,210,255,0.10);
 }
 
 .tile-head {
@@ -2136,10 +2439,20 @@ onBeforeUnmount(() => {
   background: rgba(0,0,0,0.45);
   font-size: 11px;
   font-weight: 900;
+  z-index: 2;
 }
 
 .corner-status.remote {
   text-transform: capitalize;
+}
+
+.speaker-ring {
+  position: absolute;
+  inset: 0;
+  border-radius: 22px;
+  border: 2px solid rgba(28,231,131,0.65);
+  pointer-events: none;
+  transition: 0.12s ease;
 }
 
 .empty-state {
@@ -2413,6 +2726,11 @@ onBeforeUnmount(() => {
   .magic-toolbar {
     flex-direction: column;
     align-items: stretch;
+  }
+
+  .video-stage.grid-two,
+  .video-stage.grid-four {
+    grid-template-columns: 1fr;
   }
 }
 
