@@ -81,7 +81,7 @@ app.use(express.urlencoded({ extended: true }));
 /* =========================
    STATIC UPLOADS + ROUTES
 ========================= */
-app.use("/uploads", express.static(path.join(__dirname, "uploads")));
+app.use("/uploads", express.static(path.join(process.cwd(), "uploads")));
 
 app.use("/reels", reelsRoutes);
 app.use("/upload", uploadRoutes);
