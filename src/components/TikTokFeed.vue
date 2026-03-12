@@ -1,53 +1,90 @@
 <template>
   <section class="tt-feed">
     <article
-      v-for="(item, index) in normalizedItems"
+      v-for="item in normalizedItems"
       :key="`tt-${mode}-${item.id}`"
       class="tt-card"
       :class="[modeClass, { active: activeId === item.id }]"
       :id="`post-${item.id}`"
+      :data-active-id="item.id"
     >
-      <!-- VIDEO CARD -->
       <div class="tt-shell">
         <div class="tt-video-wrap">
-          <!-- media -->
-          <video
-            v-if="item.video_url"
-            class="tt-video"
-            :data-post-id="item.id"
-            :src="safeMedia(item.video_url)"
-            playsinline
-            preload="metadata"
-            loop
-            :muted="globalMuted"
-            @click="togglePlay(item.id)"
-            @loadedmetadata="onLoadedMeta(item.id, $event)"
-            @play="onPlay(item.id)"
-            @pause="onPause(item.id)"
-          ></video>
+          <!-- VIDEO -->
+          <template v-if="item.video_url">
+            <video
+              :ref="(el) => setVideoRef(item.id, el)"
+              class="tt-video"
+              :data-post-id="item.id"
+              :src="safeMedia(item.video_url)"
+              playsinline
+              webkit-playsinline
+              preload="metadata"
+              loop
+              :muted="globalMuted"
+              :poster="item.poster_url ? safeMedia(item.poster_url) : ''"
+              @click="togglePlay(item.id)"
+              @loadedmetadata="onLoadedMeta(item.id, $event)"
+              @loadeddata="onLoadedData(item.id)"
+              @canplay="onCanPlay(item.id)"
+              @play="onPlay(item.id)"
+              @pause="onPause(item.id)"
+              @error="onMediaError(item.id, 'video')"
+            ></video>
 
-          <img
-            v-else-if="item.image_url"
-            class="tt-image"
-            :src="safeMedia(item.image_url)"
-            loading="lazy"
-            :alt="item.caption || 'post media'"
-          />
+            <div v-if="mediaState[item.id]?.loading" class="tt-loading">
+              <div class="tt-spinner"></div>
+              <div class="tt-loading-text">Loading video…</div>
+            </div>
 
+            <div v-if="mediaState[item.id]?.error" class="tt-fallback">
+              <div class="tt-fallback-icon">🎬</div>
+              <div class="tt-fallback-title">Video unavailable</div>
+              <div class="tt-fallback-sub">Tap Share or refresh the feed.</div>
+            </div>
+          </template>
+
+          <!-- IMAGE -->
+          <template v-else-if="item.image_url">
+            <img
+              class="tt-image"
+              :src="safeMedia(item.image_url)"
+              loading="lazy"
+              :alt="item.caption || 'post media'"
+              @load="onImageLoaded(item.id)"
+              @error="onMediaError(item.id, 'image')"
+            />
+
+            <div v-if="mediaState[item.id]?.error" class="tt-fallback">
+              <div class="tt-fallback-icon">🖼️</div>
+              <div class="tt-fallback-title">Image unavailable</div>
+              <div class="tt-fallback-sub">This media could not load after deployment.</div>
+            </div>
+          </template>
+
+          <!-- TEXT ONLY -->
           <div v-else class="tt-empty">
             <div class="tt-empty-icon">✨</div>
             <div class="tt-empty-title">No media</div>
             <div class="tt-empty-sub">This post has text only.</div>
           </div>
 
-          <!-- top overlay -->
+          <!-- TOP OVERLAY -->
           <div class="tt-overlay top">
             <div class="tt-top-left">
               <div class="tt-badge liveish">
                 {{ mode === "reels" ? "REELS" : "FOR YOU" }}
               </div>
+
               <div v-if="item.video_url && durationText(item.id)" class="tt-badge soft">
                 {{ durationText(item.id) }}
+              </div>
+
+              <div
+                v-if="item.video_url && mediaState[item.id]?.ready"
+                class="tt-badge soft"
+              >
+                {{ playingMap[item.id] ? "Playing" : "Paused" }}
               </div>
             </div>
 
@@ -61,7 +98,7 @@
             </button>
           </div>
 
-          <!-- center controls -->
+          <!-- CENTER PLAY/PAUSE -->
           <div
             v-if="item.video_url"
             class="tt-center"
@@ -72,7 +109,7 @@
             </div>
           </div>
 
-          <!-- bottom overlay -->
+          <!-- BOTTOM OVERLAY -->
           <div class="tt-overlay bottom">
             <div class="tt-meta">
               <div class="tt-user-row">
@@ -93,7 +130,11 @@
                 </div>
               </div>
 
-              <div v-if="item.caption" class="tt-caption" :class="{ expanded: expandedCaptions[item.id] }">
+              <div
+                v-if="item.caption"
+                class="tt-caption"
+                :class="{ expanded: expandedCaptions[item.id] }"
+              >
                 <span>{{ item.caption }}</span>
 
                 <button
@@ -199,6 +240,9 @@ const expandedCaptions = ref({})
 const playingMap = ref({})
 const durationMap = ref({})
 const showCenterIconId = ref(null)
+const mediaState = ref({})
+const videoRefs = new Map()
+
 let centerTimer = null
 
 const modeClass = computed(() => {
@@ -216,6 +260,7 @@ const normalizedItems = computed(() => {
       caption: item.caption ?? "",
       image_url: item.image_url ?? null,
       video_url: item.video_url ?? null,
+      poster_url: item.poster_url ?? item.thumbnail_url ?? null,
       created_at: item.created_at ?? new Date().toISOString(),
       raw: item,
     }))
@@ -279,6 +324,31 @@ function toggleCaption(id) {
   }
 }
 
+function setVideoRef(id, el) {
+  const key = Number(id)
+  if (!key) return
+
+  if (el) {
+    videoRefs.set(key, el)
+    el.muted = props.globalMuted
+  } else {
+    videoRefs.delete(key)
+  }
+}
+
+function setMediaPatch(id, patch) {
+  mediaState.value = {
+    ...mediaState.value,
+    [id]: {
+      loading: false,
+      ready: false,
+      error: false,
+      ...(mediaState.value[id] || {}),
+      ...patch,
+    },
+  }
+}
+
 function onLoadedMeta(id, event) {
   const duration = Number(event?.target?.duration || 0)
   if (!duration || Number.isNaN(duration)) return
@@ -287,6 +357,23 @@ function onLoadedMeta(id, event) {
     ...durationMap.value,
     [id]: duration,
   }
+}
+
+function onLoadedData(id) {
+  setMediaPatch(id, { loading: false, ready: true, error: false })
+}
+
+function onCanPlay(id) {
+  setMediaPatch(id, { loading: false, ready: true, error: false })
+}
+
+function onImageLoaded(id) {
+  setMediaPatch(id, { loading: false, ready: true, error: false })
+}
+
+function onMediaError(id, type) {
+  console.error(`Media failed for ${type} post ${id}`)
+  setMediaPatch(id, { loading: false, ready: false, error: true })
 }
 
 function durationText(id) {
@@ -308,7 +395,7 @@ function flashCenterIcon(id) {
 }
 
 function togglePlay(id) {
-  const el = document.querySelector(`video.tt-video[data-post-id="${id}"]`)
+  const el = videoRefs.get(Number(id))
   if (!el) return
 
   if (el.paused) {
@@ -330,6 +417,34 @@ function onPause(id) {
   playingMap.value = {
     ...playingMap.value,
     [id]: false,
+  }
+}
+
+function pauseAllExcept(activePostId) {
+  for (const [id, el] of videoRefs.entries()) {
+    if (!el) continue
+    if (Number(id) !== Number(activePostId)) {
+      try {
+        el.pause()
+      } catch {}
+    }
+  }
+}
+
+async function tryPlayActive(id) {
+  const el = videoRefs.get(Number(id))
+  if (!el) return
+
+  el.muted = props.globalMuted
+  setMediaPatch(id, { loading: true, error: false })
+
+  try {
+    await el.play()
+    setMediaPatch(id, { loading: false, ready: true, error: false })
+  } catch (err) {
+    // autoplay may fail after deployment / navigation / browser policy
+    console.warn("Autoplay blocked or failed for", id, err)
+    setMediaPatch(id, { loading: false, ready: true, error: false })
   }
 }
 
@@ -359,7 +474,7 @@ function setupActiveObserver() {
   } catch {}
 
   activeObserver = new IntersectionObserver(
-    (entries) => {
+    async (entries) => {
       const visible = entries
         .filter((e) => e.isIntersecting)
         .sort((a, b) => (b.intersectionRatio || 0) - (a.intersectionRatio || 0))
@@ -368,40 +483,76 @@ function setupActiveObserver() {
 
       const card = visible[0].target
       const id = Number(card.getAttribute("data-active-id") || 0)
-      if (id) activeId.value = id
+      if (!id) return
+
+      activeId.value = id
+      pauseAllExcept(id)
+      await tryPlayActive(id)
     },
     { threshold: [0.35, 0.6, 0.85] }
   )
 
   nextTick(() => {
-    document.querySelectorAll(".tt-card").forEach((card) => {
+    document.querySelectorAll(".tt-card[data-active-id]").forEach((card) => {
       activeObserver?.observe(card)
     })
   })
 }
 
+function syncMutedToVideos() {
+  for (const [, el] of videoRefs.entries()) {
+    if (!el) continue
+    el.muted = props.globalMuted
+  }
+}
+
+function handleVisibilityChange() {
+  if (document.visibilityState === "visible" && activeId.value) {
+    tryPlayActive(activeId.value)
+  } else {
+    pauseAllExcept(-1)
+  }
+}
+
 watch(
   () => props.items,
-  async () => {
+  async (items) => {
+    const nextState = {}
+    for (const item of items || []) {
+      if (!item?.id) continue
+      nextState[item.id] = mediaState.value[item.id] || {
+        loading: !!item.video_url,
+        ready: false,
+        error: false,
+      }
+    }
+    mediaState.value = nextState
+
     await nextTick()
     setupLoadObserver()
     setupActiveObserver()
+    syncMutedToVideos()
+
+    if (activeId.value) {
+      pauseAllExcept(activeId.value)
+    }
   },
-  { deep: true }
+  { deep: true, immediate: true }
+)
+
+watch(
+  () => props.globalMuted,
+  () => {
+    syncMutedToVideos()
+  }
 )
 
 onMounted(async () => {
   await nextTick()
-
-  document.querySelectorAll(".tt-card").forEach((card, idx) => {
-    const item = normalizedItems.value[idx]
-    if (item?.id) {
-      card.setAttribute("data-active-id", String(item.id))
-    }
-  })
-
   setupLoadObserver()
   setupActiveObserver()
+  syncMutedToVideos()
+  document.addEventListener("visibilitychange", handleVisibilityChange)
 })
 
 onBeforeUnmount(() => {
@@ -414,6 +565,12 @@ onBeforeUnmount(() => {
   } catch {}
 
   if (centerTimer) clearTimeout(centerTimer)
+  document.removeEventListener("visibilitychange", handleVisibilityChange)
+
+  for (const [, el] of videoRefs.entries()) {
+    try { el.pause() } catch {}
+  }
+  videoRefs.clear()
 })
 </script>
 
@@ -475,29 +632,71 @@ onBeforeUnmount(() => {
   height: 78vh;
 }
 
+.tt-loading,
+.tt-fallback,
 .tt-empty {
-  height: 76vh;
+  position: absolute;
+  inset: 0;
   display: grid;
   place-items: center;
   align-content: center;
   gap: 8px;
-  background:
-    radial-gradient(circle at 50% 20%, rgba(255,255,255,0.08), transparent 26%),
-    linear-gradient(180deg, rgba(255,255,255,0.04), rgba(255,255,255,0.02));
+  text-align: center;
 }
 
+.tt-loading {
+  background: rgba(0,0,0,0.28);
+  z-index: 2;
+}
+
+.tt-spinner {
+  width: 38px;
+  height: 38px;
+  border-radius: 999px;
+  border: 3px solid rgba(255,255,255,0.18);
+  border-top-color: rgba(255,255,255,0.88);
+  animation: spin 1s linear infinite;
+}
+
+@keyframes spin {
+  to { transform: rotate(360deg); }
+}
+
+.tt-loading-text {
+  font-size: 13px;
+  opacity: 0.82;
+}
+
+.tt-fallback {
+  background:
+    radial-gradient(circle at 50% 20%, rgba(255,255,255,0.08), transparent 26%),
+    linear-gradient(180deg, rgba(10,14,20,0.72), rgba(5,8,20,0.88));
+  z-index: 2;
+}
+
+.tt-fallback-icon,
 .tt-empty-icon {
   font-size: 36px;
 }
 
+.tt-fallback-title,
 .tt-empty-title {
   font-size: 18px;
   font-weight: 900;
 }
 
+.tt-fallback-sub,
 .tt-empty-sub {
   font-size: 13px;
   opacity: 0.72;
+  max-width: 280px;
+}
+
+.tt-empty {
+  height: 76vh;
+  background:
+    radial-gradient(circle at 50% 20%, rgba(255,255,255,0.08), transparent 26%),
+    linear-gradient(180deg, rgba(255,255,255,0.04), rgba(255,255,255,0.02));
 }
 
 .tt-overlay {
