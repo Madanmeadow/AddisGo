@@ -72,6 +72,7 @@
           <span class="badge">{{ participantCount }} in room</span>
           <span class="badge">{{ roomKindLabel }}</span>
           <span class="badge">{{ turnReady ? "TURN Ready" : "STUN Only" }}</span>
+          <span class="badge">{{ lowDataMode ? "Low Data" : "Balanced HD" }}</span>
           <span class="badge accent">⏱ {{ sessionDurationLabel }}</span>
         </div>
       </div>
@@ -115,6 +116,10 @@
 
           <button class="chip ghost miniChip" @click="toggleMirrorMode">
             {{ mirrorLocal ? "Mirror On" : "Mirror Off" }}
+          </button>
+
+          <button class="chip ghost miniChip" @click="toggleLowDataMode">
+            {{ lowDataMode ? "Balanced HD" : "Low Data" }}
           </button>
         </div>
       </div>
@@ -190,6 +195,10 @@
 
             <button class="control" :class="{ active: speakerEnabled }" @click="toggleSpeaker">
               {{ speakerEnabled ? "🔊 Speaker On" : "🔈 Speaker Low" }}
+            </button>
+
+            <button class="control" :class="{ active: lowDataMode }" @click="toggleLowDataMode">
+              {{ lowDataMode ? "📶 Low Data" : "🚀 Balanced HD" }}
             </button>
           </div>
 
@@ -449,6 +458,9 @@
             <button class="toolBtn" @click="toggleMirrorMode">
               {{ mirrorLocal ? "🪞 Mirror On" : "🪞 Mirror Off" }}
             </button>
+            <button class="toolBtn" @click="toggleLowDataMode">
+              {{ lowDataMode ? "📶 Balanced HD" : "📶 Low Data" }}
+            </button>
             <button class="toolBtn" @click="toggleCompactMode">
               {{ compactMode ? "🧩 Normal View" : "🧩 Compact View" }}
             </button>
@@ -513,6 +525,7 @@
       </button>
 
       <button class="fab invite" @click="copyInvite">🔗</button>
+      <button class="fab invite" @click="toggleLowDataMode">📶</button>
       <button class="fab invite" @click="forceReconnectPeers">🛠</button>
       <button class="fab invite" @click="sendReaction('🔥')">🔥</button>
       <button class="fab end" @click="leaveRoom">❌</button>
@@ -594,6 +607,7 @@ const micEnabled = ref(true)
 const camEnabled = ref(true)
 const screenSharing = ref(false)
 const speakerEnabled = ref(true)
+const lowDataMode = ref(false)
 
 /* =========================
    PARTICIPANTS
@@ -977,9 +991,9 @@ async function initLocalMedia() {
       },
       video: wantsVideo
         ? {
-            width: { ideal: 1280, max: 1280 },
-            height: { ideal: 720, max: 720 },
-            frameRate: { ideal: 24, max: 30 },
+            width: lowDataMode.value ? { ideal: 640, max: 960 } : { ideal: 960, max: 1280 },
+            height: lowDataMode.value ? { ideal: 360, max: 540 } : { ideal: 540, max: 720 },
+            frameRate: lowDataMode.value ? { ideal: 12, max: 18 } : { ideal: 20, max: 24 },
             facingMode: "user",
           }
         : false,
@@ -1071,6 +1085,10 @@ function buildPeerConnection(targetSocketId) {
       pc.addTrack(track, sendStream)
     })
   }
+
+  queueMicrotask(() => {
+    applyPeerQualityProfile().catch(() => {})
+  })
 
   pc.onicecandidate = (event) => {
     if (!event.candidate || !socket) return
@@ -1481,6 +1499,55 @@ async function toggleCamera() {
   setNotice(camEnabled.value ? "Camera enabled." : "Camera off.")
 }
 
+
+async function applyPeerQualityProfile() {
+  for (const [sid, pc] of peerConnections.entries()) {
+    try {
+      for (const sender of pc.getSenders()) {
+        if (!sender?.track) continue
+        const params = sender.getParameters() || {}
+        if (!params.encodings) params.encodings = [{}]
+
+        if (sender.track.kind === "video") {
+          params.degradationPreference = lowDataMode.value ? "maintain-framerate" : "balanced"
+          params.encodings[0].maxBitrate = lowDataMode.value ? 180 * 1000 : 450 * 1000
+          params.encodings[0].maxFramerate = lowDataMode.value ? 12 : 20
+          params.encodings[0].scaleResolutionDownBy = lowDataMode.value ? 1.4 : 1
+        }
+
+        if (sender.track.kind === "audio") {
+          params.encodings[0].maxBitrate = lowDataMode.value ? 24 * 1000 : 40 * 1000
+        }
+
+        await sender.setParameters(params)
+      }
+    } catch (err) {
+      console.warn("applyPeerQualityProfile skip", sid, err)
+    }
+  }
+}
+
+async function toggleLowDataMode() {
+  lowDataMode.value = !lowDataMode.value
+  setNotice(lowDataMode.value ? "Low data mode enabled." : "Balanced HD enabled.")
+
+  try {
+    const videoTrack = getActiveVideoTrack()
+    if (videoTrack) {
+      await videoTrack.applyConstraints({
+        width: lowDataMode.value ? { ideal: 640, max: 960 } : { ideal: 960, max: 1280 },
+        height: lowDataMode.value ? { ideal: 360, max: 540 } : { ideal: 540, max: 720 },
+        frameRate: lowDataMode.value ? { ideal: 12, max: 18 } : { ideal: 20, max: 24 },
+      })
+    }
+  } catch (err) {
+    console.warn("toggleLowDataMode applyConstraints skipped", err)
+  }
+
+  await applyPeerQualityProfile()
+  await forceReconnectPeers()
+}
+
 function toggleSpeaker() {
   speakerEnabled.value = !speakerEnabled.value
   refreshRemoteVideoAudio()
@@ -1775,6 +1842,13 @@ watch(
 /* =========================
    LIFECYCLE
 ========================= */
+function handleVisibilityChange() {
+  if (document.hidden && joinedRoom.value && !lowDataMode.value) {
+    lowDataMode.value = true
+    applyPeerQualityProfile().catch(() => {})
+  }
+}
+
 onMounted(async () => {
   if (!token) {
     router.push("/login")
@@ -1791,6 +1865,7 @@ onMounted(async () => {
   socket = createSocket()
   attachSocketListeners()
   startSpeakerLoop()
+  document.addEventListener("visibilitychange", handleVisibilityChange)
 })
 
 onBeforeUnmount(() => {
@@ -1809,6 +1884,7 @@ onBeforeUnmount(() => {
   try { socket?.off("callroom:error") } catch {}
   try { socket?.cleanupPulseSocket?.() } catch {}
   try { socket?.disconnect?.() } catch {}
+  document.removeEventListener("visibilitychange", handleVisibilityChange)
 
   if (reconnectTimer) {
     window.clearTimeout(reconnectTimer)
