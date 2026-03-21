@@ -6,45 +6,71 @@
       <div class="bg-orb orb2"></div>
       <div class="bg-orb orb3"></div>
 
-      <!-- TOPBAR -->
-      <header class="topbar">
+      <!-- ELITE TOPBAR -->
+      <header class="topbar eliteTopbar glassy">
         <div class="brand" @click="scrollToTop" role="button" tabindex="0">
-          <div class="logo">⚡</div>
+          <div class="logo eliteLogo">⚡</div>
 
           <div class="brand-text">
             <div class="title">Pulse</div>
-            <div class="sub">Your Social Universe</div>
+            <div class="sub">Elite social cockpit</div>
           </div>
         </div>
 
-        <div class="top-actions">
-          <button class="chip" @click="refreshAll" :disabled="loading">
-            🔁 {{ loading ? "Loading…" : "Refresh All" }}
-          </button>
+        <div class="eliteCenterSearch">
+          <div class="searchWrap eliteSearchWrap">
+            <input
+              ref="searchRef"
+              v-model="search"
+              class="search eliteSearch"
+              placeholder="Search people, rooms, live, posts…"
+            />
+            <button v-if="search" class="searchClear" @click="search = ''">✕</button>
+          </div>
+        </div>
 
-          <button class="chip ghost" @click="togglePeople">
+        <div class="top-actions eliteTopActions">
+          <span class="netBadge" :class="{ offline: !isNetworkOnline, syncing: isSyncingQueue }">
+            <span class="netDot"></span>
+            {{
+              isSyncingQueue
+                ? `Syncing ${offlineQueueCount}`
+                : isNetworkOnline
+                  ? "Online"
+                  : `Offline ${offlineQueueCount ? "• " + offlineQueueCount + " queued" : ""}`
+            }}
+          </span>
+
+          <button class="chip eliteChip" @click="openQuickCreate('post')">✍️ Post</button>
+          <button class="chip ghost eliteChip" @click="openQuickCreate('call')">📞 Call</button>
+          <button class="chip ghost eliteChip" @click="openQuickCreate('live')">🔴 Live</button>
+          <button class="chip ghost hide-sm" @click="togglePeople">
             {{ peopleOpen ? "Hide People" : "People" }}
           </button>
-
-          <button class="chip ghost" @click="toggleChat">
+          <button class="chip ghost hide-sm" @click="toggleChat">
             {{ chatOpen ? "Close Chat" : "Chat" }}
           </button>
-
-          <button class="chip ghost" @click="toggleTools">
+          <button class="chip ghost hide-sm" @click="toggleTools">
             {{ toolsOpen ? "Close Tools" : "Tools" }}
           </button>
-
-          <button class="chip ghost" @click="toggleStudio">
+          <button class="chip ghost hide-sm" @click="toggleStudio">
             {{ studioOpen ? "Close Studio" : "Studio" }}
           </button>
-
-          <button class="chip ghost" @click="toggleFocusMode">
+          <button class="chip ghost hide-sm" @click="toggleFocusMode">
             {{ focusMode ? "Exit Focus" : "Focus Mode" }}
           </button>
-
-          <button class="chip danger" @click="logout">Logout</button>
+          <button class="chip danger hide-sm" @click="logout">Logout</button>
         </div>
       </header>
+
+      <!-- ELITE QUICK RAIL -->
+      <section class="eliteQuickRail">
+        <button class="quickRailBtn" @click="focusComposer">✍️ Create</button>
+        <button class="quickRailBtn" @click="createFastRoom">🎧 Room</button>
+        <button class="quickRailBtn" @click="startLive">🔴 Live</button>
+        <button class="quickRailBtn" @click="goInbox">💬 Inbox</button>
+        <button class="quickRailBtn" @click="goProfile">👤 Profile</button>
+      </section>
             <!-- DYNAMIC ISLAND -->
       <section class="dynamicIsland glassy">
 
@@ -1110,14 +1136,51 @@
         <button class="mini-x" @click="cancelCall">✕</button>
       </div>
 
-      <!-- BOTTOM NAV -->
-      <nav class="bottomNav">
+      <!-- ELITE QUICK CREATE SHEET -->
+      <transition name="fade">
+        <div v-if="quickCreateOpen" class="quickCreateBackdrop" @click.self="closeQuickCreate">
+          <div class="quickCreateSheet glassy">
+            <div class="quickCreateHead">
+              <div>
+                <div class="panel-title">⚡ Create instantly</div>
+                <div class="tiny muted">Post, call, room, live, and sync even when offline.</div>
+              </div>
+              <button class="mini-x" @click="closeQuickCreate">✕</button>
+            </div>
+
+            <div class="quickCreateGrid">
+              <button class="quickCreateCard" @click="useQuickAction('post')">✍️ Text Post</button>
+              <button class="quickCreateCard" @click="useQuickAction('photo')">🖼️ Photo Post</button>
+              <button class="quickCreateCard" @click="useQuickAction('reel')">🎞️ Reel</button>
+              <button class="quickCreateCard" @click="useQuickAction('call')">📞 Quick Call</button>
+              <button class="quickCreateCard" @click="useQuickAction('room')">🎧 Start Room</button>
+              <button class="quickCreateCard" @click="useQuickAction('live')">🔴 Go Live</button>
+              <button class="quickCreateCard" @click="useQuickAction('saved')">💾 Saved</button>
+              <button class="quickCreateCard" @click="useQuickAction('offline')">
+                {{ isNetworkOnline ? "☁️ Force Queue Draft" : "📦 Queue Offline Post" }}
+              </button>
+            </div>
+
+            <div v-if="offlineQueueCount" class="quickQueueBar">
+              <span>Queued posts: {{ offlineQueueCount }}</span>
+              <button class="btn ghostBtn" @click="flushOfflineQueue">Sync now</button>
+            </div>
+          </div>
+        </div>
+      </transition>
+
+      <!-- ELITE BOTTOM NAV -->
+      <nav class="bottomNav eliteBottomNav">
         <button class="bn" :class="{ on: isHomeActive }" @click="goHome">
           <span class="bnI">🏠</span><span class="bnT">Home</span>
         </button>
 
         <button class="bn" @click="goInbox">
           <span class="bnI">💬</span><span class="bnT">Inbox</span>
+        </button>
+
+        <button class="bn createBn" @click="openQuickCreate()">
+          <span class="createCore">＋</span>
         </button>
 
         <button class="bn" :class="{ on: feedMode === 'live' }" @click="goLiveTab">
@@ -1158,6 +1221,7 @@ const DASH_PINNED_POSTS_KEY = "pulse_dashboard_pinned_posts_v1"
 const DASH_ACTIVITY_KEY = "pulse_dashboard_activity_v2"
 const DASH_STREAK_KEY = "pulse_dashboard_streak_v1"
 const DASH_FOCUS_KEY = "pulse_dashboard_focus_v1"
+const DASH_OFFLINE_QUEUE_KEY = "pulse_dashboard_offline_queue_v1"
 
 /* =========================
    READ HELPERS
@@ -1308,6 +1372,125 @@ function updateDailyStreak() {
 /* =========================
    MODEBAR
 ========================= */
+const isNetworkOnline = ref(typeof navigator !== "undefined" ? navigator.onLine : true)
+const isSyncingQueue = ref(false)
+const quickCreateOpen = ref(false)
+const quickCreateIntent = ref("post")
+const offlineQueue = ref(readJson(DASH_OFFLINE_QUEUE_KEY, []))
+const offlineQueueCount = computed(() => Array.isArray(offlineQueue.value) ? offlineQueue.value.length : 0)
+
+function persistOfflineQueue() {
+  try {
+    localStorage.setItem(DASH_OFFLINE_QUEUE_KEY, JSON.stringify(offlineQueue.value.slice(0, 30)))
+  } catch {}
+}
+
+function openQuickCreate(intent = "post") {
+  quickCreateIntent.value = intent
+  quickCreateOpen.value = true
+}
+
+function closeQuickCreate() {
+  quickCreateOpen.value = false
+}
+
+function queuePostDraft(reason = "offline") {
+  const item = {
+    id: `draft_${Date.now()}`,
+    caption: String(caption.value || ""),
+    created_at: new Date().toISOString(),
+    image_name: imageFile.value?.name || "",
+    video_name: videoFile.value?.name || "",
+    reason,
+  }
+  offlineQueue.value = [item, ...offlineQueue.value].slice(0, 30)
+  persistOfflineQueue()
+  draftSavedNote.value = reason === "offline"
+    ? "Offline: your post was queued and will sync when internet returns"
+    : "Draft queued for sync"
+  addActivity("Offline Queue", "Saved a queued post draft")
+}
+
+async function flushOfflineQueue() {
+  if (!isNetworkOnline.value || !token || !offlineQueue.value.length || posting.value || isSyncingQueue.value) return
+  isSyncingQueue.value = true
+
+  try {
+    const queue = [...offlineQueue.value]
+    const stillPending = []
+
+    for (const item of queue) {
+      const form = new FormData()
+      form.append("caption", item.caption || "")
+
+      const res = await fetch(`${apiUrl}/posts`, {
+        method: "POST",
+        headers: { Authorization: `Bearer ${token}` },
+        body: form,
+      })
+
+      const data = await res.json().catch(() => ({}))
+      if (!res.ok) {
+        stillPending.push(item)
+        continue
+      }
+
+      const clean = normalizePost(data)
+      if (clean) {
+        posts.value.unshift(clean)
+        await ensureLikeState(clean.id)
+      }
+    }
+
+    offlineQueue.value = stillPending
+    persistOfflineQueue()
+
+    if (!stillPending.length) {
+      draftSavedNote.value = "Queued posts synced"
+    }
+  } finally {
+    isSyncingQueue.value = false
+  }
+}
+
+function handleNetworkOnline() {
+  isNetworkOnline.value = true
+  draftSavedNote.value = offlineQueueCount.value ? "Back online. Syncing queued posts…" : "Back online"
+  flushOfflineQueue()
+}
+
+function handleNetworkOffline() {
+  isNetworkOnline.value = false
+  draftSavedNote.value = "Offline mode enabled"
+}
+
+function useQuickAction(action) {
+  closeQuickCreate()
+
+  if (action === "post") {
+    setFeedMode("foryou")
+    focusComposer()
+  } else if (action === "photo") {
+    setFeedMode("foryou")
+    focusComposer()
+    draftSavedNote.value = "Tap the image picker in composer to attach a photo"
+  } else if (action === "reel") {
+    setFeedMode("reels")
+    focusComposer()
+    draftSavedNote.value = "Tap the video picker in composer to attach a reel"
+  } else if (action === "call") {
+    if (callRooms.value.length) joinCallRoom(callRooms.value[0])
+    else createFastRoom()
+  } else if (action === "room") {
+    createFastRoom()
+  } else if (action === "live") {
+    startLive()
+  } else if (action === "saved") {
+    openSavedMode()
+  } else if (action === "offline") {
+    queuePostDraft(isNetworkOnline.value ? "manual" : "offline")
+  }
+}
 const feedMode = ref(savedPrefs.feedMode || "foryou")
 const sortMode = ref(savedPrefs.sortMode || "latest")
 const postFilter = ref(savedPrefs.postFilter || "all")
@@ -1720,6 +1903,12 @@ async function submitPost() {
   if (!token) return alert("Login again to post.")
   if (!caption.value.trim() && !imageFile.value && !videoFile.value) return
 
+  if (!isNetworkOnline.value) {
+    queuePostDraft("offline")
+    clearDraft()
+    return
+  }
+
   if (feedMode.value === "reels") return await submitReel()
 
   try {
@@ -1759,7 +1948,12 @@ async function submitPost() {
       applyMuteToAllVideos()
     }
   } catch {
-    error.value = "Post failed"
+    if (!isNetworkOnline.value) {
+      queuePostDraft("offline")
+      clearDraft()
+    } else {
+      error.value = "Post failed"
+    }
   } finally {
     posting.value = false
   }
@@ -2832,10 +3026,18 @@ onMounted(async () => {
   }
 
   window.addEventListener("keydown", handleKeydown)
+  window.addEventListener("online", handleNetworkOnline)
+  window.addEventListener("offline", handleNetworkOffline)
+
+  if (offlineQueueCount.value && isNetworkOnline.value) {
+    flushOfflineQueue()
+  }
 })
 
 onBeforeUnmount(() => {
   window.removeEventListener("keydown", handleKeydown)
+  window.removeEventListener("online", handleNetworkOnline)
+  window.removeEventListener("offline", handleNetworkOffline)
 
   try { socket?.off("call:ringing") } catch {}
   try { socket?.off("call:incoming") } catch {}
@@ -4356,4 +4558,204 @@ onBeforeUnmount(() => {
     grid-template-columns: repeat(2, 1fr);
   }
 }
+
+/* ===== ELITE UPGRADE ADDITIONS ===== */
+.eliteTopbar {
+  position: sticky;
+  top: 0;
+  z-index: 60;
+  backdrop-filter: blur(18px);
+  background: rgba(7, 10, 22, 0.72);
+  border: 1px solid rgba(255,255,255,0.08);
+}
+
+.eliteLogo {
+  box-shadow: 0 0 30px rgba(109, 91, 255, 0.38);
+}
+
+.eliteCenterSearch {
+  flex: 1;
+  max-width: 520px;
+  margin: 0 14px;
+}
+
+.eliteSearchWrap {
+  width: 100%;
+}
+
+.eliteSearch {
+  min-height: 46px;
+}
+
+.eliteTopActions {
+  gap: 10px;
+  flex-wrap: wrap;
+  justify-content: flex-end;
+}
+
+.eliteChip {
+  min-height: 42px;
+}
+
+.hide-sm {
+  display: inline-flex;
+}
+
+.netBadge {
+  display: inline-flex;
+  align-items: center;
+  gap: 8px;
+  padding: 10px 14px;
+  border-radius: 999px;
+  background: rgba(255,255,255,0.08);
+  border: 1px solid rgba(255,255,255,0.1);
+  font-size: 13px;
+  font-weight: 700;
+  color: #eaf2ff;
+}
+
+.netDot {
+  width: 9px;
+  height: 9px;
+  border-radius: 999px;
+  background: #48d597;
+  box-shadow: 0 0 12px rgba(72, 213, 151, 0.9);
+}
+
+.netBadge.offline .netDot {
+  background: #ff8d5c;
+  box-shadow: 0 0 12px rgba(255, 141, 92, 0.9);
+}
+
+.netBadge.syncing .netDot {
+  background: #8ab4ff;
+  box-shadow: 0 0 12px rgba(138, 180, 255, 0.9);
+}
+
+.eliteQuickRail {
+  position: fixed;
+  left: 16px;
+  top: 132px;
+  z-index: 40;
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
+}
+
+.quickRailBtn {
+  border: 1px solid rgba(255,255,255,0.1);
+  background: rgba(8, 12, 28, 0.68);
+  color: #fff;
+  padding: 12px 14px;
+  border-radius: 16px;
+  backdrop-filter: blur(16px);
+  cursor: pointer;
+  font-weight: 700;
+}
+
+.quickCreateBackdrop {
+  position: fixed;
+  inset: 0;
+  z-index: 80;
+  background: rgba(1, 4, 14, 0.55);
+  display: grid;
+  place-items: end center;
+  padding: 20px;
+}
+
+.quickCreateSheet {
+  width: min(760px, 100%);
+  border-radius: 28px;
+  padding: 20px;
+  border: 1px solid rgba(255,255,255,0.1);
+  background: rgba(10, 15, 34, 0.88);
+}
+
+.quickCreateHead {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
+  margin-bottom: 16px;
+}
+
+.quickCreateGrid {
+  display: grid;
+  grid-template-columns: repeat(4, minmax(0, 1fr));
+  gap: 12px;
+}
+
+.quickCreateCard {
+  min-height: 84px;
+  border-radius: 20px;
+  border: 1px solid rgba(255,255,255,0.1);
+  background: linear-gradient(180deg, rgba(255,255,255,0.09), rgba(255,255,255,0.04));
+  color: #fff;
+  font-weight: 800;
+  cursor: pointer;
+  padding: 12px;
+}
+
+.quickQueueBar {
+  margin-top: 16px;
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
+  padding: 12px 14px;
+  border-radius: 18px;
+  background: rgba(255,255,255,0.06);
+}
+
+.eliteBottomNav {
+  grid-template-columns: repeat(5, 1fr);
+  align-items: end;
+}
+
+.createBn {
+  transform: translateY(-20px);
+}
+
+.createCore {
+  width: 62px;
+  height: 62px;
+  display: grid;
+  place-items: center;
+  border-radius: 999px;
+  font-size: 34px;
+  font-weight: 900;
+  background: radial-gradient(circle at 30% 30%, #a78bfa, #6d5cff 55%, #2b2f77);
+  box-shadow: 0 18px 40px rgba(109, 92, 255, 0.45);
+}
+
+.fade-enter-active,
+.fade-leave-active {
+  transition: opacity .22s ease, transform .22s ease;
+}
+
+.fade-enter-from,
+.fade-leave-to {
+  opacity: 0;
+}
+
+@media (max-width: 1100px) {
+  .eliteQuickRail {
+    display: none;
+  }
+}
+
+@media (max-width: 820px) {
+  .eliteCenterSearch {
+    display: none;
+  }
+
+  .hide-sm {
+    display: none;
+  }
+
+  .quickCreateGrid {
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+  }
+}
+
 </style>
