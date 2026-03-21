@@ -117,7 +117,7 @@ router.post(
       if (imageFile?.buffer) {
         const uploadedImage = await uploadBufferToCloudinary(
           imageFile.buffer,
-          "addisgo/posts/images",
+          "pulse/posts/images",
           "image"
         );
         image_url = uploadedImage.secure_url;
@@ -126,7 +126,7 @@ router.post(
       if (videoFile?.buffer) {
         const uploadedVideo = await uploadBufferToCloudinary(
           videoFile.buffer,
-          "addisgo/posts/videos",
+          "pulse/posts/videos",
           "video"
         );
         video_url = uploadedVideo.secure_url;

@@ -11,7 +11,7 @@ const logout = () => {
 
 <template>
   <aside class="sidebar">
-    <h2>AddisGo</h2>
+    <h2>Pulse</h2>
 
     <button @click="$router.push('/dashboard')">🏠 Feed</button>
     <button @click="$router.push('/profile')">👤 Profile</button>

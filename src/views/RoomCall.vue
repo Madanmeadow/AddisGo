@@ -53,7 +53,7 @@
     <!-- HERO -->
     <section class="hero glassy">
       <div class="hero-left">
-        <div class="eyebrow">ADDISGO ROOM CALL</div>
+        <div class="eyebrow">PULSE ROOM CALL</div>
         <h1 class="hero-title">{{ roomName || "Future Room" }}</h1>
         <div class="hero-sub">
           {{ roomKindLabel }} with camera, mic, screen sharing, active speaker glow,
@@ -378,7 +378,7 @@
             <div class="empty-emoji">✨</div>
             <div class="empty-title">Room is ready</div>
             <div class="empty-sub">
-              Share the invite link so others can join your AddisGo room call.
+              Share the invite link so others can join your Pulse room call.
             </div>
 
             <div class="empty-actions">

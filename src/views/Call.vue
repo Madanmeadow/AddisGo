@@ -18,7 +18,7 @@
           <div class="incoming-card glassy">
             <div class="incoming-top">
               <div class="incoming-live-dot"></div>
-              <div class="incoming-small">ADDISGO CALL</div>
+              <div class="incoming-small">PULSE CALL</div>
             </div>
 
             <div class="incoming-avatar">{{ callerInitial }}</div>
@@ -91,7 +91,7 @@
 
       <section class="call-hero glassy">
         <div class="hero-left">
-          <div class="hero-kicker">ADDISGO DIRECT CALL</div>
+          <div class="hero-kicker">PULSE DIRECT CALL</div>
           <h1 class="hero-title">{{ callPartnerName }}</h1>
           <div class="hero-sub">
             {{

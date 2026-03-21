@@ -1585,7 +1585,7 @@ function connectSocket() {
     statusNote.value = ""
     safeRegisterOnline()
     refreshCallRooms()
-    addActivity("Socket", "Connected to AddisGo realtime service")
+    addActivity("Socket", "Connected to Pulse realtime service")
   })
 
   socket.on("disconnect", () => {
@@ -2418,7 +2418,7 @@ async function sharePost(post) {
   try {
     if (navigator.share) {
       await navigator.share({
-        title: "AddisGo Post",
+        title: "Pulse Post",
         text: post.caption || "Post",
         url,
       })

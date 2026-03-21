@@ -27,7 +27,7 @@
       <main class="stage">
         <section class="playerCard">
           <div class="playerTop">
-            <div class="title">🔴 AddisGo Live</div>
+            <div class="title">🔴 Pulse Live</div>
             <div class="meta">
               <span class="tag">{{ mode === "host" ? "HOSTING" : "WATCHING" }}</span>
               <span class="small muted">{{ statusLabel }}</span>

@@ -1,5 +1,5 @@
 export const siteConfig = {
-  brandName: "AddisGo",
+  brandName: "Pulse",
   tagline: "Book a driver & hotels in Ethiopia — fast, safe, and local.",
   phoneDisplay: "(651) 263-7198",
   phoneE164: "+16512637198",

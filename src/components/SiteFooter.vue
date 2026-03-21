@@ -1,6 +1,6 @@
 <template>
   <footer class="footer">
-    © 2026 AddisGo
+    © 2026 pulse
   </footer>
 </template>
 

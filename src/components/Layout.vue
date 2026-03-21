@@ -5,7 +5,7 @@
       <div class="logo">
         <div class="logo-icon">🔥</div>
         <div class="logo-text">
-          <div class="logo-title">AddisGo</div>
+          <div class="logo-title">Pulse</div>
           <div class="logo-sub">Social • Live • Chat</div>
         </div>
       </div>

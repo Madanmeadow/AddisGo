@@ -154,7 +154,7 @@
               <span class="chip">🎬 {{ stats.reels }} Reels</span>
               <span class="chip">💬 Chat Ready</span>
               <span class="chip">📞 Live Calls</span>
-              <span class="chip">⚡ Pulse / AddisGo</span>
+              <span class="chip">⚡ Pulse / Pulse</span>
             </div>
           </template>
 
@@ -339,7 +339,7 @@ const token = localStorage.getItem('token') || ''
 
 const profile = reactive({
   id: '',
-  displayName: 'AddisGo User',
+  displayName: 'Pulse User',
   username: 'user',
   email: '',
   avatarUrl: '',
@@ -386,7 +386,7 @@ const defaultAvatar =
     <rect x='42' y='124' width='116' height='56' rx='28' fill='rgba(255,255,255,.55)'/>
   </svg>`)
 
-const displayName = computed(() => profile.displayName || 'AddisGo User')
+const displayName = computed(() => profile.displayName || 'Pulse User')
 const username = computed(() => String(profile.username || 'user').replace('@', ''))
 
 const joinedText = computed(() => {

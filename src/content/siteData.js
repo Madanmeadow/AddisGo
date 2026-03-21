@@ -1,6 +1,6 @@
 export const siteData = {
   brand: {
-    name: "AddisGo",
+    name: "Pulse",
     accent: "Go",
     tagline: "Clean, modern websites — built with Vue & Azure Static Web Apps.",
     bullets: ["Quick turnaround", "Mobile-first", "Professional look"],

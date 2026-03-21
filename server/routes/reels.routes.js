@@ -59,7 +59,7 @@ router.post("/", authenticateToken, upload.single("video"), async (req, res) => 
 
     const uploadedVideo = await uploadBufferToCloudinary(
       req.file.buffer,
-      "addisgo/reels/videos",
+      "pulse/reels/videos",
       "video"
     );
 
