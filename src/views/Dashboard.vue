@@ -28,7 +28,7 @@
         </div>
       </header>
 
-      <!-- COMPACT HERO -->
+      <!-- HERO -->
       <section class="heroCard glass">
         <div class="heroTop">
           <div>
@@ -66,7 +66,7 @@
       </section>
 
       <!-- COMPOSER -->
-      <section class="composerCard glass" :class="{ open: composerOpen }">
+      <section class="composerCard glass">
         <div class="composerHead">
           <div class="authorBlock" @click="goProfile(me.id)">
             <div class="authorAvatar">
@@ -138,7 +138,6 @@
           <button class="tabChip" :class="{ active: tab === 'reels' }" @click="setTab('reels')">Reels</button>
           <button class="tabChip" :class="{ active: tab === 'following' }" @click="setTab('following')">Following</button>
           <button class="tabChip" :class="{ active: tab === 'saved' }" @click="setTab('saved')">Saved</button>
-          <button class="tabChip" :class="{ active: tab === 'pinned' }" @click="setTab('pinned')">Pinned</button>
         </div>
 
         <div class="filterRow">
@@ -180,13 +179,7 @@
             </div>
 
             <span class="postTypeChip">
-              {{
-                post.video_url
-                  ? "VIDEO"
-                  : post.image_url
-                    ? "IMAGE"
-                    : "TEXT"
-              }}
+              {{ post.video_url ? "VIDEO" : post.image_url ? "IMAGE" : "TEXT" }}
             </span>
           </div>
 
@@ -215,12 +208,15 @@
             <button class="actionBtn" @click="toggleLike(post)">
               ❤️ {{ post.likes_count || 0 }}
             </button>
-            <button class="actionBtn">
-              💬 {{ post.comments_count || 0 }}
+
+            <button class="actionBtn" @click="openComments(post)">
+              💬 {{ post.comment_count || 0 }}
             </button>
+
             <button class="actionBtn" @click="toggleSave(post)">
               {{ savedIds.includes(post.id) ? "Saved" : "Save" }}
             </button>
+
             <button class="actionBtn" @click="sharePost(post)">
               Share
             </button>
@@ -233,6 +229,60 @@
           <div class="emptySub">Try another filter, post something new, or refresh the feed.</div>
         </div>
       </section>
+
+      <!-- COMMENTS DRAWER -->
+      <transition name="fade">
+        <div v-if="commentsOpen" class="fabOverlay" @click="closeComments"></div>
+      </transition>
+
+      <transition name="sheetUp">
+        <div v-if="commentsOpen" class="commentsSheet glass">
+          <div class="sheetHead">
+            <div>
+              <h3>Comments</h3>
+              <p>{{ activeCommentPost?.caption || "Post discussion" }}</p>
+            </div>
+            <button class="closeBtn" @click="closeComments">✕</button>
+          </div>
+
+          <div class="commentsList">
+            <div v-if="commentsLoading" class="commentState">Loading comments...</div>
+            <div v-else-if="commentsError" class="commentState err">{{ commentsError }}</div>
+            <div v-else-if="comments.length === 0" class="commentState">No comments yet.</div>
+
+            <div v-for="c in comments" :key="c.id" class="commentRow">
+              <div class="commentAvatar">
+                <img
+                  v-if="c.avatar_url"
+                  :src="mediaUrl(c.avatar_url)"
+                  class="commentAvatarImg"
+                  alt="avatar"
+                />
+                <span v-else>{{ String(c.display_name || c.username || "U").charAt(0).toUpperCase() }}</span>
+              </div>
+
+              <div class="commentBody">
+                <div class="commentName">{{ c.display_name || c.username || "User" }}</div>
+                <div class="commentText">{{ c.body }}</div>
+                <div class="commentTime">{{ formatDateTime(c.created_at) }}</div>
+              </div>
+            </div>
+          </div>
+
+          <div class="commentComposer">
+            <input
+              v-model="commentDraft"
+              class="commentInput"
+              type="text"
+              placeholder="Write a comment..."
+              @keydown.enter="sendComment"
+            />
+            <button class="commentSend" @click="sendComment" :disabled="commentSending || !commentDraft.trim()">
+              {{ commentSending ? "..." : "Send" }}
+            </button>
+          </div>
+        </div>
+      </transition>
 
       <!-- FAB MENU OVERLAY -->
       <transition name="fade">
@@ -258,7 +308,7 @@
               👥 <span>People</span>
             </button>
             <button class="sheetBtn" @click="fabAction(goCalls)">
-              📞 <span>1-to-1 Call</span>
+              💬 <span>Inbox</span>
             </button>
             <button class="sheetBtn" @click="fabAction(openRooms)">
               🎧 <span>Room</span>
@@ -346,18 +396,24 @@ const socketConnected = ref(false)
 const loading = ref(false)
 const posting = ref(false)
 const composerOpen = ref(false)
-const search = ref("")
 const tab = ref("following")
 const filterType = ref("all")
 
 const composerText = ref("")
-const selectedFile = ref(null)
+const selectedImage = ref(null)
+const selectedVideo = ref(null)
 const selectedMediaName = ref("")
 const fabOpen = ref(false)
 
 const posts = ref([])
 const savedIds = ref(JSON.parse(localStorage.getItem("pulse_saved_ids") || "[]"))
-const pinnedIds = ref(JSON.parse(localStorage.getItem("pulse_pinned_ids") || "[]"))
+const commentsOpen = ref(false)
+const commentsLoading = ref(false)
+const commentsError = ref("")
+const comments = ref([])
+const activeCommentPost = ref(null)
+const commentDraft = ref("")
+const commentSending = ref(false)
 
 const serverStats = reactive({
   onlineUsers: 0,
@@ -376,7 +432,7 @@ const stats = computed(() => {
 })
 
 const canSubmitPost = computed(() => {
-  return !!composerText.value.trim() || !!selectedFile.value
+  return !!composerText.value.trim() || !!selectedImage.value || !!selectedVideo.value
 })
 
 const filteredPosts = computed(() => {
@@ -384,10 +440,10 @@ const filteredPosts = computed(() => {
 
   if (tab.value === "saved") {
     list = list.filter((p) => savedIds.value.includes(p.id))
-  } else if (tab.value === "pinned") {
-    list = list.filter((p) => pinnedIds.value.includes(p.id))
   } else if (tab.value === "reels") {
     list = list.filter((p) => !!p.video_url)
+  } else if (tab.value === "following") {
+    list = list.filter((p) => p.is_following || true)
   }
 
   if (filterType.value === "videos") {
@@ -398,18 +454,16 @@ const filteredPosts = computed(() => {
     list = list.filter((p) => !p.image_url && !p.video_url)
   }
 
-  if (search.value.trim()) {
-    const q = search.value.trim().toLowerCase()
-    list = list.filter((p) =>
-      [p.caption, p.display_name, p.author_name, p.username]
-        .filter(Boolean)
-        .some((v) => String(v).toLowerCase().includes(q))
-    )
-  }
-
   list.sort((a, b) => new Date(b.created_at || b.createdAt || 0) - new Date(a.created_at || a.createdAt || 0))
   return list
 })
+
+function authHeaders(extra = {}) {
+  return {
+    ...(token ? { Authorization: `Bearer ${token}` } : {}),
+    ...extra,
+  }
+}
 
 function setTab(next) {
   tab.value = next
@@ -443,15 +497,17 @@ function goHome() {
 }
 
 function goLive() {
-  router.push("/live")
+  const id = `live_${Date.now()}`
+  router.push(`/live?mode=host&liveId=${id}`)
 }
 
 function goCalls() {
-  router.push("/messages")
+  router.push("/inbox")
 }
 
 function openRooms() {
-  router.push("/roomcall")
+  const id = `room_${Date.now()}`
+  router.push(`/roomcall?roomId=${id}&kind=video&name=${encodeURIComponent("Pulse Room")}`)
 }
 
 function goPeople() {
@@ -519,22 +575,18 @@ async function fetchServerStats() {
 
 async function fetchPosts() {
   try {
-    const res = await fetch(`${apiBase}/posts`, {
-      headers: token ? { Authorization: `Bearer ${token}` } : {},
-    })
+    const res = await fetch(`${apiBase}/posts`)
     if (!res.ok) throw new Error("failed")
     const data = await res.json()
     posts.value = Array.isArray(data) ? data : data.posts || []
-    localStorage.setItem("posts", JSON.stringify(posts.value))
-  } catch {
-    const cached = JSON.parse(localStorage.getItem("posts") || "[]")
-    posts.value = Array.isArray(cached) ? cached : []
+  } catch (err) {
+    console.error("fetchPosts error:", err)
+    posts.value = []
   }
 }
 
 function persistCollections() {
   localStorage.setItem("pulse_saved_ids", JSON.stringify(savedIds.value))
-  localStorage.setItem("pulse_pinned_ids", JSON.stringify(pinnedIds.value))
 }
 
 function toggleSave(post) {
@@ -547,8 +599,27 @@ function toggleSave(post) {
   persistCollections()
 }
 
-function toggleLike(post) {
-  post.likes_count = Number(post.likes_count || 0) + 1
+async function toggleLike(post) {
+  const current = Number(post.likes_count || 0)
+  post.likes_count = current + 1
+  try {
+    const res = await fetch(`${apiBase}/posts/${post.id}/like`, { method: "POST" })
+    if (res.ok) {
+      const data = await res.json()
+      post.likes_count = Number(data.likes_count ?? post.likes_count)
+      return
+    }
+  } catch {}
+  try {
+    await fetch(`${apiBase}/likes`, {
+      method: "POST",
+      headers: {
+        "Content-Type": "application/json",
+        ...authHeaders(),
+      },
+      body: JSON.stringify({ postId: post.id }),
+    })
+  } catch {}
 }
 
 function sharePost(post) {
@@ -565,20 +636,23 @@ function appendTag(tag) {
 function pickImage(e) {
   const file = e.target.files?.[0]
   if (!file) return
-  selectedFile.value = file
+  selectedImage.value = file
+  selectedVideo.value = null
   selectedMediaName.value = file.name
 }
 
 function pickVideo(e) {
   const file = e.target.files?.[0]
   if (!file) return
-  selectedFile.value = file
+  selectedVideo.value = file
+  selectedImage.value = null
   selectedMediaName.value = file.name
 }
 
 function clearComposer() {
   composerText.value = ""
-  selectedFile.value = null
+  selectedImage.value = null
+  selectedVideo.value = null
   selectedMediaName.value = ""
 }
 
@@ -587,69 +661,93 @@ async function submitPost() {
 
   posting.value = true
   try {
-    let image_url = ""
-    let video_url = ""
-
-    if (selectedFile.value) {
-      const formData = new FormData()
-      formData.append("file", selectedFile.value)
-
-      try {
-        const uploadRes = await fetch(`${apiBase}/upload`, {
-          method: "POST",
-          headers: token ? { Authorization: `Bearer ${token}` } : {},
-          body: formData,
-        })
-
-        if (uploadRes.ok) {
-          const uploadData = await uploadRes.json()
-          const uploaded = uploadData.url || uploadData.fileUrl || uploadData.image_url || uploadData.video_url || ""
-          if (selectedFile.value.type.startsWith("video/")) video_url = uploaded
-          else image_url = uploaded
-        }
-      } catch {}
-    }
-
-    const payload = {
-      caption: composerText.value.trim(),
-      image_url,
-      video_url,
-    }
+    const formData = new FormData()
+    if (composerText.value.trim()) formData.append("caption", composerText.value.trim())
+    if (selectedImage.value) formData.append("image", selectedImage.value)
+    if (selectedVideo.value) formData.append("video", selectedVideo.value)
 
     const res = await fetch(`${apiBase}/posts`, {
       method: "POST",
-      headers: {
-        "Content-Type": "application/json",
-        ...(token ? { Authorization: `Bearer ${token}` } : {}),
-      },
-      body: JSON.stringify(payload),
+      headers: authHeaders(),
+      body: formData,
     })
 
-    if (res.ok) {
-      await fetchPosts()
-      clearComposer()
-      composerOpen.value = false
-      return
+    if (!res.ok) {
+      const err = await res.json().catch(() => ({}))
+      throw new Error(err?.error || "Post failed")
     }
 
-    const localPost = {
-      id: Date.now(),
-      user_id: me?.id,
-      display_name: displayName.value,
-      username: me?.username || "",
-      author_avatar: avatarUrl.value,
-      caption: composerText.value.trim(),
-      image_url,
-      video_url,
-      created_at: new Date().toISOString(),
-      likes_count: 0,
-      comments_count: 0,
-    }
-    posts.value.unshift(localPost)
+    await fetchPosts()
     clearComposer()
     composerOpen.value = false
+  } catch (err) {
+    console.error("submitPost error:", err)
+    alert(err?.message || "Post failed")
   } finally {
     posting.value = false
+  }
+}
+
+async function openComments(post) {
+  activeCommentPost.value = post
+  commentsOpen.value = true
+  commentsLoading.value = true
+  commentsError.value = ""
+  comments.value = []
+  commentDraft.value = ""
+
+  try {
+    const res = await fetch(`${apiBase}/posts/${post.id}/comments`)
+    if (!res.ok) throw new Error("Failed to load comments")
+    const data = await res.json()
+    comments.value = Array.isArray(data) ? data : []
+  } catch (err) {
+    commentsError.value = err?.message || "Failed to load comments"
+  } finally {
+    commentsLoading.value = false
+  }
+}
+
+function closeComments() {
+  commentsOpen.value = false
+  activeCommentPost.value = null
+  comments.value = []
+  commentsError.value = ""
+  commentDraft.value = ""
+}
+
+async function sendComment() {
+  if (!activeCommentPost.value?.id || !commentDraft.value.trim()) return
+  if (!token) {
+    commentsError.value = "Login again to comment."
+    return
+  }
+
+  commentSending.value = true
+  commentsError.value = ""
+
+  try {
+    const res = await fetch(`${apiBase}/posts/${activeCommentPost.value.id}/comments`, {
+      method: "POST",
+      headers: {
+        "Content-Type": "application/json",
+        ...authHeaders(),
+      },
+      body: JSON.stringify({
+        body: commentDraft.value.trim(),
+      }),
+    })
+
+    const data = await res.json().catch(() => ({}))
+    if (!res.ok) throw new Error(data?.error || "Failed to send comment")
+
+    comments.unshift(data)
+    commentDraft.value = ""
+    activeCommentPost.value.comment_count = Number(activeCommentPost.value.comment_count || 0) + 1
+  } catch (err) {
+    commentsError.value = err?.message || "Failed to send comment"
+  } finally {
+    commentSending.value = false
   }
 }
 
@@ -829,7 +927,8 @@ onBeforeUnmount(() => {
 .resultChip,
 .actionBtn,
 .mediaBtn,
-.tagLite {
+.tagLite,
+.commentSend {
   border: none;
   color: white;
   cursor: pointer;
@@ -974,7 +1073,8 @@ onBeforeUnmount(() => {
 }
 
 .authorAvatar,
-.feedAvatar {
+.feedAvatar,
+.commentAvatar {
   width: 58px;
   height: 58px;
   border-radius: 999px;
@@ -988,8 +1088,15 @@ onBeforeUnmount(() => {
   flex: 0 0 auto;
 }
 
+.commentAvatar {
+  width: 42px;
+  height: 42px;
+  font-size: 18px;
+}
+
 .authorAvatarImg,
-.feedAvatarImg {
+.feedAvatarImg,
+.commentAvatarImg {
   width: 100%;
   height: 100%;
   object-fit: cover;
@@ -1002,7 +1109,8 @@ onBeforeUnmount(() => {
 }
 
 .authorSub,
-.feedAuthorSub {
+.feedAuthorSub,
+.commentTime {
   opacity: .72;
   font-size: 13px;
 }
@@ -1018,7 +1126,8 @@ onBeforeUnmount(() => {
   white-space: nowrap;
 }
 
-.composerInput {
+.composerInput,
+.commentInput {
   width: 100%;
   min-height: 110px;
   margin-top: 12px;
@@ -1029,6 +1138,12 @@ onBeforeUnmount(() => {
   border-radius: 18px;
   padding: 14px;
   outline: none;
+}
+
+.commentInput {
+  min-height: auto;
+  margin-top: 0;
+  padding: 14px 16px;
 }
 
 .composerTags {
@@ -1044,7 +1159,8 @@ onBeforeUnmount(() => {
   word-break: break-word;
 }
 
-.primaryBtn {
+.primaryBtn,
+.commentSend {
   background: linear-gradient(90deg, #ff2a6d, #ff595a);
   border-color: transparent;
 }
@@ -1086,6 +1202,115 @@ onBeforeUnmount(() => {
   margin-top: 8px;
   font-size: 22px;
   font-weight: 950;
+}
+
+.commentsSheet,
+.fabSheet {
+  position: fixed;
+  left: 12px;
+  right: 12px;
+  bottom: calc(108px + env(safe-area-inset-bottom, 0px));
+  z-index: 50;
+  padding: 16px;
+  max-height: 72vh;
+  overflow: hidden;
+}
+
+.sheetHead {
+  display: flex;
+  justify-content: space-between;
+  gap: 10px;
+  margin-bottom: 14px;
+}
+
+.sheetHead h3 {
+  margin: 0;
+  font-size: 18px;
+}
+
+.sheetHead p {
+  margin: 4px 0 0;
+  opacity: .75;
+  font-size: 12px;
+}
+
+.closeBtn {
+  width: 38px;
+  height: 38px;
+  border-radius: 50%;
+  border: 1px solid rgba(255,255,255,.11);
+  background: rgba(255,255,255,.05);
+  color: white;
+}
+
+.commentsList {
+  overflow: auto;
+  max-height: 44vh;
+  display: flex;
+  flex-direction: column;
+  gap: 12px;
+  padding-right: 4px;
+}
+
+.commentRow {
+  display: flex;
+  gap: 10px;
+  align-items: flex-start;
+}
+
+.commentBody {
+  flex: 1;
+  min-width: 0;
+  padding: 12px;
+  border-radius: 16px;
+  background: rgba(255,255,255,.06);
+  border: 1px solid rgba(255,255,255,.08);
+}
+
+.commentName {
+  font-weight: 900;
+  margin-bottom: 6px;
+}
+
+.commentText {
+  line-height: 1.5;
+  word-break: break-word;
+}
+
+.commentState {
+  padding: 16px;
+  border-radius: 14px;
+  background: rgba(255,255,255,.08);
+}
+
+.commentState.err {
+  border: 1px solid rgba(255,80,80,.35);
+}
+
+.commentComposer {
+  display: flex;
+  gap: 10px;
+  margin-top: 14px;
+}
+
+.sheetGrid {
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+  gap: 10px;
+}
+
+.sheetBtn {
+  min-height: 74px;
+  border-radius: 18px;
+  border: 1px solid rgba(255,255,255,.11);
+  background: rgba(255,255,255,.05);
+  color: white;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  gap: 8px;
+  font-weight: 800;
 }
 
 .bottomNav {
@@ -1158,62 +1383,6 @@ onBeforeUnmount(() => {
   -webkit-backdrop-filter: blur(4px);
 }
 
-.fabSheet {
-  position: fixed;
-  left: 12px;
-  right: 12px;
-  bottom: calc(108px + env(safe-area-inset-bottom, 0px));
-  z-index: 50;
-  padding: 16px;
-}
-
-.sheetHead {
-  display: flex;
-  justify-content: space-between;
-  gap: 10px;
-  margin-bottom: 14px;
-}
-
-.sheetHead h3 {
-  margin: 0;
-  font-size: 18px;
-}
-
-.sheetHead p {
-  margin: 4px 0 0;
-  opacity: .75;
-  font-size: 12px;
-}
-
-.closeBtn {
-  width: 38px;
-  height: 38px;
-  border-radius: 50%;
-  border: 1px solid rgba(255,255,255,.11);
-  background: rgba(255,255,255,.05);
-  color: white;
-}
-
-.sheetGrid {
-  display: grid;
-  grid-template-columns: 1fr 1fr;
-  gap: 10px;
-}
-
-.sheetBtn {
-  min-height: 74px;
-  border-radius: 18px;
-  border: 1px solid rgba(255,255,255,.11);
-  background: rgba(255,255,255,.05);
-  color: white;
-  display: flex;
-  flex-direction: column;
-  align-items: center;
-  justify-content: center;
-  gap: 8px;
-  font-weight: 800;
-}
-
 .fade-enter-active,
 .fade-leave-active,
 .sheetUp-enter-active,
@@ -1284,6 +1453,15 @@ onBeforeUnmount(() => {
     width: 56px;
     height: 56px;
     font-size: 28px;
+  }
+
+  .commentComposer {
+    flex-direction: column;
+  }
+
+  .commentSend {
+    width: 100%;
+    padding: 14px 16px;
   }
 }
 </style>
