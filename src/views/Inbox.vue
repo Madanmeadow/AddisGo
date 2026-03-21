@@ -51,7 +51,7 @@
 import { ref, onMounted } from "vue";
 import { useRouter } from "vue-router";
 import Layout from "../components/Layout.vue";
-import apiFetch from "../apiFetch.js";
+
 
 const router = useRouter();
 
