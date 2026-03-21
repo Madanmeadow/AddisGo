@@ -11,28 +11,53 @@
             <div class="brandIcon">🔥</div>
             <div>
               <div class="brandTitle">Profile Studio</div>
-              <div class="brandSub">Identity • creator stats • posts • reels</div>
+              <div class="brandSub">
+                {{ isOwnProfile ? "Identity • creator stats • posts • reels" : "Public profile • posts • reels • connect" }}
+              </div>
             </div>
           </div>
 
           <div class="topActions">
             <span class="statusPill" :class="{ offline: !isOnlineNow }">
               <span class="statusDot"></span>
-              {{ isOnlineNow ? (syncing ? 'Syncing' : 'Online') : 'Offline' }}
+              {{ isOnlineNow ? (syncing ? "Syncing" : "Online") : "Offline" }}
             </span>
-            <button class="btn ghost" @click="refreshAll" :disabled="loading">{{ loading ? 'Loading…' : '↻ Refresh' }}</button>
-            <button class="btn danger" @click="logout">Logout</button>
+
+            <button class="btn ghost" @click="refreshAll" :disabled="loading">
+              {{ loading ? "Loading…" : "↻ Refresh" }}
+            </button>
+
+            <template v-if="isOwnProfile">
+              <button class="btn danger" @click="logout">Logout</button>
+            </template>
+
+            <template v-else>
+              <button class="btn primary" @click="toggleFollow">
+                {{ isFollowing ? "Following" : "Follow" }}
+              </button>
+            </template>
           </div>
         </div>
 
         <div class="heroMain">
           <div class="avatarBlock">
-            <div class="coverCard">
+            <div class="coverCard" :style="coverStyle">
               <div class="coverGlow"></div>
+
               <div class="avatarWrap">
                 <div class="avatarGlow"></div>
-                <img class="avatar" :src="profile.avatarUrl || defaultAvatar" alt="avatar" @error="onAvatarError" />
-                <label class="avatarEdit" title="Change avatar">
+                <img
+                  class="avatar"
+                  :src="profile.avatarUrl || defaultAvatar"
+                  alt="avatar"
+                  @error="onAvatarError"
+                />
+
+                <label
+                  v-if="isOwnProfile"
+                  class="avatarEdit"
+                  title="Change avatar"
+                >
                   📷
                   <input type="file" accept="image/*" hidden @change="onPickAvatar" />
                 </label>
@@ -41,36 +66,55 @@
               <div class="miniBadges">
                 <span class="miniBadge">{{ creatorLevel }}</span>
                 <span class="miniBadge ghost">{{ stats.posts }} Posts</span>
+                <span v-if="stats.reels > 0" class="miniBadge ghost">{{ stats.reels }} Reels</span>
               </div>
             </div>
           </div>
 
           <div class="identity">
             <div class="nameRow">
-              <h1 class="displayName">{{ displayName }}</h1>
+              <h1 class="displayName">
+                {{ displayName }}
+                <span v-if="profile.isVerified" class="verifiedBadge">✔</span>
+              </h1>
+
               <span class="onlinePill" :class="{ offline: !isOnlineNow }">
                 <span class="onlineDot"></span>
-                {{ isOnlineNow ? 'Online' : 'Offline' }}
+                {{ isOnlineNow ? "Online" : "Offline" }}
               </span>
             </div>
 
             <div class="usernameRow">
               <span class="username">@{{ username }}</span>
-              <span v-if="profile.location" class="locationPill">📍 {{ profile.location }}</span>
-              <span v-if="joinedText !== '—'" class="locationPill ghost">🗓 {{ joinedText }}</span>
+
+              <span v-if="profile.location" class="locationPill">
+                📍 {{ profile.location }}
+              </span>
+
+              <span v-if="profile.country" class="locationPill ghost">
+                🌍 {{ profile.country }}
+              </span>
+
+              <span v-if="joinedText !== '—'" class="locationPill ghost">
+                🗓 {{ joinedText }}
+              </span>
             </div>
 
-            <p class="bio">{{ profile.bio || 'Tell people about yourself. Add a short bio ✨' }}</p>
+            <p class="bio">
+              {{ profile.bio || (isOwnProfile ? "Tell people about yourself. Add a short bio ✨" : "No bio added yet.") }}
+            </p>
 
             <div class="quickFacts">
               <div class="fact glassMini">
                 <div class="factLabel">Email</div>
-                <div class="factValue">{{ profile.email || 'Add email' }}</div>
+                <div class="factValue">{{ profile.email || "—" }}</div>
               </div>
+
               <div class="fact glassMini">
                 <div class="factLabel">Location</div>
-                <div class="factValue">{{ profile.location || 'Add location' }}</div>
+                <div class="factValue">{{ profile.location || "Add location" }}</div>
               </div>
+
               <div class="fact glassMini">
                 <div class="factLabel">Joined</div>
                 <div class="factValue">{{ joinedText }}</div>
@@ -82,14 +126,17 @@
                 <div class="statNum">{{ stats.posts }}</div>
                 <div class="statLabel">Posts</div>
               </button>
+
               <button class="statCard" @click="tab = 'reels'">
                 <div class="statNum">{{ stats.reels }}</div>
                 <div class="statLabel">Reels</div>
               </button>
+
               <button class="statCard" @click="tab = 'about'">
                 <div class="statNum">{{ stats.followers }}</div>
                 <div class="statLabel">Followers</div>
               </button>
+
               <button class="statCard" @click="tab = 'about'">
                 <div class="statNum">{{ stats.following }}</div>
                 <div class="statLabel">Following</div>
@@ -97,11 +144,23 @@
             </div>
 
             <div class="actionRow">
-              <button class="btn primary" @click="openEdit = true">Edit Profile</button>
-              <button class="btn ghost" @click="copyLink">Share</button>
-              <button class="btn ghost" @click="goInbox">Message</button>
-              <button class="btn ghost" @click="goLive">Go Live</button>
-              <button class="btn ghost" @click="goHome">Home</button>
+              <template v-if="isOwnProfile">
+                <button class="btn primary" @click="openEdit = true">Edit Profile</button>
+                <button class="btn ghost" @click="copyLink">Share</button>
+                <button class="btn ghost" @click="goInbox">Message</button>
+                <button class="btn ghost" @click="goLive">Go Live</button>
+                <button class="btn ghost" @click="goHome">Home</button>
+              </template>
+
+              <template v-else>
+                <button class="btn primary" @click="toggleFollow">
+                  {{ isFollowing ? "Following" : "Follow" }}
+                </button>
+                <button class="btn ghost" @click="goInbox">Message</button>
+                <button class="btn ghost" @click="startCall('audio')">Audio Call</button>
+                <button class="btn ghost" @click="startCall('video')">Video Call</button>
+                <button class="btn ghost" @click="copyLink">Share</button>
+              </template>
             </div>
           </div>
         </div>
@@ -111,7 +170,14 @@
           <button class="featureChip" :class="{ active: tab === 'posts' }" @click="tab = 'posts'">Posts</button>
           <button class="featureChip" :class="{ active: tab === 'reels' }" @click="tab = 'reels'">Reels</button>
           <button class="featureChip" :class="{ active: tab === 'saved' }" @click="tab = 'saved'">Saved</button>
-          <button class="featureChip" :class="{ active: tab === 'settings' }" @click="tab = 'settings'">Settings</button>
+          <button
+            v-if="isOwnProfile"
+            class="featureChip"
+            :class="{ active: tab === 'settings' }"
+            @click="tab = 'settings'"
+          >
+            Settings
+          </button>
         </div>
       </section>
 
@@ -119,30 +185,57 @@
         <section class="content glass mainContent">
           <template v-if="tab === 'about'">
             <h2 class="sectionTitle">About</h2>
+
             <div class="aboutGrid">
               <div class="aboutCard glassMini">
                 <div class="infoKey">Display name</div>
                 <div class="infoVal big">{{ displayName }}</div>
               </div>
+
               <div class="aboutCard glassMini">
                 <div class="infoKey">Username</div>
                 <div class="infoVal big">@{{ username }}</div>
               </div>
+
               <div class="aboutCard glassMini">
                 <div class="infoKey">Email</div>
-                <div class="infoVal">{{ profile.email || '—' }}</div>
+                <div class="infoVal">{{ profile.email || "—" }}</div>
               </div>
+
               <div class="aboutCard glassMini">
                 <div class="infoKey">Location</div>
-                <div class="infoVal">{{ profile.location || '—' }}</div>
+                <div class="infoVal">{{ profile.location || "—" }}</div>
               </div>
+
+              <div class="aboutCard glassMini">
+                <div class="infoKey">Country</div>
+                <div class="infoVal">{{ profile.country || "—" }}</div>
+              </div>
+
               <div class="aboutCard glassMini">
                 <div class="infoKey">Joined</div>
                 <div class="infoVal">{{ joinedText }}</div>
               </div>
+
+              <div class="aboutCard glassMini">
+                <div class="infoKey">Website</div>
+                <div class="infoVal">
+                  <a
+                    v-if="profile.website"
+                    :href="normalizedWebsite"
+                    target="_blank"
+                    rel="noopener noreferrer"
+                    class="profileLink"
+                  >
+                    {{ profile.website }}
+                  </a>
+                  <span v-else>—</span>
+                </div>
+              </div>
+
               <div class="aboutCard glassMini">
                 <div class="infoKey">Bio</div>
-                <div class="infoVal multiline">{{ profile.bio || 'No bio yet.' }}</div>
+                <div class="infoVal multiline">{{ profile.bio || "No bio yet." }}</div>
               </div>
             </div>
 
@@ -155,34 +248,56 @@
               <span class="chip">💬 Chat Ready</span>
               <span class="chip">📞 Live Calls</span>
               <span class="chip">⚡ Pulse / Pulse</span>
+              <span v-if="profile.isVerified" class="chip">✔ Verified</span>
             </div>
           </template>
 
           <template v-else-if="tab === 'posts'">
             <div class="sectionHead">
               <h2 class="sectionTitle">Posts</h2>
-              <span class="sectionMeta">{{ userPosts.length }} item{{ userPosts.length === 1 ? '' : 's' }}</span>
+              <span class="sectionMeta">{{ userPosts.length }} item{{ userPosts.length === 1 ? "" : "s" }}</span>
             </div>
 
             <div v-if="loading" class="state">Loading posts…</div>
+
             <div v-else-if="userPosts.length === 0" class="emptyBox">
               <div class="emptyIcon">📝</div>
               <div class="emptyTitle">No posts yet</div>
-              <div class="emptySub">Create your first post and your profile will light up.</div>
-              <button class="btn primary" @click="goHome">Create from Dashboard</button>
+              <div class="emptySub">
+                {{ isOwnProfile ? "Create your first post and your profile will light up." : "This user has not posted yet." }}
+              </div>
+              <button v-if="isOwnProfile" class="btn primary" @click="goHome">Create from Dashboard</button>
             </div>
+
             <div v-else class="postList">
               <article v-for="post in userPosts" :key="`post-${post.id}`" class="postCard glassMini">
                 <div class="postHead">
                   <div>
-                    <div class="postTitle">{{ firstLine(post.caption) || 'Untitled post' }}</div>
+                    <div class="postTitle">{{ firstLine(post.caption) || "Untitled post" }}</div>
                     <div class="postTime">{{ formatDate(post.created_at || post.createdAt) }}</div>
                   </div>
-                  <span class="miniBadge ghost">{{ post.video_url ? 'Video' : post.image_url ? 'Image' : 'Text' }}</span>
+                  <span class="miniBadge ghost">
+                    {{ post.video_url ? "Video" : post.image_url ? "Image" : "Text" }}
+                  </span>
                 </div>
+
                 <div v-if="post.caption" class="postText clamp2">{{ post.caption }}</div>
-                <img v-if="post.image_url" class="postMedia" :src="mediaUrl(post.image_url)" loading="lazy" />
-                <video v-else-if="post.video_url" class="postMedia" :src="mediaUrl(post.video_url)" controls playsinline preload="metadata"></video>
+
+                <img
+                  v-if="post.image_url"
+                  class="postMedia"
+                  :src="mediaUrl(post.image_url)"
+                  loading="lazy"
+                />
+
+                <video
+                  v-else-if="post.video_url"
+                  class="postMedia"
+                  :src="mediaUrl(post.video_url)"
+                  controls
+                  playsinline
+                  preload="metadata"
+                ></video>
               </article>
             </div>
           </template>
@@ -190,21 +305,32 @@
           <template v-else-if="tab === 'reels'">
             <div class="sectionHead">
               <h2 class="sectionTitle">Reels</h2>
-              <span class="sectionMeta">{{ userReels.length }} reel{{ userReels.length === 1 ? '' : 's' }}</span>
+              <span class="sectionMeta">{{ userReels.length }} reel{{ userReels.length === 1 ? "" : "s" }}</span>
             </div>
 
             <div v-if="loading" class="state">Loading reels…</div>
+
             <div v-else-if="userReels.length === 0" class="emptyBox">
               <div class="emptyIcon">🎥</div>
               <div class="emptyTitle">No reels yet</div>
-              <div class="emptySub">Post short videos and they will show here.</div>
-              <button class="btn primary" @click="goHome">Open Dashboard</button>
+              <div class="emptySub">
+                {{ isOwnProfile ? "Post short videos and they will show here." : "This user has no reels yet." }}
+              </div>
+              <button v-if="isOwnProfile" class="btn primary" @click="goHome">Open Dashboard</button>
             </div>
+
             <div v-else class="reelsGrid">
               <article v-for="reel in userReels" :key="`reel-${reel.id}`" class="reelCard glassMini">
-                <video class="reelVideo" :src="mediaUrl(reel.video_url)" controls playsinline preload="metadata"></video>
+                <video
+                  class="reelVideo"
+                  :src="mediaUrl(reel.video_url)"
+                  controls
+                  playsinline
+                  preload="metadata"
+                ></video>
+
                 <div class="reelInfo">
-                  <div class="postTitle clamp1">{{ firstLine(reel.caption) || 'My reel' }}</div>
+                  <div class="postTitle clamp1">{{ firstLine(reel.caption) || "My reel" }}</div>
                   <div class="postTime">{{ formatDate(reel.created_at || reel.createdAt) }}</div>
                 </div>
               </article>
@@ -216,6 +342,7 @@
               <h2 class="sectionTitle">Saved</h2>
               <span class="sectionMeta">Private library</span>
             </div>
+
             <div class="emptyBox">
               <div class="emptyIcon">💾</div>
               <div class="emptyTitle">Saved items can live here</div>
@@ -225,21 +352,35 @@
 
           <template v-else>
             <h2 class="sectionTitle">Settings</h2>
+
             <div class="settingsList">
               <div class="infoRow">
                 <span class="infoKey">Sound</span>
-                <button class="btn ghost smallBtn" @click="toggleSound">{{ soundOn ? '🔊 On' : '🔇 Off' }}</button>
+                <button class="btn ghost smallBtn" @click="toggleSound">
+                  {{ soundOn ? "🔊 On" : "🔇 Off" }}
+                </button>
               </div>
+
               <div class="infoRow">
                 <span class="infoKey">Realtime profile sync</span>
-                <span class="infoVal">{{ syncing ? 'Working…' : 'Ready ✅' }}</span>
+                <span class="infoVal">{{ syncing ? "Working…" : "Ready ✅" }}</span>
               </div>
+
               <div class="infoRow">
                 <span class="infoKey">Dark Mode</span>
                 <span class="infoVal">Enabled ✅</span>
               </div>
+
+              <div class="infoRow">
+                <span class="infoKey">Private profile</span>
+                <button class="btn ghost smallBtn" @click="togglePrivate">
+                  {{ profile.isPrivate ? "🔒 Private" : "🌐 Public" }}
+                </button>
+              </div>
             </div>
+
             <div class="divider"></div>
+
             <div class="bottomActions">
               <button class="btn ghost" @click="goLive">🔴 Go Live</button>
               <button class="btn ghost" @click="goInbox">💬 Inbox</button>
@@ -259,13 +400,20 @@
               <span>Profile completion</span>
               <strong>{{ completionPercent }}%</strong>
             </div>
+
             <div class="sideStat glassMini">
               <span>Latest post</span>
               <strong>{{ latestPostText }}</strong>
             </div>
+
             <div class="sideStat glassMini">
               <span>Main mode</span>
-              <strong>{{ userReels.length ? 'Video creator' : 'Text creator' }}</strong>
+              <strong>{{ userReels.length ? "Video creator" : "Text creator" }}</strong>
+            </div>
+
+            <div class="sideStat glassMini">
+              <span>Visibility</span>
+              <strong>{{ profile.isPrivate ? "Private" : "Public" }}</strong>
             </div>
           </div>
 
@@ -273,10 +421,21 @@
 
           <div class="panelTitle small">Quick Actions</div>
           <div class="sideActions">
-            <button class="btn ghost fullBtn" @click="goHome">Create Post</button>
-            <button class="btn ghost fullBtn" @click="goLive">Start Live</button>
-            <button class="btn ghost fullBtn" @click="goInbox">Open Inbox</button>
-            <button class="btn primary fullBtn" @click="openEdit = true">Update Profile</button>
+            <template v-if="isOwnProfile">
+              <button class="btn ghost fullBtn" @click="goHome">Create Post</button>
+              <button class="btn ghost fullBtn" @click="goLive">Start Live</button>
+              <button class="btn ghost fullBtn" @click="goInbox">Open Inbox</button>
+              <button class="btn primary fullBtn" @click="openEdit = true">Update Profile</button>
+            </template>
+
+            <template v-else>
+              <button class="btn primary fullBtn" @click="toggleFollow">
+                {{ isFollowing ? "Following" : "Follow User" }}
+              </button>
+              <button class="btn ghost fullBtn" @click="goInbox">Message User</button>
+              <button class="btn ghost fullBtn" @click="startCall('video')">Video Call</button>
+              <button class="btn ghost fullBtn" @click="startCall('audio')">Audio Call</button>
+            </template>
           </div>
         </aside>
       </section>
@@ -314,14 +473,33 @@
                 <label>Location</label>
                 <input v-model="edit.location" class="inputField" placeholder="Minneapolis, MN" />
               </div>
+
+              <div class="field">
+                <label>Country</label>
+                <input v-model="edit.country" class="inputField" placeholder="USA" />
+              </div>
+
+              <div class="field">
+                <label>Website</label>
+                <input v-model="edit.website" class="inputField" placeholder="https://example.com" />
+              </div>
+
+              <div class="field">
+                <label>Cover image URL</label>
+                <input v-model="edit.coverUrl" class="inputField" placeholder="https://..." />
+              </div>
             </div>
 
             <div class="modalActions">
               <button class="btn ghost" @click="openEdit = false">Cancel</button>
-              <button class="btn primary" @click="saveProfile">Save</button>
+              <button class="btn primary" @click="saveProfile" :disabled="saving">
+                {{ saving ? "Saving..." : "Save" }}
+              </button>
             </div>
 
-            <div class="hint">This version saves locally first and also tries to sync with your backend if a matching update route exists.</div>
+            <div class="hint">
+              This version saves locally and syncs to your `/users/me` route.
+            </div>
           </div>
         </div>
       </transition>
@@ -330,22 +508,38 @@
 </template>
 
 <script setup>
-import { computed, onMounted, onBeforeUnmount, reactive, ref } from 'vue'
-import { useRouter } from 'vue-router'
+import { computed, onMounted, onBeforeUnmount, reactive, ref, watch } from "vue"
+import { useRoute, useRouter } from "vue-router"
+import Layout from "../components/Layout.vue"
 
 const router = useRouter()
-const apiBase = (import.meta.env.VITE_API_URL || 'http://localhost:5000').replace(/\/$/, '')
-const token = localStorage.getItem('token') || ''
+const route = useRoute()
+
+const apiBase = (import.meta.env.VITE_API_URL || "http://localhost:5000").replace(/\/$/, "")
+const token = localStorage.getItem("token") || ""
+
+const me = (() => {
+  try {
+    return JSON.parse(localStorage.getItem("user") || "null")
+  } catch {
+    return null
+  }
+})()
 
 const profile = reactive({
-  id: '',
-  displayName: 'Pulse User',
-  username: 'user',
-  email: '',
-  avatarUrl: '',
-  bio: '',
-  location: '',
-  createdAt: '',
+  id: "",
+  displayName: "Pulse User",
+  username: "user",
+  email: "",
+  avatarUrl: "",
+  bio: "",
+  location: "",
+  country: "",
+  website: "",
+  coverUrl: "",
+  createdAt: "",
+  isPrivate: false,
+  isVerified: false,
 })
 
 const stats = reactive({
@@ -355,24 +549,29 @@ const stats = reactive({
   following: 0,
 })
 
-const tab = ref('about')
+const tab = ref("about")
 const openEdit = ref(false)
-const soundOn = ref(localStorage.getItem('soundOn') !== '0')
+const soundOn = ref(localStorage.getItem("soundOn") !== "0")
 const isOnlineNow = ref(navigator.onLine)
 const loading = ref(false)
 const syncing = ref(false)
+const saving = ref(false)
 const allPosts = ref([])
+const isFollowing = ref(false)
 
 const edit = reactive({
-  displayName: '',
-  username: '',
-  bio: '',
-  email: '',
-  location: '',
+  displayName: "",
+  username: "",
+  bio: "",
+  email: "",
+  location: "",
+  country: "",
+  website: "",
+  coverUrl: "",
 })
 
 const defaultAvatar =
-  'data:image/svg+xml;utf8,' +
+  "data:image/svg+xml;utf8," +
   encodeURIComponent(`
   <svg xmlns='http://www.w3.org/2000/svg' width='200' height='200'>
     <defs>
@@ -386,22 +585,32 @@ const defaultAvatar =
     <rect x='42' y='124' width='116' height='56' rx='28' fill='rgba(255,255,255,.55)'/>
   </svg>`)
 
-const displayName = computed(() => profile.displayName || 'Pulse User')
-const username = computed(() => String(profile.username || 'user').replace('@', ''))
+const viewedUserId = computed(() => String(route.params.id || "").trim())
+const myUserId = computed(() => String(me?.id || ""))
+const isOwnProfile = computed(() => !viewedUserId.value || viewedUserId.value === myUserId.value)
+
+const displayName = computed(() => profile.displayName || "Pulse User")
+const username = computed(() => String(profile.username || "user").replace("@", ""))
 
 const joinedText = computed(() => {
-  if (!profile.createdAt) return '—'
+  if (!profile.createdAt) return "—"
   const d = new Date(profile.createdAt)
   if (Number.isNaN(d.getTime())) return String(profile.createdAt)
   return d.toLocaleDateString()
 })
 
 const userPosts = computed(() => {
-  return allPosts.value.filter((p) => String(resolvePostUserId(p)) === String(profile.id || '') && !p.video_url)
+  const targetId = String(profile.id || viewedUserId.value || "")
+  return allPosts.value.filter(
+    (p) => String(resolvePostUserId(p)) === targetId && !p.video_url
+  )
 })
 
 const userReels = computed(() => {
-  return allPosts.value.filter((p) => String(resolvePostUserId(p)) === String(profile.id || '') && !!p.video_url)
+  const targetId = String(profile.id || viewedUserId.value || "")
+  return allPosts.value.filter(
+    (p) => String(resolvePostUserId(p)) === targetId && !!p.video_url
+  )
 })
 
 const completionPercent = computed(() => {
@@ -429,17 +638,32 @@ const powerScore = computed(() => {
 })
 
 const creatorLevel = computed(() => {
-  if (powerScore.value >= 220) return 'Elite Creator'
-  if (powerScore.value >= 120) return 'Rising Creator'
-  return 'New Creator'
+  if (powerScore.value >= 220) return "Elite Creator"
+  if (powerScore.value >= 120) return "Rising Creator"
+  return "New Creator"
 })
 
 const latestPostText = computed(() => {
   const first = [...allPosts.value]
-    .filter((p) => String(resolvePostUserId(p)) === String(profile.id || ''))
+    .filter((p) => String(resolvePostUserId(p)) === String(profile.id || ""))
     .sort((a, b) => new Date(b.created_at || b.createdAt || 0) - new Date(a.created_at || a.createdAt || 0))[0]
-  if (!first) return 'No posts yet'
+
+  if (!first) return "No posts yet"
   return formatDate(first.created_at || first.createdAt)
+})
+
+const normalizedWebsite = computed(() => {
+  if (!profile.website) return ""
+  return /^https?:\/\//i.test(profile.website) ? profile.website : `https://${profile.website}`
+})
+
+const coverStyle = computed(() => {
+  if (!profile.coverUrl) return {}
+  return {
+    backgroundImage: `linear-gradient(rgba(10,14,28,.28), rgba(10,14,28,.28)), url('${profile.coverUrl}')`,
+    backgroundSize: "cover",
+    backgroundPosition: "center",
+  }
 })
 
 function safeJSON(v) {
@@ -451,53 +675,123 @@ function safeJSON(v) {
 }
 
 function loadLocalUser() {
-  const user = safeJSON(localStorage.getItem('user')) || safeJSON(localStorage.getItem('currentUser')) || {}
+  const user =
+    safeJSON(localStorage.getItem("user")) ||
+    safeJSON(localStorage.getItem("currentUser")) ||
+    {}
 
-  profile.id = user.id || user.userId || profile.id || ''
-  profile.displayName = user.display_name || user.displayName || user.name || profile.displayName
-  profile.username = user.username || user.email?.split('@')?.[0] || profile.username
-  profile.email = user.email || profile.email
-  profile.avatarUrl = user.avatar_url || user.avatarUrl || profile.avatarUrl
-  profile.bio = user.bio || profile.bio
-  profile.location = user.location || profile.location
-  profile.createdAt = user.created_at || user.createdAt || profile.createdAt
+  profile.id = user.id || user.userId || user.user_id || profile.id || ""
+  profile.displayName =
+    user.display_name ||
+    user.displayName ||
+    user.name ||
+    user.full_name ||
+    profile.displayName ||
+    "Pulse User"
 
-  stats.posts = Number(user.postsCount ?? stats.posts ?? 0)
-  stats.reels = Number(user.reelsCount ?? stats.reels ?? 0)
-  stats.followers = Number(user.followers ?? 0)
-  stats.following = Number(user.following ?? 0)
+  profile.username =
+    user.username ||
+    user.handle ||
+    user.email?.split("@")?.[0] ||
+    profile.username ||
+    "user"
+
+  profile.email = user.email || profile.email || ""
+  profile.avatarUrl = user.avatar_url || user.avatarUrl || user.profile_image || profile.avatarUrl || ""
+  profile.bio = user.bio || user.about || profile.bio || ""
+  profile.location = user.location || user.city || profile.location || ""
+  profile.country = user.country || profile.country || ""
+  profile.website = user.website || profile.website || ""
+  profile.coverUrl = user.cover_url || user.coverUrl || profile.coverUrl || ""
+  profile.createdAt = user.created_at || user.createdAt || user.joined_at || user.joinedAt || profile.createdAt || ""
+  profile.isPrivate = !!(user.is_private ?? user.isPrivate ?? profile.isPrivate)
+  profile.isVerified = !!(user.is_verified ?? user.isVerified ?? profile.isVerified)
+
+  stats.posts = Number(user.postsCount ?? user.posts_count ?? stats.posts ?? 0)
+  stats.reels = Number(user.reelsCount ?? user.reels_count ?? stats.reels ?? 0)
+  stats.followers = Number(user.followers ?? user.followers_count ?? 0)
+  stats.following = Number(user.following ?? user.following_count ?? 0)
 
   edit.displayName = profile.displayName
   edit.username = profile.username
   edit.bio = profile.bio
   edit.email = profile.email
   edit.location = profile.location
+  edit.country = profile.country
+  edit.website = profile.website
+  edit.coverUrl = profile.coverUrl
 }
 
-async function fetchProfileRemote() {
-  if (!token || !profile.id) return
-  syncing.value = true
-  const tryUrls = [
-    `${apiBase}/users/${profile.id}`,
-    `${apiBase}/api/users/${profile.id}`,
-    `${apiBase}/profile/${profile.id}`,
-    `${apiBase}/me`,
-  ]
+function patchProfileFromUser(u = {}) {
+  profile.id = u.id || u.userId || u.user_id || profile.id
+  profile.displayName = u.display_name || u.displayName || u.name || u.full_name || profile.displayName
+  profile.username = u.username || u.handle || u.email?.split("@")?.[0] || profile.username
+  profile.email = u.email || profile.email
+  profile.avatarUrl = u.avatar_url || u.avatarUrl || u.profile_image || u.image || profile.avatarUrl
+  profile.bio = u.bio || u.about || profile.bio
+  profile.location = u.location || u.city || profile.location
+  profile.country = u.country || profile.country
+  profile.website = u.website || profile.website
+  profile.coverUrl = u.cover_url || u.coverUrl || profile.coverUrl
+  profile.createdAt = u.created_at || u.createdAt || u.joined_at || u.joinedAt || profile.createdAt
+  profile.isPrivate = !!(u.is_private ?? u.isPrivate ?? profile.isPrivate)
+  profile.isVerified = !!(u.is_verified ?? u.isVerified ?? profile.isVerified)
 
-  for (const url of tryUrls) {
-    try {
-      const res = await fetch(url, { headers: { Authorization: `Bearer ${token}` } })
-      if (!res.ok) continue
-      const data = await res.json()
-      const u = data?.user || data || {}
-      patchProfileFromUser(u)
-      saveUserPatch(u)
-      break
-    } catch {
-      // ignore and try next
-    }
+  stats.followers = Number(u.followers ?? u.followers_count ?? stats.followers ?? 0)
+  stats.following = Number(u.following ?? u.following_count ?? stats.following ?? 0)
+
+  edit.displayName = profile.displayName
+  edit.username = profile.username
+  edit.bio = profile.bio
+  edit.email = profile.email
+  edit.location = profile.location
+  edit.country = profile.country
+  edit.website = profile.website
+  edit.coverUrl = profile.coverUrl
+}
+
+function saveUserPatch(patch) {
+  const existing = safeJSON(localStorage.getItem("user")) || safeJSON(localStorage.getItem("currentUser")) || {}
+  const merged = { ...existing, ...patch }
+  localStorage.setItem("user", JSON.stringify(merged))
+  localStorage.setItem("currentUser", JSON.stringify(merged))
+}
+
+async function fetchOwnProfileRemote() {
+  if (!token) return
+
+  syncing.value = true
+  try {
+    const res = await fetch(`${apiBase}/users/me`, {
+      headers: { Authorization: `Bearer ${token}` },
+    })
+    if (!res.ok) throw new Error("failed")
+    const data = await res.json()
+    patchProfileFromUser(data)
+    saveUserPatch(data)
+  } catch (err) {
+    console.error("fetchOwnProfileRemote failed:", err)
+  } finally {
+    syncing.value = false
   }
-  syncing.value = false
+}
+
+async function fetchViewedUser() {
+  if (!token || !viewedUserId.value) return
+
+  syncing.value = true
+  try {
+    const res = await fetch(`${apiBase}/users/${viewedUserId.value}`, {
+      headers: { Authorization: `Bearer ${token}` },
+    })
+    if (!res.ok) throw new Error("failed")
+    const data = await res.json()
+    patchProfileFromUser(data)
+  } catch (err) {
+    console.error("fetchViewedUser failed:", err)
+  } finally {
+    syncing.value = false
+  }
 }
 
 async function fetchPostsRemote() {
@@ -505,164 +799,167 @@ async function fetchPostsRemote() {
     const res = await fetch(`${apiBase}/posts`, {
       headers: token ? { Authorization: `Bearer ${token}` } : {},
     })
-    if (!res.ok) throw new Error('posts fetch failed')
+    if (!res.ok) throw new Error("posts fetch failed")
     const data = await res.json()
     const list = Array.isArray(data) ? data : data.posts || []
     allPosts.value = list
     stats.posts = userPosts.value.length
     stats.reels = userReels.value.length
   } catch {
-    const cached = safeJSON(localStorage.getItem('posts')) || []
+    const cached = safeJSON(localStorage.getItem("posts")) || []
     allPosts.value = Array.isArray(cached) ? cached : []
     stats.posts = userPosts.value.length
     stats.reels = userReels.value.length
   }
 }
 
-function patchProfileFromUser(u = {}) {
-  profile.id = u.id || u.userId || profile.id
-  profile.displayName = u.display_name || u.displayName || u.name || profile.displayName
-  profile.username = u.username || u.email?.split('@')?.[0] || profile.username
-  profile.email = u.email || profile.email
-  profile.avatarUrl = u.avatar_url || u.avatarUrl || profile.avatarUrl
-  profile.bio = u.bio || profile.bio
-  profile.location = u.location || profile.location
-  profile.createdAt = u.created_at || u.createdAt || profile.createdAt
-
-  stats.followers = Number(u.followers ?? stats.followers ?? 0)
-  stats.following = Number(u.following ?? stats.following ?? 0)
-
-  edit.displayName = profile.displayName
-  edit.username = profile.username
-  edit.bio = profile.bio
-  edit.email = profile.email
-  edit.location = profile.location
-}
-
-function saveUserPatch(patch) {
-  const existing = safeJSON(localStorage.getItem('user')) || safeJSON(localStorage.getItem('currentUser')) || {}
-  const merged = { ...existing, ...patch }
-  localStorage.setItem('user', JSON.stringify(merged))
-  localStorage.setItem('currentUser', JSON.stringify(merged))
-}
-
 async function saveProfile() {
-  profile.displayName = edit.displayName.trim() || profile.displayName
-  profile.username = (edit.username || profile.username).replace('@', '').trim()
-  profile.bio = edit.bio?.trim() || ''
-  profile.email = edit.email?.trim() || ''
-  profile.location = edit.location?.trim() || ''
+  if (!isOwnProfile.value || !token) return
 
-  const payload = {
-    id: profile.id,
-    displayName: profile.displayName,
-    display_name: profile.displayName,
-    username: profile.username,
-    bio: profile.bio,
-    email: profile.email,
-    location: profile.location,
-    avatarUrl: profile.avatarUrl,
-    avatar_url: profile.avatarUrl,
-  }
-
-  saveUserPatch(payload)
-  openEdit.value = false
-
-  if (!token || !profile.id) return
-
+  saving.value = true
   syncing.value = true
-  const tryUrls = [
-    `${apiBase}/users/${profile.id}`,
-    `${apiBase}/api/users/${profile.id}`,
-    `${apiBase}/profile/${profile.id}`,
-  ]
 
-  for (const url of tryUrls) {
-    try {
-      const res = await fetch(url, {
-        method: 'PUT',
-        headers: {
-          'Content-Type': 'application/json',
-          Authorization: `Bearer ${token}`,
-        },
-        body: JSON.stringify(payload),
-      })
-      if (res.ok) break
-    } catch {
-      // keep local save
+  try {
+    const payload = {
+      display_name: edit.displayName.trim() || profile.displayName,
+      username: String(edit.username || profile.username).replace("@", "").trim(),
+      bio: edit.bio?.trim() || "",
+      location: edit.location?.trim() || "",
+      country: edit.country?.trim() || "",
+      website: edit.website?.trim() || "",
+      cover_url: edit.coverUrl?.trim() || "",
+      avatar_url: profile.avatarUrl || "",
+      is_private: !!profile.isPrivate,
     }
+
+    profile.displayName = payload.display_name
+    profile.username = payload.username
+    profile.bio = payload.bio
+    profile.location = payload.location
+    profile.country = payload.country
+    profile.website = payload.website
+    profile.coverUrl = payload.cover_url
+
+    saveUserPatch({
+      ...payload,
+      id: profile.id,
+      email: profile.email,
+      created_at: profile.createdAt,
+      is_verified: profile.isVerified,
+    })
+
+    const res = await fetch(`${apiBase}/users/me`, {
+      method: "PUT",
+      headers: {
+        "Content-Type": "application/json",
+        Authorization: `Bearer ${token}`,
+      },
+      body: JSON.stringify(payload),
+    })
+
+    if (!res.ok) throw new Error("Failed to update profile")
+
+    const data = await res.json()
+    patchProfileFromUser(data)
+    saveUserPatch(data)
+
+    openEdit.value = false
+  } catch (err) {
+    console.error("saveProfile failed:", err)
+  } finally {
+    saving.value = false
+    syncing.value = false
   }
-  syncing.value = false
 }
 
 async function onPickAvatar(ev) {
   const file = ev.target.files?.[0]
   if (!file) return
 
-  const localUrl = URL.createObjectURL(file)
-  profile.avatarUrl = localUrl
-  saveUserPatch({ avatarUrl: localUrl, avatar_url: localUrl })
+  const reader = new FileReader()
+  reader.onload = async () => {
+    const base64 = String(reader.result || "")
+    profile.avatarUrl = base64
+    saveUserPatch({ avatar_url: base64, avatarUrl: base64 })
 
-  if (!token || !profile.id) return
+    if (!token || !isOwnProfile.value) return
 
-  const formData = new FormData()
-  formData.append('avatar', file)
-  formData.append('file', file)
-
-  syncing.value = true
-  const tryUrls = [
-    `${apiBase}/users/${profile.id}/avatar`,
-    `${apiBase}/api/users/${profile.id}/avatar`,
-    `${apiBase}/upload/avatar`,
-    `${apiBase}/upload`,
-  ]
-
-  for (const url of tryUrls) {
     try {
-      const res = await fetch(url, {
-        method: 'POST',
-        headers: { Authorization: `Bearer ${token}` },
-        body: formData,
+      syncing.value = true
+      const res = await fetch(`${apiBase}/users/me`, {
+        method: "PUT",
+        headers: {
+          "Content-Type": "application/json",
+          Authorization: `Bearer ${token}`,
+        },
+        body: JSON.stringify({
+          avatar_url: base64,
+        }),
       })
-      if (!res.ok) continue
-      const data = await res.json()
-      const remoteUrl = data?.avatar_url || data?.avatarUrl || data?.url || ''
-      if (remoteUrl) {
-        profile.avatarUrl = remoteUrl
-        saveUserPatch({ avatarUrl: remoteUrl, avatar_url: remoteUrl })
+
+      if (res.ok) {
+        const data = await res.json()
+        patchProfileFromUser(data)
+        saveUserPatch(data)
       }
-      break
-    } catch {
-      // keep local preview if backend route missing
+    } catch (err) {
+      console.error("avatar update failed:", err)
+    } finally {
+      syncing.value = false
     }
   }
-  syncing.value = false
+  reader.readAsDataURL(file)
 }
 
 function resolvePostUserId(post) {
-  return post.user_id ?? post.author_id ?? post.user?.id ?? ''
+  return (
+    post.user_id ??
+    post.userId ??
+    post.author_id ??
+    post.authorId ??
+    post.created_by ??
+    post.user?.id ??
+    post.author?.id ??
+    ""
+  )
 }
 
 function mediaUrl(path) {
-  if (!path) return ''
-  if (/^https?:\/\//i.test(path) || path.startsWith('blob:') || path.startsWith('data:')) return path
-  return `${apiBase}${path.startsWith('/') ? '' : '/'}${path}`
+  if (!path) return ""
+  if (/^https?:\/\//i.test(path) || path.startsWith("blob:") || path.startsWith("data:")) return path
+  return `${apiBase}${path.startsWith("/") ? "" : "/"}${path}`
 }
 
 function firstLine(text) {
-  return String(text || '').split('\n')[0].trim()
+  return String(text || "").split("\n")[0].trim()
 }
 
 function formatDate(value) {
-  if (!value) return 'Recently'
+  if (!value) return "Recently"
   const d = new Date(value)
   if (Number.isNaN(d.getTime())) return String(value)
-  return d.toLocaleDateString(undefined, { month: 'short', day: 'numeric', year: 'numeric' })
+  return d.toLocaleDateString(undefined, {
+    month: "short",
+    day: "numeric",
+    year: "numeric",
+  })
 }
 
 function toggleSound() {
   soundOn.value = !soundOn.value
-  localStorage.setItem('soundOn', soundOn.value ? '1' : '0')
+  localStorage.setItem("soundOn", soundOn.value ? "1" : "0")
+}
+
+async function togglePrivate() {
+  profile.isPrivate = !profile.isPrivate
+  if (isOwnProfile.value) {
+    await saveProfile()
+  }
+}
+
+function toggleFollow() {
+  isFollowing.value = !isFollowing.value
+  stats.followers = Math.max(0, stats.followers + (isFollowing.value ? 1 : -1))
 }
 
 function onAvatarError(e) {
@@ -670,40 +967,60 @@ function onAvatarError(e) {
 }
 
 async function copyLink() {
-  const id = profile.id ? String(profile.id) : ''
+  const id = profile.id ? String(profile.id) : ""
   const link = `${window.location.origin}/profile/${id}`
   try {
     await navigator.clipboard.writeText(link)
-    alert('Profile link copied!')
+    alert("Profile link copied!")
   } catch {
     alert(link)
   }
 }
 
 function logout() {
-  localStorage.removeItem('token')
-  localStorage.removeItem('user')
-  localStorage.removeItem('currentUser')
-  router.push('/login')
+  localStorage.removeItem("token")
+  localStorage.removeItem("user")
+  localStorage.removeItem("currentUser")
+  router.push("/login")
 }
 
 function goHome() {
-  router.push('/dashboard')
+  router.push("/dashboard")
 }
 
 function goInbox() {
-  router.push('/messages')
+  router.push("/messages")
 }
 
 function goLive() {
-  router.push('/live')
+  router.push("/live")
+}
+
+function startCall(callKind = "video") {
+  if (!profile.id) return
+  router.push({
+    path: "/call",
+    query: {
+      toUserId: String(profile.id),
+      kind: callKind,
+      mode: "caller",
+      name: displayName.value,
+    },
+  })
 }
 
 async function refreshAll() {
   loading.value = true
-  loadLocalUser()
-  await fetchProfileRemote()
+
+  if (isOwnProfile.value) {
+    loadLocalUser()
+    await fetchOwnProfileRemote()
+  } else {
+    await fetchViewedUser()
+  }
+
   await fetchPostsRemote()
+
   loading.value = false
 }
 
@@ -715,15 +1032,23 @@ function onOffline() {
   isOnlineNow.value = false
 }
 
+watch(
+  () => route.params.id,
+  async () => {
+    await refreshAll()
+  }
+)
+
 onMounted(async () => {
-  window.addEventListener('online', onOnline)
-  window.addEventListener('offline', onOffline)
+  window.addEventListener("online", onOnline)
+  window.addEventListener("offline", onOffline)
+  loadLocalUser()
   await refreshAll()
 })
 
 onBeforeUnmount(() => {
-  window.removeEventListener('online', onOnline)
-  window.removeEventListener('offline', onOffline)
+  window.removeEventListener("online", onOnline)
+  window.removeEventListener("offline", onOffline)
 })
 </script>
 
@@ -964,6 +1289,13 @@ onBeforeUnmount(() => {
   font-weight: 950;
   line-height: 1.02;
 }
+.verifiedBadge {
+  display: inline-block;
+  margin-left: 8px;
+  font-size: 20px;
+  vertical-align: middle;
+  color: #7fd0ff;
+}
 .usernameRow {
   margin-top: 10px;
 }
@@ -1082,6 +1414,10 @@ onBeforeUnmount(() => {
 .multiline {
   white-space: pre-wrap;
   line-height: 1.5;
+}
+.profileLink {
+  color: #a9d6ff;
+  text-decoration: none;
 }
 .divider {
   height: 1px;
