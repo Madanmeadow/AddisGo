@@ -24,7 +24,7 @@ import likesRoutes from "./routes/likes.routes.js";
 dotenv.config();
 
 /* =========================
-   ✅ PRETTY LOGS (COLORFUL)
+   ✅ PRETTY LOGS
 ========================= */
 const C = {
   reset: "\x1b[0m",
@@ -36,13 +36,28 @@ const C = {
   magenta: "\x1b[35m",
   cyan: "\x1b[36m",
 };
-function logOK(...a) { console.log(`${C.green}✅${C.reset}`, ...a); }
-function logWARN(...a) { console.log(`${C.yellow}⚠️${C.reset}`, ...a); }
-function logERR(...a) { console.log(`${C.red}❌${C.reset}`, ...a); }
-function logSOCK(...a) { console.log(`${C.cyan}🔌${C.reset}`, ...a); }
-function logLIVE(...a) { console.log(`${C.magenta}🔴${C.reset}`, ...a); }
-function logCALL(...a) { console.log(`${C.blue}📞${C.reset}`, ...a); }
-function logROOM(...a) { console.log(`${C.blue}🏠${C.reset}`, ...a); }
+
+function logOK(...a) {
+  console.log(`${C.green}✅${C.reset}`, ...a);
+}
+function logWARN(...a) {
+  console.log(`${C.yellow}⚠️${C.reset}`, ...a);
+}
+function logERR(...a) {
+  console.log(`${C.red}❌${C.reset}`, ...a);
+}
+function logSOCK(...a) {
+  console.log(`${C.cyan}🔌${C.reset}`, ...a);
+}
+function logLIVE(...a) {
+  console.log(`${C.magenta}🔴${C.reset}`, ...a);
+}
+function logCALL(...a) {
+  console.log(`${C.blue}📞${C.reset}`, ...a);
+}
+function logROOM(...a) {
+  console.log(`${C.blue}🏠${C.reset}`, ...a);
+}
 
 /* =========================
    APP + SERVER
@@ -111,16 +126,15 @@ function signToken(user) {
     user?.email ||
     (userId ? `User${userId}` : "User");
 
-  return jwt.sign(
-    { userId, id: userId, username },
-    JWT_SECRET,
-    { expiresIn: "7d" }
-  );
+  return jwt.sign({ userId, id: userId, username }, JWT_SECRET, {
+    expiresIn: "7d",
+  });
 }
 
 app.post("/auth/register", async (req, res) => {
   try {
     const { username, name, email, password } = req.body;
+
     if (!email || !password) {
       return res.status(400).json({ error: "Email and password required" });
     }
@@ -168,14 +182,14 @@ app.post("/auth/register", async (req, res) => {
 app.post("/auth/login", async (req, res) => {
   try {
     const { email, password } = req.body;
+
     if (!email || !password) {
       return res.status(400).json({ error: "Email and password required" });
     }
 
-    const found = await pool.query(
-      `SELECT * FROM users WHERE email=$1 LIMIT 1`,
-      [email]
-    );
+    const found = await pool.query(`SELECT * FROM users WHERE email=$1 LIMIT 1`, [
+      email,
+    ]);
 
     if (!found.rows.length) {
       return res.status(400).json({ error: "User not found" });
@@ -183,6 +197,7 @@ app.post("/auth/login", async (req, res) => {
 
     const user = found.rows[0];
     const ok = await bcrypt.compare(password, user.password);
+
     if (!ok) {
       return res.status(400).json({ error: "Wrong password" });
     }
@@ -194,10 +209,7 @@ app.post("/auth/login", async (req, res) => {
       user: {
         id: user.id,
         username:
-          user.username ||
-          user.display_name ||
-          user.name ||
-          user.email,
+          user.username || user.display_name || user.name || user.email,
       },
     });
   } catch (err) {
@@ -209,9 +221,9 @@ app.post("/auth/login", async (req, res) => {
 /* =========================
    HEALTH
 ========================= */
-app.get("/", (req, res) => res.send("🚀 AddisGo backend running"));
+app.get("/", (_req, res) => res.send("🚀 AddisGo backend running"));
 
-app.get("/health", async (req, res) => {
+app.get("/health", async (_req, res) => {
   try {
     const r = await pool.query("SELECT NOW() as now");
     res.json({ ok: true, now: r.rows[0].now });
@@ -220,7 +232,7 @@ app.get("/health", async (req, res) => {
   }
 });
 
-app.get("/api/health", async (req, res) => {
+app.get("/api/health", async (_req, res) => {
   try {
     const r = await pool.query("SELECT NOW() as now");
     res.json({ ok: true, now: r.rows[0].now });
@@ -229,7 +241,7 @@ app.get("/api/health", async (req, res) => {
   }
 });
 
-app.get("/api/server-stats", (req, res) => {
+app.get("/api/server-stats", (_req, res) => {
   try {
     res.json({
       ok: true,
@@ -240,6 +252,31 @@ app.get("/api/server-stats", (req, res) => {
       now: new Date().toISOString(),
     });
   } catch {
+    res.status(500).json({ ok: false });
+  }
+});
+
+app.get("/api/call-health", (_req, res) => {
+  try {
+    const active = Array.from(callSessions.values()).map((s) => ({
+      roomId: s.roomId,
+      kind: s.kind,
+      hostUserId: s.hostUserId,
+      negotiationOwnerUserId: s.negotiationOwnerUserId,
+      invitedUserIds: Array.from(s.invitedUserIds || []),
+      joinedUserIds: Array.from(s.joinedUserIds || []),
+      ended: !!s.ended,
+      createdAt: s.createdAt,
+    }));
+
+    res.json({
+      ok: true,
+      activeCalls: active,
+      total: active.length,
+      now: new Date().toISOString(),
+    });
+  } catch (e) {
+    logERR("CALL HEALTH ERROR:", e);
     res.status(500).json({ ok: false });
   }
 });
@@ -265,14 +302,18 @@ async function buildIceServers() {
   try {
     const client = twilio(sid, auth);
     const token = await client.tokens.create({ ttl });
-    return { ok: true, iceServers: token.iceServers, note: "TURN via Twilio" };
+    return {
+      ok: true,
+      iceServers: token.iceServers,
+      note: "TURN via Twilio",
+    };
   } catch (e) {
     console.error("TURN(Twilio) ERROR -> fallback to STUN:", e?.message || e);
     return { ...fallback, error: "Twilio TURN failed; using STUN fallback" };
   }
 }
 
-app.get("/api/turn", async (req, res) => {
+app.get("/api/turn", async (_req, res) => {
   try {
     res.json(await buildIceServers());
   } catch (e) {
@@ -317,7 +358,7 @@ io.use((socket, next) => {
 });
 
 /* ---------- PRESENCE ---------- */
-const onlineUsers = new Map();    // userId -> socketId
+const onlineUsers = new Map(); // userId -> socketId
 const socketToUserId = new Map(); // socketId -> userId
 
 function emitOnlineUsersLegacy() {
@@ -368,8 +409,8 @@ function emitLivePresence(liveId) {
 }
 
 /* ---------- LIVE MIC CONTROL ---------- */
-const liveSpeakers = new Map();     // liveId -> Set<userId>
-const liveMicRequests = new Map();  // liveId -> Map<userId -> payload>
+const liveSpeakers = new Map(); // liveId -> Set<userId>
+const liveMicRequests = new Map(); // liveId -> Map<userId -> payload>
 
 function ensureLiveSpeakerSet(liveId) {
   const id = String(liveId);
@@ -385,7 +426,7 @@ function ensureLiveRequestMap(liveId) {
 
 /* ---------- DIRECT CALLS: OFFLINE QUEUE + BUSY ---------- */
 const pendingIncomingCalls = new Map(); // userId -> Map(roomId -> payload)
-const userBusyRoom = new Map();         // userId -> roomId
+const userBusyRoom = new Map(); // userId -> roomId
 
 function queueIncomingCall(userId, payload) {
   const uid = String(userId);
@@ -427,23 +468,6 @@ function flushQueuedIncomingCallsToUser(userId) {
 /* ---------- DIRECT CALLS ---------- */
 const callSessions = new Map();
 const RING_TIMEOUT_MS = 30_000;
-
-function makeCallRoomId(socket) {
-  return `call-${socket.id}-${Date.now()}`;
-}
-
-function emitCallParticipants(roomId) {
-  const sess = callSessions.get(String(roomId));
-  if (!sess) return;
-
-  io.to(`call:${roomId}`).emit("call:participants", {
-    roomId: String(roomId),
-    hostUserId: sess.hostUserId,
-    kind: sess.kind,
-    invitedUserIds: Array.from(sess.invitedUserIds || []),
-    joinedUserIds: Array.from(sess.joinedUserIds || []),
-  });
-}
 
 function ringToUser(userId, roomId, kind, side) {
   io.to(`user:${String(userId)}`).emit("call:ring", {
@@ -499,7 +523,21 @@ function clearBusyForSession(sess) {
   }
 }
 
-/* ======= OPTIONAL DB helpers ======= */
+function emitCallParticipants(roomId) {
+  const sess = callSessions.get(String(roomId));
+  if (!sess) return;
+
+  io.to(`call:${roomId}`).emit("call:participants", {
+    roomId: String(roomId),
+    hostUserId: sess.hostUserId,
+    negotiationOwnerUserId: sess.negotiationOwnerUserId,
+    kind: sess.kind,
+    invitedUserIds: Array.from(sess.invitedUserIds || []),
+    joinedUserIds: Array.from(sess.joinedUserIds || []),
+  });
+}
+
+/* ======= OPTIONAL DB HELPERS ======= */
 async function dbNotifyIncomingCall(userId, payload) {
   try {
     await pool.query(
@@ -512,10 +550,9 @@ async function dbNotifyIncomingCall(userId, payload) {
 
 async function dbEnsureCall(roomId, kind, hostUserId) {
   try {
-    const r = await pool.query(
-      `SELECT id FROM calls WHERE room_id=$1 LIMIT 1`,
-      [String(roomId)]
-    );
+    const r = await pool.query(`SELECT id FROM calls WHERE room_id=$1 LIMIT 1`, [
+      String(roomId),
+    ]);
     if (r.rows?.[0]?.id) return r.rows[0].id;
 
     const created = await pool.query(
@@ -531,7 +568,12 @@ async function dbEnsureCall(roomId, kind, hostUserId) {
   }
 }
 
-async function dbUpsertParticipant(callId, userId, role = "member", status = "invited") {
+async function dbUpsertParticipant(
+  callId,
+  userId,
+  role = "member",
+  status = "invited"
+) {
   try {
     await pool.query(
       `INSERT INTO call_participants (call_id, user_id, role, status)
@@ -696,15 +738,8 @@ function normalizeCallRoomParticipant(room, p) {
     userId: String(p.userId || ""),
     username: p.username || `User${p.userId || ""}`,
     displayName:
-      p.displayName ||
-      p.name ||
-      p.username ||
-      `User ${p.userId || ""}`,
-    name:
-      p.name ||
-      p.displayName ||
-      p.username ||
-      `User ${p.userId || ""}`,
+      p.displayName || p.name || p.username || `User ${p.userId || ""}`,
+    name: p.name || p.displayName || p.username || `User ${p.userId || ""}`,
     socketId: String(p.socketId || ""),
     joinedAt: p.joinedAt,
     micOn: !!p.micOn,
@@ -732,7 +767,7 @@ function normalizeCallRoomForClient(room) {
     count: users.length,
     createdAt: room.createdAt,
     users,
-    participants: users, // backward + forward compat
+    participants: users,
   };
 }
 
@@ -773,15 +808,6 @@ function emitCallRoomState(roomId) {
   });
 }
 
-function findRoomBySocketId(socketId) {
-  const sid = String(socketId);
-  for (const room of callRooms.values()) {
-    const found = (room.users || []).find((u) => String(u.socketId) === sid);
-    if (found) return { room, user: found };
-  }
-  return null;
-}
-
 function removeParticipantFromCallRooms(socket) {
   const sid = String(socket.id);
 
@@ -809,7 +835,9 @@ function removeParticipantFromCallRooms(socket) {
       continue;
     }
 
-    if (!room.users.some((u) => String(u.userId) === String(room.hostUserId || ""))) {
+    if (
+      !room.users.some((u) => String(u.userId) === String(room.hostUserId || ""))
+    ) {
       const next = room.users[0];
       if (next) {
         room.hostUserId = String(next.userId || "");
@@ -845,7 +873,10 @@ function upsertRoomUser(room, inputUser) {
     socketId: sid,
     joinedAt: inputUser.joinedAt || new Date().toISOString(),
     micOn: typeof inputUser.micOn === "boolean" ? inputUser.micOn : true,
-    camOn: typeof inputUser.camOn === "boolean" ? inputUser.camOn : room.kind === "video",
+    camOn:
+      typeof inputUser.camOn === "boolean"
+        ? inputUser.camOn
+        : room.kind === "video",
   });
 
   return room;
@@ -894,7 +925,7 @@ io.on("connection", (socket) => {
     flushQueuedIncomingCallsToUser(userId);
   });
 
-  socket.on("server:ping", (_, cb) => {
+  socket.on("server:ping", (_payload, cb) => {
     cb?.({
       ok: true,
       socketId: socket.id,
@@ -902,7 +933,7 @@ io.on("connection", (socket) => {
     });
   });
 
-  socket.on("server:stats:get", (_, cb) => {
+  socket.on("server:stats:get", (_payload, cb) => {
     cb?.({
       ok: true,
       onlineUsers: onlineUsers.size,
@@ -947,23 +978,22 @@ io.on("connection", (socket) => {
   });
 
   /* =========================
-     DIRECT CALLS
+     🚀 FINAL DIRECT CALL SYSTEM
   ========================= */
-  socket.on("call:request", async ({ toUserId, kind = "audio" }) => {
+  socket.on("call:request", async ({ toUserId, kind = "video" }) => {
     const from = socket.data.user;
     if (!from?.id) {
       return socket.emit("call:error", { message: "Not online." });
     }
-
     if (!toUserId) {
       return socket.emit("call:error", { message: "Missing toUserId" });
     }
 
     const callerUserId = String(from.id);
     const calleeUserId = String(toUserId);
-    const callKind = kind === "video" ? "video" : "audio";
+    const callKind = kind === "audio" ? "audio" : "video";
 
-    if (calleeUserId === callerUserId) {
+    if (callerUserId === calleeUserId) {
       return socket.emit("call:error", { message: "You cannot call yourself." });
     }
 
@@ -975,7 +1005,7 @@ io.on("connection", (socket) => {
       return socket.emit("call:busy", { message: "User is busy." });
     }
 
-    const roomId = String(makeCallRoomId(socket));
+    const roomId = `call-${Date.now()}-${Math.random().toString(36).slice(2, 8)}`;
     const invitedUserIds = new Set([callerUserId, calleeUserId]);
     const joinedUserIds = new Set();
 
@@ -989,11 +1019,11 @@ io.on("connection", (socket) => {
       roomId,
       kind: callKind,
       fromUserId: callerUserId,
-      fromName: from.username || `User${from.id}`,
+      fromName: from.username || `User${callerUserId}`,
       isGroup: false,
       from: callerUserId,
-      callerSocketId: socket.id,
       hostUserId: callerUserId,
+      callerSocketId: socket.id,
     };
 
     callSessions.set(roomId, {
@@ -1005,6 +1035,8 @@ io.on("connection", (socket) => {
       createdAt: Date.now(),
       dbCallId: dbCallId || null,
       ringTimer: null,
+      negotiationOwnerUserId: callerUserId,
+      ended: false,
     });
 
     setUserBusy(callerUserId, roomId);
@@ -1016,6 +1048,7 @@ io.on("connection", (socket) => {
       roomId,
       kind: callKind,
       isCaller: true,
+      role: "caller",
     });
 
     ringToUser(callerUserId, roomId, callKind, "caller");
@@ -1030,6 +1063,13 @@ io.on("connection", (socket) => {
         roomId,
         calleeOnline: false,
       });
+
+      logCALL("call:request queued", {
+        roomId,
+        callerUserId,
+        calleeUserId,
+        callKind,
+      });
       return;
     }
 
@@ -1040,40 +1080,54 @@ io.on("connection", (socket) => {
       roomId,
       calleeOnline: true,
     });
+
+    logCALL("call:request", {
+      roomId,
+      callerUserId,
+      calleeUserId,
+      callKind,
+    });
   });
 
-  socket.on("call:accept", async ({ roomId }) => {
+  socket.on("call:accept", ({ roomId }) => {
     const sess = callSessions.get(String(roomId));
-    if (!sess) return;
+    if (!sess || sess.ended) return;
 
     stopRingForSession(sess);
+
+    io.to(`call:${roomId}`).emit("call:accepted", {
+      roomId: String(roomId),
+      kind: sess.kind,
+      hostUserId: sess.hostUserId,
+      negotiationOwnerUserId: sess.negotiationOwnerUserId,
+    });
 
     for (const uid of sess.invitedUserIds || []) {
       io.to(`user:${uid}`).emit("call:accepted", {
         roomId: String(roomId),
         kind: sess.kind,
         hostUserId: sess.hostUserId,
+        negotiationOwnerUserId: sess.negotiationOwnerUserId,
       });
       stopRingToUser(uid, roomId);
     }
 
-    io.to(`call:${roomId}`).emit("call:accepted", {
-      roomId: String(roomId),
-      kind: sess.kind,
-      hostUserId: sess.hostUserId,
-    });
+    logCALL("call:accept", { roomId: String(roomId) });
   });
 
   socket.on("call:reject", async ({ roomId }) => {
     const sess = callSessions.get(String(roomId));
     if (!sess) return;
 
+    sess.ended = true;
     stopRingForSession(sess);
     clearBusyForSession(sess);
 
     for (const uid of sess.invitedUserIds || []) {
       removeQueuedIncomingCall(uid, sess.roomId);
     }
+
+    await dbEndCall(roomId);
 
     io.to(`call:${roomId}`).emit("call:ended", {
       roomId: String(roomId),
@@ -1088,49 +1142,70 @@ io.on("connection", (socket) => {
       stopRingToUser(uid, roomId);
     }
 
+    if (sess.ringTimer) clearTimeout(sess.ringTimer);
+    callSessions.delete(String(roomId));
+
+    logCALL("call:reject", { roomId: String(roomId) });
+  });
+
+  socket.on("call:join", async ({ roomId }, cb) => {
+    const sess = callSessions.get(String(roomId));
+    if (!sess || sess.ended) {
+      cb?.({ ok: false, error: "Call session not found." });
+      return socket.emit("call:error", { message: "Call session not found." });
+    }
+
+    const meId = socket.data.user?.id ? String(socket.data.user.id) : null;
+    if (!meId) {
+      cb?.({ ok: false, error: "Login required." });
+      return socket.emit("call:error", { message: "Login required." });
+    }
+
+    socket.join(`call:${roomId}`);
+    sess.joinedUserIds.add(meId);
+    callSessions.set(String(roomId), sess);
+
+    removeQueuedIncomingCall(meId, roomId);
+    setUserBusy(meId, roomId);
+
     if (sess.ringTimer) {
       clearTimeout(sess.ringTimer);
       sess.ringTimer = null;
     }
 
-    callSessions.delete(String(roomId));
-  });
-
-  socket.on("call:join", async ({ roomId }) => {
-    const sess = callSessions.get(String(roomId));
-    if (!sess) {
-      return socket.emit("call:error", { message: "Call session not found." });
-    }
-
-    const meId = socket.data.user?.id ? String(socket.data.user.id) : null;
-    socket.join(`call:${roomId}`);
-
-    if (meId) {
-      sess.joinedUserIds.add(meId);
-      callSessions.set(String(roomId), sess);
-
-      removeQueuedIncomingCall(meId, roomId);
-      setUserBusy(meId, roomId);
-
-      if (sess.ringTimer) {
-        clearTimeout(sess.ringTimer);
-        sess.ringTimer = null;
-      }
-
-      if (sess.dbCallId) {
-        await dbMarkJoined(sess.dbCallId, meId);
-        await dbActivateIfTwoJoined(sess.dbCallId);
-      }
+    if (sess.dbCallId) {
+      await dbMarkJoined(sess.dbCallId, meId);
+      await dbActivateIfTwoJoined(sess.dbCallId);
     }
 
     const room = io.sockets.adapter.rooms.get(`call:${roomId}`);
-    const count = room ? room.size : 0;
+    const peerSocketIds = room
+      ? Array.from(room).filter((sid) => sid !== socket.id)
+      : [];
+
+    const joinedUserIds = Array.from(sess.joinedUserIds || []);
+    const joinedCount = joinedUserIds.length;
+    const shouldCreateOffer =
+      String(meId) === String(sess.negotiationOwnerUserId);
+
+    socket.emit("call:joined", {
+      roomId: String(roomId),
+      yourSocketId: socket.id,
+      peerSocketIds,
+      hostUserId: sess.hostUserId,
+      negotiationOwnerUserId: sess.negotiationOwnerUserId,
+      shouldCreateOffer,
+      joinedUserIds,
+      kind: sess.kind,
+    });
 
     io.to(`call:${roomId}`).emit("call:presence", {
       roomId: String(roomId),
-      count,
-      joinedUserIds: Array.from(sess.joinedUserIds || []),
+      count: room ? room.size : 0,
+      joinedCount,
+      joinedUserIds,
       hostUserId: sess.hostUserId,
+      negotiationOwnerUserId: sess.negotiationOwnerUserId,
     });
 
     socket.to(`call:${roomId}`).emit("call:peer-joined", {
@@ -1138,29 +1213,64 @@ io.on("connection", (socket) => {
       peerSocketId: socket.id,
       peerUserId: meId,
       hostUserId: sess.hostUserId,
+      negotiationOwnerUserId: sess.negotiationOwnerUserId,
     });
 
     emitCallParticipants(roomId);
 
-    if (count >= 2) {
+    if (joinedCount >= 2) {
       stopRingForSession(sess);
 
       io.to(`call:${roomId}`).emit("call:ready", {
         roomId: String(roomId),
         kind: sess.kind,
         hostUserId: sess.hostUserId,
-        joinedUserIds: Array.from(sess.joinedUserIds || []),
+        negotiationOwnerUserId: sess.negotiationOwnerUserId,
+        joinedUserIds,
       });
     }
+
+    cb?.({
+      ok: true,
+      roomId: String(roomId),
+      shouldCreateOffer,
+      hostUserId: sess.hostUserId,
+      negotiationOwnerUserId: sess.negotiationOwnerUserId,
+      joinedUserIds,
+    });
+
+    logCALL("call:join", {
+      roomId: String(roomId),
+      meId,
+      joinedCount,
+      shouldCreateOffer,
+    });
+  });
+
+  socket.on("call:renegotiate:owner", ({ roomId, ownerUserId }) => {
+    const sess = callSessions.get(String(roomId));
+    if (!sess || !ownerUserId) return;
+
+    sess.negotiationOwnerUserId = String(ownerUserId);
+    callSessions.set(String(roomId), sess);
+
+    io.to(`call:${roomId}`).emit("call:renegotiate:owner", {
+      roomId: String(roomId),
+      negotiationOwnerUserId: String(ownerUserId),
+    });
+
+    logCALL("call:renegotiate:owner", {
+      roomId: String(roomId),
+      ownerUserId: String(ownerUserId),
+    });
   });
 
   socket.on("call:end", async ({ roomId }) => {
     const sess = callSessions.get(String(roomId));
     logCALL("call:end", { roomId: String(roomId) });
 
-    await dbEndCall(roomId);
-
     if (sess) {
+      sess.ended = true;
       stopRingForSession(sess);
       clearBusyForSession(sess);
 
@@ -1172,7 +1282,16 @@ io.on("connection", (socket) => {
         clearTimeout(sess.ringTimer);
         sess.ringTimer = null;
       }
+    }
 
+    await dbEndCall(roomId);
+
+    io.to(`call:${roomId}`).emit("call:ended", {
+      roomId: String(roomId),
+      reason: "ended",
+    });
+
+    if (sess) {
       for (const uid of sess.invitedUserIds || []) {
         io.to(`user:${uid}`).emit("call:ended", {
           roomId: String(roomId),
@@ -1182,11 +1301,6 @@ io.on("connection", (socket) => {
       }
     }
 
-    io.to(`call:${roomId}`).emit("call:ended", {
-      roomId: String(roomId),
-      reason: "ended",
-    });
-
     callSessions.delete(String(roomId));
   });
 
@@ -1194,15 +1308,15 @@ io.on("connection", (socket) => {
     const sess = callSessions.get(String(roomId));
     if (!sess) return;
 
-    logCALL("call:cancel", { roomId: String(roomId) });
-    await dbEndCall(roomId);
-
+    sess.ended = true;
     stopRingForSession(sess);
     clearBusyForSession(sess);
 
     for (const uid of sess.invitedUserIds || []) {
       removeQueuedIncomingCall(uid, sess.roomId);
     }
+
+    await dbEndCall(roomId);
 
     io.to(`call:${roomId}`).emit("call:ended", {
       roomId: String(roomId),
@@ -1217,12 +1331,10 @@ io.on("connection", (socket) => {
       stopRingToUser(uid, roomId);
     }
 
-    if (sess.ringTimer) {
-      clearTimeout(sess.ringTimer);
-      sess.ringTimer = null;
-    }
-
+    if (sess.ringTimer) clearTimeout(sess.ringTimer);
     callSessions.delete(String(roomId));
+
+    logCALL("call:cancel", { roomId: String(roomId) });
   });
 
   socket.on("call:invite", async ({ roomId, toUserId }) => {
@@ -1250,8 +1362,8 @@ io.on("connection", (socket) => {
       fromName: from.username || `User${from.id}`,
       isGroup: true,
       from: String(from.id),
-      callerSocketId: socket.id,
       hostUserId: sess.hostUserId,
+      callerSocketId: socket.id,
     };
 
     const inviteeSocketId = onlineUsers.get(inviteeUserId);
@@ -1262,18 +1374,27 @@ io.on("connection", (socket) => {
 
     io.to(`user:${inviteeUserId}`).emit("call:incoming", incomingPayload);
     ringToUser(inviteeUserId, roomId, sess.kind, "callee");
+
+    logCALL("call:invite", {
+      roomId: String(roomId),
+      inviteeUserId,
+      byUserId: String(from.id),
+    });
   });
 
   /* =========================
-     DIRECT CALLS: WebRTC RELAY
+     DIRECT CALLS: FINAL WebRTC RELAY
   ========================= */
-  socket.on("call:webrtc:offer", ({ roomId, offer, to }) => {
+  socket.on("call:webrtc:offer", ({ roomId, offer, to, restartIce = false }) => {
     if (!roomId || !offer) return;
 
     const payload = {
       roomId: String(roomId),
       offer,
       from: socket.id,
+      fromSocketId: socket.id,
+      fromUserId: socket.data.user?.id ? String(socket.data.user.id) : null,
+      restartIce: !!restartIce,
     };
 
     if (to) return io.to(String(to)).emit("call:webrtc:offer", payload);
@@ -1287,6 +1408,8 @@ io.on("connection", (socket) => {
       roomId: String(roomId),
       answer,
       from: socket.id,
+      fromSocketId: socket.id,
+      fromUserId: socket.data.user?.id ? String(socket.data.user.id) : null,
     };
 
     if (to) return io.to(String(to)).emit("call:webrtc:answer", payload);
@@ -1300,6 +1423,8 @@ io.on("connection", (socket) => {
       roomId: String(roomId),
       candidate,
       from: socket.id,
+      fromSocketId: socket.id,
+      fromUserId: socket.data.user?.id ? String(socket.data.user.id) : null,
     };
 
     if (to) return io.to(String(to)).emit("call:webrtc:ice", payload);
@@ -1413,7 +1538,12 @@ io.on("connection", (socket) => {
 
       emitCallRoomState(roomId);
       emitCallRoomList();
-      logROOM("callroom:create", { roomId, roomName, roomKind, host: me.userId });
+      logROOM("callroom:create", {
+        roomId,
+        roomName,
+        roomKind,
+        host: me.userId,
+      });
     } catch (err) {
       logERR("callroom:create error:", err);
       cb?.({ error: "Failed to create room" });
@@ -1470,7 +1600,11 @@ io.on("connection", (socket) => {
 
       emitCallRoomState(roomId);
       emitCallRoomList();
-      logROOM("callroom:join", { roomId: String(roomId), userId: String(me.userId), socketId: socket.id });
+      logROOM("callroom:join", {
+        roomId: String(roomId),
+        userId: String(me.userId),
+        socketId: socket.id,
+      });
     } catch (err) {
       logERR("callroom:join error:", err);
       cb?.({ error: "Failed to join room" });
@@ -1488,7 +1622,8 @@ io.on("connection", (socket) => {
       }
 
       const sid = String(socket.id);
-      const leavingUser = (room.users || []).find((u) => String(u.socketId) === sid) || null;
+      const leavingUser =
+        (room.users || []).find((u) => String(u.socketId) === sid) || null;
 
       room.users = (room.users || []).filter((u) => String(u.socketId) !== sid);
       socket.leave(roomTarget(rid));
@@ -1511,7 +1646,10 @@ io.on("connection", (socket) => {
         return;
       }
 
-      if (leavingUser && String(room.hostUserId || "") === String(leavingUser.userId || "")) {
+      if (
+        leavingUser &&
+        String(room.hostUserId || "") === String(leavingUser.userId || "")
+      ) {
         const next = room.users[0];
         if (next) {
           room.hostUserId = String(next.userId || "");
@@ -1554,11 +1692,7 @@ io.on("connection", (socket) => {
   socket.on("callroom:webrtc:offer", (payload = {}) => {
     try {
       const rid = String(payload?.roomId || "");
-      const targetSocketId = String(
-        payload?.to ||
-        payload?.targetSocketId ||
-        ""
-      );
+      const targetSocketId = String(payload?.to || payload?.targetSocketId || "");
       const targetUserId = String(payload?.toUserId || "");
       const offer = payload?.offer || payload?.sdp || null;
 
@@ -1589,11 +1723,7 @@ io.on("connection", (socket) => {
   socket.on("callroom:webrtc:answer", (payload = {}) => {
     try {
       const rid = String(payload?.roomId || "");
-      const targetSocketId = String(
-        payload?.to ||
-        payload?.targetSocketId ||
-        ""
-      );
+      const targetSocketId = String(payload?.to || payload?.targetSocketId || "");
       const targetUserId = String(payload?.toUserId || "");
       const answer = payload?.answer || payload?.sdp || null;
 
@@ -1624,11 +1754,7 @@ io.on("connection", (socket) => {
   socket.on("callroom:webrtc:ice", (payload = {}) => {
     try {
       const rid = String(payload?.roomId || "");
-      const targetSocketId = String(
-        payload?.to ||
-        payload?.targetSocketId ||
-        ""
-      );
+      const targetSocketId = String(payload?.to || payload?.targetSocketId || "");
       const targetUserId = String(payload?.toUserId || "");
       const candidate = payload?.candidate || payload?.ice || null;
 
@@ -1657,7 +1783,7 @@ io.on("connection", (socket) => {
   });
 
   /* =========================
-     LIVE: WebRTC RELAY (host <-> viewer)
+     LIVE: WebRTC RELAY
   ========================= */
   socket.on("webrtc:offer", ({ liveId, to, offer }) => {
     if (!liveId || !to || !offer) return;
@@ -1706,7 +1832,10 @@ io.on("connection", (socket) => {
     if (hostUserId) ensureLiveSpeakerSet(liveId).add(hostUserId);
 
     emitLivePresence(liveId);
-    logLIVE("live:create", { liveId: String(liveId), hostSocketId: socket.id });
+    logLIVE("live:create", {
+      liveId: String(liveId),
+      hostSocketId: socket.id,
+    });
   });
 
   socket.on("live:join", ({ liveId }) => {
@@ -1881,12 +2010,43 @@ io.on("connection", (socket) => {
 
       const busyRoomId = userBusyRoom.get(String(offlineUserId));
       if (busyRoomId) {
-        userBusyRoom.delete(String(offlineUserId));
+        const sess = callSessions.get(String(busyRoomId));
+
         io.to(`call:${busyRoomId}`).emit("call:peer-left", {
           roomId: String(busyRoomId),
           userId: String(offlineUserId),
           socketId: socket.id,
         });
+
+        if (sess) {
+          sess.joinedUserIds?.delete?.(String(offlineUserId));
+
+          const joinedUserIds = Array.from(sess.joinedUserIds || []);
+          io.to(`call:${busyRoomId}`).emit("call:presence", {
+            roomId: String(busyRoomId),
+            joinedCount: joinedUserIds.length,
+            joinedUserIds,
+            hostUserId: sess.hostUserId,
+            negotiationOwnerUserId: sess.negotiationOwnerUserId,
+          });
+
+          if (
+            String(sess.negotiationOwnerUserId) === String(offlineUserId)
+          ) {
+            const nextOwner = joinedUserIds[0] || sess.hostUserId;
+            sess.negotiationOwnerUserId = String(nextOwner);
+            callSessions.set(String(busyRoomId), sess);
+
+            io.to(`call:${busyRoomId}`).emit("call:renegotiate:owner", {
+              roomId: String(busyRoomId),
+              negotiationOwnerUserId: String(nextOwner),
+            });
+          } else {
+            callSessions.set(String(busyRoomId), sess);
+          }
+        }
+
+        userBusyRoom.delete(String(offlineUserId));
       }
     }
 
