@@ -4758,4 +4758,541 @@ onBeforeUnmount(() => {
   }
 }
 
+
+/* =========================
+   MOBILE-FIRST ELITE OVERRIDES
+   Added to keep your existing logic intact while making the UI phone-friendly.
+========================= */
+
+.wrap {
+  width: 100%;
+  max-width: 100%;
+  overflow-x: hidden;
+  padding-bottom: 110px;
+}
+
+img, video {
+  max-width: 100%;
+}
+
+.main {
+  min-width: 0;
+}
+
+.panel,
+.composer,
+.heroCard,
+.dockCard,
+.rooms-left,
+.rooms-main,
+.dynamicIsland,
+.topbar,
+.eliteQuickRail,
+.modebar,
+.filterbar {
+  min-width: 0;
+}
+
+.modebar,
+.filterbar,
+.trendingRow,
+.heroActions,
+.top-actions,
+.rooms-top,
+.dockActions,
+.composerMetaRow,
+.upload-row,
+.miniAvatars,
+.toolsGrid,
+.callrooms-create {
+  flex-wrap: wrap;
+}
+
+.modebar,
+.filterbar,
+.eliteQuickRail,
+.trendingRow,
+.heroActions,
+.top-actions,
+.toolsGrid,
+.miniAvatars {
+  overflow-x: auto;
+  scrollbar-width: none;
+}
+
+.modebar::-webkit-scrollbar,
+.filterbar::-webkit-scrollbar,
+.eliteQuickRail::-webkit-scrollbar,
+.trendingRow::-webkit-scrollbar,
+.heroActions::-webkit-scrollbar,
+.top-actions::-webkit-scrollbar,
+.toolsGrid::-webkit-scrollbar,
+.miniAvatars::-webkit-scrollbar {
+  display: none;
+}
+
+.media,
+.post .media,
+.thread .media,
+video.media,
+img.media {
+  width: 100%;
+  height: auto;
+  max-height: 72vh;
+  object-fit: cover;
+  border-radius: 18px;
+}
+
+@media (max-width: 1100px) {
+  .dock {
+    grid-template-columns: 1fr !important;
+  }
+
+  .heroCard {
+    grid-template-columns: 1fr !important;
+  }
+
+  .heroStats {
+    grid-template-columns: repeat(3, minmax(0, 1fr)) !important;
+  }
+
+  .rooms {
+    grid-template-columns: 1fr !important;
+  }
+}
+
+@media (max-width: 820px) {
+  .wrap {
+    padding-left: 10px !important;
+    padding-right: 10px !important;
+    padding-top: 10px !important;
+    padding-bottom: 120px !important;
+  }
+
+  .topbar,
+  .eliteTopbar {
+    position: sticky;
+    top: 0;
+    z-index: 50;
+    padding: 10px 12px !important;
+    border-radius: 18px !important;
+    backdrop-filter: blur(18px);
+  }
+
+  .brand {
+    min-width: 0;
+    gap: 10px !important;
+  }
+
+  .brand-text,
+  .title,
+  .sub {
+    min-width: 0;
+  }
+
+  .title {
+    font-size: 1rem !important;
+    line-height: 1.1;
+  }
+
+  .sub {
+    font-size: .72rem !important;
+    opacity: .82;
+  }
+
+  .eliteLogo,
+  .logo {
+    width: 42px !important;
+    height: 42px !important;
+    min-width: 42px !important;
+    font-size: 20px !important;
+  }
+
+  .eliteTopActions,
+  .top-actions {
+    gap: 8px !important;
+    justify-content: flex-end;
+  }
+
+  .netBadge {
+    order: 10;
+    width: 100%;
+    justify-content: center;
+  }
+
+  .eliteQuickRail {
+    display: flex !important;
+    gap: 10px;
+    padding: 6px 2px 2px;
+    margin: 8px 0 10px;
+    overflow-x: auto;
+    scroll-snap-type: x proximity;
+  }
+
+  .quickRailBtn {
+    flex: 0 0 auto;
+    scroll-snap-align: start;
+    white-space: nowrap;
+  }
+
+  .dynamicIsland {
+    padding: 12px !important;
+    gap: 10px !important;
+    border-radius: 20px !important;
+  }
+
+  .dynamicIsland,
+  .islandCenter,
+  .islandRight {
+    display: grid !important;
+    grid-template-columns: 1fr;
+  }
+
+  .islandLeft,
+  .islandCenter,
+  .islandRight {
+    width: 100%;
+  }
+
+  .islandCenter {
+    grid-template-columns: repeat(2, minmax(0, 1fr)) !important;
+    gap: 8px !important;
+  }
+
+  .islandBtn,
+  .chip,
+  .btn,
+  .filterChip,
+  .mode,
+  .toolBtn,
+  .quickRailBtn {
+    min-height: 42px;
+  }
+
+  .heroStrip {
+    margin-top: 10px !important;
+  }
+
+  .heroCard {
+    padding: 16px !important;
+    border-radius: 22px !important;
+    gap: 14px !important;
+  }
+
+  .heroTitle {
+    font-size: 1.5rem !important;
+    line-height: 1.08;
+  }
+
+  .heroSub {
+    font-size: .95rem !important;
+  }
+
+  .heroActions {
+    display: flex;
+    flex-wrap: nowrap;
+    overflow-x: auto;
+    gap: 8px;
+    padding-bottom: 4px;
+  }
+
+  .heroActions .btn,
+  .heroActions .ghostBtn {
+    flex: 0 0 auto;
+    white-space: nowrap;
+  }
+
+  .heroStats {
+    display: grid !important;
+    grid-template-columns: repeat(2, minmax(0, 1fr)) !important;
+    gap: 10px !important;
+  }
+
+  .heroStat {
+    padding: 12px !important;
+    border-radius: 16px !important;
+  }
+
+  .dock,
+  .panel,
+  .dockCard,
+  .composer,
+  .toolsPanel,
+  .miniPanel,
+  .rooms-left,
+  .rooms-main {
+    border-radius: 20px !important;
+  }
+
+  .panel,
+  .dockCard,
+  .composer,
+  .toolsPanel,
+  .miniPanel,
+  .rooms-left,
+  .rooms-main {
+    padding: 14px !important;
+  }
+
+  .panel-head,
+  .composer-head,
+  .rooms-top {
+    gap: 10px !important;
+    align-items: flex-start !important;
+  }
+
+  .panel-title,
+  .rooms-title {
+    font-size: 1rem !important;
+  }
+
+  .toolsGrid {
+    display: grid !important;
+    grid-template-columns: repeat(2, minmax(0, 1fr)) !important;
+    gap: 10px !important;
+    overflow: visible;
+  }
+
+  .modebar,
+  .filterbar {
+    display: flex !important;
+    flex-wrap: nowrap !important;
+    gap: 8px !important;
+    padding: 6px 2px !important;
+    overflow-x: auto;
+  }
+
+  .mode-right,
+  .filterHint {
+    display: contents;
+  }
+
+  .mode,
+  .filterChip,
+  .trendChip,
+  .badgePill {
+    flex: 0 0 auto;
+    white-space: nowrap;
+  }
+
+  .searchWrap {
+    width: 100%;
+    min-width: 0;
+    order: 20;
+  }
+
+  .search,
+  .eliteSearch,
+  .selectControl,
+  .roomInput,
+  .rooms-input input {
+    width: 100% !important;
+    min-width: 0;
+  }
+
+  .composer-head {
+    align-items: center !important;
+  }
+
+  .composer-actions {
+    margin-left: auto;
+  }
+
+  .input,
+  textarea.input {
+    font-size: 16px !important;
+    min-height: 108px;
+  }
+
+  .composerMetaRow,
+  .upload-row,
+  .callrooms-create,
+  .rooms-input {
+    display: grid !important;
+    grid-template-columns: 1fr !important;
+    gap: 10px !important;
+  }
+
+  .file-pill,
+  .upload-row .btn,
+  .rooms-input .btn,
+  .callrooms-create .btn,
+  .callrooms-create .roomInput,
+  .callrooms-create .roomSelect {
+    width: 100%;
+  }
+
+  .miniAvatars {
+    display: flex !important;
+    flex-wrap: nowrap !important;
+    overflow-x: auto;
+    gap: 10px !important;
+  }
+
+  .miniAvatarWrap {
+    flex: 0 0 auto;
+  }
+
+  .peopleList {
+    display: grid !important;
+    gap: 10px !important;
+  }
+
+  .person.compact,
+  .callroom-card,
+  .live-big,
+  .post,
+  .thread {
+    padding: 12px !important;
+    border-radius: 18px !important;
+  }
+
+  .person.compact {
+    grid-template-columns: auto 1fr auto !important;
+    align-items: center;
+    gap: 10px !important;
+  }
+
+  .person-meta,
+  .who {
+    min-width: 0;
+  }
+
+  .person-name,
+  .name,
+  .callroom-name,
+  .live-big-title,
+  .rooms-title,
+  .rm-user {
+    overflow: hidden;
+    text-overflow: ellipsis;
+    white-space: nowrap;
+  }
+
+  .person-actions,
+  .actions,
+  .postPills {
+    gap: 8px !important;
+    flex-wrap: wrap;
+  }
+
+  .actions {
+    justify-content: flex-start !important;
+  }
+
+  .action-btn,
+  .iconbtn {
+    min-height: 40px;
+  }
+
+  .rooms-left {
+    display: flex !important;
+    gap: 8px;
+    overflow-x: auto;
+    padding-bottom: 8px !important;
+  }
+
+  .rooms-left .room,
+  .rooms-left .rooms-head,
+  .rooms-left .rooms-hint {
+    flex: 0 0 auto;
+    white-space: nowrap;
+  }
+
+  .rooms-main {
+    margin-top: 10px;
+  }
+
+  .rooms-messages {
+    max-height: 45vh !important;
+  }
+
+  .live-grid,
+  .callrooms-list,
+  .feed,
+  .following,
+  .threads {
+    display: grid !important;
+    grid-template-columns: 1fr !important;
+    gap: 12px !important;
+  }
+
+  .eliteBottomNav,
+  .bottomNav,
+  .bottom {
+    position: fixed !important;
+    left: 10px;
+    right: 10px;
+    bottom: max(10px, env(safe-area-inset-bottom));
+    z-index: 80;
+    padding: 10px 12px !important;
+    border-radius: 22px !important;
+    backdrop-filter: blur(20px);
+  }
+
+  .bn,
+  .createBn {
+    min-height: 56px;
+  }
+
+  .createBn {
+    transform: translateY(-12px) !important;
+  }
+
+  .createCore {
+    width: 56px !important;
+    height: 56px !important;
+    font-size: 30px !important;
+  }
+}
+
+@media (max-width: 560px) {
+  .wrap {
+    padding-left: 8px !important;
+    padding-right: 8px !important;
+  }
+
+  .topbar,
+  .eliteTopbar,
+  .dynamicIsland,
+  .heroCard,
+  .panel,
+  .dockCard,
+  .composer,
+  .rooms-left,
+  .rooms-main,
+  .eliteBottomNav,
+  .bottomNav,
+  .bottom {
+    border-radius: 16px !important;
+  }
+
+  .heroTitle {
+    font-size: 1.28rem !important;
+  }
+
+  .heroStats,
+  .toolsGrid,
+  .islandCenter {
+    grid-template-columns: 1fr 1fr !important;
+  }
+
+  .heroStatNum {
+    font-size: 1.15rem !important;
+  }
+
+  .bnT {
+    font-size: .68rem !important;
+  }
+
+  .label {
+    display: none;
+  }
+
+  .action-btn {
+    padding-left: 10px !important;
+    padding-right: 10px !important;
+  }
+}
+
 </style>
