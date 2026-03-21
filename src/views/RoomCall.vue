@@ -13,14 +13,12 @@
     <div class="bg-layer bg2"></div>
     <div class="bg-layer bg3"></div>
 
-    <!-- REACTION BURST -->
     <transition name="pop-reaction">
       <div v-if="reactionBurst" class="reaction-burst">
         {{ reactionBurst }}
       </div>
     </transition>
 
-    <!-- TOPBAR -->
     <header class="topbar glassy">
       <div class="top-left">
         <button class="chip ghost" @click="goBack">← Back</button>
@@ -50,14 +48,13 @@
       </div>
     </header>
 
-    <!-- HERO -->
     <section class="hero glassy">
       <div class="hero-left">
-        <div class="eyebrow">PULSE ROOM CALL</div>
+        <div class="eyebrow">ADDISGO ROOM CALL</div>
         <h1 class="hero-title">{{ roomName || "Future Room" }}</h1>
         <div class="hero-sub">
           {{ roomKindLabel }} with camera, mic, screen sharing, active speaker glow,
-          compact mode, cinematic mode, focus pinning, and stronger peer recovery.
+          compact mode, cinematic mode, focus pinning, low-data mode, and stronger peer recovery.
         </div>
 
         <div class="hero-badges">
@@ -100,7 +97,6 @@
       </div>
     </section>
 
-    <!-- PRESENCE -->
     <section class="presence-strip glassy">
       <div class="strip-head">
         <div class="panel-title">⚡ Live Presence</div>
@@ -126,10 +122,7 @@
 
       <div class="presence-list">
         <button class="presenceCard self" @click="focusTile('local')">
-          <div
-            class="presenceAvatar"
-            :class="{ speaking: isSpeaking('local') }"
-          >
+          <div class="presenceAvatar" :class="{ speaking: isSpeaking('local') }">
             {{ myInitial }}
           </div>
 
@@ -147,10 +140,7 @@
           class="presenceCard"
           @click="focusTile(p.socketId)"
         >
-          <div
-            class="presenceAvatar alt"
-            :class="{ speaking: isSpeaking(p.socketId) }"
-          >
+          <div class="presenceAvatar alt" :class="{ speaking: isSpeaking(p.socketId) }">
             {{ getInitialName(p.displayName || p.username || p.userId) }}
           </div>
 
@@ -167,7 +157,6 @@
     </section>
 
     <main class="main">
-      <!-- STAGE -->
       <section class="stage-wrap">
         <div class="stage-toolbar glassy">
           <div class="stage-left">
@@ -232,12 +221,8 @@
 
         <div
           class="video-stage"
-          :class="[
-            gridClass,
-            { focused: !!focusedTileId, cinematic: cinematicMode }
-          ]"
+          :class="[gridClass, { focused: !!focusedTileId, cinematic: cinematicMode }]"
         >
-          <!-- LOCAL TILE -->
           <article
             v-if="shouldShowLocalTile"
             class="tile selfTile glassy"
@@ -306,7 +291,6 @@
             </div>
           </article>
 
-          <!-- REMOTE TILES -->
           <article
             v-for="p in visibleRemoteParticipants"
             :key="p.socketId"
@@ -370,7 +354,6 @@
             </div>
           </article>
 
-          <!-- EMPTY -->
           <div
             v-if="visibleRemoteParticipants.length === 0 && (!focusedTileId || focusedTileId === 'local')"
             class="empty-state glassy"
@@ -378,7 +361,7 @@
             <div class="empty-emoji">✨</div>
             <div class="empty-title">Room is ready</div>
             <div class="empty-sub">
-              Share the invite link so others can join your Pulse room call.
+              Share the invite link so others can join your AddisGo room call.
             </div>
 
             <div class="empty-actions">
@@ -390,7 +373,6 @@
         </div>
       </section>
 
-      <!-- SIDE PANEL -->
       <aside class="side" :class="{ closed: !sidePanelOpen }">
         <section class="panel glassy">
           <div class="panel-head">
@@ -500,7 +482,6 @@
       </aside>
     </main>
 
-    <!-- BOTTOM BAR -->
     <footer class="bottomBar glassy">
       <button class="fab mute" :class="{ off: !micEnabled }" @click="toggleMic">
         {{ micEnabled ? "🎙" : "🔇" }}
@@ -534,13 +515,20 @@
 </template>
 
 <script setup>
-import { ref, computed, nextTick, onMounted, onBeforeUnmount, watch } from "vue"
+defineOptions({ name: "RoomCall" })
+
+import { ref, computed, nextTick, onMounted, onBeforeUnmount } from "vue"
 import { useRoute, useRouter } from "vue-router"
-import { createSocket } from "../api/socket"
+import { io } from "socket.io-client"
 
 const route = useRoute()
 const router = useRouter()
-const apiUrl = (import.meta.env.VITE_API_URL || "").trim()
+
+const API_BASE =
+  import.meta.env.VITE_API_URL ||
+  import.meta.env.VITE_SERVER_URL ||
+  "http://localhost:5000"
+
 const token = localStorage.getItem("token") || ""
 
 const me = (() => {
@@ -551,8 +539,8 @@ const me = (() => {
    ROOM / ROUTE
 ========================= */
 const roomId = computed(() => String(route.query.roomId || "").trim())
-const roomName = ref("")
-const roomKind = ref("video")
+const roomName = ref(String(route.query.name || ""))
+const roomKind = ref(String(route.query.kind || "video"))
 const joinedRoom = ref(false)
 const sidePanelOpen = ref(true)
 const focusedTileId = ref("")
@@ -582,7 +570,7 @@ const sessionDurationLabel = computed(() => {
 /* =========================
    SOCKET
 ========================= */
-let socket = null
+const socket = ref(null)
 const socketConnected = ref(false)
 const mySocketId = ref("")
 
@@ -604,7 +592,7 @@ const cameraStream = ref(null)
 const screenStream = ref(null)
 
 const micEnabled = ref(true)
-const camEnabled = ref(true)
+const camEnabled = ref(roomKind.value === "video")
 const screenSharing = ref(false)
 const speakerEnabled = ref(true)
 const lowDataMode = ref(false)
@@ -647,7 +635,7 @@ let speakerLoopRaf = null
 const dominantSpeakerLabel = computed(() => {
   if (!dominantSpeakerId.value) return "None"
   if (dominantSpeakerId.value === "local") return "You"
-  const p = remoteParticipants.value.find(x => String(x.socketId) === String(dominantSpeakerId.value))
+  const p = remoteParticipants.value.find((x) => String(x.socketId) === String(dominantSpeakerId.value))
   return p?.displayName || p?.username || `User #${p?.userId || "?"}`
 })
 
@@ -866,13 +854,15 @@ function currentUsername() {
 
 function safeReplaceRoomUsers(users = []) {
   roomUsers.value = Array.isArray(users)
-    ? users.map((u) => ({
-        userId: u?.userId ? String(u.userId) : "",
-        socketId: u?.socketId ? String(u.socketId) : "",
-        displayName: u?.displayName || u?.username || u?.name || "",
-        username: u?.username || "",
-        kind: u?.kind || roomKind.value || "video",
-      })).filter((u) => u.socketId)
+    ? users
+        .map((u) => ({
+          userId: u?.userId ? String(u.userId) : "",
+          socketId: u?.socketId ? String(u.socketId) : "",
+          displayName: u?.displayName || u?.username || u?.name || "",
+          username: u?.username || "",
+          kind: u?.kind || roomKind.value || "video",
+        }))
+        .filter((u) => u.socketId)
     : []
 }
 
@@ -919,6 +909,9 @@ function setRemoteVideoRef(socketId, el) {
       el.srcObject = stream
       el.muted = false
       el.volume = speakerEnabled.value ? 1 : 0.2
+      el.playsInline = true
+      el.autoplay = true
+      el.play?.().catch(() => {})
       attachSpeakerAnalysis(sid, stream)
     }
   } else {
@@ -955,12 +948,13 @@ function stopSessionTimer() {
 ========================= */
 async function loadTurnServers() {
   try {
-    const res = await fetch(`${apiUrl}/api/turn`)
+    const res = await fetch(`${API_BASE}/api/turn`)
     const data = await res.json()
 
     if (res.ok && data?.ok && Array.isArray(data?.iceServers) && data.iceServers.length) {
       rtcIceServers.value = data.iceServers
-      turnReady.value = true
+      const allUrls = data.iceServers.flatMap((s) => Array.isArray(s?.urls) ? s.urls : [s?.urls])
+      turnReady.value = allUrls.some((u) => String(u || "").includes("turn:"))
       return
     }
   } catch {}
@@ -971,7 +965,10 @@ async function loadTurnServers() {
 function getRtcConfig() {
   return {
     iceServers: rtcIceServers.value,
-    iceCandidatePoolSize: 10,
+    iceCandidatePoolSize: 20,
+    bundlePolicy: "max-bundle",
+    iceTransportPolicy: "all",
+    rtcpMuxPolicy: "require",
   }
 }
 
@@ -988,6 +985,7 @@ async function initLocalMedia() {
         echoCancellation: true,
         noiseSuppression: true,
         autoGainControl: true,
+        latency: 0,
       },
       video: wantsVideo
         ? {
@@ -1043,7 +1041,12 @@ function updateLocalPreview() {
   if (!localVideoRef.value) return
   if (roomKind.value !== "video" && !screenSharing.value) return
   const stream = getCurrentSendStream()
-  if (stream) localVideoRef.value.srcObject = stream
+  if (stream) {
+    localVideoRef.value.srcObject = stream
+    localVideoRef.value.muted = true
+    localVideoRef.value.playsInline = true
+    localVideoRef.value.play?.().catch(() => {})
+  }
 }
 
 function getActiveAudioTrack() {
@@ -1069,6 +1072,25 @@ function isPolitePeer(socketId) {
   return mine > theirs
 }
 
+function ensurePendingCandidateList(socketId) {
+  const sid = String(socketId)
+  if (!pendingIceCandidates.has(sid)) pendingIceCandidates.set(sid, [])
+  return pendingIceCandidates.get(sid)
+}
+
+async function flushPendingIce(socketId) {
+  const sid = String(socketId)
+  const pc = peerConnections.get(sid)
+  if (!pc || !pendingIceCandidates.has(sid)) return
+  const list = pendingIceCandidates.get(sid) || []
+  while (list.length) {
+    const c = list.shift()
+    try {
+      await pc.addIceCandidate(new RTCIceCandidate(c))
+    } catch {}
+  }
+}
+
 function buildPeerConnection(targetSocketId) {
   const sid = String(targetSocketId)
   if (peerConnections.has(sid)) return peerConnections.get(sid)
@@ -1078,6 +1100,7 @@ function buildPeerConnection(targetSocketId) {
   makingOffer.set(sid, false)
   ignoreOffer.set(sid, false)
   isSettingRemoteAnswerPending.set(sid, false)
+  ensurePendingCandidateList(sid)
 
   const sendStream = getCurrentSendStream() || localStream.value
   if (sendStream) {
@@ -1087,13 +1110,13 @@ function buildPeerConnection(targetSocketId) {
   }
 
   queueMicrotask(() => {
-    applyPeerQualityProfile().catch(() => {})
+    applyPeerQualityProfile(sid).catch(() => {})
   })
 
   pc.onicecandidate = (event) => {
-    if (!event.candidate || !socket) return
+    if (!event.candidate || !socket.value) return
 
-    socket.emit("callroom:webrtc:ice", {
+    socket.value.emit("callroom:webrtc:ice", {
       roomId: roomId.value,
       to: sid,
       targetSocketId: sid,
@@ -1124,6 +1147,7 @@ function buildPeerConnection(targetSocketId) {
       el.srcObject = stream
       el.muted = false
       el.volume = speakerEnabled.value ? 1 : 0.2
+      el.play?.().catch(() => {})
     }
 
     attachSpeakerAnalysis(sid, stream)
@@ -1135,13 +1159,8 @@ function buildPeerConnection(targetSocketId) {
     peerConnectionState.value = { ...peerConnectionState.value, [sid]: st }
     peerStatus.value = { ...peerStatus.value, [sid]: st }
 
-    if (st === "failed") {
-      retryPeer(sid)
-    }
-
-    if (["closed"].includes(st)) {
-      cleanupPeer(sid)
-    }
+    if (st === "failed") retryPeer(sid)
+    if (["closed"].includes(st)) cleanupPeer(sid)
   }
 
   pc.oniceconnectionstatechange = () => {
@@ -1174,12 +1193,17 @@ async function negotiateWithPeer(socketId) {
   try {
     makingOffer.set(sid, true)
 
-    const offer = await pc.createOffer()
+    const offer = await pc.createOffer({
+      offerToReceiveAudio: true,
+      offerToReceiveVideo: roomKind.value === "video",
+      voiceActivityDetection: true,
+    })
+
     if (pc.signalingState !== "stable") return
 
     await pc.setLocalDescription(offer)
 
-    socket.emit("callroom:webrtc:offer", {
+    socket.value.emit("callroom:webrtc:offer", {
       roomId: roomId.value,
       to: sid,
       targetSocketId: sid,
@@ -1195,6 +1219,36 @@ async function negotiateWithPeer(socketId) {
   }
 }
 
+async function applyPeerQualityProfile(socketId = null) {
+  const entries = socketId
+    ? [[String(socketId), peerConnections.get(String(socketId))]]
+    : Array.from(peerConnections.entries())
+
+  for (const [, pc] of entries) {
+    if (!pc) continue
+    for (const sender of pc.getSenders()) {
+      if (!sender?.track) continue
+      try {
+        const params = sender.getParameters() || {}
+        if (!params.encodings) params.encodings = [{}]
+
+        if (sender.track.kind === "video") {
+          params.degradationPreference = lowDataMode.value ? "maintain-framerate" : "balanced"
+          params.encodings[0].maxBitrate = lowDataMode.value ? 180000 : 550000
+          params.encodings[0].maxFramerate = lowDataMode.value ? 12 : 22
+          params.encodings[0].scaleResolutionDownBy = lowDataMode.value ? 1.35 : 1
+        }
+
+        if (sender.track.kind === "audio") {
+          params.encodings[0].maxBitrate = lowDataMode.value ? 24000 : 40000
+        }
+
+        await sender.setParameters(params)
+      } catch {}
+    }
+  }
+}
+
 async function replaceOutgoingTracks() {
   const audioTrack = getActiveAudioTrack()
   const videoTrack = roomKind.value === "video" ? getActiveVideoTrack() : null
@@ -1205,63 +1259,44 @@ async function replaceOutgoingTracks() {
     const audioSender = senders.find((s) => s.track?.kind === "audio")
     const videoSender = senders.find((s) => s.track?.kind === "video")
 
-    try {
-      if (audioSender && audioTrack) {
-        await audioSender.replaceTrack(audioTrack)
-      } else if (!audioSender && audioTrack) {
-        const stream = getCurrentSendStream() || localStream.value
-        if (stream) pc.addTrack(audioTrack, stream)
-      }
-    } catch (err) {
-      console.warn("replace audio failed", err)
+    if (audioSender && audioTrack) {
+      await audioSender.replaceTrack(audioTrack)
+    } else if (!audioSender && audioTrack) {
+      pc.addTrack(audioTrack, getCurrentSendStream())
     }
 
-    try {
+    if (roomKind.value === "video") {
       if (videoSender && videoTrack) {
         await videoSender.replaceTrack(videoTrack)
+      } else if (!videoSender && videoTrack) {
+        pc.addTrack(videoTrack, getCurrentSendStream())
       } else if (videoSender && !videoTrack) {
         await videoSender.replaceTrack(null)
-      } else if (!videoSender && videoTrack) {
-        const stream = getCurrentSendStream() || localStream.value
-        if (stream) pc.addTrack(videoTrack, stream)
       }
-    } catch (err) {
-      console.warn("replace video failed", err)
     }
 
-    try {
-      await negotiateWithPeer(sid)
-    } catch {}
+    await applyPeerQualityProfile(sid)
   }
-
-  updateLocalPreview()
 }
 
-async function handleOfferPayload(payload = {}) {
-  const rid = String(payload?.roomId || "")
-  if (rid && rid !== roomId.value) return
-
-  const from = String(
-    payload?.from ||
+async function handleIncomingOffer(payload) {
+  const sid = String(
     payload?.fromSocketId ||
     payload?.socketId ||
     payload?.senderSocketId ||
+    payload?.from ||
     ""
   )
+  const offer = payload?.offer || payload?.sdp
+  if (!sid || !offer) return
 
-  const offer = payload?.offer || payload?.sdp || null
-  if (!from || !offer) return
+  const pc = buildPeerConnection(sid)
+  const polite = peerMeta.get(sid)?.polite ?? false
+  const isMaking = makingOffer.get(sid) || false
+  const offerCollision = isMaking || pc.signalingState !== "stable"
 
-  await ensureLocalTracksReady()
-  const pc = buildPeerConnection(from)
-  const polite = !!peerMeta.get(from)?.polite
-
-  const offerCollision =
-    offer.type === "offer" &&
-    (makingOffer.get(from) || pc.signalingState !== "stable")
-
-  ignoreOffer.set(from, !polite && offerCollision)
-  if (ignoreOffer.get(from)) return
+  ignoreOffer.set(sid, !polite && offerCollision)
+  if (ignoreOffer.get(sid)) return
 
   try {
     if (offerCollision) {
@@ -1273,112 +1308,88 @@ async function handleOfferPayload(payload = {}) {
       await pc.setRemoteDescription(new RTCSessionDescription(offer))
     }
 
-    const queued = pendingIceCandidates.get(from) || []
-    for (const c of queued) {
-      try { await pc.addIceCandidate(new RTCIceCandidate(c)) } catch {}
-    }
-    pendingIceCandidates.delete(from)
+    await flushPendingIce(sid)
 
-    await pc.setLocalDescription(await pc.createAnswer())
+    const answer = await pc.createAnswer()
+    await pc.setLocalDescription(answer)
 
-    socket.emit("callroom:webrtc:answer", {
+    socket.value.emit("callroom:webrtc:answer", {
       roomId: roomId.value,
-      to: from,
-      targetSocketId: from,
+      to: sid,
+      targetSocketId: sid,
       answer: pc.localDescription,
       from: mySocketId.value,
     })
 
-    peerStatus.value = { ...peerStatus.value, [from]: "Answered" }
+    peerStatus.value = { ...peerStatus.value, [sid]: "Answer sent" }
   } catch (err) {
-    console.error("handleOfferPayload error:", err)
-    setError("Failed to answer incoming room offer.")
+    console.error("handleIncomingOffer error:", err)
   }
 }
 
-async function handleAnswerPayload(payload = {}) {
-  const rid = String(payload?.roomId || "")
-  if (rid && rid !== roomId.value) return
-
-  const from = String(
-    payload?.from ||
+async function handleIncomingAnswer(payload) {
+  const sid = String(
     payload?.fromSocketId ||
     payload?.socketId ||
     payload?.senderSocketId ||
+    payload?.from ||
     ""
   )
+  const answer = payload?.answer || payload?.sdp
+  if (!sid || !answer) return
 
-  const answer = payload?.answer || payload?.sdp || null
-  if (!from || !answer) return
-
-  const pc = peerConnections.get(from)
+  const pc = peerConnections.get(sid)
   if (!pc) return
+  if (pc.signalingState !== "have-local-offer") return
 
   try {
-    isSettingRemoteAnswerPending.set(from, true)
+    isSettingRemoteAnswerPending.set(sid, true)
     await pc.setRemoteDescription(new RTCSessionDescription(answer))
-    isSettingRemoteAnswerPending.set(from, false)
-
-    const queued = pendingIceCandidates.get(from) || []
-    for (const c of queued) {
-      try { await pc.addIceCandidate(new RTCIceCandidate(c)) } catch {}
-    }
-    pendingIceCandidates.delete(from)
-
-    peerStatus.value = { ...peerStatus.value, [from]: "Connected" }
+    await flushPendingIce(sid)
+    peerStatus.value = { ...peerStatus.value, [sid]: "Connected" }
   } catch (err) {
-    console.error("handleAnswerPayload error:", err)
+    console.error("handleIncomingAnswer error:", err)
   } finally {
-    isSettingRemoteAnswerPending.set(from, false)
+    isSettingRemoteAnswerPending.set(sid, false)
   }
 }
 
-async function handleIcePayload(payload = {}) {
-  const rid = String(payload?.roomId || "")
-  if (rid && rid !== roomId.value) return
-
-  const from = String(
-    payload?.from ||
+async function handleIncomingIce(payload) {
+  const sid = String(
     payload?.fromSocketId ||
     payload?.socketId ||
     payload?.senderSocketId ||
+    payload?.from ||
     ""
   )
+  const candidate = payload?.candidate || payload?.ice
+  if (!sid || !candidate) return
 
-  const candidate = payload?.candidate || payload?.ice || null
-  if (!from || !candidate) return
-  if (ignoreOffer.get(from)) return
-
-  const pc = peerConnections.get(from)
+  const pc = peerConnections.get(sid)
   if (!pc || !pc.remoteDescription) {
-    const queued = pendingIceCandidates.get(from) || []
-    queued.push(candidate)
-    pendingIceCandidates.set(from, queued)
+    ensurePendingCandidateList(sid).push(candidate)
     return
   }
 
   try {
     await pc.addIceCandidate(new RTCIceCandidate(candidate))
   } catch (err) {
-    console.warn("addIceCandidate failed", err)
+    if (!ignoreOffer.get(sid)) {
+      console.warn("handleIncomingIce failed", sid, err)
+    }
   }
 }
 
 function cleanupPeer(socketId) {
   const sid = String(socketId)
   const pc = peerConnections.get(sid)
-
-  if (pc) {
-    try {
-      pc.onicecandidate = null
-      pc.ontrack = null
-      pc.onnegotiationneeded = null
-      pc.close()
-    } catch {}
-  }
-
+  try { pc?.close?.() } catch {}
   peerConnections.delete(sid)
+
+  const stream = remoteStreams.get(sid)
+  try { stream?.getTracks?.().forEach((t) => t.stop()) } catch {}
   remoteStreams.delete(sid)
+  remoteVideoRefs.delete(sid)
   pendingIceCandidates.delete(sid)
   makingOffer.delete(sid)
   ignoreOffer.delete(sid)
@@ -1386,39 +1397,41 @@ function cleanupPeer(socketId) {
   peerMeta.delete(sid)
   detachSpeakerAnalysis(sid)
 
-  const el = remoteVideoRefs.get(sid)
-  if (el) {
-    try { el.srcObject = null } catch {}
-  }
-  remoteVideoRefs.delete(sid)
+  const nextStatus = { ...peerStatus.value }
+  delete nextStatus[sid]
+  peerStatus.value = nextStatus
 
-  const statusCopy = { ...peerStatus.value }
-  delete statusCopy[sid]
-  peerStatus.value = statusCopy
-
-  const connCopy = { ...peerConnectionState.value }
-  delete connCopy[sid]
-  peerConnectionState.value = connCopy
+  const nextPcState = { ...peerConnectionState.value }
+  delete nextPcState[sid]
+  peerConnectionState.value = nextPcState
 }
 
 async function retryPeer(socketId) {
   const sid = String(socketId)
-  if (!sid || sid === String(mySocketId.value)) return
+  const pc = peerConnections.get(sid)
+  if (!pc) return
 
-  cleanupPeer(sid)
-  await nextTick()
+  try {
+    const offer = await pc.createOffer({ iceRestart: true })
+    await pc.setLocalDescription(offer)
 
-  buildPeerConnection(sid)
-  setTimeout(async () => {
-    try {
-      await negotiateWithPeer(sid)
-    } catch {}
-  }, 250)
+    socket.value.emit("callroom:webrtc:offer", {
+      roomId: roomId.value,
+      to: sid,
+      targetSocketId: sid,
+      offer: pc.localDescription,
+      from: mySocketId.value,
+    })
+
+    peerStatus.value = { ...peerStatus.value, [sid]: "Repairing..." }
+  } catch (err) {
+    console.warn("retryPeer failed", sid, err)
+  }
 }
 
 async function forceReconnectPeers() {
-  for (const p of remoteParticipants.value) {
-    await retryPeer(p.socketId)
+  for (const sid of peerConnections.keys()) {
+    await retryPeer(sid)
   }
   setNotice("Peer repair started.")
 }
@@ -1427,11 +1440,7 @@ async function forceReconnectPeers() {
    SCREEN SHARE
 ========================= */
 async function startScreenShare() {
-  if (roomKind.value !== "video") {
-    setError("Screen share is available in video rooms.")
-    return
-  }
-
+  if (roomKind.value !== "video") return
   try {
     const stream = await navigator.mediaDevices.getDisplayMedia({
       video: true,
@@ -1441,31 +1450,39 @@ async function startScreenShare() {
     screenStream.value = stream
     screenSharing.value = true
 
-    const track = stream.getVideoTracks?.()[0]
-    if (track) {
-      track.onended = async () => {
+    const videoTrack = stream.getVideoTracks?.()[0]
+    if (videoTrack) {
+      videoTrack.onended = async () => {
         await stopScreenShare()
       }
     }
 
     updateLocalPreview()
     await replaceOutgoingTracks()
+
+    for (const sid of peerConnections.keys()) {
+      await negotiateWithPeer(sid)
+    }
+
     setNotice("Screen sharing started.")
   } catch (err) {
-    console.error("startScreenShare error:", err)
-    setError("Screen sharing failed.")
+    console.warn("startScreenShare failed", err)
+    setError("Screen share failed.")
   }
 }
 
 async function stopScreenShare() {
-  try {
-    screenStream.value?.getTracks?.().forEach((t) => t.stop())
-  } catch {}
-
+  try { screenStream.value?.getTracks?.().forEach((t) => t.stop()) } catch {}
   screenStream.value = null
   screenSharing.value = false
+
   updateLocalPreview()
   await replaceOutgoingTracks()
+
+  for (const sid of peerConnections.keys()) {
+    await negotiateWithPeer(sid)
+  }
+
   setNotice("Screen sharing stopped.")
 }
 
@@ -1475,77 +1492,29 @@ async function toggleScreenShare() {
 }
 
 /* =========================
-   CONTROLS
+   UI ACTIONS
 ========================= */
-function toggleMic() {
-  const track = getActiveAudioTrack() || localStream.value?.getAudioTracks?.()[0]
-  if (!track) return
+async function toggleMic() {
+  if (!localStream.value) return
   micEnabled.value = !micEnabled.value
-  track.enabled = micEnabled.value
-  setNotice(micEnabled.value ? "Mic enabled." : "Mic muted.")
+  localStream.value.getAudioTracks().forEach((track) => {
+    track.enabled = micEnabled.value
+  })
+  emitMediaState()
+  setNotice(micEnabled.value ? "Mic on." : "Mic muted.")
 }
 
 async function toggleCamera() {
-  if (roomKind.value !== "video") return
-  const track = localStream.value?.getVideoTracks?.()[0]
-  if (!track) return
+  if (roomKind.value !== "video" || !localStream.value) return
   camEnabled.value = !camEnabled.value
-  track.enabled = camEnabled.value
-
-  try {
-    await replaceOutgoingTracks()
-  } catch {}
-
-  setNotice(camEnabled.value ? "Camera enabled." : "Camera off.")
-}
-
-
-async function applyPeerQualityProfile() {
-  for (const [sid, pc] of peerConnections.entries()) {
-    try {
-      for (const sender of pc.getSenders()) {
-        if (!sender?.track) continue
-        const params = sender.getParameters() || {}
-        if (!params.encodings) params.encodings = [{}]
-
-        if (sender.track.kind === "video") {
-          params.degradationPreference = lowDataMode.value ? "maintain-framerate" : "balanced"
-          params.encodings[0].maxBitrate = lowDataMode.value ? 180 * 1000 : 450 * 1000
-          params.encodings[0].maxFramerate = lowDataMode.value ? 12 : 20
-          params.encodings[0].scaleResolutionDownBy = lowDataMode.value ? 1.4 : 1
-        }
-
-        if (sender.track.kind === "audio") {
-          params.encodings[0].maxBitrate = lowDataMode.value ? 24 * 1000 : 40 * 1000
-        }
-
-        await sender.setParameters(params)
-      }
-    } catch (err) {
-      console.warn("applyPeerQualityProfile skip", sid, err)
-    }
+  localStream.value.getVideoTracks().forEach((track) => {
+    track.enabled = camEnabled.value
+  })
+  emitMediaState()
+  for (const sid of peerConnections.keys()) {
+    await negotiateWithPeer(sid)
   }
-}
-
-async function toggleLowDataMode() {
-  lowDataMode.value = !lowDataMode.value
-  setNotice(lowDataMode.value ? "Low data mode enabled." : "Balanced HD enabled.")
-
-  try {
-    const videoTrack = getActiveVideoTrack()
-    if (videoTrack) {
-      await videoTrack.applyConstraints({
-        width: lowDataMode.value ? { ideal: 640, max: 960 } : { ideal: 960, max: 1280 },
-        height: lowDataMode.value ? { ideal: 360, max: 540 } : { ideal: 540, max: 720 },
-        frameRate: lowDataMode.value ? { ideal: 12, max: 18 } : { ideal: 20, max: 24 },
-      })
-    }
-  } catch (err) {
-    console.warn("toggleLowDataMode applyConstraints skipped", err)
-  }
-
-  await applyPeerQualityProfile()
-  await forceReconnectPeers()
+  setNotice(camEnabled.value ? "Camera on." : "Camera off.")
 }
 
 function toggleSpeaker() {
@@ -1554,441 +1523,428 @@ function toggleSpeaker() {
   setNotice(speakerEnabled.value ? "Speaker on." : "Speaker lower.")
 }
 
-async function copyInvite() {
-  const url = `${window.location.origin}/room-call?roomId=${encodeURIComponent(roomId.value)}`
-  try {
-    await navigator.clipboard.writeText(url)
-    setNotice("Invite link copied.")
-  } catch {
-    window.prompt("Copy room link:", url)
-  }
-}
+async function toggleLowDataMode() {
+  lowDataMode.value = !lowDataMode.value
 
-async function copyRoomId() {
-  try {
-    await navigator.clipboard.writeText(String(roomId.value))
-    setNotice("Room ID copied.")
-  } catch {
-    window.prompt("Copy room ID:", String(roomId.value))
-  }
-}
-
-async function copyDiagnostics() {
-  const diag = {
-    roomId: roomId.value,
-    roomName: roomName.value,
-    roomKind: roomKind.value,
-    socketConnected: socketConnected.value,
-    joinedRoom: joinedRoom.value,
-    mySocketId: mySocketId.value,
-    participantCount: participantCount.value,
-    remoteParticipants: remoteParticipants.value.map((p) => ({
-      socketId: p.socketId,
-      userId: p.userId,
-      displayName: p.displayName,
-      state: peerConnectionState.value[p.socketId] || "",
-      status: peerStatus[p.socketId] || "",
-      speakingLevel: speakerLevelMap.value[p.socketId] || 0,
-    })),
-    micEnabled: micEnabled.value,
-    camEnabled: camEnabled.value,
-    screenSharing: screenSharing.value,
-    turnReady: turnReady.value,
-    compactMode: compactMode.value,
-    cinematicMode: cinematicMode.value,
-    mirrorLocal: mirrorLocal.value,
-    focusedTileId: focusedTileId.value,
-    dominantSpeakerId: dominantSpeakerId.value,
-    sessionDuration: sessionDurationLabel.value,
-    at: new Date().toISOString(),
+  if (cameraStream.value?.getVideoTracks?.()[0]) {
+    try {
+      await cameraStream.value.getVideoTracks()[0].applyConstraints({
+        width: lowDataMode.value ? { ideal: 640, max: 960 } : { ideal: 960, max: 1280 },
+        height: lowDataMode.value ? { ideal: 360, max: 540 } : { ideal: 540, max: 720 },
+        frameRate: lowDataMode.value ? { ideal: 12, max: 18 } : { ideal: 20, max: 24 },
+      })
+    } catch {}
   }
 
-  try {
-    await navigator.clipboard.writeText(JSON.stringify(diag, null, 2))
-    setNotice("Diagnostics copied.")
-  } catch {
-    window.alert(JSON.stringify(diag, null, 2))
-  }
+  await applyPeerQualityProfile()
+  setNotice(lowDataMode.value ? "Low data mode enabled." : "Balanced HD enabled.")
 }
 
 /* =========================
-   ROOM FLOW
+   ROOM ACTIONS
 ========================= */
 async function refreshRoomState() {
-  if (!socket || !roomId.value) return
+  if (!socket.value || !roomId.value) return
 
-  socket.emit("callroom:get", { roomId: roomId.value }, (res) => {
+  socket.value.emit("callroom:get", { roomId: roomId.value }, (res) => {
+    const room = res?.room
+    if (!room) return
+    roomName.value = room.name || roomName.value
+    roomKind.value = room.kind || roomKind.value
+    safeReplaceRoomUsers(room.users || room.participants || [])
+    setNotice("Room state refreshed.")
+  })
+}
+
+async function joinExistingRoom() {
+  if (!socket.value || !roomId.value) {
+    setError("Missing room id.")
+    return
+  }
+
+  await ensureLocalTracksReady()
+  updateLocalPreview()
+
+  socket.value.emit("callroom:join", { roomId: roomId.value }, async (res) => {
     if (res?.error) {
       setError(res.error)
       return
     }
 
-    const room = res?.room || res || {}
-    if (room?.name) roomName.value = String(room.name)
-    if (room?.kind) roomKind.value = room.kind === "audio" ? "audio" : "video"
-    if (Array.isArray(room?.users)) safeReplaceRoomUsers(room.users)
+    const room = res?.room
+    if (room) {
+      roomName.value = room.name || roomName.value
+      roomKind.value = room.kind || roomKind.value
+      safeReplaceRoomUsers(room.users || room.participants || [])
+    }
+
+    joinedRoom.value = true
+    emitMediaState()
+    startSessionTimer()
+    startSpeakerLoop()
+
+    await nextTick()
+    for (const p of remoteParticipants.value) {
+      buildPeerConnection(p.socketId)
+      await negotiateWithPeer(p.socketId)
+    }
   })
 }
 
-async function joinRoom() {
-  if (!roomId.value) {
-    setError("Missing roomId in URL.")
-    return
-  }
+async function createRoomIfNeeded() {
+  if (roomId.value) return
 
-  try {
-    await ensureLocalTracksReady()
+  await ensureLocalTracksReady()
+  updateLocalPreview()
 
-    socket.emit("callroom:join", { roomId: roomId.value }, async (res) => {
+  socket.value.emit(
+    "callroom:create",
+    {
+      name: route.query.name || `${currentUsername()}'s ${roomKind.value === "video" ? "Video" : "Audio"} Room`,
+      kind: roomKind.value,
+    },
+    (res) => {
       if (res?.error) {
-        setError(res.error || "Could not join room.")
+        setError(res.error)
         return
       }
 
-      joinedRoom.value = true
-      startSessionTimer()
-
-      const room = res?.room || {}
-      roomName.value = String(room?.name || roomId.value)
-      roomKind.value = room?.kind === "audio" ? "audio" : "video"
-
-      safeReplaceRoomUsers(room?.users || [])
-
-      await nextTick()
-      updateLocalPreview()
-
-      for (const user of roomUsers.value) {
-        const sid = String(user.socketId || "")
-        if (!sid || sid === String(mySocketId.value)) continue
-        buildPeerConnection(sid)
+      const room = res?.room
+      if (room?.roomId) {
+        router.replace({
+          path: "/roomcall",
+          query: {
+            roomId: room.roomId,
+            kind: room.kind || roomKind.value,
+            name: room.name || "",
+          },
+        })
       }
-
-      setTimeout(async () => {
-        for (const user of roomUsers.value) {
-          const sid = String(user.socketId || "")
-          if (!sid || sid === String(mySocketId.value)) continue
-          await negotiateWithPeer(sid)
-        }
-      }, 200)
-
-      setNotice("Joined room.")
-    })
-  } catch {}
+    }
+  )
 }
 
-function scheduleSocketReconnect() {
-  if (reconnectTimer) return
-  reconnectTimer = window.setTimeout(() => {
-    reconnectTimer = null
-    try {
-      socket?.connect?.()
-    } catch {}
-  }, 1200)
+function emitMediaState() {
+  if (!socket.value || !roomId.value || !joinedRoom.value) return
+  socket.value.emit("callroom:media-state", {
+    roomId: roomId.value,
+    micOn: micEnabled.value,
+    camOn: roomKind.value === "video" ? (screenSharing.value || camEnabled.value) : false,
+  })
 }
 
-function leaveRoom() {
+async function leaveRoom() {
   try {
-    socket?.emit("callroom:leave", { roomId: roomId.value })
+    if (screenSharing.value) await stopScreenShare()
   } catch {}
+
+  if (socket.value && roomId.value) {
+    socket.value.emit("callroom:leave", { roomId: roomId.value })
+  }
+
   cleanupAll()
   router.push("/dashboard")
 }
 
-function cleanupAll() {
-  joinedRoom.value = false
-  stopSessionTimer()
-  stopSpeakerLoop()
+/* =========================
+   COPY HELPERS
+========================= */
+async function copyInvite() {
+  const url = `${window.location.origin}/roomcall?roomId=${encodeURIComponent(roomId.value)}&kind=${encodeURIComponent(roomKind.value)}&name=${encodeURIComponent(roomName.value || "")}`
+  try {
+    await navigator.clipboard.writeText(url)
+    setNotice("Invite link copied.")
+  } catch {
+    setError("Could not copy invite.")
+  }
+}
 
-  for (const id of Array.from(peerConnections.keys())) {
-    cleanupPeer(id)
+async function copyRoomId() {
+  try {
+    await navigator.clipboard.writeText(roomId.value)
+    setNotice("Room ID copied.")
+  } catch {
+    setError("Could not copy room ID.")
+  }
+}
+
+async function copyDiagnostics() {
+  const payload = {
+    roomId: roomId.value,
+    roomName: roomName.value,
+    roomKind: roomKind.value,
+    joinedRoom: joinedRoom.value,
+    socketConnected: socketConnected.value,
+    mySocketId: mySocketId.value,
+    participantCount: participantCount.value,
+    remoteParticipants: remoteParticipants.value.map((p) => ({
+      socketId: p.socketId,
+      userId: p.userId,
+      displayName: p.displayName || p.username || "",
+      state: peerConnectionState.value[p.socketId] || "",
+    })),
+    micEnabled: micEnabled.value,
+    camEnabled: camEnabled.value,
+    screenSharing: screenSharing.value,
+    lowDataMode: lowDataMode.value,
+    turnReady: turnReady.value,
   }
 
-  try { localStream.value?.getTracks?.().forEach((t) => t.stop()) } catch {}
-  try { cameraStream.value?.getTracks?.().forEach((t) => t.stop()) } catch {}
-  try { screenStream.value?.getTracks?.().forEach((t) => t.stop()) } catch {}
-
-  detachSpeakerAnalysis("local")
-
-  localStream.value = null
-  cameraStream.value = null
-  screenStream.value = null
-  screenSharing.value = false
-
-  if (localVideoRef.value) {
-    try { localVideoRef.value.srcObject = null } catch {}
+  try {
+    await navigator.clipboard.writeText(JSON.stringify(payload, null, 2))
+    setNotice("Diagnostics copied.")
+  } catch {
+    setError("Could not copy diagnostics.")
   }
-
-  roomUsers.value = []
-  speakerLevelMap.value = {}
-  dominantSpeakerId.value = ""
 }
 
 /* =========================
-   SOCKET LISTENERS
+   SOCKET EVENTS
 ========================= */
-function attachSocketListeners() {
-  socket.on("connect", async () => {
+function wireSocketEvents() {
+  socket.value.on("connect", () => {
     socketConnected.value = true
-    mySocketId.value = String(socket.id || "")
+    mySocketId.value = socket.value.id || ""
 
-    try {
-      if (me?.id) {
-        socket.emit("user:online", { userId: String(me.id), username: currentUsername() })
-        socket.emit("register-user", { id: String(me.id), username: currentUsername() })
-      }
-    } catch {}
-
-    await refreshRoomState()
-    await joinRoom()
-  })
-
-  socket.on("disconnect", () => {
-    socketConnected.value = false
-    joinedRoom.value = false
-    stopSessionTimer()
-    scheduleSocketReconnect()
-  })
-
-  socket.on("callroom:state", async (payload = {}) => {
-    const rid = String(payload?.roomId || "")
-    if (rid && rid !== roomId.value) return
-
-    if (payload?.name) roomName.value = String(payload.name)
-    if (payload?.kind) roomKind.value = payload.kind === "audio" ? "audio" : "video"
-
-    safeReplaceRoomUsers(payload?.users || [])
-
-    for (const user of roomUsers.value) {
-      const sid = String(user.socketId || "")
-      if (!sid || sid === String(mySocketId.value)) continue
-      buildPeerConnection(sid)
+    if (me?.id) {
+      socket.value.emit("register-user", {
+        id: String(me.id),
+        username: currentUsername(),
+      })
     }
 
-    setTimeout(async () => {
-      for (const user of roomUsers.value) {
-        const sid = String(user.socketId || "")
-        if (!sid || sid === String(mySocketId.value)) continue
-        if (!peerConnections.has(sid)) continue
-        await negotiateWithPeer(sid)
-      }
-    }, 200)
+    if (roomId.value && !joinedRoom.value) {
+      joinExistingRoom().catch(() => {})
+    }
   })
 
-  socket.on("callroom:user-joined", async ({ roomId: rid, user } = {}) => {
-    if (String(rid || "") !== roomId.value) return
-    if (!user?.socketId) return
+  socket.value.on("disconnect", () => {
+    socketConnected.value = false
+    joinedRoom.value = false
+  })
 
-    const sid = String(user.socketId)
-    if (sid === String(mySocketId.value)) return
+  socket.value.on("callroom:created", ({ roomId: createdRoomId, room }) => {
+    if (!createdRoomId) return
+    router.replace({
+      path: "/roomcall",
+      query: {
+        roomId: createdRoomId,
+        kind: room?.kind || roomKind.value,
+        name: room?.name || roomName.value || "",
+      },
+    })
+  })
 
+  socket.value.on("callroom:state", async (payload) => {
+    roomName.value = payload?.name || roomName.value
+    roomKind.value = payload?.kind || roomKind.value
+    safeReplaceRoomUsers(payload?.users || payload?.participants || [])
+    joinedRoom.value = true
+
+    await nextTick()
+    for (const p of remoteParticipants.value) {
+      buildPeerConnection(p.socketId)
+    }
+  })
+
+  socket.value.on("callroom:user-joined", async ({ user }) => {
     mergeUserIntoRoom(user)
+    if (user?.socketId && String(user.socketId) !== String(mySocketId.value)) {
+      buildPeerConnection(user.socketId)
+      await negotiateWithPeer(user.socketId)
+    }
+  })
+
+  socket.value.on("callroom:peer-joined", async ({ user, socketId }) => {
+    const sid = user?.socketId || socketId
+    if (!sid || String(sid) === String(mySocketId.value)) return
+    if (user) mergeUserIntoRoom(user)
     buildPeerConnection(sid)
-
-    setTimeout(async () => {
-      if (!peerConnections.has(sid)) return
-      await negotiateWithPeer(sid)
-    }, 250)
-
-    setNotice("A participant joined.")
+    await negotiateWithPeer(sid)
   })
 
-  socket.on("callroom:user-left", ({ roomId: rid, socketId } = {}) => {
-    if (String(rid || "") !== roomId.value) return
-
-    const sid = String(socketId || "")
-    if (!sid) return
-
-    roomUsers.value = roomUsers.value.filter((u) => String(u.socketId) !== sid)
-
-    if (focusedTileId.value === sid) focusedTileId.value = ""
-    if (dominantSpeakerId.value === sid) dominantSpeakerId.value = ""
-
-    cleanupPeer(sid)
-    setNotice("A participant left.")
+  socket.value.on("callroom:user-left", ({ socketId }) => {
+    cleanupPeer(socketId)
+    roomUsers.value = roomUsers.value.filter((u) => String(u.socketId) !== String(socketId))
+    if (focusedTileId.value === String(socketId)) focusedTileId.value = ""
   })
 
-  socket.on("callroom:webrtc:offer", handleOfferPayload)
-  socket.on("callroom:webrtc:answer", handleAnswerPayload)
-  socket.on("callroom:webrtc:ice", handleIcePayload)
+  socket.value.on("callroom:peer-left", ({ socketId }) => {
+    cleanupPeer(socketId)
+    roomUsers.value = roomUsers.value.filter((u) => String(u.socketId) !== String(socketId))
+    if (focusedTileId.value === String(socketId)) focusedTileId.value = ""
+  })
 
-  socket.on("callroom:error", ({ message } = {}) => {
+  socket.value.on("callroom:webrtc:offer", async (payload) => {
+    await handleIncomingOffer(payload)
+  })
+
+  socket.value.on("callroom:webrtc:answer", async (payload) => {
+    await handleIncomingAnswer(payload)
+  })
+
+  socket.value.on("callroom:webrtc:ice", async (payload) => {
+    await handleIncomingIce(payload)
+  })
+
+  socket.value.on("callroom:error", ({ message }) => {
     setError(message || "Room call error.")
   })
 }
 
 /* =========================
-   WATCHERS
+   CLEANUP
 ========================= */
-watch(localStream, (stream) => {
-  if (stream) attachSpeakerAnalysis("local", stream)
-})
+function cleanupAll() {
+  stopSessionTimer()
+  stopSpeakerLoop()
 
-watch(
-  () => roomKind.value,
-  async (newKind, oldKind) => {
-    if (!oldKind || newKind === oldKind) return
-    if (!joinedRoom.value) return
+  try { localStream.value?.getTracks?.().forEach((t) => t.stop()) } catch {}
+  try { cameraStream.value?.getTracks?.().forEach((t) => t.stop()) } catch {}
+  try { screenStream.value?.getTracks?.().forEach((t) => t.stop()) } catch {}
 
-    try {
-      await initLocalMedia()
-      await replaceOutgoingTracks()
-      updateLocalPreview()
-    } catch (err) {
-      console.error("roomKind watcher error", err)
-    }
+  localStream.value = null
+  cameraStream.value = null
+  screenStream.value = null
+
+  if (localVideoRef.value) localVideoRef.value.srcObject = null
+
+  for (const sid of Array.from(peerConnections.keys())) {
+    cleanupPeer(sid)
   }
-)
+
+  joinedRoom.value = false
+  roomUsers.value = []
+  mySocketId.value = ""
+}
 
 /* =========================
    LIFECYCLE
 ========================= */
-function handleVisibilityChange() {
-  if (document.hidden && joinedRoom.value && !lowDataMode.value) {
-    lowDataMode.value = true
-    applyPeerQualityProfile().catch(() => {})
-  }
-}
-
 onMounted(async () => {
-  if (!token) {
-    router.push("/login")
-    return
-  }
+  await loadTurnServers()
+  await ensureLocalTracksReady()
+  updateLocalPreview()
+
+  socket.value = io(API_BASE, {
+    transports: ["websocket"],
+    auth: { token },
+  })
+
+  wireSocketEvents()
 
   if (!roomId.value) {
-    setError("No roomId provided.")
-    return
+    await createRoomIfNeeded()
+  } else {
+    startSessionTimer()
   }
 
-  await loadTurnServers()
-
-  socket = createSocket()
-  attachSocketListeners()
   startSpeakerLoop()
-  document.addEventListener("visibilitychange", handleVisibilityChange)
 })
 
 onBeforeUnmount(() => {
+  try { socket.value?.off("connect") } catch {}
+  try { socket.value?.off("disconnect") } catch {}
+  try { socket.value?.off("callroom:created") } catch {}
+  try { socket.value?.off("callroom:state") } catch {}
+  try { socket.value?.off("callroom:user-joined") } catch {}
+  try { socket.value?.off("callroom:peer-joined") } catch {}
+  try { socket.value?.off("callroom:user-left") } catch {}
+  try { socket.value?.off("callroom:peer-left") } catch {}
+  try { socket.value?.off("callroom:webrtc:offer") } catch {}
+  try { socket.value?.off("callroom:webrtc:answer") } catch {}
+  try { socket.value?.off("callroom:webrtc:ice") } catch {}
+  try { socket.value?.off("callroom:error") } catch {}
+
   try {
-    socket?.emit("callroom:leave", { roomId: roomId.value })
+    if (socket.value && roomId.value && joinedRoom.value) {
+      socket.value.emit("callroom:leave", { roomId: roomId.value })
+    }
   } catch {}
 
-  try { socket?.off("connect") } catch {}
-  try { socket?.off("disconnect") } catch {}
-  try { socket?.off("callroom:state") } catch {}
-  try { socket?.off("callroom:user-joined") } catch {}
-  try { socket?.off("callroom:user-left") } catch {}
-  try { socket?.off("callroom:webrtc:offer", handleOfferPayload) } catch {}
-  try { socket?.off("callroom:webrtc:answer", handleAnswerPayload) } catch {}
-  try { socket?.off("callroom:webrtc:ice", handleIcePayload) } catch {}
-  try { socket?.off("callroom:error") } catch {}
-  try { socket?.cleanupPulseSocket?.() } catch {}
-  try { socket?.disconnect?.() } catch {}
-  document.removeEventListener("visibilitychange", handleVisibilityChange)
+  try { socket.value?.disconnect?.() } catch {}
 
-  if (reconnectTimer) {
-    window.clearTimeout(reconnectTimer)
-    reconnectTimer = null
-  }
-
-  stopSessionTimer()
   cleanupAll()
-
-  try {
-    audioContext?.close?.()
-  } catch {}
-
-  audioContext = null
-  socket = null
 })
 </script>
 
 <style scoped>
 .roomcall-page {
+  --glass: rgba(12, 16, 28, 0.54);
+  --glass-border: rgba(255,255,255,0.1);
+  --text: #fff;
+  --muted: rgba(255,255,255,0.72);
+  --soft: rgba(255,255,255,0.06);
+  --danger: linear-gradient(135deg, #ff375f, #ff1744);
   min-height: 100vh;
-  color: #f7fbff;
-  background:
-    radial-gradient(circle at top left, rgba(83, 143, 255, 0.22), transparent 28%),
-    radial-gradient(circle at top right, rgba(255, 65, 120, 0.18), transparent 24%),
-    radial-gradient(circle at bottom center, rgba(16, 221, 180, 0.14), transparent 28%),
-    #08111f;
+  color: var(--text);
   position: relative;
-  overflow-x: hidden;
-  padding: 18px 18px 110px;
-}
-
-.roomcall-page.cinematicMode .side {
-  opacity: 0.92;
-}
-
-.roomcall-page.compactMode .tile {
-  min-height: 220px;
-}
-
-.roomcall-page.focusOnly .video-stage.focused .tile.big {
-  min-height: 68vh;
+  overflow: hidden;
+  background:
+    radial-gradient(900px 500px at 10% 0%, rgba(123,125,255,0.22), transparent 60%),
+    radial-gradient(760px 420px at 90% 0%, rgba(255,66,133,0.16), transparent 60%),
+    radial-gradient(720px 420px at 50% 100%, rgba(0,184,255,0.12), transparent 60%),
+    linear-gradient(180deg, #071126 0%, #08162d 48%, #071222 100%);
+  padding: calc(env(safe-area-inset-top, 0px) + 14px) 14px calc(env(safe-area-inset-bottom, 0px) + 96px);
 }
 
 .bg-layer {
-  position: fixed;
-  inset: 0;
+  position: absolute;
+  border-radius: 999px;
+  filter: blur(52px);
   pointer-events: none;
-  z-index: 0;
 }
-
 .bg1 {
-  background: radial-gradient(circle at 20% 10%, rgba(255,255,255,0.05), transparent 25%);
-  animation: floatA 14s ease-in-out infinite alternate;
+  width: 320px;
+  height: 320px;
+  left: -50px;
+  top: 60px;
+  background: rgba(120, 92, 255, 0.2);
 }
 .bg2 {
-  background: radial-gradient(circle at 80% 20%, rgba(0, 212, 255, 0.07), transparent 22%);
-  animation: floatB 16s ease-in-out infinite alternate;
+  width: 280px;
+  height: 280px;
+  right: -60px;
+  top: 160px;
+  background: rgba(255, 72, 128, 0.18);
 }
 .bg3 {
-  background: radial-gradient(circle at 55% 80%, rgba(124, 58, 237, 0.08), transparent 24%);
-  animation: floatC 18s ease-in-out infinite alternate;
-}
-
-@keyframes floatA {
-  from { transform: translateY(0) scale(1); }
-  to { transform: translateY(-18px) scale(1.03); }
-}
-@keyframes floatB {
-  from { transform: translateX(0) scale(1); }
-  to { transform: translateX(16px) scale(1.04); }
-}
-@keyframes floatC {
-  from { transform: translateY(0) translateX(0); }
-  to { transform: translateY(10px) translateX(-12px); }
+  width: 280px;
+  height: 280px;
+  left: 35%;
+  bottom: 40px;
+  background: rgba(35, 206, 255, 0.14);
 }
 
 .glassy {
-  background: rgba(255,255,255,0.075);
-  border: 1px solid rgba(255,255,255,0.08);
-  box-shadow: 0 20px 60px rgba(0,0,0,0.25);
-  backdrop-filter: blur(18px);
+  background: var(--glass);
+  border: 1px solid var(--glass-border);
+  backdrop-filter: blur(22px);
+  -webkit-backdrop-filter: blur(22px);
+  box-shadow:
+    0 14px 44px rgba(0,0,0,0.28),
+    inset 0 1px 0 rgba(255,255,255,0.06);
 }
 
 .topbar,
 .hero,
+.presence-strip,
 .stage-toolbar,
 .magic-toolbar,
 .panel,
-.bottomBar,
-.presence-strip {
+.bottomBar {
   position: relative;
   z-index: 2;
   border-radius: 24px;
 }
 
 .topbar {
-  padding: 14px 16px;
   display: flex;
   justify-content: space-between;
-  gap: 14px;
+  gap: 12px;
   align-items: center;
-  flex-wrap: wrap;
-  margin-bottom: 16px;
+  padding: 12px 14px;
+  margin-bottom: 12px;
 }
 
 .top-left,
@@ -2000,109 +1956,101 @@ onBeforeUnmount(() => {
 }
 
 .chip,
-.control,
+.magicChip,
 .btn,
 .toolBtn,
-.fab,
-.magicBtn,
-.magicChip,
-.presenceCard {
-  border: none;
-  color: #fff;
+.control,
+.fab {
+  border: 0;
   cursor: pointer;
-  transition: 0.18s ease;
-}
-
-.chip {
-  padding: 11px 14px;
-  border-radius: 999px;
-  background: rgba(255,255,255,0.11);
+  color: white;
   font-weight: 800;
-}
-
-.miniChip {
-  font-size: 12px;
-  padding: 10px 12px;
+  transition: transform .16s ease, background .16s ease, opacity .16s ease;
 }
 
 .chip:hover,
-.control:hover,
+.magicChip:hover,
 .btn:hover,
 .toolBtn:hover,
-.fab:hover,
-.magicBtn:hover,
-.magicChip:hover,
-.presenceCard:hover {
+.control:hover,
+.fab:hover {
   transform: translateY(-1px);
 }
 
-.chip.ghost {
+.chip {
+  padding: 10px 14px;
+  border-radius: 14px;
   background: rgba(255,255,255,0.08);
 }
-
+.chip.ghost {
+  background: rgba(255,255,255,0.06);
+}
 .chip.danger {
-  background: linear-gradient(135deg, #ff4d6d, #d90429);
+  background: var(--danger);
+}
+.miniChip {
+  font-size: 12px;
+  padding: 9px 12px;
 }
 
 .room-pill {
   display: flex;
   align-items: center;
-  gap: 12px;
-  padding: 10px 14px;
-  border-radius: 18px;
-  background: rgba(255,255,255,0.08);
+  gap: 10px;
+  padding: 10px 12px;
+  border-radius: 16px;
+  background: rgba(255,255,255,0.06);
 }
 
 .live-dot {
   width: 11px;
   height: 11px;
   border-radius: 999px;
-  background: #1ce783;
-  box-shadow: 0 0 14px #1ce783;
+  background: #25ff96;
+  box-shadow: 0 0 14px rgba(37,255,150,0.55);
 }
 
 .room-pill-title {
   font-weight: 900;
-  font-size: 15px;
 }
-
 .room-pill-sub {
-  opacity: 0.75;
   font-size: 12px;
+  color: var(--muted);
+  margin-top: 2px;
 }
 
 .hero {
-  padding: 22px;
   display: grid;
-  grid-template-columns: 1.3fr 0.7fr;
-  gap: 20px;
-  margin-bottom: 16px;
+  grid-template-columns: 1.4fr .85fr;
+  gap: 16px;
+  padding: 18px;
+  margin-bottom: 12px;
 }
 
 .eyebrow {
   font-size: 12px;
-  font-weight: 900;
-  letter-spacing: 0.18em;
-  opacity: 0.7;
+  letter-spacing: .14em;
+  color: #f6b5d0;
+  font-weight: 800;
 }
 
 .hero-title {
-  margin: 8px 0 10px;
-  font-size: clamp(28px, 4vw, 44px);
-  line-height: 1.02;
+  margin: 8px 0 6px;
+  font-size: 34px;
+  line-height: 1;
 }
 
 .hero-sub {
-  max-width: 760px;
-  opacity: 0.82;
-  line-height: 1.55;
+  color: var(--muted);
+  font-size: 14px;
+  line-height: 1.5;
 }
 
 .hero-badges {
-  margin-top: 16px;
   display: flex;
-  gap: 10px;
   flex-wrap: wrap;
+  gap: 8px;
+  margin-top: 14px;
 }
 
 .badge {
@@ -2110,61 +2058,53 @@ onBeforeUnmount(() => {
   border-radius: 999px;
   background: rgba(255,255,255,0.08);
   font-size: 12px;
-  font-weight: 800;
 }
-
 .badge.ok {
-  background: rgba(28,231,131,0.16);
-  color: #92ffc8;
+  background: rgba(36,255,158,0.12);
+  color: #9ef7ce;
 }
-
 .badge.bad {
-  background: rgba(255,77,109,0.16);
-  color: #ff9aaa;
+  background: rgba(255,92,120,0.14);
+  color: #ffc4d0;
 }
-
 .badge.accent {
-  background: linear-gradient(135deg, rgba(0,210,255,0.22), rgba(124,58,237,0.22));
+  background: linear-gradient(135deg, rgba(255,75,125,0.3), rgba(123,125,255,0.26));
 }
 
 .hero-right {
   display: grid;
   grid-template-columns: repeat(2, 1fr);
   gap: 12px;
-  align-content: start;
 }
 
 .hero-stat {
-  border-radius: 20px;
-  background: rgba(255,255,255,0.07);
-  padding: 18px 14px;
-  text-align: center;
+  border-radius: 22px;
+  padding: 16px;
+  background: rgba(255,255,255,0.06);
+  border: 1px solid rgba(255,255,255,0.08);
 }
-
 .hero-num {
   font-size: 24px;
   font-weight: 900;
 }
-
 .hero-lab {
-  font-size: 12px;
-  opacity: 0.72;
   margin-top: 6px;
+  font-size: 12px;
+  color: var(--muted);
 }
 
 .presence-strip {
   padding: 14px;
-  margin-bottom: 16px;
-  z-index: 2;
+  margin-bottom: 14px;
 }
 
 .strip-head {
   display: flex;
   justify-content: space-between;
-  gap: 12px;
+  gap: 10px;
   align-items: center;
-  flex-wrap: wrap;
   margin-bottom: 12px;
+  flex-wrap: wrap;
 }
 
 .strip-actions {
@@ -2173,686 +2113,546 @@ onBeforeUnmount(() => {
   flex-wrap: wrap;
 }
 
+.panel-title {
+  font-size: 15px;
+  font-weight: 900;
+}
+
 .presence-list {
   display: flex;
   gap: 10px;
   overflow-x: auto;
-  padding-bottom: 4px;
+  padding-bottom: 2px;
+  scrollbar-width: none;
+}
+.presence-list::-webkit-scrollbar {
+  display: none;
 }
 
 .presenceCard {
-  min-width: 150px;
-  display: flex;
-  align-items: center;
-  gap: 10px;
-  background: rgba(255,255,255,0.06);
+  min-width: 220px;
+  padding: 12px;
   border-radius: 18px;
-  padding: 10px 12px;
+  border: 1px solid rgba(255,255,255,0.08);
+  background: rgba(255,255,255,0.06);
+  color: white;
+  display: flex;
+  gap: 12px;
+  align-items: center;
   text-align: left;
 }
-
 .presenceCard.self {
-  background: rgba(0,210,255,0.1);
+  background: linear-gradient(135deg, rgba(255,75,125,0.22), rgba(123,125,255,0.18));
 }
 
-.presenceAvatar {
-  width: 38px;
-  height: 38px;
-  border-radius: 999px;
+.presenceAvatar,
+.avatar {
+  width: 44px;
+  height: 44px;
+  border-radius: 16px;
   display: grid;
   place-items: center;
   font-weight: 900;
-  background: linear-gradient(135deg, #00d2ff, #7c3aed);
-  flex: 0 0 auto;
-  box-shadow: 0 0 0 0 rgba(0,210,255,0.0);
+  background: linear-gradient(135deg, #ff4b7d, #7b7dff);
+}
+.presenceAvatar.alt,
+.avatar.alt {
+  background: linear-gradient(135deg, #5e87ff, #24d0ff);
+}
+.presenceAvatar.speaking,
+.avatar.speaking {
+  box-shadow: 0 0 0 4px rgba(38,255,163,0.16), 0 0 18px rgba(38,255,163,0.34);
 }
 
-.presenceAvatar.alt {
-  background: linear-gradient(135deg, #ff7a18, #ff416c);
-}
-
-.presenceAvatar.speaking {
-  box-shadow: 0 0 0 8px rgba(28,231,131,0.18), 0 0 28px rgba(28,231,131,0.30);
-}
-
-.presenceMeta {
+.presenceMeta,
+.tile-meta,
+.person-meta {
   min-width: 0;
 }
-
-.presenceName {
+.presenceName,
+.tile-name,
+.person-name {
   font-weight: 800;
-  font-size: 13px;
   white-space: nowrap;
   overflow: hidden;
   text-overflow: ellipsis;
 }
-
-.presenceSub {
-  font-size: 11px;
-  opacity: 0.72;
+.presenceSub,
+.tile-sub,
+.person-sub,
+.panel-sub {
+  color: var(--muted);
+  font-size: 12px;
+  margin-top: 4px;
 }
 
 .main {
+  display: grid;
+  grid-template-columns: 1.4fr .88fr;
+  gap: 14px;
   position: relative;
   z-index: 2;
-  display: grid;
-  grid-template-columns: 1.5fr 0.7fr;
-  gap: 16px;
 }
 
 .stage-wrap {
   min-width: 0;
 }
 
-.stage-toolbar {
-  padding: 14px;
-  display: flex;
-  justify-content: space-between;
-  gap: 12px;
-  flex-wrap: wrap;
-  margin-bottom: 14px;
-}
-
+.stage-toolbar,
 .magic-toolbar {
-  padding: 12px 14px;
   display: flex;
   justify-content: space-between;
-  gap: 12px;
-  flex-wrap: wrap;
-  margin-bottom: 14px;
-}
-
-.magic-left,
-.magic-right,
-.stage-left,
-.stage-right {
-  display: flex;
   gap: 10px;
+  align-items: center;
+  padding: 12px;
+  margin-bottom: 12px;
   flex-wrap: wrap;
 }
 
-.magicBtn {
-  width: 44px;
-  height: 44px;
-  border-radius: 14px;
-  background: rgba(255,255,255,0.1);
-  font-size: 20px;
+.stage-left,
+.stage-right,
+.magic-left,
+.magic-right {
+  display: flex;
+  gap: 8px;
+  flex-wrap: wrap;
 }
 
-.magicChip {
-  padding: 11px 14px;
+.control,
+.magicBtn,
+.magicChip,
+.toolBtn {
+  padding: 10px 14px;
   border-radius: 14px;
   background: rgba(255,255,255,0.08);
-  font-weight: 800;
+  font-size: 13px;
 }
-
-.control {
-  border-radius: 16px;
-  padding: 12px 14px;
-  background: rgba(255,255,255,0.1);
-  font-weight: 800;
+.control.active,
+.fab.on {
+  background: linear-gradient(135deg, rgba(255,75,125,0.34), rgba(123,125,255,0.28));
 }
-
-.control.active {
-  background: linear-gradient(135deg, rgba(0,210,255,0.24), rgba(124,58,237,0.24));
-}
-
 .control.ghost {
-  background: rgba(255,255,255,0.07);
-}
-
-.control:disabled {
-  opacity: 0.5;
-  cursor: not-allowed;
+  background: rgba(255,255,255,0.06);
 }
 
 .video-stage {
   display: grid;
-  gap: 16px;
+  gap: 12px;
 }
 
-.video-stage.grid-one {
+.grid-one {
   grid-template-columns: 1fr;
 }
-.video-stage.grid-two {
-  grid-template-columns: repeat(2, minmax(0, 1fr));
+.grid-two {
+  grid-template-columns: 1fr 1fr;
 }
-.video-stage.grid-four {
-  grid-template-columns: repeat(2, minmax(0, 1fr));
+.grid-four {
+  grid-template-columns: repeat(2, 1fr);
 }
-.video-stage.grid-many {
-  grid-template-columns: repeat(auto-fit, minmax(260px, 1fr));
+.grid-many {
+  grid-template-columns: repeat(3, 1fr);
 }
-.video-stage.grid-focus,
-.video-stage.focused {
+.grid-focus {
   grid-template-columns: 1fr;
-}
-
-.video-stage.cinematic .tile {
-  background: rgba(255,255,255,0.06);
-  border-color: rgba(0,210,255,0.15);
 }
 
 .tile {
-  border-radius: 26px;
+  min-height: 260px;
+  border-radius: 28px;
+  padding: 12px;
   overflow: hidden;
-  padding: 14px;
-  min-height: 280px;
-  display: flex;
-  flex-direction: column;
-  transition: transform 0.18s ease, box-shadow 0.18s ease, border-color 0.18s ease;
+  position: relative;
+  background: rgba(255,255,255,0.05);
+  border: 1px solid rgba(255,255,255,0.1);
 }
-
-.tile.compact {
-  min-height: 220px;
-}
-
 .tile.big {
-  min-height: 520px;
+  min-height: 460px;
 }
-
+.tile.compact {
+  min-height: 210px;
+}
 .tile.speaking {
-  border-color: rgba(28,231,131,0.22);
   box-shadow:
-    0 24px 64px rgba(0,0,0,0.30),
-    0 0 0 1px rgba(28,231,131,0.16),
-    0 0 34px rgba(28,231,131,0.10);
+    0 0 0 1px rgba(255,255,255,0.14),
+    0 0 0 4px rgba(36,255,162,0.14),
+    0 16px 42px rgba(0,0,0,0.24);
 }
-
 .tile.dominant {
-  border-color: rgba(0,210,255,0.24);
   box-shadow:
-    0 24px 64px rgba(0,0,0,0.30),
-    0 0 0 1px rgba(0,210,255,0.16),
-    0 0 40px rgba(0,210,255,0.10);
+    0 0 0 1px rgba(255,255,255,0.16),
+    0 0 0 5px rgba(255,75,125,0.14),
+    0 18px 48px rgba(0,0,0,0.28);
 }
 
 .tile-head {
+  position: absolute;
+  top: 12px;
+  left: 12px;
+  right: 12px;
+  z-index: 2;
   display: flex;
   justify-content: space-between;
-  gap: 10px;
+  gap: 8px;
   align-items: center;
-  margin-bottom: 12px;
 }
 
 .tile-user {
   display: flex;
-  gap: 12px;
+  gap: 10px;
   align-items: center;
   min-width: 0;
-}
-
-.tile-meta {
-  min-width: 0;
-}
-
-.tile-name {
-  font-weight: 900;
-  white-space: nowrap;
-  overflow: hidden;
-  text-overflow: ellipsis;
-}
-
-.tile-sub {
-  font-size: 12px;
-  opacity: 0.72;
-  margin-top: 3px;
-}
-
-.avatar {
-  width: 38px;
-  height: 38px;
-  border-radius: 999px;
-  display: grid;
-  place-items: center;
-  font-weight: 900;
-  background: linear-gradient(135deg, #00d2ff, #7c3aed);
-  flex: 0 0 auto;
-}
-
-.avatar.alt {
-  background: linear-gradient(135deg, #ff7a18, #ff416c);
-}
-
-.avatar.big {
-  width: 46px;
-  height: 46px;
-}
-
-.me-tag {
-  font-size: 11px;
-  font-weight: 900;
-  background: rgba(255,255,255,0.12);
-  padding: 4px 8px;
-  border-radius: 999px;
-  margin-left: 6px;
 }
 
 .tile-pills {
   display: flex;
   gap: 8px;
   flex-wrap: wrap;
+  justify-content: flex-end;
 }
 
 .pill {
   padding: 7px 10px;
   border-radius: 999px;
-  background: rgba(255,255,255,0.1);
+  background: rgba(0,0,0,0.34);
   font-size: 11px;
-  font-weight: 900;
 }
-
 .pill.off {
-  background: rgba(255,77,109,0.18);
-  color: #ffb4c1;
+  background: rgba(255,82,122,0.18);
+  color: #ffd0db;
 }
-
-.pill.ghostState {
-  text-transform: capitalize;
+.ghostState {
+  color: #dbe7ff;
 }
 
 .media-wrap {
+  min-height: 236px;
+  height: 100%;
   position: relative;
-  flex: 1;
-  min-height: 0;
 }
-
 .media {
   width: 100%;
   height: 100%;
-  min-height: 220px;
-  max-height: 72vh;
-  border-radius: 22px;
+  min-height: 236px;
   object-fit: cover;
-  background: #02060c;
+  border-radius: 22px;
+  background: #05070d;
 }
-
 .media.mirrored {
   transform: scaleX(-1);
 }
 
 .audio-room-card {
-  min-height: 220px;
   height: 100%;
+  min-height: 236px;
   border-radius: 22px;
   display: grid;
   place-items: center;
-  text-align: center;
+  align-content: center;
+  gap: 10px;
   background:
-    radial-gradient(circle at 50% 20%, rgba(0,210,255,0.18), transparent 30%),
-    linear-gradient(180deg, rgba(255,255,255,0.05), rgba(255,255,255,0.02));
-  padding: 20px;
+    radial-gradient(circle at 50% 20%, rgba(255,255,255,0.08), transparent 50%),
+    rgba(8, 12, 22, 0.72);
 }
-
 .audio-room-avatar {
-  width: 96px;
-  height: 96px;
-  border-radius: 999px;
+  width: 92px;
+  height: 92px;
+  border-radius: 28px;
   display: grid;
   place-items: center;
   font-size: 34px;
   font-weight: 900;
-  background: linear-gradient(135deg, #00d2ff, #7c3aed);
-  margin: 0 auto 14px;
+  background: linear-gradient(135deg, #ff4b7d, #7b7dff);
 }
-
 .audio-room-name {
-  font-size: 20px;
+  font-size: 24px;
   font-weight: 900;
 }
-
 .audio-room-sub {
-  opacity: 0.72;
-  margin-top: 8px;
+  color: var(--muted);
+  font-size: 14px;
 }
 
 .corner-status {
   position: absolute;
-  right: 12px;
-  bottom: 12px;
+  right: 16px;
+  bottom: 16px;
   padding: 8px 12px;
   border-radius: 999px;
-  background: rgba(0,0,0,0.45);
+  background: rgba(0,0,0,0.38);
   font-size: 11px;
-  font-weight: 900;
-  z-index: 2;
+  font-weight: 800;
 }
-
 .corner-status.remote {
-  text-transform: capitalize;
+  color: #dbe7ff;
 }
 
 .speaker-ring {
   position: absolute;
   inset: 0;
   border-radius: 22px;
-  border: 2px solid rgba(28,231,131,0.65);
+  box-shadow: 0 0 0 3px rgba(38,255,163,0.18), inset 0 0 40px rgba(38,255,163,0.08);
   pointer-events: none;
-  transition: 0.12s ease;
+}
+
+.me-tag {
+  display: inline-block;
+  margin-left: 6px;
+  font-size: 11px;
+  padding: 4px 7px;
+  border-radius: 999px;
+  background: rgba(255,255,255,0.12);
+  color: #fff;
+  vertical-align: middle;
 }
 
 .empty-state {
-  border-radius: 24px;
-  padding: 34px 20px;
+  padding: 28px;
+  border-radius: 28px;
   text-align: center;
-  min-height: 260px;
-  display: grid;
-  place-items: center;
 }
-
 .empty-emoji {
-  font-size: 44px;
+  font-size: 42px;
 }
-
 .empty-title {
   margin-top: 10px;
-  font-size: 22px;
+  font-size: 24px;
   font-weight: 900;
 }
-
 .empty-sub {
-  opacity: 0.75;
   margin-top: 8px;
-  max-width: 520px;
+  color: var(--muted);
 }
-
 .empty-actions {
   margin-top: 16px;
   display: flex;
-  gap: 10px;
   justify-content: center;
+  gap: 10px;
   flex-wrap: wrap;
 }
 
 .btn {
   padding: 12px 16px;
-  border-radius: 14px;
-  font-weight: 900;
-  background: rgba(255,255,255,0.12);
+  border-radius: 16px;
 }
-
-.btn.btn-primary {
-  background: linear-gradient(135deg, #00d2ff, #7c3aed);
+.btn-primary {
+  background: linear-gradient(135deg, #ff4b7d, #7b7dff);
 }
-
-.btn.ghostBtn {
+.ghostBtn {
   background: rgba(255,255,255,0.08);
 }
 
 .side {
-  min-width: 0;
-  display: grid;
-  gap: 16px;
-  align-content: start;
-  transition: 0.2s ease;
+  display: flex;
+  flex-direction: column;
+  gap: 12px;
 }
-
 .side.closed {
   display: none;
 }
 
 .panel {
-  border-radius: 24px;
-  padding: 16px;
+  padding: 14px;
 }
-
 .panel-head {
   display: flex;
   justify-content: space-between;
-  gap: 10px;
-  align-items: baseline;
-  margin-bottom: 14px;
-}
-
-.panel-title {
-  font-size: 18px;
-  font-weight: 900;
-}
-
-.panel-sub {
-  font-size: 12px;
-  opacity: 0.72;
+  gap: 8px;
+  align-items: center;
+  margin-bottom: 12px;
 }
 
 .people-list {
-  display: grid;
+  display: flex;
+  flex-direction: column;
   gap: 10px;
 }
-
 .person-card {
   display: flex;
-  align-items: center;
   gap: 12px;
+  align-items: center;
   padding: 12px;
   border-radius: 18px;
   background: rgba(255,255,255,0.06);
 }
-
 .person-card.self {
-  background: rgba(0,210,255,0.08);
+  background: linear-gradient(135deg, rgba(255,75,125,0.18), rgba(123,125,255,0.14));
 }
 
-.person-meta {
-  min-width: 0;
-}
-
-.person-name {
-  font-weight: 900;
-  white-space: nowrap;
-  overflow: hidden;
-  text-overflow: ellipsis;
-}
-
-.person-sub {
-  display: flex;
-  align-items: center;
-  gap: 8px;
-  opacity: 0.72;
-  font-size: 12px;
-  margin-top: 3px;
+.avatar.big {
+  width: 50px;
+  height: 50px;
+  border-radius: 18px;
 }
 
 .status-dot {
-  width: 8px;
-  height: 8px;
+  width: 10px;
+  height: 10px;
+  display: inline-block;
   border-radius: 999px;
-  background: #6b7280;
+  background: rgba(255,255,255,0.24);
+  margin-right: 6px;
 }
-
 .status-dot.on {
-  background: #1ce783;
-  box-shadow: 0 0 10px #1ce783;
+  background: #27ff9f;
+  box-shadow: 0 0 10px rgba(39,255,159,0.55);
 }
 
 .tools-grid {
   display: grid;
-  grid-template-columns: 1fr 1fr;
+  grid-template-columns: repeat(2, 1fr);
   gap: 10px;
 }
 
 .toolBtn {
-  padding: 12px 10px;
-  border-radius: 16px;
-  background: rgba(255,255,255,0.08);
-  font-weight: 800;
-}
-
-.diag-list {
-  display: grid;
-  gap: 10px;
-}
-
-.diag-row {
-  display: flex;
-  justify-content: space-between;
-  gap: 12px;
-  padding: 10px 12px;
-  border-radius: 14px;
-  background: rgba(255,255,255,0.05);
-  font-size: 13px;
-}
-
-.diag-row span {
-  opacity: 0.72;
-}
-
-.hint,
-.alert {
-  padding: 11px 12px;
-  border-radius: 14px;
-  font-size: 13px;
+  background: rgba(255,255,255,0.07);
+  text-align: left;
 }
 
 .hint {
-  background: rgba(255,255,255,0.07);
+  color: #dce8ff;
 }
-
 .alert {
-  background: rgba(255,77,109,0.12);
-  color: #ffc4cf;
+  color: #ffc3cf;
 }
 
-.mt10 {
-  margin-top: 10px;
+.diag-list {
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
+}
+.diag-row {
+  display: flex;
+  justify-content: space-between;
+  gap: 10px;
+  font-size: 13px;
+}
+.diag-row span {
+  color: var(--muted);
+}
+.diag-row strong {
+  text-align: right;
+  word-break: break-word;
 }
 
 .bottomBar {
   position: fixed;
-  left: 50%;
-  bottom: 16px;
-  transform: translateX(-50%);
-  width: min(92vw, 760px);
-  padding: 12px;
-  border-radius: 999px;
+  left: 14px;
+  right: 14px;
+  bottom: calc(env(safe-area-inset-bottom, 0px) + 12px);
+  z-index: 10;
   display: flex;
   justify-content: center;
   gap: 10px;
-  z-index: 5;
+  padding: 12px;
 }
 
 .fab {
-  width: 54px;
-  height: 54px;
-  border-radius: 999px;
-  display: grid;
-  place-items: center;
-  background: rgba(255,255,255,0.1);
+  width: 56px;
+  height: 56px;
+  border-radius: 18px;
+  background: rgba(255,255,255,0.08);
   font-size: 22px;
 }
-
-.fab.mute.off,
-.fab.cam.off {
-  background: rgba(255,77,109,0.18);
+.fab.off {
+  opacity: 0.7;
 }
-
-.fab.share.on {
-  background: linear-gradient(135deg, #00d2ff, #7c3aed);
-}
-
 .fab.end {
-  background: linear-gradient(135deg, #ff4d6d, #d90429);
+  background: linear-gradient(135deg, #ff375f, #ff1744);
 }
 
 .reaction-burst {
   position: fixed;
-  inset: 0;
-  display: grid;
-  place-items: center;
-  font-size: 88px;
+  inset: auto 50% 140px auto;
+  transform: translateX(50%);
+  font-size: 64px;
   z-index: 30;
   pointer-events: none;
-  text-shadow: 0 10px 40px rgba(0,0,0,0.45);
 }
 
 .pop-reaction-enter-active,
 .pop-reaction-leave-active {
-  transition: all 0.28s ease;
+  transition: all .24s ease;
 }
-
 .pop-reaction-enter-from,
 .pop-reaction-leave-to {
   opacity: 0;
-  transform: scale(0.8) translateY(16px);
+  transform: translateX(50%) scale(.7);
 }
 
 @media (max-width: 1100px) {
+  .hero,
   .main {
-    grid-template-columns: 1fr;
-  }
-
-  .side {
     grid-template-columns: 1fr;
   }
 }
 
 @media (max-width: 820px) {
-  .hero {
-    grid-template-columns: 1fr;
-  }
-
-  .hero-right {
-    grid-template-columns: repeat(2, 1fr);
-  }
-
-  .tools-grid {
-    grid-template-columns: 1fr 1fr;
-  }
-
-  .stage-toolbar,
-  .magic-toolbar {
-    flex-direction: column;
-    align-items: stretch;
-  }
-
-  .video-stage.grid-two,
-  .video-stage.grid-four {
-    grid-template-columns: 1fr;
-  }
-}
-
-@media (max-width: 640px) {
-  .roomcall-page {
-    padding: 12px 12px 100px;
-  }
-
-  .topbar,
-  .hero,
-  .panel,
-  .stage-toolbar,
-  .magic-toolbar,
-  .presence-strip {
-    border-radius: 20px;
-  }
-
-  .video-stage {
+  .grid-many,
+  .grid-four,
+  .grid-two {
     grid-template-columns: 1fr;
   }
 
   .tile.big {
-    min-height: 340px;
+    min-height: 320px;
   }
 
   .tools-grid {
     grid-template-columns: 1fr;
   }
+}
 
+@media (max-width: 700px) {
+  .roomcall-page {
+    padding: calc(env(safe-area-inset-top, 0px) + 10px) 10px calc(env(safe-area-inset-bottom, 0px) + 104px);
+  }
+
+  .topbar,
+  .hero,
+  .presence-strip,
+  .stage-toolbar,
+  .magic-toolbar,
+  .panel,
   .bottomBar {
-    width: calc(100vw - 20px);
-    gap: 8px;
-  }
-
-  .fab {
-    width: 50px;
-    height: 50px;
-    font-size: 20px;
-  }
-
-  .presenceCard {
-    min-width: 132px;
+    border-radius: 20px;
   }
 
   .hero-title {
-    font-size: 30px;
+    font-size: 28px;
+  }
+
+  .tile {
+    min-height: 220px;
+    border-radius: 24px;
+  }
+
+  .media,
+  .audio-room-card {
+    min-height: 200px;
+    border-radius: 18px;
+  }
+
+  .audio-room-avatar {
+    width: 74px;
+    height: 74px;
+    border-radius: 24px;
+    font-size: 28px;
+  }
+
+  .bottomBar {
+    left: 10px;
+    right: 10px;
+    justify-content: flex-start;
+    overflow-x: auto;
+    scrollbar-width: none;
+  }
+
+  .bottomBar::-webkit-scrollbar {
+    display: none;
+  }
+
+  .fab {
+    flex: 0 0 auto;
   }
 }
 </style>
