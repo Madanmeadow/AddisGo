@@ -18,24 +18,17 @@ const routes = [
 
   { path: "/dashboard", component: Dashboard },
 
-  // inbox list
   { path: "/inbox", component: Inbox },
-
-  // thread page
   { path: "/messages", component: Messages },
 
-  // people directory
   { path: "/people", component: People },
 
-  // live
   { path: "/live", component: Live },
 
-  // calls
   { path: "/call", component: Call },
   { path: "/roomcall", component: RoomCall },
-  { path: "/room-call", component: RoomCall }, // alias
+  { path: "/room-call", component: RoomCall },
 
-  // profile
   { path: "/profile/:id?", component: Profile },
 ];
 
@@ -45,7 +38,6 @@ const router = createRouter({
 });
 
 export default router;
-
 
 
 
