@@ -15,7 +15,7 @@
       <div v-else class="list">
         <div v-if="convos.length === 0" class="empty">
           <div class="big">No conversations yet</div>
-          <div class="small">Tip: open a Profile and tap “Message” (we can add that button next).</div>
+          <div class="small">Tip: go to People and tap Message.</div>
         </div>
 
         <button
@@ -88,10 +88,7 @@ async function load() {
   error.value = "";
 
   try {
-    // ✅ your backend is /conversations (no /api)
     const data = await apiFetch(`/conversations?userId=${me.id}`);
-
-    // Accept either array OR {conversations:[...]}
     const rows = Array.isArray(data) ? data : (data?.conversations || []);
     convos.value = rows;
   } catch (e) {

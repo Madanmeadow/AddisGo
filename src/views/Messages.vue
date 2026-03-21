@@ -1,101 +1,113 @@
 <template>
   <Layout>
     <div class="page">
-      <div class="top">
-        <button class="chip" @click="$router.push('/inbox')">← Inbox</button>
-        <div class="who">
-          <div class="name">💬 {{ title }}</div>
-          <div class="meta">Conversation: <b class="mono">{{ conversationId || "—" }}</b></div>
+      <div class="head">
+        <button class="back" @click="goInbox">← Inbox</button>
+
+        <div class="headMeta">
+          <div class="title">💬 Messages</div>
+          <div class="sub">Conversation: {{ chatName }}</div>
         </div>
-        <button class="chip" @click="load">↻</button>
+
+        <button class="refresh" @click="loadMessages">↻</button>
       </div>
 
-      <div class="card thread" ref="threadEl">
-        <div v-if="loading" class="state">Loading…</div>
-        <div v-else-if="error" class="state err">{{ error }}</div>
+      <div v-if="!conversationId" class="errorBox">
+        Missing conversationId (open chat from Inbox or People).
+      </div>
 
-        <div v-else>
-          <div v-if="msgs.length === 0" class="empty">
-            No messages yet. Say hi 👋
-          </div>
+      <template v-else>
+        <div class="messagesBox" ref="messagesBox">
+          <div v-if="loading" class="state">Loading…</div>
+          <div v-else-if="error" class="state err">{{ error }}</div>
 
-          <div
-            v-for="m in msgs"
-            :key="m.id || m.created_at || Math.random()"
-            :class="['msg', isMine(m) ? 'mine' : 'theirs']"
-          >
-            <div class="bubble">
-              <div class="text">{{ m.text || m.message || "" }}</div>
-              <div class="time">{{ formatTime(m.created_at || m.createdAt) }}</div>
+          <template v-else>
+            <div v-if="messages.length === 0" class="empty">
+              No messages yet. Start the conversation 👋
             </div>
-          </div>
-        </div>
-      </div>
 
-      <div class="composer">
-        <input
-          v-model="text"
-          class="input"
-          placeholder="Type message…"
-          @keydown.enter.prevent="send"
-        />
-        <button class="send" :disabled="sending || !text.trim()" @click="send">
-          {{ sending ? "…" : "Send" }}
-        </button>
-      </div>
+            <div
+              v-for="m in messages"
+              :key="m.id"
+              class="bubbleWrap"
+              :class="{ mine: String(m.sender_id) === String(me?.id || '') }"
+            >
+              <div class="bubble">
+                <div class="text">{{ m.text }}</div>
+                <div class="time">{{ formatTime(m.created_at) }}</div>
+              </div>
+            </div>
+          </template>
+        </div>
+
+        <div class="composer">
+          <input
+            v-model="draft"
+            class="input"
+            type="text"
+            placeholder="Type message..."
+            @keydown.enter="send"
+          />
+          <button class="send" @click="send" :disabled="sending || !draft.trim()">
+            {{ sending ? "..." : "Send" }}
+          </button>
+        </div>
+      </template>
     </div>
   </Layout>
 </template>
 
 <script setup>
-import { ref, computed, onMounted, nextTick } from "vue";
-import { useRoute } from "vue-router";
+import { nextTick, onMounted, ref } from "vue";
+import { useRoute, useRouter } from "vue-router";
 import Layout from "../components/Layout.vue";
-import apiFetch from "../utils/apiFetch.js";
+import apiFetch from "../apiFetch.js";
 
+const router = useRouter();
 const route = useRoute();
 
-const conversationId = computed(() => String(route.query.conversationId || ""));
-const otherUserId = computed(() => String(route.query.otherUserId || ""));
-const title = computed(() => String(route.query.name || "Messages"));
+const conversationId = route.query.conversationId || "";
+const chatName = route.query.name || "Chat";
 
-const msgs = ref([]);
 const loading = ref(false);
 const sending = ref(false);
 const error = ref("");
-const text = ref("");
-const threadEl = ref(null);
+const messages = ref([]);
+const draft = ref("");
+const messagesBox = ref(null);
 
 function getMe() {
   try { return JSON.parse(localStorage.getItem("user") || "null"); } catch { return null; }
 }
+const me = getMe();
 
-function isMine(m) {
-  const me = getMe();
-  return me?.id && String(m.sender_id || m.senderId) === String(me.id);
+function goInbox() {
+  router.push("/inbox");
 }
 
 function formatTime(v) {
   if (!v) return "";
   const d = new Date(v);
   if (isNaN(d.getTime())) return "";
-  return d.toLocaleString([], { hour: "2-digit", minute: "2-digit" });
+  return d.toLocaleString([], { month: "numeric", day: "numeric", hour: "2-digit", minute: "2-digit" });
 }
 
-async function scrollDown() {
+async function scrollBottom() {
   await nextTick();
-  if (threadEl.value) threadEl.value.scrollTop = threadEl.value.scrollHeight;
+  const el = messagesBox.value;
+  if (el) el.scrollTop = el.scrollHeight;
 }
 
-async function load() {
-  error.value = "";
+async function loadMessages() {
+  if (!conversationId) return;
+
   loading.value = true;
+  error.value = "";
 
   try {
-    // ✅ expects your backend to support GET /messages/:conversationId
-    const data = await apiFetch(`/messages/${conversationId.value}`);
-    msgs.value = Array.isArray(data) ? data : (data?.messages || []);
-    await scrollDown();
+    const data = await apiFetch(`/messages?conversationId=${conversationId}`);
+    messages.value = Array.isArray(data) ? data : (data?.messages || []);
+    await scrollBottom();
   } catch (e) {
     error.value = e?.message || "Failed to load messages";
   } finally {
@@ -104,29 +116,32 @@ async function load() {
 }
 
 async function send() {
-  const me = getMe();
-  if (!me?.id) return alert("Login again.");
-
-  const body = text.value.trim();
-  if (!body) return;
+  if (!conversationId || !draft.value.trim() || !me?.id) return;
 
   sending.value = true;
   error.value = "";
 
   try {
-    // ✅ POST /messages  (adjust keys if your routes use different ones)
-    await apiFetch(`/messages`, {
+    const payload = {
+      conversationId,
+      sender_id: me.id,
+      text: draft.value.trim(),
+    };
+
+    const created = await apiFetch("/messages", {
       method: "POST",
-      body: JSON.stringify({
-        conversationId: conversationId.value,
-        senderId: me.id,
-        receiverId: otherUserId.value || null,
-        text: body,
-      }),
+      body: JSON.stringify(payload),
     });
 
-    text.value = "";
-    await load(); // simple + reliable
+    const newMsg = created?.message || created;
+    if (newMsg?.id) {
+      messages.value.push(newMsg);
+    } else {
+      await loadMessages();
+    }
+
+    draft.value = "";
+    await scrollBottom();
   } catch (e) {
     error.value = e?.message || "Failed to send";
   } finally {
@@ -134,57 +149,43 @@ async function send() {
   }
 }
 
-onMounted(() => {
-  if (!conversationId.value) {
-    error.value = "Missing conversationId (open chat from Inbox).";
-    return;
-  }
-  load();
-});
+onMounted(loadMessages);
 </script>
 
 <style scoped>
-.page{max-width:980px;margin:0 auto;padding:18px}
-.top{display:flex;align-items:center;justify-content:space-between;gap:12px;margin-bottom:12px}
-.chip{border:none;border-radius:999px;padding:10px 14px;background:rgba(255,255,255,.12);color:#fff;font-weight:800}
-.who{flex:1;min-width:0}
-.name{font-size:20px;font-weight:900}
-.meta{opacity:.7;font-weight:700}
-.mono{font-family:ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas, "Liberation Mono", monospace}
-.card{
-  background:rgba(255,255,255,.08);
-  border:1px solid rgba(255,255,255,.12);
-  border-radius:18px;
-  padding:12px;
-  backdrop-filter: blur(10px);
+.page{max-width:980px;margin:0 auto;padding:18px;color:#fff}
+.head{display:flex;align-items:center;justify-content:space-between;gap:12px;margin-bottom:14px}
+.back,.refresh,.send{
+  border:none;border-radius:999px;padding:12px 16px;
+  background:rgba(255,255,255,.12);color:#fff;font-weight:800
 }
-.thread{height:58vh;overflow:auto}
-.state{padding:12px;border-radius:14px;background:rgba(255,255,255,.07)}
-.state.err{border:1px solid rgba(255,80,80,.35)}
-.empty{opacity:.7;padding:14px;text-align:center;font-weight:800}
-.msg{display:flex;margin:10px 0}
-.msg.mine{justify-content:flex-end}
+.headMeta{flex:1;min-width:0}
+.title{font-size:26px;font-weight:900}
+.sub{opacity:.75;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+.errorBox,.state,.empty{
+  padding:16px;border-radius:16px;background:rgba(255,255,255,.08)
+}
+.errorBox,.state.err{border:1px solid rgba(255,80,80,.35)}
+.messagesBox{
+  min-height:55vh;max-height:62vh;overflow:auto;padding:14px;border-radius:22px;
+  background:rgba(255,255,255,.07);border:1px solid rgba(255,255,255,.12)
+}
+.bubbleWrap{display:flex;margin-bottom:10px}
+.bubbleWrap.mine{justify-content:flex-end}
 .bubble{
-  max-width:78%;
-  padding:10px 12px;
-  border-radius:16px;
-  border:1px solid rgba(255,255,255,.12);
-  background:rgba(0,255,170,.14);
+  max-width:78%;padding:12px 14px;border-radius:18px;
+  background:rgba(255,255,255,.10);border:1px solid rgba(255,255,255,.12)
 }
-.msg.theirs .bubble{
-  background:rgba(255,255,255,.09);
-}
-.text{font-weight:800}
-.time{opacity:.65;font-size:12px;margin-top:4px;text-align:right}
-.composer{display:flex;gap:10px;margin-top:12px}
-.input{
-  flex:1;padding:12px 14px;border-radius:14px;border:1px solid rgba(255,255,255,.12);
-  background:rgba(0,0,0,.35);color:#fff;font-weight:800
-}
-.send{
-  padding:12px 16px;border:none;border-radius:14px;
+.bubbleWrap.mine .bubble{
   background:linear-gradient(45deg,#ff416c,#ff4b2b);
-  color:#fff;font-weight:900
+  border-color:transparent
 }
-.send:disabled{opacity:.6}
+.text{white-space:pre-wrap;word-break:break-word}
+.time{margin-top:6px;font-size:12px;opacity:.7}
+.composer{display:flex;gap:10px;margin-top:14px}
+.input{
+  flex:1;padding:14px 16px;border-radius:16px;border:1px solid rgba(255,255,255,.12);
+  background:rgba(0,0,0,.22);color:#fff;outline:none
+}
+.send{min-width:96px;background:linear-gradient(45deg,#ff416c,#ff4b2b)}
 </style>
