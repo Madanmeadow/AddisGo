@@ -22,9 +22,9 @@
             {{ socketConnected ? "Online" : "Offline" }}
           </button>
 
-          <button class="chip iconOnly" @click="openComposer">✍️</button>
-          <button class="chip iconOnly" @click="goPeople">👥</button>
-          <button class="chip iconOnly" @click="goLive">🔴</button>
+          <button class="chip iconOnly" @click="openComposer" aria-label="Create post">✍️</button>
+          <button class="chip iconOnly" @click="goPeople" aria-label="People">👥</button>
+          <button class="chip iconOnly" @click="goLive" aria-label="Go live">🔴</button>
         </div>
       </header>
 
@@ -114,7 +114,11 @@
               <input type="file" accept="video/*" hidden @change="pickVideo" />
             </label>
 
-            <button class="mediaBtn primaryBtn" @click="submitPost" :disabled="posting || !canSubmitPost">
+            <button
+              class="mediaBtn primaryBtn"
+              @click="submitPost"
+              :disabled="posting || !canSubmitPost"
+            >
               {{ posting ? "Posting..." : "Post 🚀" }}
             </button>
 
@@ -287,8 +291,6 @@
           <small>Inbox</small>
         </button>
 
-        <button class="navFab" @click="toggleFab">+</button>
-
         <button class="navBtn" @click="goLive">
           <span>🔴</span>
           <small>Live</small>
@@ -303,6 +305,8 @@
           <span>👤</span>
           <small>Profile</small>
         </button>
+
+        <button class="navFab floatingFab" @click="toggleFab" aria-label="Quick actions">+</button>
       </nav>
     </div>
   </Layout>
@@ -698,7 +702,7 @@ onBeforeUnmount(() => {
 .dashPage {
   position: relative;
   min-height: 100vh;
-  padding: 12px 12px 98px;
+  padding: 12px 12px calc(148px + env(safe-area-inset-bottom, 0px));
   color: white;
   background:
     radial-gradient(900px 580px at 0% 0%, rgba(255, 75, 125, 0.14), transparent),
@@ -725,6 +729,7 @@ onBeforeUnmount(() => {
   pointer-events: none;
   opacity: .34;
 }
+
 .orb1 {
   width: 220px;
   height: 220px;
@@ -732,6 +737,7 @@ onBeforeUnmount(() => {
   top: 80px;
   background: rgba(255, 65, 108, 0.32);
 }
+
 .orb2 {
   width: 260px;
   height: 260px;
@@ -746,6 +752,7 @@ onBeforeUnmount(() => {
   background: rgba(255,255,255,0.055);
   border: 1px solid rgba(255,255,255,0.11);
   backdrop-filter: blur(16px);
+  -webkit-backdrop-filter: blur(16px);
   box-shadow: 0 14px 44px rgba(0,0,0,0.28), inset 0 1px 0 rgba(255,255,255,0.04);
   border-radius: 24px;
 }
@@ -777,6 +784,7 @@ onBeforeUnmount(() => {
   align-items: center;
   gap: 10px;
   cursor: pointer;
+  min-width: 0;
 }
 
 .brandIcon {
@@ -788,6 +796,11 @@ onBeforeUnmount(() => {
   font-size: 28px;
   background: linear-gradient(135deg, #ff2a6d, #5b8cff);
   box-shadow: 0 12px 28px rgba(91,140,255,.22);
+  flex: 0 0 auto;
+}
+
+.brandText {
+  min-width: 0;
 }
 
 .brandTitle {
@@ -887,6 +900,7 @@ onBeforeUnmount(() => {
   font-size: 32px;
   line-height: 1.02;
   font-weight: 950;
+  word-break: break-word;
 }
 
 .heroSub,
@@ -956,6 +970,7 @@ onBeforeUnmount(() => {
   align-items: center;
   gap: 12px;
   cursor: pointer;
+  min-width: 0;
 }
 
 .authorAvatar,
@@ -970,6 +985,7 @@ onBeforeUnmount(() => {
   background: linear-gradient(135deg, #ff4b7d, #7b7dff);
   color: white;
   overflow: hidden;
+  flex: 0 0 auto;
 }
 
 .authorAvatarImg,
@@ -989,6 +1005,17 @@ onBeforeUnmount(() => {
 .feedAuthorSub {
   opacity: .72;
   font-size: 13px;
+}
+
+.feedAuthorMeta {
+  min-width: 0;
+}
+
+.feedAuthorName,
+.feedAuthorSub {
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
 }
 
 .composerInput {
@@ -1014,6 +1041,7 @@ onBeforeUnmount(() => {
   margin-top: 10px;
   opacity: .8;
   font-size: 14px;
+  word-break: break-word;
 }
 
 .primaryBtn {
@@ -1025,6 +1053,7 @@ onBeforeUnmount(() => {
   margin-top: 14px;
   line-height: 1.55;
   font-size: 16px;
+  word-break: break-word;
 }
 
 .feedMedia {
@@ -1042,6 +1071,7 @@ onBeforeUnmount(() => {
   background: rgba(255,77,98,.14);
   border: 1px solid rgba(255,77,98,.22);
   font-weight: 900;
+  flex: 0 0 auto;
 }
 
 .emptyFeed {
@@ -1062,14 +1092,16 @@ onBeforeUnmount(() => {
   position: fixed;
   left: 10px;
   right: 10px;
-  bottom: 10px;
+  bottom: calc(10px + env(safe-area-inset-bottom, 0px));
   z-index: 40;
-  min-height: 74px;
-  padding: 8px;
+  min-height: 80px;
+  padding: 10px 10px calc(12px + env(safe-area-inset-bottom, 0px));
   display: grid;
-  grid-template-columns: 1fr 1fr 72px 1fr 1fr 1fr;
-  align-items: center;
+  grid-template-columns: repeat(5, 1fr);
+  align-items: end;
   gap: 4px;
+  border-radius: 26px;
+  overflow: visible;
 }
 
 .navBtn {
@@ -1079,12 +1111,22 @@ onBeforeUnmount(() => {
   display: flex;
   flex-direction: column;
   align-items: center;
+  justify-content: center;
   gap: 4px;
   font-size: 11px;
+  min-height: 54px;
+  padding: 4px 2px;
 }
 
 .navBtn span {
   font-size: 20px;
+  line-height: 1;
+}
+
+.navBtn small {
+  font-size: 11px;
+  line-height: 1;
+  opacity: .92;
 }
 
 .navFab {
@@ -1099,19 +1141,28 @@ onBeforeUnmount(() => {
   box-shadow: 0 14px 28px rgba(124, 77, 255, 0.42);
 }
 
+.floatingFab {
+  position: absolute;
+  left: 50%;
+  top: 0;
+  transform: translate(-50%, -38%);
+  z-index: 3;
+}
+
 .fabOverlay {
   position: fixed;
   inset: 0;
   background: rgba(3, 8, 16, 0.54);
   z-index: 45;
   backdrop-filter: blur(4px);
+  -webkit-backdrop-filter: blur(4px);
 }
 
 .fabSheet {
   position: fixed;
   left: 12px;
   right: 12px;
-  bottom: 98px;
+  bottom: calc(108px + env(safe-area-inset-bottom, 0px));
   z-index: 50;
   padding: 16px;
 }
@@ -1169,10 +1220,12 @@ onBeforeUnmount(() => {
 .sheetUp-leave-active {
   transition: all .22s ease;
 }
+
 .fade-enter-from,
 .fade-leave-to {
   opacity: 0;
 }
+
 .sheetUp-enter-from,
 .sheetUp-leave-to {
   opacity: 0;
@@ -1187,9 +1240,50 @@ onBeforeUnmount(() => {
   .feedHead {
     align-items: flex-start;
   }
+}
+
+@media (max-width: 520px) {
+  .topBar {
+    flex-direction: column;
+    align-items: stretch;
+  }
+
+  .topBarActions {
+    justify-content: flex-start;
+  }
+
+  .brandTitle {
+    font-size: 18px;
+  }
+
+  .brandSub {
+    font-size: 12px;
+  }
+
+  .heroTitle {
+    font-size: 28px;
+  }
 
   .bottomNav {
-    grid-template-columns: 1fr 1fr 68px 1fr 1fr 1fr;
+    left: 8px;
+    right: 8px;
+    gap: 2px;
+    padding-left: 6px;
+    padding-right: 6px;
+  }
+
+  .navBtn span {
+    font-size: 18px;
+  }
+
+  .navBtn small {
+    font-size: 10px;
+  }
+
+  .floatingFab {
+    width: 56px;
+    height: 56px;
+    font-size: 28px;
   }
 }
 </style>
