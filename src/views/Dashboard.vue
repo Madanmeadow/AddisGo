@@ -1,1137 +1,1081 @@
 <!-- src/views/Dashboard.vue -->
 <template>
   <Layout>
-    <div class="dash-page">
-      <!-- ambient background -->
-      <div class="bg fx1"></div>
-      <div class="bg fx2"></div>
-      <div class="bg fx3"></div>
+    <div class="dashPage">
+      <div class="bg-orb orb1"></div>
+      <div class="bg-orb orb2"></div>
+      <div class="bg-grid"></div>
 
-      <!-- top app bar -->
-      <header class="topbar glass">
-        <div class="brand" @click="scrollToTop">
-          <div class="brand-logo">⚡</div>
-          <div class="brand-copy">
-            <h1>Pulse</h1>
-            <p>Elite social cockpit</p>
+      <!-- TOP BAR -->
+      <header class="topBar glass">
+        <div class="brandWrap" @click="goHome">
+          <div class="brandIcon">⚡</div>
+          <div class="brandText">
+            <div class="brandTitle">Pulse</div>
+            <div class="brandSub">Elite social cockpit</div>
           </div>
         </div>
 
-        <div class="topbar-actions">
-          <button class="top-pill ghost" @click="goTo('/people')">👥</button>
-          <button class="top-pill ghost" @click="goTo('/inbox')">💬</button>
-          <button class="top-pill live" @click="goTo('/live')">🔴 Live</button>
+        <div class="topBarActions">
+          <button class="chip online" :class="{ offline: !socketConnected }">
+            <span class="dot"></span>
+            {{ socketConnected ? "Online" : "Offline" }}
+          </button>
+
+          <button class="chip iconOnly" @click="openComposer">✍️</button>
+          <button class="chip iconOnly" @click="goPeople">👥</button>
+          <button class="chip iconOnly" @click="goLive">🔴</button>
         </div>
       </header>
 
-      <!-- compact hero -->
-      <section class="hero glass">
-        <div class="hero-left">
-          <div class="hello">WELCOME BACK</div>
-          <div class="hero-name">{{ displayName }}</div>
-          <div class="hero-line">
-            Build, post, call, stream, and run your world from one magical dashboard.
+      <!-- COMPACT HERO -->
+      <section class="heroCard glass">
+        <div class="heroTop">
+          <div>
+            <div class="heroEyebrow">WELCOME BACK</div>
+            <h1 class="heroTitle">{{ displayName }}</h1>
+            <p class="heroSub">
+              {{ greeting }}, build, post, call, and stream from one clean mobile dashboard.
+            </p>
           </div>
 
-          <div class="hero-tags">
-            <span class="tag success">{{ socketConnected ? "Socket Connected" : "Offline" }}</span>
-            <span class="tag">{{ onlineCount }} online</span>
-            <span class="tag">{{ liveCount }} live</span>
-            <span class="tag">{{ roomCount }} rooms</span>
-          </div>
+          <button class="heroMainBtn" @click="openComposer">Create Post</button>
         </div>
 
-        <div class="hero-right">
-          <button class="hero-action primary" @click="openComposer">Create Post</button>
-          <button class="hero-action" @click="goTo('/people')">People & Call</button>
+        <div class="heroStats">
+          <button class="miniStat glassLite" @click="setFilter('all')">
+            <strong>{{ stats.posts }}</strong>
+            <span>Posts</span>
+          </button>
+
+          <button class="miniStat glassLite" @click="setFilter('videos')">
+            <strong>{{ stats.videos }}</strong>
+            <span>Videos</span>
+          </button>
+
+          <button class="miniStat glassLite" @click="goPeople">
+            <strong>{{ serverStats.onlineUsers }}</strong>
+            <span>Online</span>
+          </button>
+
+          <button class="miniStat glassLite" @click="goLive">
+            <strong>{{ serverStats.liveStreams }}</strong>
+            <span>Live</span>
+          </button>
         </div>
       </section>
 
-      <!-- tiny status row -->
-      <section class="mini-stats">
-        <div class="mini-card glass">
-          <div class="mini-num">{{ postCount }}</div>
-          <div class="mini-label">Posts</div>
-        </div>
-        <div class="mini-card glass">
-          <div class="mini-num">{{ savedCount }}</div>
-          <div class="mini-label">Saved</div>
-        </div>
-        <div class="mini-card glass">
-          <div class="mini-num">{{ pinnedCount }}</div>
-          <div class="mini-label">Pinned</div>
-        </div>
-        <div class="mini-card glass">
-          <div class="mini-num">{{ unreadCount }}</div>
-          <div class="mini-label">Inbox</div>
-        </div>
-      </section>
+      <!-- COMPOSER -->
+      <section class="composerCard glass" :class="{ open: composerOpen }">
+        <div class="composerHead">
+          <div class="authorBlock" @click="goProfile(me.id)">
+            <div class="authorAvatar">
+              <img v-if="avatarUrl" :src="avatarUrl" class="authorAvatarImg" alt="avatar" />
+              <span v-else>{{ displayName.charAt(0).toUpperCase() }}</span>
+            </div>
 
-      <!-- quick composer -->
-      <section class="composer glass">
-        <div class="composer-head">
-          <div class="avatar">{{ avatarLetter }}</div>
-          <div class="composer-meta">
-            <div class="composer-name">{{ displayName }}</div>
-            <div class="composer-sub">Post to the world</div>
+            <div>
+              <div class="authorName">{{ displayName }}</div>
+              <div class="authorSub">Post to the world</div>
+            </div>
           </div>
-          <button class="tiny-btn" @click="toggleComposerExpanded">
-            {{ composerExpanded ? "Hide" : "Open" }}
+
+          <button class="pillBtn" @click="toggleComposer">
+            {{ composerOpen ? "Hide" : "Open" }}
           </button>
         </div>
 
-        <div class="composer-box" @click="openComposer">
-          What’s happening?
-        </div>
+        <div v-if="composerOpen">
+          <textarea
+            v-model="composerText"
+            class="composerInput"
+            placeholder="What’s happening?"
+            maxlength="500"
+          ></textarea>
 
-        <transition name="fade-up">
-          <div v-if="composerExpanded" class="composer-expanded">
-            <textarea
-              v-model="newPostText"
-              rows="4"
-              maxlength="1000"
-              placeholder="Write something powerful…"
-              class="composer-textarea"
-            ></textarea>
+          <div class="composerMeta">
+            <span>{{ composerText.length }} chars</span>
 
-            <div class="composer-tags-row">
-              <button class="soft-chip" @click="appendTag('#Pulse')">#Pulse</button>
-              <button class="soft-chip" @click="appendTag('#Reels')">#Reels</button>
-              <button class="soft-chip" @click="appendTag('#Live')">#Live</button>
-              <button class="soft-chip" @click="appendTag('#Update')">#Update</button>
-            </div>
-
-            <label class="upload-row">
-              <input type="file" accept="image/*" hidden @change="onImageChange" />
-              <span>🖼️ Image</span>
-              <small>{{ imageName || "No file selected" }}</small>
-            </label>
-
-            <label class="upload-row">
-              <input type="file" accept="video/*" hidden @change="onVideoChange" />
-              <span>🎥 Video</span>
-              <small>{{ videoName || "No file selected" }}</small>
-            </label>
-
-            <div class="composer-actions">
-              <button class="action-btn primary" :disabled="posting" @click="submitPost">
-                {{ posting ? "Posting..." : "Post 🚀" }}
-              </button>
-              <button class="action-btn" :disabled="posting" @click="resetComposer">Clear</button>
+            <div class="composerTags">
+              <button class="tagLite" @click="appendTag('#Pulse')">#Pulse</button>
+              <button class="tagLite" @click="appendTag('#Reels')">#Reels</button>
+              <button class="tagLite" @click="appendTag('#Live')">#Live</button>
             </div>
           </div>
-        </transition>
+
+          <div class="composerActions">
+            <label class="mediaBtn">
+              🖼️ Image
+              <input type="file" accept="image/*" hidden @change="pickImage" />
+            </label>
+
+            <label class="mediaBtn">
+              🎥 Video
+              <input type="file" accept="video/*" hidden @change="pickVideo" />
+            </label>
+
+            <button class="mediaBtn primaryBtn" @click="submitPost" :disabled="posting || !canSubmitPost">
+              {{ posting ? "Posting..." : "Post 🚀" }}
+            </button>
+
+            <button class="mediaBtn" @click="clearComposer">Clear</button>
+          </div>
+
+          <div v-if="selectedMediaName" class="pickedMedia">
+            Selected: {{ selectedMediaName }}
+          </div>
+        </div>
       </section>
 
-      <!-- filter rail -->
-      <section class="rail">
-        <button
-          v-for="item in filterOptions"
-          :key="item.value"
-          class="rail-chip"
-          :class="{ active: activeFilter === item.value }"
-          @click="setFilter(item.value)"
-        >
-          {{ item.label }}
-        </button>
+      <!-- FEED FILTERS -->
+      <section class="feedTools glass">
+        <div class="tabRow">
+          <button class="tabChip" :class="{ active: tab === 'forYou' }" @click="setTab('forYou')">For You</button>
+          <button class="tabChip" :class="{ active: tab === 'reels' }" @click="setTab('reels')">Reels</button>
+          <button class="tabChip" :class="{ active: tab === 'following' }" @click="setTab('following')">Following</button>
+          <button class="tabChip" :class="{ active: tab === 'saved' }" @click="setTab('saved')">Saved</button>
+          <button class="tabChip" :class="{ active: tab === 'pinned' }" @click="setTab('pinned')">Pinned</button>
+        </div>
+
+        <div class="filterRow">
+          <button class="filterChip" :class="{ active: filterType === 'all' }" @click="setFilter('all')">All</button>
+          <button class="filterChip" :class="{ active: filterType === 'videos' }" @click="setFilter('videos')">Videos</button>
+          <button class="filterChip" :class="{ active: filterType === 'images' }" @click="setFilter('images')">Images</button>
+          <button class="filterChip" :class="{ active: filterType === 'text' }" @click="setFilter('text')">Text</button>
+          <span class="resultChip">{{ filteredPosts.length }} shown</span>
+        </div>
       </section>
 
-      <!-- feed -->
-      <section class="feed">
-        <div v-if="loadingPosts" class="glass empty-state">
-          Loading your feed...
-        </div>
-
-        <div v-else-if="filteredPosts.length === 0" class="glass empty-state">
-          No posts yet. Tap the + button and create something.
-        </div>
-
+      <!-- FEED -->
+      <section class="feedList">
         <article
           v-for="post in filteredPosts"
           :key="post.id"
-          class="post-card glass"
+          class="feedCard glass"
         >
-          <div class="post-head">
-            <div class="post-user">
-              <div class="avatar red">{{ getInitial(post.username || post.name || 'U') }}</div>
-              <div>
-                <div class="post-name">{{ post.username || post.name || `User #${post.user_id || post.id}` }}</div>
-                <div class="post-time">{{ formatDate(post.created_at || post.createdAt) }}</div>
+          <div class="feedHead">
+            <div class="feedAuthor" @click="goProfile(resolvePostUserId(post))">
+              <div class="feedAvatar">
+                <img
+                  v-if="post.author_avatar || post.avatar_url"
+                  :src="mediaUrl(post.author_avatar || post.avatar_url)"
+                  class="feedAvatarImg"
+                  alt="avatar"
+                />
+                <span v-else>{{ getAuthorInitial(post) }}</span>
+              </div>
+
+              <div class="feedAuthorMeta">
+                <div class="feedAuthorName">
+                  {{ post.display_name || post.author_name || post.username || `User #${resolvePostUserId(post)}` }}
+                </div>
+                <div class="feedAuthorSub">
+                  {{ formatDateTime(post.created_at || post.createdAt) }}
+                </div>
               </div>
             </div>
 
-            <button class="tiny-btn" @click="openPostMenu(post)">⋯</button>
+            <span class="postTypeChip">
+              {{
+                post.video_url
+                  ? "VIDEO"
+                  : post.image_url
+                    ? "IMAGE"
+                    : "TEXT"
+              }}
+            </span>
           </div>
 
-          <div v-if="post.content || post.text || post.caption" class="post-text">
-            {{ post.content || post.text || post.caption }}
+          <div v-if="post.caption" class="feedCaption">
+            {{ post.caption }}
           </div>
 
           <img
-            v-if="post.image_url || post.image || post.imageUrl"
-            class="post-media"
-            :src="post.image_url || post.image || post.imageUrl"
+            v-if="post.image_url"
+            class="feedMedia"
+            :src="mediaUrl(post.image_url)"
+            loading="lazy"
             alt="post image"
           />
 
           <video
-            v-if="post.video_url || post.video || post.videoUrl"
-            class="post-media"
-            :src="post.video_url || post.video || post.videoUrl"
+            v-else-if="post.video_url"
+            class="feedMedia"
+            :src="mediaUrl(post.video_url)"
             controls
             playsinline
             preload="metadata"
           ></video>
 
-          <div class="post-stats">
-            <span>❤️ {{ post.likes_count ?? post.likes ?? 0 }}</span>
-            <span>💬 {{ post.comments_count ?? post.comments ?? 0 }}</span>
-            <span>📌 {{ post.pinned ? 1 : 0 }}</span>
-          </div>
-
-          <div class="post-actions">
-            <button class="post-btn" @click="likePost(post)">❤️ Like</button>
-            <button class="post-btn" @click="commentOnPost(post)">💬 Comment</button>
-            <button class="post-btn" @click="savePost(post)">🔖 Save</button>
-            <button class="post-btn" @click="sharePost(post)">📤 Share</button>
+          <div class="feedActions">
+            <button class="actionBtn" @click="toggleLike(post)">
+              ❤️ {{ post.likes_count || 0 }}
+            </button>
+            <button class="actionBtn">
+              💬 {{ post.comments_count || 0 }}
+            </button>
+            <button class="actionBtn" @click="toggleSave(post)">
+              {{ savedIds.includes(post.id) ? "Saved" : "Save" }}
+            </button>
+            <button class="actionBtn" @click="sharePost(post)">
+              Share
+            </button>
           </div>
         </article>
+
+        <div v-if="!filteredPosts.length && !loading" class="emptyFeed glass">
+          <div class="emptyIcon">✨</div>
+          <div class="emptyTitle">Nothing here yet</div>
+          <div class="emptySub">Try another filter, post something new, or refresh the feed.</div>
+        </div>
       </section>
 
-      <!-- mobile bottom nav -->
-      <nav class="bottom-nav glass">
-        <button class="nav-item active" @click="goTo('/dashboard')">
+      <!-- FAB MENU OVERLAY -->
+      <transition name="fade">
+        <div v-if="fabOpen" class="fabOverlay" @click="fabOpen = false"></div>
+      </transition>
+
+      <!-- FAB SHEET -->
+      <transition name="sheetUp">
+        <div v-if="fabOpen" class="fabSheet glass">
+          <div class="sheetHead">
+            <div>
+              <h3>Quick Actions</h3>
+              <p>Heavy dashboard actions are hidden here for mobile.</p>
+            </div>
+            <button class="closeBtn" @click="fabOpen = false">✕</button>
+          </div>
+
+          <div class="sheetGrid">
+            <button class="sheetBtn primaryBtn" @click="fabAction(openComposer)">
+              ✍️ <span>Create Post</span>
+            </button>
+            <button class="sheetBtn" @click="fabAction(goPeople)">
+              👥 <span>People</span>
+            </button>
+            <button class="sheetBtn" @click="fabAction(goCalls)">
+              📞 <span>1-to-1 Call</span>
+            </button>
+            <button class="sheetBtn" @click="fabAction(openRooms)">
+              🎧 <span>Room</span>
+            </button>
+            <button class="sheetBtn" @click="fabAction(goLive)">
+              🔴 <span>Go Live</span>
+            </button>
+            <button class="sheetBtn" @click="fabAction(() => setTab('reels'))">
+              🎞 <span>Reels</span>
+            </button>
+            <button class="sheetBtn" @click="fabAction(() => setTab('saved'))">
+              💾 <span>Saved</span>
+            </button>
+            <button class="sheetBtn" @click="fabAction(refreshAll)">
+              🔄 <span>Refresh</span>
+            </button>
+          </div>
+        </div>
+      </transition>
+
+      <!-- BOTTOM NAV -->
+      <nav class="bottomNav glass">
+        <button class="navBtn active" @click="goHome">
           <span>🏠</span>
           <small>Home</small>
         </button>
 
-        <button class="nav-item" @click="goTo('/inbox')">
+        <button class="navBtn" @click="goCalls">
           <span>💬</span>
           <small>Inbox</small>
         </button>
 
-        <button class="nav-fab" @click="toggleFab">+</button>
+        <button class="navFab" @click="toggleFab">+</button>
 
-        <button class="nav-item" @click="goTo('/live')">
+        <button class="navBtn" @click="goLive">
           <span>🔴</span>
           <small>Live</small>
         </button>
 
-        <button class="nav-item" @click="goTo('/people')">
+        <button class="navBtn" @click="goPeople">
           <span>👥</span>
           <small>People</small>
         </button>
 
-        <button class="nav-item" @click="goTo('/profile')">
+        <button class="navBtn" @click="goProfile(me.id)">
           <span>👤</span>
           <small>Profile</small>
         </button>
       </nav>
-
-      <!-- fab overlay -->
-      <transition name="fade">
-        <div v-if="fabOpen" class="fab-overlay" @click="fabOpen = false"></div>
-      </transition>
-
-      <!-- fab menu -->
-      <transition name="fab-pop">
-        <div v-if="fabOpen" class="fab-sheet glass">
-          <div class="sheet-head">
-            <div>
-              <h3>Quick actions</h3>
-              <p>Everything heavy is hidden here for mobile</p>
-            </div>
-            <button class="sheet-close" @click="fabOpen = false">✕</button>
-          </div>
-
-          <div class="sheet-grid">
-            <button class="sheet-btn primary" @click="fabAction(openComposer)">
-              ✍️
-              <span>Create Post</span>
-            </button>
-
-            <button class="sheet-btn" @click="fabAction(() => goTo('/people'))">
-              👥
-              <span>People</span>
-            </button>
-
-            <button class="sheet-btn" @click="fabAction(() => goTo('/call'))">
-              📞
-              <span>1-to-1 Call</span>
-            </button>
-
-            <button class="sheet-btn" @click="fabAction(() => goTo('/room'))">
-              🎧
-              <span>Start Room</span>
-            </button>
-
-            <button class="sheet-btn" @click="fabAction(() => goTo('/live'))">
-              🔴
-              <span>Go Live</span>
-            </button>
-
-            <button class="sheet-btn" @click="fabAction(() => goTo('/reels'))">
-              🎬
-              <span>Open Reels</span>
-            </button>
-
-            <button class="sheet-btn" @click="fabAction(() => goTo('/saved'))">
-              🔖
-              <span>Saved</span>
-            </button>
-
-            <button class="sheet-btn" @click="fabAction(refreshAll)">
-              🔄
-              <span>Refresh</span>
-            </button>
-          </div>
-        </div>
-      </transition>
-
-      <!-- tiny post menu -->
-      <transition name="fade">
-        <div
-          v-if="postMenu.open"
-          class="fab-overlay"
-          @click="closePostMenu"
-        ></div>
-      </transition>
-
-      <transition name="fab-pop">
-        <div v-if="postMenu.open" class="post-menu glass">
-          <button @click="savePost(postMenu.post)">🔖 Save</button>
-          <button @click="pinPost(postMenu.post)">📌 Pin</button>
-          <button @click="sharePost(postMenu.post)">📤 Share</button>
-          <button @click="closePostMenu">Cancel</button>
-        </div>
-      </transition>
     </div>
   </Layout>
 </template>
 
 <script setup>
-import { computed, onMounted, ref } from "vue";
-import { useRouter } from "vue-router";
-import axios from "axios";
-import Layout from "@/components/Layout.vue";
+import { computed, onMounted, onBeforeUnmount, reactive, ref } from "vue"
+import { useRouter } from "vue-router"
+import { io } from "socket.io-client"
+import Layout from "../components/Layout.vue"
 
-const router = useRouter();
+const router = useRouter()
+const apiBase = (import.meta.env.VITE_API_URL || "http://localhost:5000").replace(/\/$/, "")
+const token = localStorage.getItem("token") || ""
 
-const me = ref(null);
-const posts = ref([]);
-const loadingPosts = ref(false);
-const socketConnected = ref(true);
+const me = (() => {
+  try {
+    return JSON.parse(localStorage.getItem("user") || "null") || {}
+  } catch {
+    return {}
+  }
+})()
 
-const onlineCount = ref(2);
-const liveCount = ref(0);
-const roomCount = ref(1);
-const unreadCount = ref(0);
+const avatarUrl = computed(() => me?.avatar_url || me?.avatarUrl || "")
+const displayName = computed(() =>
+  me?.display_name || me?.displayName || me?.name || me?.username || "Creator"
+)
 
-const savedCount = ref(0);
-const pinnedCount = ref(0);
+const greeting = computed(() => {
+  const h = new Date().getHours()
+  if (h < 12) return "Good morning"
+  if (h < 18) return "Good afternoon"
+  return "Good evening"
+})
 
-const fabOpen = ref(false);
-const composerExpanded = ref(false);
-const posting = ref(false);
+const socketConnected = ref(false)
+const loading = ref(false)
+const posting = ref(false)
+const composerOpen = ref(false)
+const search = ref("")
+const tab = ref("following")
+const filterType = ref("all")
 
-const newPostText = ref("");
-const imageFile = ref(null);
-const videoFile = ref(null);
-const imageName = ref("");
-const videoName = ref("");
+const composerText = ref("")
+const selectedFile = ref(null)
+const selectedMediaName = ref("")
+const fabOpen = ref(false)
 
-const activeFilter = ref("all");
+const posts = ref([])
+const savedIds = ref(JSON.parse(localStorage.getItem("pulse_saved_ids") || "[]"))
+const pinnedIds = ref(JSON.parse(localStorage.getItem("pulse_pinned_ids") || "[]"))
 
-const postMenu = ref({
-  open: false,
-  post: null,
-});
+const serverStats = reactive({
+  onlineUsers: 0,
+  liveStreams: 0,
+  directCalls: 0,
+  callRooms: 0,
+})
 
-const filterOptions = [
-  { label: "All", value: "all" },
-  { label: "Videos", value: "video" },
-  { label: "Images", value: "image" },
-  { label: "Text", value: "text" },
-  { label: "Following", value: "following" },
-];
+const stats = computed(() => {
+  const myId = String(me?.id || "")
+  const myPosts = posts.value.filter((p) => String(resolvePostUserId(p)) === myId)
+  return {
+    posts: myPosts.length,
+    videos: myPosts.filter((p) => !!p.video_url).length,
+  }
+})
 
-const displayName = computed(() => {
-  return (
-    me.value?.username ||
-    me.value?.name ||
-    localStorage.getItem("username") ||
-    "Creator"
-  );
-});
-
-const avatarLetter = computed(() => getInitial(displayName.value));
-
-const postCount = computed(() => posts.value.length);
+const canSubmitPost = computed(() => {
+  return !!composerText.value.trim() || !!selectedFile.value
+})
 
 const filteredPosts = computed(() => {
-  if (activeFilter.value === "all") return posts.value;
+  let list = [...posts.value]
 
-  if (activeFilter.value === "video") {
-    return posts.value.filter(
-      (p) => p.video_url || p.video || p.videoUrl
-    );
+  if (tab.value === "saved") {
+    list = list.filter((p) => savedIds.value.includes(p.id))
+  } else if (tab.value === "pinned") {
+    list = list.filter((p) => pinnedIds.value.includes(p.id))
+  } else if (tab.value === "reels") {
+    list = list.filter((p) => !!p.video_url)
   }
 
-  if (activeFilter.value === "image") {
-    return posts.value.filter(
-      (p) => p.image_url || p.image || p.imageUrl
-    );
+  if (filterType.value === "videos") {
+    list = list.filter((p) => !!p.video_url)
+  } else if (filterType.value === "images") {
+    list = list.filter((p) => !!p.image_url)
+  } else if (filterType.value === "text") {
+    list = list.filter((p) => !p.image_url && !p.video_url)
   }
 
-  if (activeFilter.value === "text") {
-    return posts.value.filter(
-      (p) =>
-        (p.content || p.text || p.caption) &&
-        !(p.image_url || p.image || p.imageUrl) &&
-        !(p.video_url || p.video || p.videoUrl)
-    );
+  if (search.value.trim()) {
+    const q = search.value.trim().toLowerCase()
+    list = list.filter((p) =>
+      [p.caption, p.display_name, p.author_name, p.username]
+        .filter(Boolean)
+        .some((v) => String(v).toLowerCase().includes(q))
+    )
   }
 
-  if (activeFilter.value === "following") {
-    return posts.value.filter((p) => p.is_following || p.following);
-  }
+  list.sort((a, b) => new Date(b.created_at || b.createdAt || 0) - new Date(a.created_at || a.createdAt || 0))
+  return list
+})
 
-  return posts.value;
-});
-
-function getToken() {
-  return localStorage.getItem("token") || "";
+function setTab(next) {
+  tab.value = next
 }
 
-function authHeaders(extra = {}) {
-  const token = getToken();
-  return {
-    headers: {
-      ...(token ? { Authorization: `Bearer ${token}` } : {}),
-      ...extra,
-    },
-  };
+function setFilter(next) {
+  filterType.value = next
 }
 
-function goTo(path) {
-  router.push(path);
-}
-
-function scrollToTop() {
-  window.scrollTo({ top: 0, behavior: "smooth" });
-}
-
-function toggleFab() {
-  fabOpen.value = !fabOpen.value;
-}
-
-function fabAction(fn) {
-  fabOpen.value = false;
-  fn();
+function toggleComposer() {
+  composerOpen.value = !composerOpen.value
 }
 
 function openComposer() {
-  composerExpanded.value = true;
-  fabOpen.value = false;
-  setTimeout(() => {
-    const el = document.querySelector(".composer");
-    if (el) el.scrollIntoView({ behavior: "smooth", block: "center" });
-  }, 40);
+  composerOpen.value = true
+  fabOpen.value = false
+  window.scrollTo({ top: 0, behavior: "smooth" })
 }
 
-function toggleComposerExpanded() {
-  composerExpanded.value = !composerExpanded.value;
+function toggleFab() {
+  fabOpen.value = !fabOpen.value
 }
 
-function setFilter(value) {
-  activeFilter.value = value;
+function fabAction(fn) {
+  fabOpen.value = false
+  fn()
 }
 
-function appendTag(tag) {
-  if (!newPostText.value.includes(tag)) {
-    newPostText.value = `${newPostText.value} ${tag}`.trim();
+function goHome() {
+  router.push("/dashboard")
+}
+
+function goLive() {
+  router.push("/live")
+}
+
+function goCalls() {
+  router.push("/messages")
+}
+
+function openRooms() {
+  router.push("/roomcall")
+}
+
+function goPeople() {
+  router.push("/people")
+}
+
+function goProfile(userId) {
+  if (!userId) {
+    router.push("/profile")
+    return
   }
+  if (String(userId) === String(me?.id || "")) {
+    router.push("/profile")
+    return
+  }
+  router.push(`/profile/${userId}`)
 }
 
-function onImageChange(e) {
-  const file = e.target.files?.[0];
-  imageFile.value = file || null;
-  imageName.value = file?.name || "";
+function resolvePostUserId(post) {
+  return (
+    post.user_id ??
+    post.userId ??
+    post.author_id ??
+    post.authorId ??
+    post.created_by ??
+    post.user?.id ??
+    post.author?.id ??
+    ""
+  )
 }
 
-function onVideoChange(e) {
-  const file = e.target.files?.[0];
-  videoFile.value = file || null;
-  videoName.value = file?.name || "";
+function getAuthorInitial(post) {
+  const name =
+    post.display_name ||
+    post.author_name ||
+    post.username ||
+    "U"
+  return String(name).charAt(0).toUpperCase()
 }
 
-function resetComposer() {
-  newPostText.value = "";
-  imageFile.value = null;
-  videoFile.value = null;
-  imageName.value = "";
-  videoName.value = "";
+function mediaUrl(path) {
+  if (!path) return ""
+  if (/^https?:\/\//i.test(path) || path.startsWith("blob:") || path.startsWith("data:")) return path
+  return `${apiBase}${path.startsWith("/") ? "" : "/"}${path}`
 }
 
-function closePostMenu() {
-  postMenu.value.open = false;
-  postMenu.value.post = null;
+function formatDateTime(value) {
+  if (!value) return "Recently"
+  const d = new Date(value)
+  if (Number.isNaN(d.getTime())) return String(value)
+  return d.toLocaleString()
 }
 
-function openPostMenu(post) {
-  postMenu.value.open = true;
-  postMenu.value.post = post;
-}
-
-function getInitial(name) {
-  return String(name || "U").trim().charAt(0).toUpperCase();
-}
-
-function formatDate(value) {
-  if (!value) return "Just now";
-  const d = new Date(value);
-  if (Number.isNaN(d.getTime())) return "Just now";
-  return d.toLocaleString();
-}
-
-async function fetchMe() {
+async function fetchServerStats() {
   try {
-    const { data } = await axios.get("/api/users/me", authHeaders());
-    me.value = data;
-  } catch {
-    me.value = {
-      username: localStorage.getItem("username") || "minmadan40",
-    };
-  }
+    const res = await fetch(`${apiBase}/api/server-stats`)
+    if (!res.ok) return
+    const data = await res.json()
+    serverStats.onlineUsers = Number(data.onlineUsers || 0)
+    serverStats.liveStreams = Number(data.liveStreams || 0)
+    serverStats.directCalls = Number(data.directCalls || 0)
+    serverStats.callRooms = Number(data.callRooms || 0)
+  } catch {}
 }
 
 async function fetchPosts() {
-  loadingPosts.value = true;
   try {
-    const { data } = await axios.get("/api/posts", authHeaders());
-    posts.value = Array.isArray(data) ? data : data?.posts || [];
-  } catch (err) {
-    console.error("fetchPosts error:", err);
-    posts.value = [];
-  } finally {
-    loadingPosts.value = false;
-    recomputeSmallStats();
+    const res = await fetch(`${apiBase}/posts`, {
+      headers: token ? { Authorization: `Bearer ${token}` } : {},
+    })
+    if (!res.ok) throw new Error("failed")
+    const data = await res.json()
+    posts.value = Array.isArray(data) ? data : data.posts || []
+    localStorage.setItem("posts", JSON.stringify(posts.value))
+  } catch {
+    const cached = JSON.parse(localStorage.getItem("posts") || "[]")
+    posts.value = Array.isArray(cached) ? cached : []
   }
 }
 
-function recomputeSmallStats() {
-  savedCount.value = posts.value.filter((p) => p.saved).length;
-  pinnedCount.value = posts.value.filter((p) => p.pinned).length;
+function persistCollections() {
+  localStorage.setItem("pulse_saved_ids", JSON.stringify(savedIds.value))
+  localStorage.setItem("pulse_pinned_ids", JSON.stringify(pinnedIds.value))
 }
 
-async function submitPost() {
-  if (!newPostText.value.trim() && !imageFile.value && !videoFile.value) return;
-
-  posting.value = true;
-
-  try {
-    let imageUrl = "";
-    let videoUrl = "";
-
-    if (imageFile.value) {
-      const fd = new FormData();
-      fd.append("file", imageFile.value);
-
-      const up = await axios.post(
-        "/api/upload",
-        fd,
-        authHeaders({ "Content-Type": "multipart/form-data" })
-      );
-
-      imageUrl =
-        up.data?.url || up.data?.imageUrl || up.data?.secure_url || "";
-    }
-
-    if (videoFile.value) {
-      const fd = new FormData();
-      fd.append("file", videoFile.value);
-
-      const up = await axios.post(
-        "/api/upload",
-        fd,
-        authHeaders({ "Content-Type": "multipart/form-data" })
-      );
-
-      videoUrl =
-        up.data?.url || up.data?.videoUrl || up.data?.secure_url || "";
-    }
-
-    const payload = {
-      content: newPostText.value.trim(),
-      text: newPostText.value.trim(),
-      image_url: imageUrl,
-      video_url: videoUrl,
-    };
-
-    await axios.post("/api/posts", payload, authHeaders());
-    resetComposer();
-    composerExpanded.value = false;
-    await fetchPosts();
-  } catch (err) {
-    console.error("submitPost error:", err);
-    alert("Post failed. Check your route or payload shape.");
-  } finally {
-    posting.value = false;
+function toggleSave(post) {
+  const id = post.id
+  if (savedIds.value.includes(id)) {
+    savedIds.value = savedIds.value.filter((x) => x !== id)
+  } else {
+    savedIds.value = [...savedIds.value, id]
   }
+  persistCollections()
 }
 
-async function likePost(post) {
-  try {
-    await axios.post(`/api/likes/${post.id}`, {}, authHeaders());
-    post.likes_count = (post.likes_count ?? post.likes ?? 0) + 1;
-  } catch (err) {
-    console.error("likePost error:", err);
-  }
-}
-
-function commentOnPost(post) {
-  router.push(`/post/${post.id}`);
+function toggleLike(post) {
+  post.likes_count = Number(post.likes_count || 0) + 1
 }
 
 function sharePost(post) {
-  const url = `${window.location.origin}/post/${post.id}`;
-  navigator.clipboard?.writeText(url);
-  closePostMenu();
+  const text = `${window.location.origin}/profile/${resolvePostUserId(post)}`
+  navigator.clipboard?.writeText(text).catch(() => {})
 }
 
-function savePost(post) {
-  post.saved = !post.saved;
-  recomputeSmallStats();
-  closePostMenu();
+function appendTag(tag) {
+  if (!composerText.value.includes(tag)) {
+    composerText.value = `${composerText.value} ${tag}`.trim()
+  }
 }
 
-function pinPost(post) {
-  post.pinned = !post.pinned;
-  recomputeSmallStats();
-  closePostMenu();
+function pickImage(e) {
+  const file = e.target.files?.[0]
+  if (!file) return
+  selectedFile.value = file
+  selectedMediaName.value = file.name
+}
+
+function pickVideo(e) {
+  const file = e.target.files?.[0]
+  if (!file) return
+  selectedFile.value = file
+  selectedMediaName.value = file.name
+}
+
+function clearComposer() {
+  composerText.value = ""
+  selectedFile.value = null
+  selectedMediaName.value = ""
+}
+
+async function submitPost() {
+  if (!canSubmitPost.value) return
+
+  posting.value = true
+  try {
+    let image_url = ""
+    let video_url = ""
+
+    if (selectedFile.value) {
+      const formData = new FormData()
+      formData.append("file", selectedFile.value)
+
+      try {
+        const uploadRes = await fetch(`${apiBase}/upload`, {
+          method: "POST",
+          headers: token ? { Authorization: `Bearer ${token}` } : {},
+          body: formData,
+        })
+
+        if (uploadRes.ok) {
+          const uploadData = await uploadRes.json()
+          const uploaded = uploadData.url || uploadData.fileUrl || uploadData.image_url || uploadData.video_url || ""
+          if (selectedFile.value.type.startsWith("video/")) video_url = uploaded
+          else image_url = uploaded
+        }
+      } catch {}
+    }
+
+    const payload = {
+      caption: composerText.value.trim(),
+      image_url,
+      video_url,
+    }
+
+    const res = await fetch(`${apiBase}/posts`, {
+      method: "POST",
+      headers: {
+        "Content-Type": "application/json",
+        ...(token ? { Authorization: `Bearer ${token}` } : {}),
+      },
+      body: JSON.stringify(payload),
+    })
+
+    if (res.ok) {
+      await fetchPosts()
+      clearComposer()
+      composerOpen.value = false
+      return
+    }
+
+    const localPost = {
+      id: Date.now(),
+      user_id: me?.id,
+      display_name: displayName.value,
+      username: me?.username || "",
+      author_avatar: avatarUrl.value,
+      caption: composerText.value.trim(),
+      image_url,
+      video_url,
+      created_at: new Date().toISOString(),
+      likes_count: 0,
+      comments_count: 0,
+    }
+    posts.value.unshift(localPost)
+    clearComposer()
+    composerOpen.value = false
+  } finally {
+    posting.value = false
+  }
+}
+
+let socket = null
+
+function connectSocket() {
+  try {
+    socket = io(apiBase, {
+      transports: ["websocket"],
+      auth: { token },
+    })
+
+    socket.on("connect", () => {
+      socketConnected.value = true
+      if (me?.id) {
+        socket.emit("register-user", {
+          id: String(me.id),
+          username: me?.username || me?.display_name || me?.name || "User",
+        })
+      }
+    })
+
+    socket.on("disconnect", () => {
+      socketConnected.value = false
+    })
+  } catch {
+    socketConnected.value = false
+  }
 }
 
 async function refreshAll() {
-  fabOpen.value = false;
-  await Promise.all([fetchMe(), fetchPosts()]);
+  loading.value = true
+  await Promise.all([fetchPosts(), fetchServerStats()])
+  loading.value = false
 }
 
 onMounted(async () => {
-  await refreshAll();
-});
+  connectSocket()
+  await refreshAll()
+})
+
+onBeforeUnmount(() => {
+  try {
+    socket?.disconnect?.()
+  } catch {}
+})
 </script>
 
 <style scoped>
-:root {
-  --bg: #07111f;
-  --bg2: #0a1630;
-  --card: rgba(18, 26, 47, 0.72);
-  --line: rgba(255, 255, 255, 0.08);
-  --text: #eef3ff;
-  --muted: #9fb0d1;
-  --primary: #ff4d6d;
-  --primary-2: #7c4dff;
-  --success: #29d391;
-  --warning: #f4b740;
-  --shadow: 0 12px 32px rgba(0, 0, 0, 0.32);
-}
-
-* {
-  box-sizing: border-box;
-}
-
-.dash-page {
+.dashPage {
   position: relative;
   min-height: 100vh;
-  padding: 14px 12px 110px;
-  color: var(--text);
+  padding: 12px 12px 98px;
+  color: white;
   background:
-    radial-gradient(circle at top left, rgba(124, 77, 255, 0.16), transparent 25%),
-    radial-gradient(circle at top right, rgba(255, 77, 109, 0.14), transparent 28%),
-    linear-gradient(180deg, #040a16 0%, #07111f 45%, #08152b 100%);
+    radial-gradient(900px 580px at 0% 0%, rgba(255, 75, 125, 0.14), transparent),
+    radial-gradient(900px 680px at 100% 0%, rgba(91, 140, 255, 0.16), transparent),
+    linear-gradient(180deg, #07101c 0%, #091423 42%, #060d19 100%);
   overflow-x: hidden;
 }
 
-.bg {
+.bg-grid {
   position: fixed;
-  inset: auto;
-  border-radius: 999px;
-  filter: blur(60px);
-  opacity: 0.28;
+  inset: 0;
   pointer-events: none;
-  z-index: 0;
-  animation: floaty 12s ease-in-out infinite;
+  background-image:
+    linear-gradient(rgba(255,255,255,0.02) 1px, transparent 1px),
+    linear-gradient(90deg, rgba(255,255,255,0.02) 1px, transparent 1px);
+  background-size: 38px 38px;
+  mask-image: linear-gradient(to bottom, rgba(255,255,255,.16), transparent 75%);
 }
 
-.fx1 {
-  width: 180px;
-  height: 180px;
-  left: -40px;
-  top: 80px;
-  background: rgba(124, 77, 255, 0.35);
+.bg-orb {
+  position: fixed;
+  border-radius: 999px;
+  filter: blur(80px);
+  pointer-events: none;
+  opacity: .34;
 }
-
-.fx2 {
+.orb1 {
   width: 220px;
   height: 220px;
-  right: -40px;
-  top: 180px;
-  background: rgba(255, 77, 109, 0.26);
-  animation-delay: 2s;
+  left: -40px;
+  top: 80px;
+  background: rgba(255, 65, 108, 0.32);
 }
-
-.fx3 {
-  width: 180px;
-  height: 180px;
-  left: 30%;
-  bottom: 120px;
-  background: rgba(0, 180, 255, 0.18);
-  animation-delay: 4s;
+.orb2 {
+  width: 260px;
+  height: 260px;
+  right: -70px;
+  top: 180px;
+  background: rgba(91, 140, 255, 0.28);
 }
 
 .glass {
   position: relative;
-  z-index: 1;
-  background: var(--card);
-  border: 1px solid var(--line);
-  backdrop-filter: blur(18px);
-  -webkit-backdrop-filter: blur(18px);
-  box-shadow: var(--shadow);
+  z-index: 2;
+  background: rgba(255,255,255,0.055);
+  border: 1px solid rgba(255,255,255,0.11);
+  backdrop-filter: blur(16px);
+  box-shadow: 0 14px 44px rgba(0,0,0,0.28), inset 0 1px 0 rgba(255,255,255,0.04);
+  border-radius: 24px;
 }
 
-.topbar {
-  display: flex;
-  align-items: center;
-  justify-content: space-between;
-  gap: 10px;
-  padding: 12px;
-  border-radius: 20px;
+.glassLite {
+  background: rgba(255,255,255,.05);
+  border: 1px solid rgba(255,255,255,.08);
+}
+
+.topBar,
+.heroCard,
+.feedTools,
+.composerCard,
+.feedCard,
+.emptyFeed {
   margin-bottom: 12px;
 }
 
-.brand {
+.topBar {
+  padding: 12px;
+  display: flex;
+  justify-content: space-between;
+  gap: 10px;
+  align-items: center;
+}
+
+.brandWrap {
   display: flex;
   align-items: center;
   gap: 10px;
-  min-width: 0;
   cursor: pointer;
 }
 
-.brand-logo {
-  width: 44px;
-  height: 44px;
-  border-radius: 14px;
+.brandIcon {
+  width: 52px;
+  height: 52px;
+  border-radius: 16px;
   display: grid;
   place-items: center;
-  background: linear-gradient(135deg, var(--primary-2), var(--primary));
-  font-size: 20px;
-  box-shadow: 0 8px 24px rgba(124, 77, 255, 0.35);
-}
-
-.brand-copy {
-  min-width: 0;
-}
-
-.brand-copy h1 {
-  margin: 0;
-  font-size: 18px;
-  line-height: 1.05;
-}
-
-.brand-copy p {
-  margin: 2px 0 0;
-  font-size: 12px;
-  color: var(--muted);
-  white-space: nowrap;
-}
-
-.topbar-actions {
-  display: flex;
-  align-items: center;
-  gap: 8px;
-}
-
-.top-pill {
-  border: 1px solid var(--line);
-  background: rgba(255, 255, 255, 0.05);
-  color: var(--text);
-  border-radius: 999px;
-  padding: 10px 12px;
-  font-size: 12px;
-}
-
-.top-pill.live {
-  background: linear-gradient(135deg, rgba(255, 77, 109, 0.28), rgba(124, 77, 255, 0.22));
-  border-color: rgba(255, 77, 109, 0.25);
-}
-
-.hero {
-  border-radius: 24px;
-  padding: 16px;
-  margin-bottom: 12px;
-}
-
-.hero-left {
-  margin-bottom: 14px;
-}
-
-.hello {
-  font-size: 10px;
-  letter-spacing: 0.16em;
-  color: #ffdce3;
-  opacity: 0.85;
-  margin-bottom: 6px;
-}
-
-.hero-name {
   font-size: 28px;
-  font-weight: 800;
-  line-height: 1;
-  margin-bottom: 8px;
+  background: linear-gradient(135deg, #ff2a6d, #5b8cff);
+  box-shadow: 0 12px 28px rgba(91,140,255,.22);
 }
 
-.hero-line {
-  color: var(--muted);
-  font-size: 14px;
-  line-height: 1.45;
-  margin-bottom: 12px;
+.brandTitle {
+  font-size: 20px;
+  font-weight: 950;
 }
 
-.hero-tags {
+.brandSub {
+  opacity: .75;
+  font-size: 13px;
+}
+
+.topBarActions,
+.tabRow,
+.filterRow,
+.feedActions {
   display: flex;
   gap: 8px;
   flex-wrap: wrap;
 }
 
-.tag {
+.chip,
+.pillBtn,
+.tabChip,
+.filterChip,
+.resultChip,
+.actionBtn,
+.mediaBtn,
+.tagLite {
+  border: none;
+  color: white;
+  cursor: pointer;
   border-radius: 999px;
-  padding: 7px 10px;
-  font-size: 11px;
-  color: var(--text);
-  background: rgba(255, 255, 255, 0.06);
-  border: 1px solid var(--line);
+  background: rgba(255,255,255,.08);
+  border: 1px solid rgba(255,255,255,.11);
+  font-weight: 800;
 }
 
-.tag.success {
-  background: rgba(41, 211, 145, 0.13);
-  color: #c7ffe8;
-  border-color: rgba(41, 211, 145, 0.25);
+.chip,
+.pillBtn,
+.tabChip,
+.filterChip,
+.resultChip,
+.actionBtn,
+.mediaBtn,
+.tagLite {
+  padding: 10px 14px;
 }
 
-.hero-right {
+.chip.online {
+  display: inline-flex;
+  align-items: center;
+  gap: 8px;
+  background: rgba(53,227,161,.12);
+  border-color: rgba(53,227,161,.22);
+}
+
+.chip.online.offline {
+  background: rgba(255,255,255,.08);
+  border-color: rgba(255,255,255,.12);
+}
+
+.iconOnly {
+  min-width: 42px;
+  padding: 10px 12px;
+}
+
+.dot {
+  width: 10px;
+  height: 10px;
+  border-radius: 50%;
+  background: #35e3a1;
+}
+
+.heroCard,
+.feedTools,
+.composerCard,
+.feedCard,
+.emptyFeed {
+  padding: 16px;
+}
+
+.heroTop {
   display: grid;
-  grid-template-columns: 1fr 1fr;
+  gap: 14px;
+}
+
+.heroEyebrow {
+  font-size: 12px;
+  letter-spacing: .18em;
+  opacity: .78;
+  font-weight: 900;
+}
+
+.heroTitle {
+  margin: 8px 0 6px;
+  font-size: 32px;
+  line-height: 1.02;
+  font-weight: 950;
+}
+
+.heroSub,
+.emptySub {
+  margin: 0;
+  opacity: .86;
+  line-height: 1.5;
+}
+
+.heroMainBtn {
+  border: none;
+  border-radius: 999px;
+  padding: 14px 16px;
+  color: white;
+  font-size: 16px;
+  font-weight: 900;
+  background: linear-gradient(90deg, #ff4a57, #ff4141);
+}
+
+.heroStats {
+  margin-top: 14px;
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
   gap: 10px;
 }
 
-.hero-action {
-  height: 46px;
-  border: 1px solid var(--line);
-  border-radius: 14px;
-  background: rgba(255, 255, 255, 0.06);
-  color: var(--text);
-  font-weight: 700;
-}
-
-.hero-action.primary,
-.action-btn.primary,
-.sheet-btn.primary {
-  background: linear-gradient(135deg, #ff4d6d, #ff7a45);
+.miniStat {
+  border-radius: 18px;
+  padding: 14px;
+  text-align: center;
   color: white;
   border: none;
 }
 
-.mini-stats {
-  display: grid;
-  grid-template-columns: repeat(4, 1fr);
-  gap: 10px;
-  margin-bottom: 12px;
+.miniStat strong {
+  display: block;
+  font-size: 24px;
+  font-weight: 950;
 }
 
-.mini-card {
-  border-radius: 18px;
-  padding: 14px 8px;
-  text-align: center;
-}
-
-.mini-num {
-  font-size: 20px;
-  font-weight: 800;
-}
-
-.mini-label {
-  font-size: 11px;
-  color: var(--muted);
+.miniStat span {
+  display: block;
+  opacity: .72;
   margin-top: 4px;
 }
 
-.composer {
-  border-radius: 24px;
-  padding: 14px;
-  margin-bottom: 12px;
+.tabChip.active,
+.filterChip.active {
+  background: linear-gradient(90deg, #ff2a6d, #ff5a5f);
+  border-color: transparent;
 }
 
-.composer-head {
+.composerHead,
+.composerMeta,
+.composerActions,
+.feedHead {
+  display: flex;
+  justify-content: space-between;
+  gap: 10px;
+  align-items: center;
+  flex-wrap: wrap;
+}
+
+.authorBlock,
+.feedAuthor {
   display: flex;
   align-items: center;
-  gap: 10px;
+  gap: 12px;
+  cursor: pointer;
 }
 
-.avatar {
-  width: 42px;
-  height: 42px;
-  min-width: 42px;
-  border-radius: 50%;
+.authorAvatar,
+.feedAvatar {
+  width: 58px;
+  height: 58px;
+  border-radius: 999px;
   display: grid;
   place-items: center;
-  background: linear-gradient(135deg, #ff5876, #ff7b4d);
-  color: #fff;
-  font-weight: 800;
+  font-size: 24px;
+  font-weight: 950;
+  background: linear-gradient(135deg, #ff4b7d, #7b7dff);
+  color: white;
+  overflow: hidden;
 }
 
-.avatar.red {
-  width: 44px;
-  height: 44px;
-  min-width: 44px;
-}
-
-.composer-meta {
-  min-width: 0;
-  flex: 1;
-}
-
-.composer-name {
-  font-weight: 800;
-  font-size: 15px;
-}
-
-.composer-sub {
-  color: var(--muted);
-  font-size: 12px;
-}
-
-.tiny-btn {
-  height: 34px;
-  border-radius: 999px;
-  padding: 0 12px;
-  border: 1px solid var(--line);
-  background: rgba(255, 255, 255, 0.05);
-  color: var(--text);
-  font-size: 12px;
-}
-
-.composer-box {
-  margin-top: 12px;
-  min-height: 54px;
-  border-radius: 18px;
-  padding: 16px;
-  color: #b9c5df;
-  background: rgba(0, 0, 0, 0.22);
-  border: 1px solid var(--line);
-}
-
-.composer-expanded {
-  margin-top: 12px;
-}
-
-.composer-textarea {
+.authorAvatarImg,
+.feedAvatarImg {
   width: 100%;
-  resize: vertical;
-  min-height: 110px;
-  border-radius: 18px;
-  padding: 14px;
-  background: rgba(0, 0, 0, 0.22);
-  border: 1px solid var(--line);
-  color: var(--text);
-  outline: none;
-  font: inherit;
-}
-
-.composer-tags-row {
-  display: flex;
-  flex-wrap: wrap;
-  gap: 8px;
-  margin-top: 10px;
-}
-
-.soft-chip {
-  border-radius: 999px;
-  padding: 8px 12px;
-  font-size: 12px;
-  background: rgba(124, 77, 255, 0.12);
-  color: #e7defe;
-  border: 1px solid rgba(124, 77, 255, 0.18);
-}
-
-.upload-row {
-  margin-top: 10px;
-  display: flex;
-  align-items: center;
-  justify-content: space-between;
-  gap: 8px;
-  min-height: 48px;
-  border-radius: 16px;
-  padding: 0 14px;
-  border: 1px solid var(--line);
-  background: rgba(255, 255, 255, 0.05);
-  font-size: 14px;
-}
-
-.upload-row small {
-  color: var(--muted);
-  text-align: right;
-}
-
-.composer-actions {
-  display: grid;
-  grid-template-columns: 1fr 1fr;
-  gap: 10px;
-  margin-top: 12px;
-}
-
-.action-btn {
-  height: 46px;
-  border-radius: 14px;
-  border: 1px solid var(--line);
-  background: rgba(255, 255, 255, 0.06);
-  color: var(--text);
-  font-weight: 800;
-}
-
-.rail {
-  display: flex;
-  gap: 8px;
-  overflow-x: auto;
-  padding: 4px 2px 12px;
-  margin-bottom: 2px;
-  scrollbar-width: none;
-}
-
-.rail::-webkit-scrollbar {
-  display: none;
-}
-
-.rail-chip {
-  flex: 0 0 auto;
-  height: 38px;
-  border-radius: 999px;
-  padding: 0 14px;
-  border: 1px solid var(--line);
-  background: rgba(255, 255, 255, 0.05);
-  color: var(--text);
-  font-size: 12px;
-  font-weight: 700;
-}
-
-.rail-chip.active {
-  background: linear-gradient(135deg, rgba(255, 77, 109, 0.28), rgba(124, 77, 255, 0.22));
-  border-color: rgba(255, 77, 109, 0.22);
-}
-
-.feed {
-  display: grid;
-  gap: 12px;
-}
-
-.post-card {
-  border-radius: 24px;
-  padding: 14px;
-}
-
-.post-head {
-  display: flex;
-  align-items: center;
-  justify-content: space-between;
-  gap: 10px;
-}
-
-.post-user {
-  display: flex;
-  align-items: center;
-  gap: 10px;
-  min-width: 0;
-}
-
-.post-name {
-  font-size: 15px;
-  font-weight: 800;
-}
-
-.post-time {
-  font-size: 12px;
-  color: var(--muted);
-}
-
-.post-text {
-  margin-top: 12px;
-  line-height: 1.5;
-  color: #eef2fc;
-  word-break: break-word;
-}
-
-.post-media {
-  width: 100%;
-  border-radius: 18px;
-  margin-top: 12px;
-  display: block;
-  border: 1px solid var(--line);
-  background: #08111f;
-  max-height: 520px;
+  height: 100%;
   object-fit: cover;
 }
 
-.post-stats {
+.authorName,
+.feedAuthorName {
+  font-size: 18px;
+  font-weight: 950;
+}
+
+.authorSub,
+.feedAuthorSub {
+  opacity: .72;
+  font-size: 13px;
+}
+
+.composerInput {
+  width: 100%;
+  min-height: 110px;
+  margin-top: 12px;
+  resize: vertical;
+  border: 1px solid rgba(255,255,255,.1);
+  background: rgba(0,0,0,.22);
+  color: white;
+  border-radius: 18px;
+  padding: 14px;
+  outline: none;
+}
+
+.composerTags {
   display: flex;
-  gap: 14px;
-  flex-wrap: wrap;
-  margin-top: 12px;
-  color: var(--muted);
-  font-size: 12px;
-}
-
-.post-actions {
-  display: grid;
-  grid-template-columns: repeat(4, 1fr);
   gap: 8px;
-  margin-top: 12px;
+  flex-wrap: wrap;
 }
 
-.post-btn {
-  min-height: 40px;
-  border-radius: 12px;
-  border: 1px solid var(--line);
-  background: rgba(255, 255, 255, 0.05);
-  color: var(--text);
-  font-size: 12px;
-  font-weight: 700;
+.pickedMedia {
+  margin-top: 10px;
+  opacity: .8;
+  font-size: 14px;
 }
 
-.empty-state {
-  border-radius: 22px;
-  padding: 20px;
+.primaryBtn {
+  background: linear-gradient(90deg, #ff2a6d, #ff595a);
+  border-color: transparent;
+}
+
+.feedCaption {
+  margin-top: 14px;
+  line-height: 1.55;
+  font-size: 16px;
+}
+
+.feedMedia {
+  width: 100%;
+  border-radius: 18px;
+  margin-top: 14px;
+  background: rgba(255,255,255,.05);
+  max-height: 700px;
+  object-fit: cover;
+}
+
+.postTypeChip {
+  padding: 9px 12px;
+  border-radius: 999px;
+  background: rgba(255,77,98,.14);
+  border: 1px solid rgba(255,77,98,.22);
+  font-weight: 900;
+}
+
+.emptyFeed {
   text-align: center;
-  color: var(--muted);
 }
 
-.bottom-nav {
+.emptyIcon {
+  font-size: 34px;
+}
+
+.emptyTitle {
+  margin-top: 8px;
+  font-size: 22px;
+  font-weight: 950;
+}
+
+.bottomNav {
   position: fixed;
   left: 10px;
   right: 10px;
   bottom: 10px;
   z-index: 40;
-  border-radius: 24px;
+  min-height: 74px;
+  padding: 8px;
   display: grid;
   grid-template-columns: 1fr 1fr 72px 1fr 1fr 1fr;
   align-items: center;
   gap: 4px;
-  min-height: 74px;
-  padding: 8px;
 }
 
-.nav-item {
+.navBtn {
   background: transparent;
   border: none;
-  color: var(--text);
+  color: white;
   display: flex;
   flex-direction: column;
   align-items: center;
@@ -1139,15 +1083,11 @@ onMounted(async () => {
   font-size: 11px;
 }
 
-.nav-item span {
+.navBtn span {
   font-size: 20px;
 }
 
-.nav-item.active small {
-  color: #ffd7df;
-}
-
-.nav-fab {
+.navFab {
   width: 58px;
   height: 58px;
   margin: 0 auto;
@@ -1159,65 +1099,62 @@ onMounted(async () => {
   box-shadow: 0 14px 28px rgba(124, 77, 255, 0.42);
 }
 
-.fab-overlay {
+.fabOverlay {
   position: fixed;
   inset: 0;
   background: rgba(3, 8, 16, 0.54);
   z-index: 45;
   backdrop-filter: blur(4px);
-  -webkit-backdrop-filter: blur(4px);
 }
 
-.fab-sheet {
+.fabSheet {
   position: fixed;
   left: 12px;
   right: 12px;
   bottom: 98px;
   z-index: 50;
-  border-radius: 26px;
   padding: 16px;
 }
 
-.sheet-head {
+.sheetHead {
   display: flex;
-  align-items: flex-start;
   justify-content: space-between;
   gap: 10px;
   margin-bottom: 14px;
 }
 
-.sheet-head h3 {
+.sheetHead h3 {
   margin: 0;
   font-size: 18px;
 }
 
-.sheet-head p {
+.sheetHead p {
   margin: 4px 0 0;
-  color: var(--muted);
+  opacity: .75;
   font-size: 12px;
 }
 
-.sheet-close {
+.closeBtn {
   width: 38px;
   height: 38px;
   border-radius: 50%;
-  border: 1px solid var(--line);
-  background: rgba(255, 255, 255, 0.05);
-  color: var(--text);
+  border: 1px solid rgba(255,255,255,.11);
+  background: rgba(255,255,255,.05);
+  color: white;
 }
 
-.sheet-grid {
+.sheetGrid {
   display: grid;
   grid-template-columns: 1fr 1fr;
   gap: 10px;
 }
 
-.sheet-btn {
+.sheetBtn {
   min-height: 74px;
   border-radius: 18px;
-  border: 1px solid var(--line);
-  background: rgba(255, 255, 255, 0.05);
-  color: var(--text);
+  border: 1px solid rgba(255,255,255,.11);
+  background: rgba(255,255,255,.05);
+  color: white;
   display: flex;
   flex-direction: column;
   align-items: center;
@@ -1226,115 +1163,33 @@ onMounted(async () => {
   font-weight: 800;
 }
 
-.sheet-btn span:first-child {
-  font-size: 22px;
-}
-
-.post-menu {
-  position: fixed;
-  left: 12px;
-  right: 12px;
-  bottom: 98px;
-  z-index: 55;
-  border-radius: 24px;
-  padding: 10px;
-  display: grid;
-  gap: 8px;
-}
-
-.post-menu button {
-  min-height: 46px;
-  border-radius: 14px;
-  border: 1px solid var(--line);
-  background: rgba(255, 255, 255, 0.05);
-  color: var(--text);
-  font-weight: 700;
-}
-
 .fade-enter-active,
 .fade-leave-active,
-.fade-up-enter-active,
-.fade-up-leave-active,
-.fab-pop-enter-active,
-.fab-pop-leave-active {
-  transition: all 0.22s ease;
+.sheetUp-enter-active,
+.sheetUp-leave-active {
+  transition: all .22s ease;
 }
-
 .fade-enter-from,
 .fade-leave-to {
   opacity: 0;
 }
-
-.fade-up-enter-from,
-.fade-up-leave-to {
+.sheetUp-enter-from,
+.sheetUp-leave-to {
   opacity: 0;
-  transform: translateY(8px);
+  transform: translateY(18px);
 }
 
-.fab-pop-enter-from,
-.fab-pop-leave-to {
-  opacity: 0;
-  transform: translateY(18px) scale(0.98);
-}
-
-@keyframes floaty {
-  0%,
-  100% {
-    transform: translateY(0px) translateX(0px);
-  }
-  50% {
-    transform: translateY(-12px) translateX(8px);
-  }
-}
-
-@media (max-width: 420px) {
-  .brand-copy h1 {
-    font-size: 16px;
+@media (max-width: 760px) {
+  .topBar,
+  .composerHead,
+  .composerMeta,
+  .composerActions,
+  .feedHead {
+    align-items: flex-start;
   }
 
-  .brand-copy p {
-    font-size: 11px;
-  }
-
-  .hero-name {
-    font-size: 24px;
-  }
-
-  .mini-stats {
-    grid-template-columns: repeat(2, 1fr);
-  }
-
-  .post-actions {
-    grid-template-columns: 1fr 1fr;
-  }
-
-  .bottom-nav {
+  .bottomNav {
     grid-template-columns: 1fr 1fr 68px 1fr 1fr 1fr;
-  }
-}
-
-@media (min-width: 768px) {
-  .dash-page {
-    max-width: 760px;
-    margin: 0 auto;
-    padding-left: 16px;
-    padding-right: 16px;
-  }
-
-  .hero {
-    display: flex;
-    justify-content: space-between;
-    gap: 18px;
-    align-items: center;
-  }
-
-  .hero-left {
-    margin-bottom: 0;
-    flex: 1;
-  }
-
-  .hero-right {
-    width: 240px;
   }
 }
 </style>
