@@ -1492,8 +1492,14 @@ onBeforeUnmount(() => {
   -webkit-box-orient: vertical;
   overflow: hidden;
 }
-.clamp1 { -webkit-line-clamp: 1; }
-.clamp2 { -webkit-line-clamp: 2; }
+.clamp1 { 
+  -webkit-line-clamp: 1;
+  line-clamp: 1;
+}
+.clamp2 { 
+  -webkit-line-clamp: 2;
+  line-clamp: 2;
+}
 .sidePanel {
   height: fit-content;
   position: sticky;
