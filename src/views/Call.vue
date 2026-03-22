@@ -3,16 +3,20 @@
     <div class="page">
       <div class="head">
         <button class="btn" @click="goBack">← Back</button>
-        <div>
+
+        <div class="headCenter">
           <div class="title">📞 Direct Call</div>
           <div class="sub">{{ displayName }} • {{ kind }}</div>
         </div>
+
         <button class="danger" @click="endCall">End</button>
       </div>
 
-      <div v-if="incomingCall && !inCall" class="incomingCard">
-        <div class="big">{{ incomingCall.fromName || "Incoming Call" }}</div>
-        <div class="small">{{ incomingCall.kind === "audio" ? "Audio call" : "Video call" }}</div>
+      <div v-if="incomingCall && !inCall && mode !== 'caller'" class="incomingCard">
+        <div class="incomingTop">
+          <div class="incomingTitle">Incoming {{ incomingCall.kind || kind }} call</div>
+          <div class="incomingSub">{{ incomingCall.fromName || displayName }}</div>
+        </div>
 
         <div class="controls">
           <button class="btn" @click="rejectIncoming">Decline</button>
@@ -22,7 +26,9 @@
 
       <div v-else-if="!roomId" class="card">
         <div class="big">Missing roomId</div>
-        <div class="small">Start the call from People so the app can generate the call room correctly.</div>
+        <div class="small">
+          Start the call from People so the app can generate the call room correctly.
+        </div>
       </div>
 
       <div v-else class="card">
@@ -32,37 +38,44 @@
           <div class="muted">roomId: {{ roomId }}</div>
         </div>
 
-        <video
-          v-if="kind === 'video'"
-          ref="localVideoEl"
-          class="video"
-          autoplay
-          playsinline
-          muted
-        ></video>
+        <div v-if="kind === 'video'" class="videoWrap">
+          <video
+            ref="remoteVideoEl"
+            class="video remoteVideo"
+            autoplay
+            playsinline
+          ></video>
 
-        <video
-          v-if="kind === 'video'"
-          ref="remoteVideoEl"
-          class="video remote"
-          autoplay
-          playsinline
-        ></video>
+          <video
+            ref="localVideoEl"
+            class="video localVideo"
+            autoplay
+            playsinline
+            muted
+          ></video>
+        </div>
 
-        <div v-if="kind === 'audio'" class="audioCard">
-          🎧 Audio call
+        <div v-else class="audioCard">
+          <div class="audioEmoji">🎧</div>
+          <div class="audioTitle">Audio Call</div>
+          <div class="audioSub">{{ statusText }}</div>
         </div>
 
         <div class="controls">
-          <button class="btn" @click="toggleMute">{{ muted ? "Unmute" : "Mute" }}</button>
-          <button class="btn" v-if="kind === 'video'" @click="toggleCam">
+          <button class="btn" @click="toggleMute">
+            {{ muted ? "Unmute" : "Mute" }}
+          </button>
+
+          <button v-if="kind === 'video'" class="btn" @click="toggleCam">
             {{ camOff ? "Camera On" : "Camera Off" }}
+          </button>
+
+          <button v-if="mode === 'caller' && !hasRequested && toUserId" class="btn" @click="startOutgoingCall">
+            Start Call
           </button>
         </div>
 
-        <div class="notice">
-          {{ statusText }}
-        </div>
+        <div class="notice">{{ statusText }}</div>
       </div>
     </div>
   </Layout>
@@ -91,6 +104,7 @@ const remoteVideoEl = ref(null);
 const muted = ref(false);
 const camOff = ref(false);
 const inCall = ref(false);
+const hasRequested = ref(false);
 const incomingCall = ref(null);
 const statusText = ref("Preparing call...");
 
@@ -99,8 +113,10 @@ let pc = null;
 let currentPeerSocketId = null;
 
 const modeLabel = computed(() => {
-  if (incomingCall.value && !inCall.value) return "Incoming";
-  return mode.value === "callee" ? "Answering" : "Calling";
+  if (incomingCall.value && !inCall.value && mode.value !== "caller") return "Incoming";
+  if (inCall.value) return "Connected";
+  if (mode.value === "callee") return "Answering";
+  return "Calling";
 });
 
 function getMe() {
@@ -112,14 +128,6 @@ function getMe() {
 }
 
 function goBack() {
-  router.push("/people");
-}
-
-function endCall() {
-  try {
-    if (roomId.value) socket.emit("call:end", { roomId: roomId.value });
-  } catch {}
-  cleanup();
   router.push("/people");
 }
 
@@ -169,6 +177,7 @@ async function ensurePeerConnection() {
     const [stream] = event.streams;
     if (remoteVideoEl.value && stream) {
       remoteVideoEl.value.srcObject = stream;
+      remoteVideoEl.value.play?.().catch(() => {});
     }
   };
 
@@ -182,10 +191,9 @@ async function ensurePeerConnection() {
   };
 
   pc.onconnectionstatechange = () => {
-    statusText.value = `Connection: ${pc.connectionState}`;
-    if (["connected", "completed"].includes(pc.connectionState)) {
-      inCall.value = true;
-    }
+    const state = pc?.connectionState || "new";
+    statusText.value = `Connection: ${state}`;
+    if (["connected", "completed"].includes(state)) inCall.value = true;
   };
 
   return pc;
@@ -204,6 +212,16 @@ async function makeOffer(targetSocketId) {
   });
 }
 
+async function startOutgoingCall() {
+  if (!toUserId.value) return;
+  hasRequested.value = true;
+  statusText.value = "Calling...";
+  socket.emit("call:request", {
+    toUserId: toUserId.value,
+    kind: kind.value,
+  });
+}
+
 async function acceptIncoming() {
   if (!incomingCall.value) return;
 
@@ -212,11 +230,12 @@ async function acceptIncoming() {
   displayName.value = String(incomingCall.value.fromName || displayName.value);
   mode.value = "callee";
 
-  socket.emit("call:accept", { roomId: roomId.value });
-  socket.emit("call:join", { roomId: roomId.value });
-  statusText.value = "Joining call...";
   await ensureMedia();
 
+  socket.emit("call:accept", { roomId: roomId.value });
+  socket.emit("call:join", { roomId: roomId.value });
+
+  statusText.value = "Joining call...";
   incomingCall.value = null;
 }
 
@@ -224,6 +243,7 @@ function rejectIncoming() {
   if (!incomingCall.value?.roomId) return;
   socket.emit("call:reject", { roomId: incomingCall.value.roomId });
   incomingCall.value = null;
+  statusText.value = "Call declined";
 }
 
 function toggleMute() {
@@ -247,6 +267,7 @@ function cleanup() {
     if (pc) {
       pc.ontrack = null;
       pc.onicecandidate = null;
+      pc.onconnectionstatechange = null;
       pc.close();
       pc = null;
     }
@@ -263,34 +284,42 @@ function cleanup() {
   inCall.value = false;
 }
 
+function endCall() {
+  try {
+    if (roomId.value) socket.emit("call:end", { roomId: roomId.value });
+  } catch {}
+  cleanup();
+  router.push("/people");
+}
+
 function connectSocket() {
   const onConnect = () => {
     socket.emit("register-user", authPayload());
 
-    if (mode.value === "caller" && toUserId.value) {
-      statusText.value = "Calling...";
-      socket.emit("call:request", {
-        toUserId: toUserId.value,
-        kind: kind.value,
-      });
+    if (mode.value === "caller" && toUserId.value && !hasRequested.value) {
+      startOutgoingCall();
     }
   };
 
   const onIncoming = (payload) => {
     incomingCall.value = payload;
+    roomId.value = String(payload?.roomId || roomId.value);
+    kind.value = String(payload?.kind || kind.value);
+    displayName.value = String(payload?.fromName || displayName.value);
+    mode.value = "callee";
     statusText.value = "Incoming call...";
   };
 
   const onRinging = ({ roomId: rid }) => {
-    if (!roomId.value) roomId.value = String(rid || "");
+    if (rid) roomId.value = String(rid);
     statusText.value = "Ringing...";
   };
 
   const onAccepted = async ({ roomId: rid }) => {
-    if (!roomId.value) roomId.value = String(rid || "");
+    if (rid) roomId.value = String(rid);
     statusText.value = "Accepted. Joining...";
-    socket.emit("call:join", { roomId: roomId.value });
     await ensureMedia();
+    socket.emit("call:join", { roomId: roomId.value });
   };
 
   const onJoined = async ({ peerSocketIds = [], shouldCreateOffer }) => {
@@ -340,6 +369,10 @@ function connectSocket() {
     cleanup();
   };
 
+  const onOffline = ({ message }) => {
+    statusText.value = message || "User offline";
+  };
+
   const onError = ({ message }) => {
     statusText.value = message || "Call error";
   };
@@ -358,6 +391,7 @@ function connectSocket() {
   socket.on("call:webrtc:answer", onAnswer);
   socket.on("call:webrtc:ice", onIce);
   socket.on("call:ended", onEnded);
+  socket.on("call:offline", onOffline);
   socket.on("call:error", onError);
   socket.on("call:busy", onBusy);
 
@@ -374,6 +408,7 @@ function connectSocket() {
     socket.off("call:webrtc:answer", onAnswer);
     socket.off("call:webrtc:ice", onIce);
     socket.off("call:ended", onEnded);
+    socket.off("call:offline", onOffline);
     socket.off("call:error", onError);
     socket.off("call:busy", onBusy);
   };
@@ -398,10 +433,29 @@ onBeforeUnmount(() => {
 </script>
 
 <style scoped>
-.page{max-width:980px;margin:0 auto;padding:18px;color:#fff}
-.head{display:flex;align-items:center;justify-content:space-between;gap:12px;margin-bottom:14px}
+.page{
+  max-width:980px;
+  margin:0 auto;
+  padding:18px;
+  color:#fff;
+}
+.head{
+  display:flex;
+  align-items:center;
+  justify-content:space-between;
+  gap:12px;
+  margin-bottom:14px;
+}
+.headCenter{
+  flex:1;
+  text-align:center;
+}
 .btn,.danger,.accept{
-  border:none;border-radius:999px;padding:12px 16px;color:#fff;font-weight:900
+  border:none;
+  border-radius:999px;
+  padding:12px 16px;
+  color:#fff;
+  font-weight:900;
 }
 .btn{background:rgba(255,255,255,.12)}
 .accept{background:linear-gradient(45deg,#00c97b,#00e39f)}
@@ -409,20 +463,76 @@ onBeforeUnmount(() => {
 .title{font-size:28px;font-weight:950}
 .sub{opacity:.75}
 .card,.incomingCard{
-  padding:18px;border-radius:24px;background:rgba(255,255,255,.08);
-  border:1px solid rgba(255,255,255,.12)
+  padding:18px;
+  border-radius:24px;
+  background:rgba(255,255,255,.08);
+  border:1px solid rgba(255,255,255,.12);
 }
-.big{font-size:22px;font-weight:950}
-.small{opacity:.75;margin-top:6px}
-.metaRow{display:flex;gap:8px;flex-wrap:wrap;margin-bottom:14px}
-.pill{padding:10px 14px;border-radius:999px;background:rgba(255,255,255,.10);font-weight:900}
-.muted{opacity:.72;word-break:break-all}
-.video{width:100%;min-height:240px;background:#000;border-radius:22px;display:block;margin-bottom:12px}
-.video.remote{border:1px solid rgba(255,255,255,.16)}
+.big,.incomingTitle{font-size:22px;font-weight:950}
+.small,.incomingSub{opacity:.75;margin-top:6px}
+.metaRow{
+  display:flex;
+  gap:8px;
+  flex-wrap:wrap;
+  margin-bottom:14px;
+}
+.pill{
+  padding:10px 14px;
+  border-radius:999px;
+  background:rgba(255,255,255,.10);
+  font-weight:900;
+}
+.muted{
+  opacity:.72;
+  word-break:break-all;
+}
+.videoWrap{
+  position:relative;
+  display:grid;
+  gap:12px;
+}
+.video{
+  width:100%;
+  min-height:220px;
+  background:#000;
+  border-radius:22px;
+  display:block;
+}
+.remoteVideo{
+  min-height:280px;
+}
+.localVideo{
+  min-height:180px;
+}
 .audioCard{
-  min-height:220px;display:grid;place-items:center;border-radius:22px;background:rgba(0,0,0,.28);
-  font-size:28px;font-weight:900
+  min-height:220px;
+  display:grid;
+  place-items:center;
+  border-radius:22px;
+  background:rgba(0,0,0,.28);
+  text-align:center;
+  padding:20px;
 }
-.controls{display:flex;gap:10px;flex-wrap:wrap;margin-top:14px}
-.notice{margin-top:14px;opacity:.8;line-height:1.5}
+.audioEmoji{font-size:48px}
+.audioTitle{font-size:28px;font-weight:900;margin-top:8px}
+.audioSub{opacity:.78;margin-top:8px}
+.controls{
+  display:flex;
+  gap:10px;
+  flex-wrap:wrap;
+  margin-top:14px;
+}
+.notice{
+  margin-top:14px;
+  opacity:.8;
+  line-height:1.5;
+}
+@media (max-width: 640px){
+  .head{
+    align-items:flex-start;
+  }
+  .headCenter{
+    text-align:left;
+  }
+}
 </style>
