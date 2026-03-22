@@ -70,7 +70,11 @@
             {{ camOff ? "Camera On" : "Camera Off" }}
           </button>
 
-          <button v-if="mode === 'caller' && !hasRequested && toUserId" class="btn" @click="startOutgoingCall">
+          <button
+            v-if="mode === 'caller' && !hasRequested && toUserId"
+            class="btn"
+            @click="startOutgoingCall"
+          >
             Start Call
           </button>
         </div>
@@ -213,9 +217,17 @@ async function makeOffer(targetSocketId) {
 }
 
 async function startOutgoingCall() {
+  const me = getMe();
   if (!toUserId.value) return;
+
+  if (String(toUserId.value) === String(me?.id || "")) {
+    statusText.value = "You cannot call yourself.";
+    return;
+  }
+
   hasRequested.value = true;
   statusText.value = "Calling...";
+
   socket.emit("call:request", {
     toUserId: toUserId.value,
     kind: kind.value,
@@ -293,6 +305,8 @@ function endCall() {
 }
 
 function connectSocket() {
+  const me = getMe();
+
   const onConnect = () => {
     socket.emit("register-user", authPayload());
 
@@ -302,6 +316,12 @@ function connectSocket() {
   };
 
   const onIncoming = (payload) => {
+    // ✅ ignore incoming events on caller page
+    if (mode.value === "caller") return;
+
+    // ✅ ignore self-call weirdness
+    if (String(payload?.fromUserId || "") === String(me?.id || "")) return;
+
     incomingCall.value = payload;
     roomId.value = String(payload?.roomId || roomId.value);
     kind.value = String(payload?.kind || kind.value);
