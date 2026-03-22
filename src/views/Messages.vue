@@ -1,306 +1,417 @@
 <template>
   <Layout>
-    <div class="page">
-      <div class="head">
-        <button class="back" @click="goInbox">← Inbox</button>
+    <div class="messages-page">
+      <div class="bg bg1"></div>
+      <div class="bg bg2"></div>
 
-        <div class="headMeta">
-          <div class="title">💬 Messages</div>
-          <div class="sub">{{ chatName }}</div>
+      <header class="topbar glassy">
+        <div class="left">
+          <button class="chip ghost" @click="goInbox">← Inbox</button>
+
+          <div class="title-wrap">
+            <h1>Messages</h1>
+            <p>{{ headerName }}</p>
+          </div>
         </div>
 
-        <button class="refresh" @click="loadMessages">↻</button>
-      </div>
+        <div class="right">
+          <button class="chip" @click="reloadMessages" :disabled="loading">
+            ↻
+          </button>
+        </div>
+      </header>
 
-      <div v-if="!conversationId" class="errorBox">
-        Missing conversationId (open chat from Inbox or People).
-      </div>
+      <section v-if="routeError" class="notice error">
+        {{ routeError }}
+      </section>
 
-      <template v-else>
-        <div class="messagesBox" ref="messagesBox">
-          <div v-if="loading" class="state">Loading…</div>
-          <div v-else-if="error" class="state err">{{ error }}</div>
+      <section v-else class="chat-shell glassy">
+        <div class="chat-body" ref="chatBodyRef">
+          <div v-if="loading" class="state">Loading messages...</div>
 
-          <template v-else>
-            <div v-if="messages.length === 0" class="empty">
-              No messages yet. Start the conversation 👋
-            </div>
-
+          <template v-else-if="messages.length">
             <div
-              v-for="m in messages"
-              :key="m.id"
-              class="bubbleWrap"
-              :class="{ mine: String(m.sender_id) === String(me?.id || '') }"
+              v-for="msg in messages"
+              :key="msg.id"
+              class="bubble-wrap"
+              :class="{ mine: isMine(msg) }"
             >
               <div class="bubble">
-                <div class="text">{{ m.text }}</div>
-                <div class="time">{{ formatTime(m.created_at) }}</div>
+                <div class="bubble-text">{{ msg.text || msg.body || msg.content }}</div>
+                <div class="bubble-time">{{ formatTime(msg.created_at || msg.createdAt) }}</div>
               </div>
             </div>
           </template>
+
+          <div v-else class="state">
+            No messages yet. Start the conversation.
+          </div>
         </div>
 
         <div class="composer">
-          <input
+          <textarea
             v-model="draft"
             class="input"
-            type="text"
-            placeholder="Type message..."
-            @keydown.enter="send"
-          />
-          <button class="send" @click="send" :disabled="sending || !draft.trim()">
-            {{ sending ? "..." : "Send" }}
+            rows="1"
+            placeholder="Type a message..."
+            @keydown.enter.exact.prevent="sendMessage"
+          ></textarea>
+
+          <button class="send" @click="sendMessage" :disabled="sending || !draft.trim()">
+            {{ sending ? "Sending..." : "Send" }}
           </button>
         </div>
-      </template>
+      </section>
     </div>
   </Layout>
 </template>
 
 <script setup>
-import { nextTick, onMounted, onBeforeUnmount, ref } from "vue";
+import { computed, nextTick, onMounted, ref, watch } from "vue";
 import { useRoute, useRouter } from "vue-router";
-import Layout from "../components/Layout.vue";
-import socket from "../socket.js";
+import Layout from "@/components/Layout.vue";
+import api from "@/lib/api";
+import socket from "@/lib/socket";
 
-const router = useRouter();
 const route = useRoute();
+const router = useRouter();
 
-const apiBase = (import.meta.env.VITE_API_URL || "http://localhost:5000").replace(/\/$/, "");
-const token = localStorage.getItem("token") || "";
-
-const conversationId = String(route.query.conversationId || "");
-const chatName = String(route.query.name || "Chat");
-
+const messages = ref([]);
 const loading = ref(false);
 const sending = ref(false);
-const error = ref("");
-const messages = ref([]);
 const draft = ref("");
-const messagesBox = ref(null);
+const routeError = ref("");
+const chatBodyRef = ref(null);
 
-let pollTimer = null;
-
-function getMe() {
+const currentUser = computed(() => {
   try {
-    return JSON.parse(localStorage.getItem("user") || "null");
+    return JSON.parse(localStorage.getItem("user") || "{}");
   } catch {
-    return null;
+    return {};
   }
-}
-const me = getMe();
+});
 
-function authHeaders(extra = {}) {
-  return {
-    ...(token ? { Authorization: `Bearer ${token}` } : {}),
-    ...extra,
-  };
-}
+const conversationId = computed(() => {
+  const value = route.query.conversationId;
+  return value ? String(value) : "";
+});
+
+const headerName = computed(() => {
+  return route.query.name ? String(route.query.name) : "Chat";
+});
 
 function goInbox() {
   router.push("/inbox");
 }
 
-function formatTime(v) {
-  if (!v) return "";
-  const d = new Date(v);
-  if (isNaN(d.getTime())) return "";
-  return d.toLocaleString([], {
-    month: "numeric",
-    day: "numeric",
-    hour: "2-digit",
-    minute: "2-digit",
-  });
+function isMine(msg) {
+  const mineId = String(currentUser.value?.id || "");
+  return String(msg.sender_id || msg.senderId || "") === mineId;
 }
 
-async function scrollBottom() {
+function formatTime(value) {
+  if (!value) return "";
+  const d = new Date(value);
+  if (Number.isNaN(d.getTime())) return "";
+  return d.toLocaleTimeString([], { hour: "numeric", minute: "2-digit" });
+}
+
+async function scrollToBottom() {
   await nextTick();
-  const el = messagesBox.value;
+  const el = chatBodyRef.value;
   if (el) el.scrollTop = el.scrollHeight;
 }
 
-function mergeMessages(list) {
-  const map = new Map();
-  [...messages.value, ...list].forEach((m) => {
-    if (m?.id != null) map.set(String(m.id), m);
-  });
-  messages.value = Array.from(map.values()).sort(
-    (a, b) => new Date(a.created_at || 0) - new Date(b.created_at || 0)
-  );
-}
+async function reloadMessages() {
+  if (!conversationId.value) {
+    routeError.value = "Missing conversationId. Open chat from People or Inbox.";
+    setTimeout(() => router.push("/people"), 1400);
+    return;
+  }
 
-async function loadMessages(silent = false) {
-  if (!conversationId) return;
-
-  if (!silent) loading.value = true;
-  error.value = "";
+  routeError.value = "";
+  loading.value = true;
 
   try {
-    const res = await fetch(
-      `${apiBase}/messages?conversationId=${encodeURIComponent(conversationId)}`,
-      { headers: authHeaders() }
-    );
-
-    const data = await res.json().catch(() => ([]));
-
-    if (!res.ok) {
-      throw new Error(data?.error || "Failed to load messages");
-    }
-
-    const list = Array.isArray(data) ? data : data?.messages || [];
-    mergeMessages(list);
-    await scrollBottom();
-  } catch (e) {
-    error.value = e?.message || "Failed to load messages";
+    const { data } = await api.get(`/messages/${conversationId.value}`);
+    messages.value = Array.isArray(data) ? data : data.messages || [];
+    await scrollToBottom();
+  } catch (err) {
+    routeError.value =
+      err?.response?.data?.message || "Failed to load messages.";
   } finally {
-    if (!silent) loading.value = false;
+    loading.value = false;
   }
 }
 
-async function send() {
-  if (!conversationId || !draft.value.trim() || !me?.id) return;
+async function sendMessage() {
+  const text = draft.value.trim();
+  if (!text || !conversationId.value) return;
 
   sending.value = true;
-  error.value = "";
-  const text = draft.value.trim();
 
   try {
-    const payload = {
-      conversationId,
-      sender_id: me.id,
-      text,
-    };
+    const { data } = await api.post(`/messages/${conversationId.value}`, { text });
 
-    const res = await fetch(`${apiBase}/messages`, {
-      method: "POST",
-      headers: {
-        "Content-Type": "application/json",
-        ...authHeaders(),
-      },
-      body: JSON.stringify(payload),
+    const saved =
+      data?.message || data || {
+        id: `local_${Date.now()}`,
+        text,
+        sender_id: currentUser.value?.id,
+        created_at: new Date().toISOString(),
+      };
+
+    messages.value.push(saved);
+
+    socket.emit("message:send", {
+      conversationId: conversationId.value,
+      message: saved,
     });
 
-    const created = await res.json().catch(() => ({}));
-
-    if (!res.ok) {
-      throw new Error(created?.error || "Failed to send");
-    }
-
-    if (created?.id) {
-      mergeMessages([created]);
-
-      socket.emit("message:send", {
-        conversationId,
-        message: created,
-      });
-    }
-
     draft.value = "";
-    await scrollBottom();
-  } catch (e) {
-    error.value = e?.message || "Failed to send";
+    await scrollToBottom();
+  } catch (err) {
+    routeError.value =
+      err?.response?.data?.message || "Failed to send message.";
   } finally {
     sending.value = false;
   }
 }
 
-function connectRealtime() {
-  const onConnect = () => {
-    if (me?.id) {
-      socket.emit("register-user", {
-        id: String(me.id),
-        username: me?.username || me?.display_name || me?.name || "User",
-      });
-    }
-
-    if (conversationId) {
-      socket.emit("messages:join", { conversationId });
-    }
-  };
-
-  const onMessageNew = (payload) => {
-    if (!payload) return;
-
-    const incomingConversationId =
-      payload.conversationId ||
-      payload.message?.conversation_id ||
-      payload.message?.conversationId;
-
-    if (String(incomingConversationId) !== String(conversationId)) return;
-
-    const msg = payload.message || payload;
-    if (msg?.id) {
-      mergeMessages([msg]);
-      scrollBottom();
-    } else {
-      loadMessages(true);
-    }
-  };
-
-  socket.on("connect", onConnect);
-  socket.on("message:new", onMessageNew);
-
-  if (socket.connected) onConnect();
-
-  return () => {
-    socket.off("connect", onConnect);
-    socket.off("message:new", onMessageNew);
-    if (conversationId) {
-      socket.emit("messages:leave", { conversationId });
-    }
-  };
-}
-
-let cleanupSocket = null;
-
 onMounted(async () => {
-  await loadMessages();
-  cleanupSocket = connectRealtime();
-  pollTimer = setInterval(() => loadMessages(true), 3000);
+  await reloadMessages();
+
+  socket.on("message:new", async (payload) => {
+    if (String(payload?.conversationId) !== conversationId.value) return;
+
+    const msg = payload?.message;
+    if (!msg) return;
+
+    const exists = messages.value.some((m) => String(m.id) === String(msg.id));
+    if (!exists) {
+      messages.value.push(msg);
+      await scrollToBottom();
+    }
+  });
 });
 
-onBeforeUnmount(() => {
-  try {
-    cleanupSocket?.();
-  } catch {}
-  if (pollTimer) clearInterval(pollTimer);
-});
+watch(
+  () => route.query.conversationId,
+  async () => {
+    await reloadMessages();
+  }
+);
 </script>
 
 <style scoped>
-.page{max-width:980px;margin:0 auto;padding:18px;color:#fff}
-.head{display:flex;align-items:center;justify-content:space-between;gap:12px;margin-bottom:14px}
-.back,.refresh,.send{
-  border:none;border-radius:999px;padding:12px 16px;
-  background:rgba(255,255,255,.12);color:#fff;font-weight:800
+.messages-page {
+  min-height: 100vh;
+  padding: 18px;
+  position: relative;
+  color: #fff;
+  background:
+    radial-gradient(circle at top left, rgba(255, 0, 153, 0.12), transparent 26%),
+    radial-gradient(circle at right, rgba(59, 130, 246, 0.14), transparent 30%),
+    linear-gradient(180deg, #07111f 0%, #0d1528 100%);
 }
-.headMeta{flex:1;min-width:0}
-.title{font-size:26px;font-weight:900}
-.sub{opacity:.75;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
-.errorBox,.state,.empty{
-  padding:16px;border-radius:16px;background:rgba(255,255,255,.08)
+
+.bg {
+  position: absolute;
+  border-radius: 999px;
+  filter: blur(46px);
+  opacity: 0.3;
 }
-.errorBox,.state.err{border:1px solid rgba(255,80,80,.35)}
-.messagesBox{
-  min-height:55vh;max-height:62vh;overflow:auto;padding:14px;border-radius:22px;
-  background:rgba(255,255,255,.07);border:1px solid rgba(255,255,255,.12)
+
+.bg1 {
+  width: 240px;
+  height: 240px;
+  left: -50px;
+  top: -30px;
+  background: #ff3aa7;
 }
-.bubbleWrap{display:flex;margin-bottom:10px}
-.bubbleWrap.mine{justify-content:flex-end}
-.bubble{
-  max-width:78%;padding:12px 14px;border-radius:18px;
-  background:rgba(255,255,255,.10);border:1px solid rgba(255,255,255,.12)
+
+.bg2 {
+  width: 260px;
+  height: 260px;
+  right: -70px;
+  top: 140px;
+  background: #2563eb;
 }
-.bubbleWrap.mine .bubble{
-  background:linear-gradient(45deg,#ff416c,#ff4b2b);
-  border-color:transparent
+
+.glassy {
+  position: relative;
+  z-index: 1;
+  backdrop-filter: blur(14px);
+  background: rgba(255, 255, 255, 0.06);
+  border: 1px solid rgba(255, 255, 255, 0.08);
+  box-shadow: 0 18px 40px rgba(0, 0, 0, 0.22);
 }
-.text{white-space:pre-wrap;word-break:break-word}
-.time{margin-top:6px;font-size:12px;opacity:.7}
-.composer{display:flex;gap:10px;margin-top:14px}
-.input{
-  flex:1;padding:14px 16px;border-radius:16px;border:1px solid rgba(255,255,255,.12);
-  background:rgba(0,0,0,.22);color:#fff;outline:none
+
+.topbar,
+.chat-shell,
+.notice {
+  border-radius: 22px;
 }
-.send{min-width:96px;background:linear-gradient(45deg,#ff416c,#ff4b2b)}
+
+.topbar {
+  padding: 16px 18px;
+  margin-bottom: 14px;
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  gap: 14px;
+}
+
+.left {
+  display: flex;
+  gap: 14px;
+  align-items: center;
+}
+
+.title-wrap h1 {
+  margin: 0;
+  font-size: 30px;
+}
+
+.title-wrap p {
+  margin: 4px 0 0;
+  color: rgba(255, 255, 255, 0.7);
+}
+
+.chat-shell {
+  height: calc(100vh - 145px);
+  display: flex;
+  flex-direction: column;
+  overflow: hidden;
+}
+
+.chat-body {
+  flex: 1;
+  overflow-y: auto;
+  padding: 18px;
+}
+
+.state {
+  text-align: center;
+  padding: 24px;
+  color: rgba(255, 255, 255, 0.72);
+}
+
+.bubble-wrap {
+  display: flex;
+  margin-bottom: 12px;
+}
+
+.bubble-wrap.mine {
+  justify-content: flex-end;
+}
+
+.bubble {
+  max-width: min(78%, 620px);
+  padding: 12px 14px;
+  border-radius: 18px;
+  background: rgba(255, 255, 255, 0.08);
+}
+
+.bubble-wrap.mine .bubble {
+  background: linear-gradient(135deg, #ff2d9c, #7c3aed);
+}
+
+.bubble-text {
+  white-space: pre-wrap;
+  word-break: break-word;
+}
+
+.bubble-time {
+  margin-top: 6px;
+  font-size: 12px;
+  opacity: 0.75;
+}
+
+.composer {
+  display: flex;
+  gap: 12px;
+  padding: 14px;
+  border-top: 1px solid rgba(255, 255, 255, 0.08);
+}
+
+.input {
+  flex: 1;
+  resize: none;
+  min-height: 54px;
+  max-height: 160px;
+  border: none;
+  outline: none;
+  color: #fff;
+  border-radius: 16px;
+  padding: 14px 16px;
+  background: rgba(255, 255, 255, 0.08);
+}
+
+.input::placeholder {
+  color: rgba(255, 255, 255, 0.56);
+}
+
+.send,
+.chip {
+  border: none;
+  outline: none;
+  cursor: pointer;
+  color: #fff;
+  font-weight: 700;
+}
+
+.send {
+  min-width: 110px;
+  border-radius: 16px;
+  background: linear-gradient(135deg, #ff2d9c, #7c3aed);
+  padding: 0 18px;
+}
+
+.chip {
+  border-radius: 999px;
+  padding: 12px 16px;
+  background: rgba(255, 255, 255, 0.08);
+}
+
+.notice {
+  position: relative;
+  z-index: 1;
+  padding: 14px 16px;
+}
+
+.notice.error {
+  background: rgba(255, 90, 90, 0.12);
+  border: 1px solid rgba(255, 90, 90, 0.25);
+}
+
+@media (max-width: 720px) {
+  .messages-page {
+    padding: 12px;
+  }
+
+  .topbar {
+    padding: 14px;
+  }
+
+  .title-wrap h1 {
+    font-size: 24px;
+  }
+
+  .chat-shell {
+    height: calc(100vh - 128px);
+  }
+
+  .composer {
+    flex-direction: column;
+  }
+
+  .send {
+    height: 48px;
+  }
+
+  .bubble {
+    max-width: 88%;
+  }
+}
 </style>

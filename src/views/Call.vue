@@ -1,558 +1,573 @@
 <template>
   <Layout>
-    <div class="page">
-      <div class="head">
-        <button class="btn" @click="goBack">← Back</button>
+    <div class="call-page">
+      <div class="bg bg1"></div>
+      <div class="bg bg2"></div>
 
-        <div class="headCenter">
-          <div class="title">📞 Direct Call</div>
-          <div class="sub">{{ displayName }} • {{ kind }}</div>
+      <header class="topbar glassy">
+        <button class="chip ghost" @click="goBack">← Back</button>
+
+        <div class="title-wrap">
+          <h1>📞 Direct Call</h1>
+          <p>{{ targetName }} • {{ callType }}</p>
         </div>
 
-        <button class="danger" @click="endCall">End</button>
-      </div>
+        <button class="chip danger" @click="endCall">End</button>
+      </header>
 
-      <div v-if="incomingCall && !inCall && mode !== 'caller'" class="incomingCard">
-        <div class="incomingTop">
-          <div class="incomingTitle">Incoming {{ incomingCall.kind || kind }} call</div>
-          <div class="incomingSub">{{ incomingCall.fromName || displayName }}</div>
+      <section v-if="routeError" class="notice error">
+        {{ routeError }}
+      </section>
+
+      <section v-else class="call-shell">
+        <div class="panel glassy local-panel">
+          <div class="panel-head">
+            <span>You</span>
+            <div class="panel-actions">
+              <button class="mini" @click="toggleMute">
+                {{ isMuted ? "🔇 Muted" : "🎙️ Mic" }}
+              </button>
+              <button v-if="isVideo" class="mini" @click="toggleCamera">
+                {{ isCameraOff ? "📷 Camera Off" : "📸 Camera On" }}
+              </button>
+            </div>
+          </div>
+
+          <div class="media-box">
+            <video
+              v-if="isVideo"
+              ref="localVideoRef"
+              autoplay
+              playsinline
+              muted
+              class="video"
+            ></video>
+            <div v-else class="audio-avatar">{{ myInitials }}</div>
+          </div>
         </div>
 
-        <div class="controls">
-          <button class="btn" @click="rejectIncoming">Decline</button>
-          <button class="accept" @click="acceptIncoming">Answer</button>
-        </div>
-      </div>
+        <div class="panel glassy remote-panel">
+          <div class="panel-head">
+            <span>{{ targetName }}</span>
+            <div class="status">{{ callStatus }}</div>
+          </div>
 
-      <div v-else-if="!roomId" class="card">
-        <div class="big">Missing roomId</div>
-        <div class="small">
-          Start the call from People so the app can generate the call room correctly.
-        </div>
-      </div>
-
-      <div v-else class="card">
-        <div class="metaRow">
-          <div class="pill">{{ modeLabel }}</div>
-          <div class="pill">{{ kind }}</div>
-          <div class="muted">roomId: {{ roomId }}</div>
+          <div class="media-box">
+            <video
+              v-if="isVideo"
+              ref="remoteVideoRef"
+              autoplay
+              playsinline
+              class="video"
+            ></video>
+            <div v-else class="audio-avatar big">{{ targetInitials }}</div>
+          </div>
         </div>
 
-        <div v-if="kind === 'video'" class="videoWrap">
-          <video
-            ref="remoteVideoEl"
-            class="video remoteVideo"
-            autoplay
-            playsinline
-          ></video>
-
-          <video
-            ref="localVideoEl"
-            class="video localVideo"
-            autoplay
-            playsinline
-            muted
-          ></video>
-        </div>
-
-        <div v-else class="audioCard">
-          <div class="audioEmoji">🎧</div>
-          <div class="audioTitle">Audio Call</div>
-          <div class="audioSub">{{ statusText }}</div>
-        </div>
-
-        <div class="controls">
-          <button class="btn" @click="toggleMute">
-            {{ muted ? "Unmute" : "Mute" }}
+        <div class="bottom-bar glassy">
+          <button class="control" @click="toggleMute">
+            {{ isMuted ? "Unmute" : "Mute" }}
           </button>
 
-          <button v-if="kind === 'video'" class="btn" @click="toggleCam">
-            {{ camOff ? "Camera On" : "Camera Off" }}
+          <button v-if="isVideo" class="control" @click="toggleCamera">
+            {{ isCameraOff ? "Camera On" : "Camera Off" }}
           </button>
 
-          <button
-            v-if="mode === 'caller' && !hasRequested && toUserId"
-            class="btn"
-            @click="startOutgoingCall"
-          >
-            Start Call
+          <button class="control pink" @click="copyRoom">
+            Copy Room ID
+          </button>
+
+          <button class="control red" @click="endCall">
+            End Call
           </button>
         </div>
-
-        <div class="notice">{{ statusText }}</div>
-      </div>
+      </section>
     </div>
   </Layout>
 </template>
 
 <script setup>
-import { computed, onBeforeUnmount, onMounted, ref } from "vue";
+import { computed, nextTick, onBeforeUnmount, onMounted, ref } from "vue";
 import { useRoute, useRouter } from "vue-router";
-import Layout from "../components/Layout.vue";
-import socket from "../socket.js";
+import Layout from "@/components/Layout.vue";
+import socket from "@/lib/socket";
 
-const router = useRouter();
 const route = useRoute();
+const router = useRouter();
 
-const apiBase = (import.meta.env.VITE_API_URL || "http://localhost:5000").replace(/\/$/, "");
+const localVideoRef = ref(null);
+const remoteVideoRef = ref(null);
 
-const roomId = ref(String(route.query.roomId || ""));
-const kind = ref(String(route.query.kind || "video"));
-const mode = ref(String(route.query.mode || "caller"));
-const toUserId = ref(String(route.query.toUserId || ""));
-const displayName = ref(String(route.query.name || "User"));
+const routeError = ref("");
+const callStatus = ref("Preparing...");
+const isMuted = ref(false);
+const isCameraOff = ref(false);
 
-const localVideoEl = ref(null);
-const remoteVideoEl = ref(null);
+const localStream = ref(null);
+const remoteStream = ref(null);
+const peerConnection = ref(null);
 
-const muted = ref(false);
-const camOff = ref(false);
-const inCall = ref(false);
-const hasRequested = ref(false);
-const incomingCall = ref(null);
-const statusText = ref("Preparing call...");
-
-let localStream = null;
-let pc = null;
-let currentPeerSocketId = null;
-
-const modeLabel = computed(() => {
-  if (incomingCall.value && !inCall.value && mode.value !== "caller") return "Incoming";
-  if (inCall.value) return "Connected";
-  if (mode.value === "callee") return "Answering";
-  return "Calling";
+const currentUser = computed(() => {
+  try {
+    return JSON.parse(localStorage.getItem("user") || "{}");
+  } catch {
+    return {};
+  }
 });
 
-function getMe() {
-  try {
-    return JSON.parse(localStorage.getItem("user") || "null");
-  } catch {
-    return null;
-  }
-}
+const roomId = computed(() => route.query.roomId ? String(route.query.roomId) : "");
+const mode = computed(() => route.query.mode ? String(route.query.mode) : "caller");
+const callType = computed(() => route.query.type ? String(route.query.type) : "audio");
+const isVideo = computed(() => callType.value === "video");
+const targetUserId = computed(() => route.query.targetUserId ? String(route.query.targetUserId) : "");
+const targetName = computed(() => route.query.targetName ? String(route.query.targetName) : "Unknown");
+
+const myInitials = computed(() => {
+  const raw = currentUser.value?.name || currentUser.value?.username || "Me";
+  return raw.split(" ").map((s) => s[0]).join("").slice(0, 2).toUpperCase();
+});
+
+const targetInitials = computed(() => {
+  const raw = targetName.value || "U";
+  return raw.split(" ").map((s) => s[0]).join("").slice(0, 2).toUpperCase();
+});
+
+const rtcConfig = {
+  iceServers: [
+    { urls: "stun:stun.l.google.com:19302" },
+    { urls: "stun:stun1.l.google.com:19302" },
+  ],
+};
 
 function goBack() {
-  router.push("/people");
+  router.back();
 }
 
-function authPayload() {
-  const me = getMe();
-  return {
-    id: String(me?.id || ""),
-    username: me?.username || me?.display_name || me?.name || "User",
-  };
-}
-
-async function getTurnConfig() {
+async function copyRoom() {
   try {
-    const res = await fetch(`${apiBase}/api/turn`);
-    const data = await res.json().catch(() => ({}));
-    if (res.ok && Array.isArray(data.iceServers)) return data.iceServers;
-  } catch {}
-  return [{ urls: "stun:stun.l.google.com:19302" }];
+    await navigator.clipboard.writeText(roomId.value);
+    callStatus.value = "Room ID copied";
+  } catch {
+    callStatus.value = "Could not copy Room ID";
+  }
 }
 
-async function ensureMedia() {
-  if (localStream) return localStream;
-
-  localStream = await navigator.mediaDevices.getUserMedia({
-    video: kind.value === "video",
+async function getMedia() {
+  const constraints = {
     audio: true,
-  });
+    video: isVideo.value,
+  };
 
-  if (localVideoEl.value && kind.value === "video") {
-    localVideoEl.value.srcObject = localStream;
-    await localVideoEl.value.play().catch(() => {});
+  const stream = await navigator.mediaDevices.getUserMedia(constraints);
+  localStream.value = stream;
+
+  await nextTick();
+
+  if (isVideo.value && localVideoRef.value) {
+    localVideoRef.value.srcObject = stream;
   }
 
-  return localStream;
+  return stream;
 }
 
-async function ensurePeerConnection() {
-  if (pc) return pc;
-
-  const iceServers = await getTurnConfig();
-  pc = new RTCPeerConnection({ iceServers });
-
-  const stream = await ensureMedia();
-  stream.getTracks().forEach((track) => pc.addTrack(track, stream));
-
-  pc.ontrack = (event) => {
-    const [stream] = event.streams;
-    if (remoteVideoEl.value && stream) {
-      remoteVideoEl.value.srcObject = stream;
-      remoteVideoEl.value.play?.().catch(() => {});
-    }
-  };
+function createPeer() {
+  const pc = new RTCPeerConnection(rtcConfig);
 
   pc.onicecandidate = (event) => {
-    if (!event.candidate || !roomId.value || !currentPeerSocketId) return;
-    socket.emit("call:webrtc:ice", {
+    if (!event.candidate) return;
+
+    socket.emit("webrtc:ice-candidate", {
       roomId: roomId.value,
+      to: targetUserId.value,
       candidate: event.candidate,
-      to: currentPeerSocketId,
     });
   };
 
-  pc.onconnectionstatechange = () => {
-    const state = pc?.connectionState || "new";
-    statusText.value = `Connection: ${state}`;
-    if (["connected", "completed"].includes(state)) inCall.value = true;
+  pc.ontrack = (event) => {
+    if (!remoteStream.value) {
+      remoteStream.value = new MediaStream();
+    }
+
+    event.streams[0].getTracks().forEach((track) => {
+      const hasTrack = remoteStream.value.getTracks().some((t) => t.id === track.id);
+      if (!hasTrack) remoteStream.value.addTrack(track);
+    });
+
+    if (isVideo.value && remoteVideoRef.value) {
+      remoteVideoRef.value.srcObject = remoteStream.value;
+    }
   };
 
+  pc.onconnectionstatechange = () => {
+    const state = pc.connectionState;
+    if (state === "connected") callStatus.value = "Connected";
+    else if (state === "connecting") callStatus.value = "Connecting...";
+    else if (state === "disconnected") callStatus.value = "Disconnected";
+    else if (state === "failed") callStatus.value = "Connection failed";
+    else if (state === "closed") callStatus.value = "Call ended";
+  };
+
+  peerConnection.value = pc;
   return pc;
 }
 
-async function makeOffer(targetSocketId) {
-  currentPeerSocketId = targetSocketId;
-  const peer = await ensurePeerConnection();
-  const offer = await peer.createOffer();
-  await peer.setLocalDescription(offer);
-
-  socket.emit("call:webrtc:offer", {
-    roomId: roomId.value,
-    offer,
-    to: targetSocketId,
-  });
-}
-
-async function startOutgoingCall() {
-  const me = getMe();
-  if (!toUserId.value) return;
-
-  if (String(toUserId.value) === String(me?.id || "")) {
-    statusText.value = "You cannot call yourself.";
+async function initCall() {
+  if (!roomId.value) {
+    routeError.value = "Missing roomId. Start the call from People so the app can generate the call room correctly.";
+    setTimeout(() => router.push("/people"), 1500);
     return;
   }
 
-  hasRequested.value = true;
-  statusText.value = "Calling...";
+  callStatus.value = "Getting media...";
+  const stream = await getMedia();
+  const pc = createPeer();
 
-  socket.emit("call:request", {
-    toUserId: toUserId.value,
-    kind: kind.value,
+  stream.getTracks().forEach((track) => {
+    pc.addTrack(track, stream);
   });
-}
 
-async function acceptIncoming() {
-  if (!incomingCall.value) return;
+  if (mode.value === "caller") {
+    callStatus.value = "Calling...";
+    const offer = await pc.createOffer();
+    await pc.setLocalDescription(offer);
 
-  roomId.value = String(incomingCall.value.roomId || roomId.value);
-  kind.value = String(incomingCall.value.kind || kind.value);
-  displayName.value = String(incomingCall.value.fromName || displayName.value);
-  mode.value = "callee";
-
-  await ensureMedia();
-
-  socket.emit("call:accept", { roomId: roomId.value });
-  socket.emit("call:join", { roomId: roomId.value });
-
-  statusText.value = "Joining call...";
-  incomingCall.value = null;
-}
-
-function rejectIncoming() {
-  if (!incomingCall.value?.roomId) return;
-  socket.emit("call:reject", { roomId: incomingCall.value.roomId });
-  incomingCall.value = null;
-  statusText.value = "Call declined";
+    socket.emit("webrtc:offer", {
+      roomId: roomId.value,
+      to: targetUserId.value,
+      offer,
+      type: callType.value,
+    });
+  } else {
+    callStatus.value = "Waiting for caller...";
+  }
 }
 
 function toggleMute() {
-  if (!localStream) return;
-  muted.value = !muted.value;
-  localStream.getAudioTracks().forEach((t) => {
-    t.enabled = !muted.value;
+  if (!localStream.value) return;
+  const audioTracks = localStream.value.getAudioTracks();
+  audioTracks.forEach((track) => {
+    track.enabled = !track.enabled;
+    isMuted.value = !track.enabled;
   });
 }
 
-function toggleCam() {
-  if (!localStream) return;
-  camOff.value = !camOff.value;
-  localStream.getVideoTracks().forEach((t) => {
-    t.enabled = !camOff.value;
+function toggleCamera() {
+  if (!localStream.value) return;
+  const videoTracks = localStream.value.getVideoTracks();
+  videoTracks.forEach((track) => {
+    track.enabled = !track.enabled;
+    isCameraOff.value = !track.enabled;
   });
 }
 
 function cleanup() {
-  try {
-    if (pc) {
-      pc.ontrack = null;
-      pc.onicecandidate = null;
-      pc.onconnectionstatechange = null;
-      pc.close();
-      pc = null;
-    }
-  } catch {}
+  if (localStream.value) {
+    localStream.value.getTracks().forEach((track) => track.stop());
+  }
 
-  try {
-    if (localStream) {
-      localStream.getTracks().forEach((t) => t.stop());
-      localStream = null;
-    }
-  } catch {}
+  if (remoteStream.value) {
+    remoteStream.value.getTracks().forEach((track) => track.stop());
+  }
 
-  currentPeerSocketId = null;
-  inCall.value = false;
+  if (peerConnection.value) {
+    peerConnection.value.ontrack = null;
+    peerConnection.value.onicecandidate = null;
+    peerConnection.value.close();
+  }
+
+  localStream.value = null;
+  remoteStream.value = null;
+  peerConnection.value = null;
 }
 
 function endCall() {
-  try {
-    if (roomId.value) socket.emit("call:end", { roomId: roomId.value });
-  } catch {}
+  socket.emit("call:end", {
+    roomId: roomId.value,
+    to: targetUserId.value,
+  });
+
   cleanup();
   router.push("/people");
 }
 
-function connectSocket() {
-  const me = getMe();
-
-  const onConnect = () => {
-    socket.emit("register-user", authPayload());
-
-    if (mode.value === "caller" && toUserId.value && !hasRequested.value) {
-      startOutgoingCall();
-    }
-  };
-
-  const onIncoming = (payload) => {
-    // ✅ ignore incoming events on caller page
-    if (mode.value === "caller") return;
-
-    // ✅ ignore self-call weirdness
-    if (String(payload?.fromUserId || "") === String(me?.id || "")) return;
-
-    incomingCall.value = payload;
-    roomId.value = String(payload?.roomId || roomId.value);
-    kind.value = String(payload?.kind || kind.value);
-    displayName.value = String(payload?.fromName || displayName.value);
-    mode.value = "callee";
-    statusText.value = "Incoming call...";
-  };
-
-  const onRinging = ({ roomId: rid }) => {
-    if (rid) roomId.value = String(rid);
-    statusText.value = "Ringing...";
-  };
-
-  const onAccepted = async ({ roomId: rid }) => {
-    if (rid) roomId.value = String(rid);
-    statusText.value = "Accepted. Joining...";
-    await ensureMedia();
-    socket.emit("call:join", { roomId: roomId.value });
-  };
-
-  const onJoined = async ({ peerSocketIds = [], shouldCreateOffer }) => {
-    await ensureMedia();
-    if (shouldCreateOffer && peerSocketIds.length) {
-      await makeOffer(peerSocketIds[0]);
-    }
-  };
-
-  const onPeerJoined = async ({ peerSocketId }) => {
-    if (mode.value === "caller") {
-      await makeOffer(peerSocketId);
-    }
-  };
-
-  const onOffer = async ({ offer, fromSocketId }) => {
-    currentPeerSocketId = fromSocketId;
-    const peer = await ensurePeerConnection();
-    await peer.setRemoteDescription(new RTCSessionDescription(offer));
-    const answer = await peer.createAnswer();
-    await peer.setLocalDescription(answer);
-
-    socket.emit("call:webrtc:answer", {
-      roomId: roomId.value,
-      answer,
-      to: fromSocketId,
-    });
-  };
-
-  const onAnswer = async ({ answer, fromSocketId }) => {
-    currentPeerSocketId = fromSocketId;
-    const peer = await ensurePeerConnection();
-    await peer.setRemoteDescription(new RTCSessionDescription(answer));
-  };
-
-  const onIce = async ({ candidate }) => {
-    try {
-      const peer = await ensurePeerConnection();
-      await peer.addIceCandidate(new RTCIceCandidate(candidate));
-    } catch (e) {
-      console.error("ICE add error:", e);
-    }
-  };
-
-  const onEnded = () => {
-    statusText.value = "Call ended";
-    cleanup();
-  };
-
-  const onOffline = ({ message }) => {
-    statusText.value = message || "User offline";
-  };
-
-  const onError = ({ message }) => {
-    statusText.value = message || "Call error";
-  };
-
-  const onBusy = ({ message }) => {
-    statusText.value = message || "User is busy";
-  };
-
-  socket.on("connect", onConnect);
-  socket.on("call:incoming", onIncoming);
-  socket.on("call:ringing", onRinging);
-  socket.on("call:accepted", onAccepted);
-  socket.on("call:joined", onJoined);
-  socket.on("call:peer-joined", onPeerJoined);
-  socket.on("call:webrtc:offer", onOffer);
-  socket.on("call:webrtc:answer", onAnswer);
-  socket.on("call:webrtc:ice", onIce);
-  socket.on("call:ended", onEnded);
-  socket.on("call:offline", onOffline);
-  socket.on("call:error", onError);
-  socket.on("call:busy", onBusy);
-
-  if (socket.connected) onConnect();
-
-  return () => {
-    socket.off("connect", onConnect);
-    socket.off("call:incoming", onIncoming);
-    socket.off("call:ringing", onRinging);
-    socket.off("call:accepted", onAccepted);
-    socket.off("call:joined", onJoined);
-    socket.off("call:peer-joined", onPeerJoined);
-    socket.off("call:webrtc:offer", onOffer);
-    socket.off("call:webrtc:answer", onAnswer);
-    socket.off("call:webrtc:ice", onIce);
-    socket.off("call:ended", onEnded);
-    socket.off("call:offline", onOffline);
-    socket.off("call:error", onError);
-    socket.off("call:busy", onBusy);
-  };
-}
-
-let cleanupSocket = null;
-
 onMounted(async () => {
-  cleanupSocket = connectSocket();
+  try {
+    await initCall();
 
-  if (roomId.value && mode.value === "callee") {
-    await ensureMedia();
+    socket.on("webrtc:offer", async ({ roomId: incomingRoomId, from, offer }) => {
+      if (String(incomingRoomId) !== roomId.value) return;
+
+      if (!peerConnection.value) {
+        const stream = await getMedia();
+        const pc = createPeer();
+        stream.getTracks().forEach((track) => pc.addTrack(track, stream));
+      }
+
+      await peerConnection.value.setRemoteDescription(new RTCSessionDescription(offer));
+
+      const answer = await peerConnection.value.createAnswer();
+      await peerConnection.value.setLocalDescription(answer);
+
+      socket.emit("webrtc:answer", {
+        roomId: roomId.value,
+        to: from,
+        answer,
+      });
+
+      callStatus.value = "Answering...";
+    });
+
+    socket.on("webrtc:answer", async ({ roomId: incomingRoomId, answer }) => {
+      if (String(incomingRoomId) !== roomId.value || !peerConnection.value) return;
+      await peerConnection.value.setRemoteDescription(new RTCSessionDescription(answer));
+      callStatus.value = "Connected";
+    });
+
+    socket.on("webrtc:ice-candidate", async ({ roomId: incomingRoomId, candidate }) => {
+      if (String(incomingRoomId) !== roomId.value || !peerConnection.value || !candidate) return;
+      try {
+        await peerConnection.value.addIceCandidate(new RTCIceCandidate(candidate));
+      } catch (err) {
+        console.error("ICE candidate error:", err);
+      }
+    });
+
+    socket.on("call:end", ({ roomId: endedRoomId }) => {
+      if (String(endedRoomId) !== roomId.value) return;
+      callStatus.value = "Other user ended the call";
+      cleanup();
+      setTimeout(() => router.push("/people"), 900);
+    });
+  } catch (err) {
+    console.error(err);
+    routeError.value =
+      err?.message || "Unable to start the call. Check camera/mic permissions.";
   }
 });
 
 onBeforeUnmount(() => {
-  try {
-    cleanupSocket?.();
-  } catch {}
   cleanup();
 });
 </script>
 
 <style scoped>
-.page{
-  max-width:980px;
-  margin:0 auto;
-  padding:18px;
-  color:#fff;
+.call-page {
+  min-height: 100vh;
+  padding: 18px;
+  position: relative;
+  color: #fff;
+  background:
+    radial-gradient(circle at top left, rgba(255, 0, 153, 0.12), transparent 26%),
+    radial-gradient(circle at right, rgba(59, 130, 246, 0.14), transparent 30%),
+    linear-gradient(180deg, #07111f 0%, #0d1528 100%);
 }
-.head{
-  display:flex;
-  align-items:center;
-  justify-content:space-between;
-  gap:12px;
-  margin-bottom:14px;
+
+.bg {
+  position: absolute;
+  border-radius: 999px;
+  filter: blur(46px);
+  opacity: 0.3;
 }
-.headCenter{
-  flex:1;
-  text-align:center;
+
+.bg1 {
+  width: 250px;
+  height: 250px;
+  left: -60px;
+  top: -40px;
+  background: #ff2f9e;
 }
-.btn,.danger,.accept{
-  border:none;
-  border-radius:999px;
-  padding:12px 16px;
-  color:#fff;
-  font-weight:900;
+
+.bg2 {
+  width: 280px;
+  height: 280px;
+  right: -70px;
+  top: 120px;
+  background: #2563eb;
 }
-.btn{background:rgba(255,255,255,.12)}
-.accept{background:linear-gradient(45deg,#00c97b,#00e39f)}
-.danger{background:rgba(255,82,82,.18);border:1px solid rgba(255,82,82,.24)}
-.title{font-size:28px;font-weight:950}
-.sub{opacity:.75}
-.card,.incomingCard{
-  padding:18px;
-  border-radius:24px;
-  background:rgba(255,255,255,.08);
-  border:1px solid rgba(255,255,255,.12);
+
+.glassy {
+  position: relative;
+  z-index: 1;
+  backdrop-filter: blur(14px);
+  background: rgba(255, 255, 255, 0.06);
+  border: 1px solid rgba(255, 255, 255, 0.08);
+  box-shadow: 0 18px 40px rgba(0, 0, 0, 0.22);
 }
-.big,.incomingTitle{font-size:22px;font-weight:950}
-.small,.incomingSub{opacity:.75;margin-top:6px}
-.metaRow{
-  display:flex;
-  gap:8px;
-  flex-wrap:wrap;
-  margin-bottom:14px;
+
+.topbar,
+.notice,
+.panel,
+.bottom-bar {
+  border-radius: 22px;
 }
-.pill{
-  padding:10px 14px;
-  border-radius:999px;
-  background:rgba(255,255,255,.10);
-  font-weight:900;
+
+.topbar {
+  padding: 16px 18px;
+  margin-bottom: 14px;
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
 }
-.muted{
-  opacity:.72;
-  word-break:break-all;
+
+.title-wrap {
+  text-align: center;
 }
-.videoWrap{
-  position:relative;
-  display:grid;
-  gap:12px;
+
+.title-wrap h1 {
+  margin: 0;
+  font-size: 30px;
 }
-.video{
-  width:100%;
-  min-height:220px;
-  background:#000;
-  border-radius:22px;
-  display:block;
+
+.title-wrap p {
+  margin: 4px 0 0;
+  color: rgba(255, 255, 255, 0.72);
 }
-.remoteVideo{
-  min-height:280px;
+
+.notice {
+  position: relative;
+  z-index: 1;
+  padding: 14px 16px;
+  margin-bottom: 14px;
 }
-.localVideo{
-  min-height:180px;
+
+.notice.error {
+  background: rgba(255, 90, 90, 0.12);
+  border: 1px solid rgba(255, 90, 90, 0.25);
 }
-.audioCard{
-  min-height:220px;
-  display:grid;
-  place-items:center;
-  border-radius:22px;
-  background:rgba(0,0,0,.28);
-  text-align:center;
-  padding:20px;
+
+.call-shell {
+  position: relative;
+  z-index: 1;
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+  gap: 14px;
 }
-.audioEmoji{font-size:48px}
-.audioTitle{font-size:28px;font-weight:900;margin-top:8px}
-.audioSub{opacity:.78;margin-top:8px}
-.controls{
-  display:flex;
-  gap:10px;
-  flex-wrap:wrap;
-  margin-top:14px;
+
+.panel {
+  padding: 14px;
+  min-height: 360px;
 }
-.notice{
-  margin-top:14px;
-  opacity:.8;
-  line-height:1.5;
+
+.panel-head {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  margin-bottom: 12px;
 }
-@media (max-width: 640px){
-  .head{
-    align-items:flex-start;
+
+.panel-actions {
+  display: flex;
+  gap: 8px;
+  flex-wrap: wrap;
+}
+
+.status {
+  color: rgba(255, 255, 255, 0.72);
+}
+
+.media-box {
+  height: 300px;
+  border-radius: 18px;
+  display: grid;
+  place-items: center;
+  overflow: hidden;
+  background: rgba(0, 0, 0, 0.24);
+}
+
+.video {
+  width: 100%;
+  height: 100%;
+  object-fit: cover;
+}
+
+.audio-avatar {
+  width: 110px;
+  height: 110px;
+  border-radius: 999px;
+  display: grid;
+  place-items: center;
+  font-weight: 800;
+  font-size: 30px;
+  background: linear-gradient(135deg, #ff2d9c, #7c3aed);
+}
+
+.audio-avatar.big {
+  width: 130px;
+  height: 130px;
+  font-size: 38px;
+}
+
+.bottom-bar {
+  grid-column: 1 / -1;
+  padding: 14px;
+  display: flex;
+  gap: 10px;
+  justify-content: center;
+  flex-wrap: wrap;
+}
+
+.control,
+.chip,
+.mini {
+  border: none;
+  outline: none;
+  cursor: pointer;
+  color: #fff;
+  font-weight: 700;
+}
+
+.chip,
+.control {
+  border-radius: 999px;
+  padding: 12px 16px;
+}
+
+.mini {
+  border-radius: 12px;
+  padding: 10px 12px;
+  background: rgba(255, 255, 255, 0.08);
+}
+
+.chip.ghost,
+.control {
+  background: rgba(255, 255, 255, 0.08);
+}
+
+.chip.danger,
+.control.red {
+  background: rgba(255, 77, 77, 0.9);
+}
+
+.control.pink {
+  background: linear-gradient(135deg, #ff2d9c, #7c3aed);
+}
+
+@media (max-width: 920px) {
+  .call-shell {
+    grid-template-columns: 1fr;
   }
-  .headCenter{
-    text-align:left;
+
+  .panel {
+    min-height: 280px;
+  }
+
+  .media-box {
+    height: 240px;
+  }
+}
+
+@media (max-width: 720px) {
+  .call-page {
+    padding: 12px;
+  }
+
+  .topbar {
+    gap: 12px;
+    padding: 14px;
+  }
+
+  .title-wrap h1 {
+    font-size: 24px;
   }
 }
 </style>

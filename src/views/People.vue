@@ -1,640 +1,542 @@
 <template>
   <Layout>
-    <div class="page">
-      <div class="bg-orb orb1"></div>
-      <div class="bg-orb orb2"></div>
+    <div class="people-page">
+      <div class="bg bg1"></div>
+      <div class="bg bg2"></div>
+      <div class="bg bg3"></div>
 
-      <header class="head glass">
-        <div>
-          <div class="title">👥 People</div>
-          <div class="sub">Find users, message them, or start audio/video calls</div>
+      <header class="topbar glassy">
+        <div class="top-left">
+          <button class="chip ghost" @click="goBack">← Back</button>
+
+          <div class="title-wrap">
+            <h1>People</h1>
+            <p>Chat and call your community</p>
+          </div>
         </div>
 
-        <div class="headActions">
-          <button class="btn" @click="refreshAll">↻ Refresh</button>
+        <div class="top-right">
+          <button class="chip" @click="loadUsers" :disabled="loading">
+            {{ loading ? "Loading..." : "Refresh" }}
+          </button>
         </div>
       </header>
 
-      <section class="toolbar glass">
+      <section class="toolbar glassy">
         <input
-          v-model="search"
+          v-model.trim="search"
           class="search"
-          type="text"
           placeholder="Search people..."
         />
-
-        <div class="stats">
-          <span class="pill success">Online {{ onlineCount }}</span>
-          <span class="pill">Total {{ filteredUsers.length }}</span>
-        </div>
       </section>
 
-      <section v-if="error" class="errorBox glass">
+      <section v-if="error" class="notice error">
         {{ error }}
       </section>
 
-      <section v-if="loading" class="state glass">
-        Loading people…
+      <section v-if="success" class="notice ok">
+        {{ success }}
       </section>
 
-      <section v-else class="list">
-        <div v-if="filteredUsers.length === 0" class="empty glass">
-          <div class="emptyTitle">No users found</div>
-          <div class="emptySub">Try another search or refresh the list.</div>
-        </div>
+      <section class="people-grid">
+        <article
+          v-for="person in filteredUsers"
+          :key="person.id"
+          class="person-card glassy"
+        >
+          <div class="person-main">
+            <div class="avatar">
+              <img
+                v-if="person.avatar_url || person.profile_picture"
+                :src="person.avatar_url || person.profile_picture"
+                :alt="person.name || person.username || 'User'"
+              />
+              <span v-else>
+                {{ getInitials(person) }}
+              </span>
+            </div>
 
-        <article v-for="u in filteredUsers" :key="u.id" class="person glass">
-          <div class="personTop">
-            <div class="identity" @click="openProfile(u)">
-              <div class="avatarWrap">
-                <img
-                  v-if="u.avatar_url || u.avatarUrl"
-                  :src="mediaUrl(u.avatar_url || u.avatarUrl)"
-                  class="avatarImg"
-                  alt="avatar"
-                />
-                <div v-else class="avatarFallback">
-                  {{ initials(u.username || u.name || "U") }}
-                </div>
-
-                <span class="onlineDot" :class="{ on: isOnline(u.id) }"></span>
+            <div class="meta">
+              <div class="name">
+                {{ person.name || person.username || `User ${person.id}` }}
               </div>
-
-              <div class="meta">
-                <div class="nameRow">
-                  <div class="name">{{ u.username || u.name || `User #${u.id}` }}</div>
-                  <span class="statusTag" :class="{ on: isOnline(u.id) }">
-                    {{ isOnline(u.id) ? "Online" : "Offline" }}
-                  </span>
-                </div>
-
-                <div class="desc">
-                  {{ u.bio || u.email || "Pulse member" }}
-                </div>
+              <div class="sub">
+                @{{ person.username || `user${person.id}` }}
+              </div>
+              <div class="status-row">
+                <span
+                  class="dot"
+                  :class="{ on: isOnline(person.id), off: !isOnline(person.id) }"
+                ></span>
+                <span>{{ isOnline(person.id) ? "Online" : "Offline" }}</span>
               </div>
             </div>
           </div>
 
-          <div class="actionGrid">
-            <button class="actionBtn profile" @click="openProfile(u)">
-              👤 Profile
+          <div class="actions">
+            <button class="btn primary" @click="openChat(person)" :disabled="workingUserId === person.id">
+              {{ workingUserId === person.id ? "Opening..." : "Message" }}
             </button>
 
-            <button class="actionBtn message" @click="startMessage(u)">
-              💬 Text
+            <button class="btn soft" @click="startCall(person, 'audio')" :disabled="workingUserId === person.id">
+              Audio
             </button>
 
-            <button class="actionBtn video" @click="startCall(u, 'video')">
-              📹 Video
-            </button>
-
-            <button class="actionBtn audio" @click="startCall(u, 'audio')">
-              🎧 Audio
+            <button class="btn soft" @click="startCall(person, 'video')" :disabled="workingUserId === person.id">
+              Video
             </button>
           </div>
         </article>
+
+        <div v-if="!loading && filteredUsers.length === 0" class="empty glassy">
+          No people found.
+        </div>
       </section>
     </div>
   </Layout>
 </template>
 
 <script setup>
-import { computed, onBeforeUnmount, onMounted, ref } from "vue";
+import { computed, onMounted, ref } from "vue";
 import { useRouter } from "vue-router";
-import Layout from "../components/Layout.vue";
-import socket from "../socket.js";
+import Layout from "@/components/Layout.vue";
+import api from "@/lib/api";
+import socket from "@/lib/socket";
 
 const router = useRouter();
-const apiBase = (import.meta.env.VITE_API_URL || "http://localhost:5000").replace(/\/$/, "");
-const token = localStorage.getItem("token") || "";
 
+const users = ref([]);
 const loading = ref(false);
 const error = ref("");
+const success = ref("");
 const search = ref("");
-const users = ref([]);
+const workingUserId = ref(null);
 const onlineUserIds = ref([]);
 
-let cleanupPresence = null;
-
-function getMe() {
+const currentUser = computed(() => {
   try {
-    return JSON.parse(localStorage.getItem("user") || "null");
+    return JSON.parse(localStorage.getItem("user") || "{}");
   } catch {
-    return null;
+    return {};
   }
+});
+
+const filteredUsers = computed(() => {
+  const q = search.value.toLowerCase();
+  return users.value.filter((u) => {
+    if (!u || String(u.id) === String(currentUser.value?.id)) return false;
+    const hay =
+      `${u.name || ""} ${u.username || ""} ${u.email || ""}`.toLowerCase();
+    return hay.includes(q);
+  });
+});
+
+function goBack() {
+  router.back();
 }
 
-function authHeaders(extra = {}) {
-  return {
-    ...(token ? { Authorization: `Bearer ${token}` } : {}),
-    ...extra,
-  };
-}
-
-function initials(name) {
-  return String(name || "U").trim().charAt(0).toUpperCase();
-}
-
-function mediaUrl(path) {
-  if (!path) return "";
-  if (/^https?:\/\//i.test(path) || path.startsWith("blob:") || path.startsWith("data:")) {
-    return path;
-  }
-  return `${apiBase}${path.startsWith("/") ? "" : "/"}${path}`;
+function getInitials(person) {
+  const raw = person?.name || person?.username || "U";
+  return raw
+    .split(" ")
+    .map((p) => p[0])
+    .join("")
+    .slice(0, 2)
+    .toUpperCase();
 }
 
 function isOnline(userId) {
-  return onlineUserIds.value.includes(String(userId));
+  return onlineUserIds.value.map(String).includes(String(userId));
 }
-
-const filteredUsers = computed(() => {
-  const me = getMe();
-  const q = search.value.trim().toLowerCase();
-
-  return users.value
-    .filter((u) => String(u.id) !== String(me?.id || ""))
-    .filter((u) => {
-      if (!q) return true;
-      return [u.username, u.name, u.email, u.bio]
-        .filter(Boolean)
-        .some((v) => String(v).toLowerCase().includes(q));
-    })
-    .sort((a, b) => {
-      const aOn = isOnline(a.id) ? 1 : 0;
-      const bOn = isOnline(b.id) ? 1 : 0;
-      return bOn - aOn;
-    });
-});
-
-const onlineCount = computed(() => filteredUsers.value.filter((u) => isOnline(u.id)).length);
 
 async function loadUsers() {
   loading.value = true;
   error.value = "";
-
   try {
-    const res = await fetch(`${apiBase}/users`, {
-      headers: authHeaders(),
-    });
-
-    const data = await res.json().catch(() => ([]));
-
-    if (!res.ok) {
-      throw new Error(data?.error || `Failed to load users (${res.status})`);
-    }
-
-    users.value = Array.isArray(data) ? data : data?.users || [];
-  } catch (e) {
-    error.value = e?.message || "Failed to load users";
+    const { data } = await api.get("/users");
+    users.value = Array.isArray(data) ? data : data.users || [];
+  } catch (err) {
+    error.value =
+      err?.response?.data?.message || "Failed to load people.";
   } finally {
     loading.value = false;
   }
 }
 
-function connectPresence() {
-  const me = getMe();
+async function findOrCreateConversation(otherUserId) {
+  const { data } = await api.get("/conversations/find-or-create", {
+    params: { userId: otherUserId },
+  });
 
-  const onConnect = () => {
-    if (me?.id) {
-      socket.emit("register-user", {
-        id: String(me.id),
-        username: me?.username || me?.display_name || me?.name || "User",
-      });
-      socket.emit("presence:get");
-    }
-  };
+  const conversationId =
+    data?.conversationId || data?.id || data?.conversation?.id;
 
-  const onPresenceList = ({ onlineUserIds: ids }) => {
-    onlineUserIds.value = Array.isArray(ids) ? ids.map(String) : [];
-  };
-
-  const onPresenceUpdate = ({ userId, online }) => {
-    const set = new Set(onlineUserIds.value.map(String));
-    const id = String(userId);
-    if (online) set.add(id);
-    else set.delete(id);
-    onlineUserIds.value = Array.from(set);
-  };
-
-  socket.on("connect", onConnect);
-  socket.on("presence:list", onPresenceList);
-  socket.on("presence:update", onPresenceUpdate);
-
-  if (socket.connected) onConnect();
-
-  return () => {
-    socket.off("connect", onConnect);
-    socket.off("presence:list", onPresenceList);
-    socket.off("presence:update", onPresenceUpdate);
-  };
-}
-
-function openProfile(u) {
-  router.push(`/profile/${u.id}`);
-}
-
-async function startMessage(u) {
-  const me = getMe();
-
-  if (!me?.id) {
-    error.value = "Login again.";
-    return;
+  if (!conversationId) {
+    throw new Error("Conversation could not be created.");
   }
 
-  if (String(u.id) === String(me.id)) {
-    error.value = "You cannot message yourself.";
-    return;
-  }
+  return String(conversationId);
+}
 
+async function openChat(person) {
+  workingUserId.value = person.id;
   error.value = "";
+  success.value = "";
 
   try {
-    const res = await fetch(`${apiBase}/conversations`, {
-      method: "POST",
-      headers: {
-        "Content-Type": "application/json",
-        ...authHeaders(),
-      },
-      body: JSON.stringify({
-        userId1: me.id,
-        userId2: u.id,
-      }),
-    });
-
-    const data = await res.json().catch(() => ({}));
-
-    if (!res.ok) {
-      throw new Error(data?.error || `Failed to create conversation (${res.status})`);
-    }
-
-    const conversationId = data?.id || data?.conversation?.id;
-    if (!conversationId) {
-      throw new Error("Conversation id missing from server response");
-    }
+    const conversationId = await findOrCreateConversation(person.id);
 
     router.push({
       path: "/messages",
       query: {
         conversationId,
-        otherUserId: u.id,
-        name: u.username || u.name || "Chat",
+        userId: String(person.id),
+        name: person.name || person.username || "User",
       },
     });
-  } catch (e) {
-    error.value = e?.message || "Failed to create conversation";
+  } catch (err) {
+    error.value = err?.message || "Unable to open chat.";
+  } finally {
+    workingUserId.value = null;
   }
 }
 
-function startCall(u, kind = "video") {
-  const me = getMe();
+function makeRoomId() {
+  if (window.crypto?.randomUUID) return window.crypto.randomUUID();
+  return `room_${Date.now()}_${Math.random().toString(36).slice(2, 10)}`;
+}
 
-  if (!me?.id) {
-    error.value = "Login again.";
-    return;
-  }
-
-  if (String(u.id) === String(me.id)) {
-    error.value = "You cannot call yourself.";
-    return;
-  }
-
+async function startCall(person, type = "audio") {
+  workingUserId.value = person.id;
   error.value = "";
+  success.value = "";
 
-  const roomId = `call_${Date.now()}_${u.id}`;
-  router.push(
-    `/call?roomId=${encodeURIComponent(roomId)}&kind=${encodeURIComponent(kind)}&mode=caller&toUserId=${encodeURIComponent(
-      u.id
-    )}&name=${encodeURIComponent(u.username || u.name || "User")}`
-  );
-}
+  try {
+    const conversationId = await findOrCreateConversation(person.id);
+    const roomId = makeRoomId();
 
-async function refreshAll() {
-  await loadUsers();
-  if (socket.connected) {
-    socket.emit("presence:get");
+    socket.emit("call:invite", {
+      toUserId: String(person.id),
+      fromUserId: String(currentUser.value?.id),
+      fromName: currentUser.value?.name || currentUser.value?.username || "Unknown",
+      roomId,
+      conversationId,
+      type,
+    });
+
+    router.push({
+      path: "/call",
+      query: {
+        roomId,
+        mode: "caller",
+        type,
+        targetUserId: String(person.id),
+        targetName: person.name || person.username || "User",
+        conversationId,
+      },
+    });
+  } catch (err) {
+    error.value = err?.message || "Unable to start call.";
+  } finally {
+    workingUserId.value = null;
   }
 }
 
-onMounted(async () => {
-  await loadUsers();
-  cleanupPresence = connectPresence();
-});
+onMounted(() => {
+  loadUsers();
 
-onBeforeUnmount(() => {
-  try {
-    cleanupPresence?.();
-  } catch {}
+  socket.emit("presence:sync");
+
+  socket.on("presence:list", ({ onlineUserIds: ids }) => {
+    onlineUserIds.value = Array.isArray(ids) ? ids : [];
+  });
+
+  socket.on("presence:update", ({ userId, online }) => {
+    const set = new Set(onlineUserIds.value.map(String));
+    if (online) set.add(String(userId));
+    else set.delete(String(userId));
+    onlineUserIds.value = [...set];
+  });
+
+  socket.on("call:declined", ({ roomId }) => {
+    success.value = `Call declined${roomId ? ` (${roomId.slice(0, 6)})` : ""}.`;
+  });
 });
 </script>
 
 <style scoped>
-.page{
-  position:relative;
-  max-width:980px;
-  margin:0 auto;
-  padding:18px 18px 110px;
-  color:#fff;
-  overflow:hidden;
+.people-page {
+  position: relative;
+  min-height: 100vh;
+  padding: 18px;
+  color: #fff;
+  overflow: hidden;
+  background:
+    radial-gradient(circle at top left, rgba(255, 0, 140, 0.14), transparent 30%),
+    radial-gradient(circle at bottom right, rgba(0, 162, 255, 0.16), transparent 30%),
+    linear-gradient(180deg, #07111f 0%, #0b1324 45%, #0d152a 100%);
 }
 
-.bg-orb{
-  position:fixed;
-  border-radius:999px;
-  filter:blur(90px);
-  pointer-events:none;
-  opacity:.22;
-}
-.orb1{
-  width:220px;
-  height:220px;
-  left:-60px;
-  top:70px;
-  background:rgba(124,77,255,.38);
-}
-.orb2{
-  width:240px;
-  height:240px;
-  right:-70px;
-  top:180px;
-  background:rgba(255,77,109,.28);
+.bg {
+  position: absolute;
+  border-radius: 999px;
+  filter: blur(50px);
+  opacity: 0.35;
+  pointer-events: none;
 }
 
-.glass{
-  position:relative;
-  z-index:1;
-  background:rgba(255,255,255,.07);
-  border:1px solid rgba(255,255,255,.12);
-  backdrop-filter:blur(16px);
-  -webkit-backdrop-filter:blur(16px);
-  box-shadow:0 14px 44px rgba(0,0,0,.22);
-  border-radius:24px;
+.bg1 {
+  width: 260px;
+  height: 260px;
+  top: -50px;
+  left: -70px;
+  background: #ff4ecd;
 }
 
-.head{
-  display:flex;
-  justify-content:space-between;
-  align-items:center;
-  gap:12px;
-  padding:18px;
-  margin-bottom:14px;
+.bg2 {
+  width: 280px;
+  height: 280px;
+  right: -80px;
+  top: 120px;
+  background: #3b82f6;
 }
 
-.title{
-  font-size:34px;
-  font-weight:950;
-  line-height:1;
+.bg3 {
+  width: 240px;
+  height: 240px;
+  bottom: -70px;
+  left: 20%;
+  background: #7c3aed;
 }
 
-.sub{
-  margin-top:8px;
-  opacity:.8;
-  font-size:16px;
-  line-height:1.4;
+.glassy {
+  position: relative;
+  z-index: 1;
+  backdrop-filter: blur(14px);
+  background: rgba(255, 255, 255, 0.06);
+  border: 1px solid rgba(255, 255, 255, 0.08);
+  box-shadow: 0 18px 40px rgba(0, 0, 0, 0.22);
 }
 
-.headActions{
-  display:flex;
-  gap:10px;
-  flex-wrap:wrap;
+.topbar,
+.toolbar,
+.person-card,
+.empty,
+.notice {
+  border-radius: 22px;
 }
 
-.toolbar{
-  padding:16px;
-  margin-bottom:14px;
+.topbar {
+  display: flex;
+  justify-content: space-between;
+  gap: 14px;
+  align-items: center;
+  padding: 16px 18px;
+  margin-bottom: 14px;
 }
 
-.search{
-  width:100%;
-  padding:14px 16px;
-  border-radius:16px;
-  border:1px solid rgba(255,255,255,.12);
-  background:rgba(255,255,255,.06);
-  color:#fff;
-  outline:none;
-  font-size:15px;
+.top-left {
+  display: flex;
+  align-items: center;
+  gap: 14px;
 }
 
-.search::placeholder{
-  color:rgba(255,255,255,.6);
+.title-wrap h1 {
+  margin: 0;
+  font-size: 30px;
+  line-height: 1;
 }
 
-.stats{
-  display:flex;
-  gap:8px;
-  flex-wrap:wrap;
-  margin-top:12px;
+.title-wrap p {
+  margin: 6px 0 0;
+  color: rgba(255, 255, 255, 0.72);
 }
 
-.pill,.btn{
-  border:none;
-  border-radius:999px;
-  padding:10px 14px;
-  color:#fff;
-  font-weight:800;
-  background:rgba(255,255,255,.12);
+.toolbar {
+  padding: 14px;
+  margin-bottom: 14px;
 }
 
-.pill.success{
-  background:rgba(0,255,170,.16);
-  border:1px solid rgba(0,255,170,.22);
+.search {
+  width: 100%;
+  border: none;
+  outline: none;
+  border-radius: 16px;
+  padding: 14px 16px;
+  color: #fff;
+  background: rgba(255, 255, 255, 0.08);
 }
 
-.errorBox,
-.state,
-.empty{
-  padding:16px 18px;
-  margin-bottom:14px;
+.search::placeholder {
+  color: rgba(255, 255, 255, 0.55);
 }
 
-.errorBox{
-  color:#ffd7dd;
-  border-color:rgba(255,80,80,.35);
+.people-grid {
+  position: relative;
+  z-index: 1;
+  display: grid;
+  grid-template-columns: repeat(auto-fill, minmax(280px, 1fr));
+  gap: 14px;
 }
 
-.emptyTitle{
-  font-size:20px;
-  font-weight:900;
+.person-card {
+  padding: 16px;
 }
 
-.emptySub{
-  margin-top:6px;
-  opacity:.75;
+.person-main {
+  display: flex;
+  gap: 14px;
+  align-items: center;
+  margin-bottom: 14px;
 }
 
-.list{
-  display:grid;
-  gap:12px;
+.avatar {
+  width: 64px;
+  height: 64px;
+  border-radius: 18px;
+  overflow: hidden;
+  display: grid;
+  place-items: center;
+  font-weight: 800;
+  font-size: 20px;
+  background: linear-gradient(135deg, rgba(255, 0, 132, 0.35), rgba(59, 130, 246, 0.35));
 }
 
-.person{
-  padding:16px;
+.avatar img {
+  width: 100%;
+  height: 100%;
+  object-fit: cover;
 }
 
-.personTop{
-  margin-bottom:14px;
+.meta {
+  min-width: 0;
 }
 
-.identity{
-  display:flex;
-  align-items:center;
-  gap:14px;
-  cursor:pointer;
+.name {
+  font-size: 18px;
+  font-weight: 800;
 }
 
-.avatarWrap{
-  position:relative;
-  width:64px;
-  height:64px;
-  flex:0 0 auto;
+.sub {
+  margin-top: 3px;
+  color: rgba(255, 255, 255, 0.68);
 }
 
-.avatarImg,
-.avatarFallback{
-  width:100%;
-  height:100%;
-  border-radius:18px;
-  object-fit:cover;
+.status-row {
+  display: flex;
+  gap: 8px;
+  align-items: center;
+  margin-top: 8px;
+  font-size: 14px;
+  color: rgba(255, 255, 255, 0.82);
 }
 
-.avatarFallback{
-  display:grid;
-  place-items:center;
-  background:linear-gradient(135deg,#7c4dff,#ff4d6d);
-  font-size:24px;
-  font-weight:900;
+.dot {
+  width: 9px;
+  height: 9px;
+  border-radius: 999px;
 }
 
-.onlineDot{
-  position:absolute;
-  right:-2px;
-  bottom:-2px;
-  width:16px;
-  height:16px;
-  border-radius:50%;
-  background:#6b7280;
-  border:2px solid rgba(11,17,33,.95);
+.dot.on {
+  background: #22c55e;
+  box-shadow: 0 0 14px #22c55e;
 }
 
-.onlineDot.on{
-  background:#00d084;
+.dot.off {
+  background: rgba(255, 255, 255, 0.3);
 }
 
-.meta{
-  min-width:0;
-  flex:1;
+.actions {
+  display: flex;
+  gap: 10px;
+  flex-wrap: wrap;
 }
 
-.nameRow{
-  display:flex;
-  align-items:center;
-  gap:8px;
-  flex-wrap:wrap;
+.btn,
+.chip {
+  border: none;
+  outline: none;
+  cursor: pointer;
+  color: #fff;
+  font-weight: 700;
+  transition: 0.2s ease;
 }
 
-.name{
-  font-size:20px;
-  font-weight:900;
-  word-break:break-word;
+.btn {
+  border-radius: 14px;
+  padding: 12px 14px;
 }
 
-.statusTag{
-  padding:6px 10px;
-  border-radius:999px;
-  background:rgba(255,255,255,.08);
-  border:1px solid rgba(255,255,255,.12);
-  font-size:12px;
-  font-weight:900;
+.chip {
+  border-radius: 999px;
+  padding: 12px 16px;
 }
 
-.statusTag.on{
-  background:rgba(0,255,170,.16);
-  border-color:rgba(0,255,170,.22);
+.primary {
+  background: linear-gradient(135deg, #ff2c9c, #7c3aed);
 }
 
-.desc{
-  margin-top:6px;
-  opacity:.74;
-  font-size:14px;
-  white-space:nowrap;
-  overflow:hidden;
-  text-overflow:ellipsis;
+.soft {
+  background: rgba(255, 255, 255, 0.1);
 }
 
-.actionGrid{
-  display:grid;
-  grid-template-columns:repeat(4, minmax(0, 1fr));
-  gap:10px;
+.ghost {
+  background: rgba(255, 255, 255, 0.08);
 }
 
-.actionBtn{
-  min-height:48px;
-  border:none;
-  border-radius:16px;
-  color:#fff;
-  font-weight:900;
-  font-size:14px;
-  padding:12px 10px;
-  background:rgba(255,255,255,.08);
-  border:1px solid rgba(255,255,255,.12);
+.btn:hover,
+.chip:hover {
+  transform: translateY(-1px);
 }
 
-.actionBtn.profile{
-  background:rgba(255,255,255,.08);
+.notice {
+  position: relative;
+  z-index: 1;
+  padding: 14px 16px;
+  margin-bottom: 12px;
 }
 
-.actionBtn.message{
-  background:rgba(0,255,170,.14);
-  border-color:rgba(0,255,170,.18);
+.notice.error {
+  background: rgba(255, 70, 70, 0.12);
+  border: 1px solid rgba(255, 90, 90, 0.25);
 }
 
-.actionBtn.video{
-  background:rgba(255,82,82,.14);
-  border-color:rgba(255,82,82,.18);
+.notice.ok {
+  background: rgba(34, 197, 94, 0.12);
+  border: 1px solid rgba(34, 197, 94, 0.25);
 }
 
-.actionBtn.audio{
-  background:rgba(91,140,255,.14);
-  border-color:rgba(91,140,255,.18);
+.empty {
+  padding: 24px;
+  text-align: center;
+  color: rgba(255, 255, 255, 0.72);
 }
 
-@media (max-width: 760px){
-  .title{
-    font-size:30px;
+@media (max-width: 720px) {
+  .people-page {
+    padding: 12px;
   }
 
-  .head{
-    flex-direction:column;
-    align-items:flex-start;
+  .topbar {
+    flex-direction: column;
+    align-items: stretch;
   }
 
-  .actionGrid{
-    grid-template-columns:repeat(2, minmax(0, 1fr));
-  }
-}
-
-@media (max-width: 520px){
-  .page{
-    padding:14px 14px 110px;
+  .top-left,
+  .top-right {
+    width: 100%;
   }
 
-  .title{
-    font-size:28px;
+  .title-wrap h1 {
+    font-size: 24px;
   }
 
-  .identity{
-    align-items:flex-start;
+  .actions {
+    flex-direction: column;
   }
 
-  .name{
-    font-size:18px;
-  }
-
-  .desc{
-    white-space:normal;
-  }
-
-  .actionGrid{
-    grid-template-columns:1fr 1fr;
+  .btn {
+    width: 100%;
   }
 }
 </style>
