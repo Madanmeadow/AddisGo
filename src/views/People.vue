@@ -25,17 +25,34 @@
         </div>
 
         <div v-for="u in filteredUsers" :key="u.id" class="row">
-          <div class="avatar">{{ initials(u.username || u.name || "U") }}</div>
+          <div class="avatar">
+            <img
+              v-if="u.avatar_url"
+              :src="mediaUrl(u.avatar_url)"
+              class="avatarImg"
+              alt="avatar"
+            />
+            <span v-else>{{ initials(u.username || u.name || "U") }}</span>
+          </div>
 
           <div class="info">
-            <div class="name">{{ u.username || u.name || `User #${u.id}` }}</div>
-            <div class="meta">{{ u.bio || u.email || "Pulse member" }}</div>
+            <div class="nameRow">
+              <div class="name">{{ u.username || u.name || `User #${u.id}` }}</div>
+              <span class="status" :class="{ on: isOnline(u.id) }">
+                {{ isOnline(u.id) ? "Online" : "Offline" }}
+              </span>
+            </div>
+
+            <div class="meta">
+              {{ u.bio || u.email || "Pulse member" }}
+            </div>
           </div>
 
           <div class="actions">
             <button class="pill" @click="openProfile(u)">Profile</button>
-            <button class="pill success" @click="startMessage(u)">Message</button>
-            <button class="pill hot" @click="startCall(u, 'video')">Call</button>
+            <button class="pill success" @click="startMessage(u)">Text</button>
+            <button class="pill hot" @click="startCall(u, 'video')">Video</button>
+            <button class="pill audio" @click="startCall(u, 'audio')">Audio</button>
           </div>
         </div>
       </div>
@@ -48,20 +65,43 @@ import { computed, onMounted, ref } from "vue";
 import { useRouter } from "vue-router";
 import Layout from "../components/Layout.vue";
 
-
 const router = useRouter();
+const apiBase = (import.meta.env.VITE_API_URL || "http://localhost:5000").replace(/\/$/, "");
+const token = localStorage.getItem("token") || "";
 
 const loading = ref(false);
 const error = ref("");
 const users = ref([]);
 const search = ref("");
+const onlineUserIds = ref([]);
 
 function getMe() {
-  try { return JSON.parse(localStorage.getItem("user") || "null"); } catch { return null; }
+  try {
+    return JSON.parse(localStorage.getItem("user") || "null");
+  } catch {
+    return null;
+  }
+}
+
+function authHeaders(extra = {}) {
+  return {
+    ...(token ? { Authorization: `Bearer ${token}` } : {}),
+    ...extra,
+  };
 }
 
 function initials(name) {
   return String(name || "U").trim().charAt(0).toUpperCase();
+}
+
+function mediaUrl(path) {
+  if (!path) return "";
+  if (/^https?:\/\//i.test(path) || path.startsWith("blob:") || path.startsWith("data:")) return path;
+  return `${apiBase}${path.startsWith("/") ? "" : "/"}${path}`;
+}
+
+function isOnline(userId) {
+  return onlineUserIds.value.includes(String(userId));
 }
 
 const filteredUsers = computed(() => {
@@ -83,13 +123,32 @@ async function loadUsers() {
   error.value = "";
 
   try {
-    const data = await apiFetch("/users");
+    const res = await fetch(`${apiBase}/users`, {
+      headers: authHeaders(),
+    });
+
+    const data = await res.json().catch(() => ([]));
+
+    if (!res.ok) {
+      throw new Error(data?.error || "Failed to load users");
+    }
+
     users.value = Array.isArray(data) ? data : (data?.users || []);
   } catch (e) {
     error.value = e?.message || "Failed to load users";
   } finally {
     loading.value = false;
   }
+}
+
+async function loadPresence() {
+  try {
+    const res = await fetch(`${apiBase}/api/server-stats`);
+    const data = await res.json().catch(() => ({}));
+    if (res.ok && Array.isArray(data.onlineUserIds)) {
+      onlineUserIds.value = data.onlineUserIds.map(String);
+    }
+  } catch {}
 }
 
 function openProfile(u) {
@@ -104,13 +163,23 @@ async function startMessage(u) {
   }
 
   try {
-    const data = await apiFetch("/conversations", {
+    const res = await fetch(`${apiBase}/conversations`, {
       method: "POST",
+      headers: {
+        "Content-Type": "application/json",
+        ...authHeaders(),
+      },
       body: JSON.stringify({
         userId1: me.id,
         userId2: u.id,
       }),
     });
+
+    const data = await res.json().catch(() => ({}));
+
+    if (!res.ok) {
+      throw new Error(data?.error || "Failed to open chat");
+    }
 
     const conversationId = data?.id || data?.conversation?.id;
     if (!conversationId) throw new Error("Could not create conversation");
@@ -137,7 +206,9 @@ function startCall(u, kind = "video") {
   );
 }
 
-onMounted(loadUsers);
+onMounted(async () => {
+  await Promise.all([loadUsers(), loadPresence()]);
+});
 </script>
 
 <style scoped>
@@ -161,15 +232,27 @@ onMounted(loadUsers);
   background:rgba(255,255,255,.08);border:1px solid rgba(255,255,255,.12)
 }
 .avatar{
-  width:48px;height:48px;border-radius:16px;display:grid;place-items:center;
-  background:linear-gradient(45deg,#7c4dff,#ff4d6d);font-weight:900;font-size:20px
+  width:52px;height:52px;border-radius:16px;display:grid;place-items:center;
+  background:linear-gradient(45deg,#7c4dff,#ff4d6d);font-weight:900;font-size:20px;
+  overflow:hidden;flex:0 0 auto
 }
+.avatarImg{width:100%;height:100%;object-fit:cover}
 .info{flex:1;min-width:0}
+.nameRow{display:flex;gap:10px;align-items:center;flex-wrap:wrap}
 .name{font-weight:900;font-size:18px}
 .meta{opacity:.72;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+.status{
+  padding:6px 10px;border-radius:999px;
+  background:rgba(255,255,255,.08);border:1px solid rgba(255,255,255,.12);
+  font-size:12px;font-weight:900
+}
+.status.on{
+  background:rgba(0,255,170,.16);border-color:rgba(0,255,170,.22)
+}
 .actions{display:flex;flex-wrap:wrap;gap:8px;justify-content:flex-end}
 .pill.success{background:rgba(0,255,170,.16);border:1px solid rgba(0,255,170,.22)}
 .pill.hot{background:rgba(255,82,82,.16);border:1px solid rgba(255,82,82,.22)}
+.pill.audio{background:rgba(91,140,255,.16);border:1px solid rgba(91,140,255,.22)}
 .empty{padding:18px;border-radius:16px;background:rgba(255,255,255,.07)}
 .big{font-weight:900;font-size:18px}
 @media (max-width: 640px){
