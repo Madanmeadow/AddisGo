@@ -6,7 +6,7 @@
           <div class="title">👥 People</div>
           <div class="sub">Find users, message them, or start a 1-to-1 call</div>
         </div>
-        <button class="btn" @click="loadUsers">↻ Refresh</button>
+        <button class="btn" @click="refreshAll">↻ Refresh</button>
       </div>
 
       <input
@@ -61,8 +61,9 @@
 </template>
 
 <script setup>
-import { computed, onMounted, ref } from "vue";
+import { computed, onMounted, onBeforeUnmount, ref } from "vue";
 import { useRouter } from "vue-router";
+import { io } from "socket.io-client";
 import Layout from "../components/Layout.vue";
 
 const router = useRouter();
@@ -74,6 +75,8 @@ const error = ref("");
 const users = ref([]);
 const search = ref("");
 const onlineUserIds = ref([]);
+
+let socket = null;
 
 function getMe() {
   try {
@@ -141,14 +144,38 @@ async function loadUsers() {
   }
 }
 
-async function loadPresence() {
+function connectPresence() {
+  const me = getMe();
+
   try {
-    const res = await fetch(`${apiBase}/api/server-stats`);
-    const data = await res.json().catch(() => ({}));
-    if (res.ok && Array.isArray(data.onlineUserIds)) {
-      onlineUserIds.value = data.onlineUserIds.map(String);
-    }
-  } catch {}
+    socket = io(apiBase, {
+      transports: ["websocket"],
+      auth: { token },
+    });
+
+    socket.on("connect", () => {
+      if (me?.id) {
+        socket.emit("register-user", {
+          id: String(me.id),
+          username: me?.username || me?.display_name || me?.name || "User",
+        });
+      }
+    });
+
+    socket.on("presence:list", ({ onlineUserIds: ids }) => {
+      onlineUserIds.value = Array.isArray(ids) ? ids.map(String) : [];
+    });
+
+    socket.on("presence:update", ({ userId, online }) => {
+      const id = String(userId);
+      const set = new Set(onlineUserIds.value.map(String));
+      if (online) set.add(id);
+      else set.delete(id);
+      onlineUserIds.value = Array.from(set);
+    });
+  } catch (e) {
+    console.error("presence socket error:", e);
+  }
 }
 
 function openProfile(u) {
@@ -206,8 +233,19 @@ function startCall(u, kind = "video") {
   );
 }
 
+async function refreshAll() {
+  await loadUsers();
+}
+
 onMounted(async () => {
-  await Promise.all([loadUsers(), loadPresence()]);
+  await loadUsers();
+  connectPresence();
+});
+
+onBeforeUnmount(() => {
+  try {
+    socket?.disconnect?.();
+  } catch {}
 });
 </script>
 
