@@ -159,6 +159,9 @@ function connectPresence() {
           id: String(me.id),
           username: me?.username || me?.display_name || me?.name || "User",
         });
+
+        // important: ask server for current online list
+        socket.emit("presence:get");
       }
     });
 
@@ -235,6 +238,9 @@ function startCall(u, kind = "video") {
 
 async function refreshAll() {
   await loadUsers();
+  if (socket?.connected) {
+    socket.emit("presence:get");
+  }
 }
 
 onMounted(async () => {
