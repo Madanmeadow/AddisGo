@@ -58,9 +58,10 @@
 </template>
 
 <script setup>
-import { nextTick, onMounted, ref } from "vue";
+import { nextTick, onMounted, onBeforeUnmount, ref } from "vue";
 import { useRoute, useRouter } from "vue-router";
 import Layout from "../components/Layout.vue";
+import socket from "../socket.js";
 
 const router = useRouter();
 const route = useRoute();
@@ -77,6 +78,8 @@ const error = ref("");
 const messages = ref([]);
 const draft = ref("");
 const messagesBox = ref(null);
+
+let pollTimer = null;
 
 function getMe() {
   try {
@@ -116,10 +119,20 @@ async function scrollBottom() {
   if (el) el.scrollTop = el.scrollHeight;
 }
 
-async function loadMessages() {
+function mergeMessages(list) {
+  const map = new Map();
+  [...messages.value, ...list].forEach((m) => {
+    if (m?.id != null) map.set(String(m.id), m);
+  });
+  messages.value = Array.from(map.values()).sort(
+    (a, b) => new Date(a.created_at || 0) - new Date(b.created_at || 0)
+  );
+}
+
+async function loadMessages(silent = false) {
   if (!conversationId) return;
 
-  loading.value = true;
+  if (!silent) loading.value = true;
   error.value = "";
 
   try {
@@ -134,12 +147,13 @@ async function loadMessages() {
       throw new Error(data?.error || "Failed to load messages");
     }
 
-    messages.value = Array.isArray(data) ? data : data?.messages || [];
+    const list = Array.isArray(data) ? data : data?.messages || [];
+    mergeMessages(list);
     await scrollBottom();
   } catch (e) {
     error.value = e?.message || "Failed to load messages";
   } finally {
-    loading.value = false;
+    if (!silent) loading.value = false;
   }
 }
 
@@ -148,12 +162,13 @@ async function send() {
 
   sending.value = true;
   error.value = "";
+  const text = draft.value.trim();
 
   try {
     const payload = {
       conversationId,
       sender_id: me.id,
-      text: draft.value.trim(),
+      text,
     };
 
     const res = await fetch(`${apiBase}/messages`, {
@@ -172,9 +187,12 @@ async function send() {
     }
 
     if (created?.id) {
-      messages.value.push(created);
-    } else {
-      await loadMessages();
+      mergeMessages([created]);
+
+      socket.emit("message:send", {
+        conversationId,
+        message: created,
+      });
     }
 
     draft.value = "";
@@ -186,7 +204,67 @@ async function send() {
   }
 }
 
-onMounted(loadMessages);
+function connectRealtime() {
+  const onConnect = () => {
+    if (me?.id) {
+      socket.emit("register-user", {
+        id: String(me.id),
+        username: me?.username || me?.display_name || me?.name || "User",
+      });
+    }
+
+    if (conversationId) {
+      socket.emit("messages:join", { conversationId });
+    }
+  };
+
+  const onMessageNew = (payload) => {
+    if (!payload) return;
+
+    const incomingConversationId =
+      payload.conversationId ||
+      payload.message?.conversation_id ||
+      payload.message?.conversationId;
+
+    if (String(incomingConversationId) !== String(conversationId)) return;
+
+    const msg = payload.message || payload;
+    if (msg?.id) {
+      mergeMessages([msg]);
+      scrollBottom();
+    } else {
+      loadMessages(true);
+    }
+  };
+
+  socket.on("connect", onConnect);
+  socket.on("message:new", onMessageNew);
+
+  if (socket.connected) onConnect();
+
+  return () => {
+    socket.off("connect", onConnect);
+    socket.off("message:new", onMessageNew);
+    if (conversationId) {
+      socket.emit("messages:leave", { conversationId });
+    }
+  };
+}
+
+let cleanupSocket = null;
+
+onMounted(async () => {
+  await loadMessages();
+  cleanupSocket = connectRealtime();
+  pollTimer = setInterval(() => loadMessages(true), 3000);
+});
+
+onBeforeUnmount(() => {
+  try {
+    cleanupSocket?.();
+  } catch {}
+  if (pollTimer) clearInterval(pollTimer);
+});
 </script>
 
 <style scoped>

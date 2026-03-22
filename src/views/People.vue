@@ -63,8 +63,8 @@
 <script setup>
 import { computed, onMounted, onBeforeUnmount, ref } from "vue";
 import { useRouter } from "vue-router";
-import { io } from "socket.io-client";
 import Layout from "../components/Layout.vue";
+import socket from "../socket.js";
 
 const router = useRouter();
 const apiBase = (import.meta.env.VITE_API_URL || "http://localhost:5000").replace(/\/$/, "");
@@ -75,8 +75,6 @@ const error = ref("");
 const users = ref([]);
 const search = ref("");
 const onlineUserIds = ref([]);
-
-let socket = null;
 
 function getMe() {
   try {
@@ -147,39 +145,42 @@ async function loadUsers() {
 function connectPresence() {
   const me = getMe();
 
-  try {
-    socket = io(apiBase, {
-      transports: ["websocket"],
-      auth: { token },
-    });
+  const onConnect = () => {
+    if (me?.id) {
+      socket.emit("register-user", {
+        id: String(me.id),
+        username: me?.username || me?.display_name || me?.name || "User",
+      });
+      socket.emit("presence:get");
+    }
+  };
 
-    socket.on("connect", () => {
-      if (me?.id) {
-        socket.emit("register-user", {
-          id: String(me.id),
-          username: me?.username || me?.display_name || me?.name || "User",
-        });
+  const onPresenceList = ({ onlineUserIds: ids }) => {
+    onlineUserIds.value = Array.isArray(ids) ? ids.map(String) : [];
+  };
 
-        // important: ask server for current online list
-        socket.emit("presence:get");
-      }
-    });
+  const onPresenceUpdate = ({ userId, online }) => {
+    const id = String(userId);
+    const set = new Set(onlineUserIds.value.map(String));
+    if (online) set.add(id);
+    else set.delete(id);
+    onlineUserIds.value = Array.from(set);
+  };
 
-    socket.on("presence:list", ({ onlineUserIds: ids }) => {
-      onlineUserIds.value = Array.isArray(ids) ? ids.map(String) : [];
-    });
+  socket.on("connect", onConnect);
+  socket.on("presence:list", onPresenceList);
+  socket.on("presence:update", onPresenceUpdate);
 
-    socket.on("presence:update", ({ userId, online }) => {
-      const id = String(userId);
-      const set = new Set(onlineUserIds.value.map(String));
-      if (online) set.add(id);
-      else set.delete(id);
-      onlineUserIds.value = Array.from(set);
-    });
-  } catch (e) {
-    console.error("presence socket error:", e);
-  }
+  if (socket.connected) onConnect();
+
+  return () => {
+    socket.off("connect", onConnect);
+    socket.off("presence:list", onPresenceList);
+    socket.off("presence:update", onPresenceUpdate);
+  };
 }
+
+let cleanupPresence = null;
 
 function openProfile(u) {
   router.push(`/profile/${u.id}`);
@@ -238,19 +239,17 @@ function startCall(u, kind = "video") {
 
 async function refreshAll() {
   await loadUsers();
-  if (socket?.connected) {
-    socket.emit("presence:get");
-  }
+  if (socket.connected) socket.emit("presence:get");
 }
 
 onMounted(async () => {
   await loadUsers();
-  connectPresence();
+  cleanupPresence = connectPresence();
 });
 
 onBeforeUnmount(() => {
   try {
-    socket?.disconnect?.();
+    cleanupPresence?.();
   } catch {}
 });
 </script>

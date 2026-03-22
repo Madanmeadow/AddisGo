@@ -30,7 +30,9 @@ CREATE TABLE messages (
 router.get("/conversations", async (req, res) => {
   try {
     const { userId } = req.query;
-    if (!userId) return res.status(400).json({ error: "Missing userId" });
+    if (!userId) {
+      return res.status(400).json({ error: "Missing userId" });
+    }
 
     const q = `
       SELECT
@@ -45,7 +47,8 @@ router.get("/conversations", async (req, res) => {
       JOIN conversation_members me
         ON me.conversation_id = c.id
       JOIN conversation_members other
-        ON other.conversation_id = c.id AND other.user_id <> me.user_id
+        ON other.conversation_id = c.id
+       AND other.user_id <> me.user_id
       JOIN users u
         ON u.id = other.user_id
       LEFT JOIN LATERAL (
@@ -70,10 +73,16 @@ router.get("/conversations", async (req, res) => {
 // POST /conversations
 router.post("/conversations", async (req, res) => {
   const client = await pool.connect();
+
   try {
     const { userId1, userId2 } = req.body || {};
+
     if (!userId1 || !userId2) {
       return res.status(400).json({ error: "Missing user ids" });
+    }
+
+    if (String(userId1) === String(userId2)) {
+      return res.status(400).json({ error: "Cannot create conversation with yourself" });
     }
 
     await client.query("BEGIN");
@@ -82,8 +91,10 @@ router.post("/conversations", async (req, res) => {
       `
       SELECT c.id
       FROM conversations c
-      JOIN conversation_members m1 ON m1.conversation_id = c.id AND m1.user_id = $1
-      JOIN conversation_members m2 ON m2.conversation_id = c.id AND m2.user_id = $2
+      JOIN conversation_members m1
+        ON m1.conversation_id = c.id AND m1.user_id = $1
+      JOIN conversation_members m2
+        ON m2.conversation_id = c.id AND m2.user_id = $2
       LIMIT 1
       `,
       [userId1, userId2]
@@ -101,7 +112,10 @@ router.post("/conversations", async (req, res) => {
     const conversationId = created.rows[0].id;
 
     await client.query(
-      `INSERT INTO conversation_members (conversation_id, user_id) VALUES ($1, $2), ($1, $3)`,
+      `
+      INSERT INTO conversation_members (conversation_id, user_id)
+      VALUES ($1, $2), ($1, $3)
+      `,
       [conversationId, userId1, userId2]
     );
 
@@ -120,13 +134,19 @@ router.post("/conversations", async (req, res) => {
 router.get("/messages", async (req, res) => {
   try {
     const { conversationId } = req.query;
+
     if (!conversationId) {
       return res.status(400).json({ error: "Missing conversationId" });
     }
 
     const { rows } = await pool.query(
       `
-      SELECT id, conversation_id, sender_id, text, created_at
+      SELECT
+        id,
+        conversation_id,
+        sender_id,
+        text,
+        created_at
       FROM messages
       WHERE conversation_id = $1
       ORDER BY created_at ASC
@@ -145,6 +165,7 @@ router.get("/messages", async (req, res) => {
 router.post("/messages", async (req, res) => {
   try {
     const { conversationId, sender_id, text } = req.body || {};
+
     if (!conversationId || !sender_id || !String(text || "").trim()) {
       return res.status(400).json({ error: "Missing required fields" });
     }
@@ -153,9 +174,14 @@ router.post("/messages", async (req, res) => {
       `
       INSERT INTO messages (conversation_id, sender_id, text)
       VALUES ($1, $2, $3)
-      RETURNING id, conversation_id, sender_id, text, created_at
+      RETURNING
+        id,
+        conversation_id,
+        sender_id,
+        text,
+        created_at
       `,
-      [conversationId, sender_id, text.trim()]
+      [conversationId, sender_id, String(text).trim()]
     );
 
     res.status(201).json(rows[0]);
@@ -166,7 +192,6 @@ router.post("/messages", async (req, res) => {
 });
 
 export default router;
-
 
 
 

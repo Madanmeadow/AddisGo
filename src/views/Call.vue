@@ -71,14 +71,13 @@
 <script setup>
 import { computed, onBeforeUnmount, onMounted, ref } from "vue";
 import { useRoute, useRouter } from "vue-router";
-import { io } from "socket.io-client";
 import Layout from "../components/Layout.vue";
+import socket from "../socket.js";
 
 const router = useRouter();
 const route = useRoute();
 
 const apiBase = (import.meta.env.VITE_API_URL || "http://localhost:5000").replace(/\/$/, "");
-const token = localStorage.getItem("token") || "";
 
 const roomId = ref(String(route.query.roomId || ""));
 const kind = ref(String(route.query.kind || "video"));
@@ -95,7 +94,6 @@ const inCall = ref(false);
 const incomingCall = ref(null);
 const statusText = ref("Preparing call...");
 
-let socket = null;
 let localStream = null;
 let pc = null;
 let currentPeerSocketId = null;
@@ -119,7 +117,7 @@ function goBack() {
 
 function endCall() {
   try {
-    if (socket && roomId.value) socket.emit("call:end", { roomId: roomId.value });
+    if (roomId.value) socket.emit("call:end", { roomId: roomId.value });
   } catch {}
   cleanup();
   router.push("/people");
@@ -175,7 +173,7 @@ async function ensurePeerConnection() {
   };
 
   pc.onicecandidate = (event) => {
-    if (!event.candidate || !socket || !roomId.value || !currentPeerSocketId) return;
+    if (!event.candidate || !roomId.value || !currentPeerSocketId) return;
     socket.emit("call:webrtc:ice", {
       roomId: roomId.value,
       candidate: event.candidate,
@@ -211,13 +209,13 @@ async function acceptIncoming() {
 
   roomId.value = String(incomingCall.value.roomId || roomId.value);
   kind.value = String(incomingCall.value.kind || kind.value);
+  displayName.value = String(incomingCall.value.fromName || displayName.value);
   mode.value = "callee";
 
   socket.emit("call:accept", { roomId: roomId.value });
-  socket.emit("call:join", { roomId: roomId.value }, async () => {
-    statusText.value = "Joining call...";
-    await ensureMedia();
-  });
+  socket.emit("call:join", { roomId: roomId.value });
+  statusText.value = "Joining call...";
+  await ensureMedia();
 
   incomingCall.value = null;
 }
@@ -266,12 +264,7 @@ function cleanup() {
 }
 
 function connectSocket() {
-  socket = io(apiBase, {
-    transports: ["websocket"],
-    auth: { token },
-  });
-
-  socket.on("connect", () => {
+  const onConnect = () => {
     socket.emit("register-user", authPayload());
 
     if (mode.value === "caller" && toUserId.value) {
@@ -281,39 +274,39 @@ function connectSocket() {
         kind: kind.value,
       });
     }
-  });
+  };
 
-  socket.on("call:incoming", (payload) => {
+  const onIncoming = (payload) => {
     incomingCall.value = payload;
     statusText.value = "Incoming call...";
-  });
+  };
 
-  socket.on("call:ringing", ({ roomId: rid }) => {
+  const onRinging = ({ roomId: rid }) => {
     if (!roomId.value) roomId.value = String(rid || "");
     statusText.value = "Ringing...";
-  });
+  };
 
-  socket.on("call:accepted", async ({ roomId: rid }) => {
+  const onAccepted = async ({ roomId: rid }) => {
     if (!roomId.value) roomId.value = String(rid || "");
     statusText.value = "Accepted. Joining...";
     socket.emit("call:join", { roomId: roomId.value });
     await ensureMedia();
-  });
+  };
 
-  socket.on("call:joined", async ({ peerSocketIds = [], shouldCreateOffer }) => {
+  const onJoined = async ({ peerSocketIds = [], shouldCreateOffer }) => {
     await ensureMedia();
     if (shouldCreateOffer && peerSocketIds.length) {
       await makeOffer(peerSocketIds[0]);
     }
-  });
+  };
 
-  socket.on("call:peer-joined", async ({ peerSocketId }) => {
+  const onPeerJoined = async ({ peerSocketId }) => {
     if (mode.value === "caller") {
       await makeOffer(peerSocketId);
     }
-  });
+  };
 
-  socket.on("call:webrtc:offer", async ({ offer, fromSocketId }) => {
+  const onOffer = async ({ offer, fromSocketId }) => {
     currentPeerSocketId = fromSocketId;
     const peer = await ensurePeerConnection();
     await peer.setRemoteDescription(new RTCSessionDescription(offer));
@@ -325,39 +318,71 @@ function connectSocket() {
       answer,
       to: fromSocketId,
     });
-  });
+  };
 
-  socket.on("call:webrtc:answer", async ({ answer, fromSocketId }) => {
+  const onAnswer = async ({ answer, fromSocketId }) => {
     currentPeerSocketId = fromSocketId;
     const peer = await ensurePeerConnection();
     await peer.setRemoteDescription(new RTCSessionDescription(answer));
-  });
+  };
 
-  socket.on("call:webrtc:ice", async ({ candidate }) => {
+  const onIce = async ({ candidate }) => {
     try {
       const peer = await ensurePeerConnection();
       await peer.addIceCandidate(new RTCIceCandidate(candidate));
     } catch (e) {
       console.error("ICE add error:", e);
     }
-  });
+  };
 
-  socket.on("call:ended", () => {
+  const onEnded = () => {
     statusText.value = "Call ended";
     cleanup();
-  });
+  };
 
-  socket.on("call:error", ({ message }) => {
+  const onError = ({ message }) => {
     statusText.value = message || "Call error";
-  });
+  };
 
-  socket.on("call:busy", ({ message }) => {
+  const onBusy = ({ message }) => {
     statusText.value = message || "User is busy";
-  });
+  };
+
+  socket.on("connect", onConnect);
+  socket.on("call:incoming", onIncoming);
+  socket.on("call:ringing", onRinging);
+  socket.on("call:accepted", onAccepted);
+  socket.on("call:joined", onJoined);
+  socket.on("call:peer-joined", onPeerJoined);
+  socket.on("call:webrtc:offer", onOffer);
+  socket.on("call:webrtc:answer", onAnswer);
+  socket.on("call:webrtc:ice", onIce);
+  socket.on("call:ended", onEnded);
+  socket.on("call:error", onError);
+  socket.on("call:busy", onBusy);
+
+  if (socket.connected) onConnect();
+
+  return () => {
+    socket.off("connect", onConnect);
+    socket.off("call:incoming", onIncoming);
+    socket.off("call:ringing", onRinging);
+    socket.off("call:accepted", onAccepted);
+    socket.off("call:joined", onJoined);
+    socket.off("call:peer-joined", onPeerJoined);
+    socket.off("call:webrtc:offer", onOffer);
+    socket.off("call:webrtc:answer", onAnswer);
+    socket.off("call:webrtc:ice", onIce);
+    socket.off("call:ended", onEnded);
+    socket.off("call:error", onError);
+    socket.off("call:busy", onBusy);
+  };
 }
 
+let cleanupSocket = null;
+
 onMounted(async () => {
-  connectSocket();
+  cleanupSocket = connectSocket();
 
   if (roomId.value && mode.value === "callee") {
     await ensureMedia();
@@ -366,7 +391,7 @@ onMounted(async () => {
 
 onBeforeUnmount(() => {
   try {
-    socket?.disconnect?.();
+    cleanupSocket?.();
   } catch {}
   cleanup();
 });
