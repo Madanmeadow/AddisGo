@@ -6,7 +6,7 @@
 
         <div class="headMeta">
           <div class="title">💬 Messages</div>
-          <div class="sub">Conversation: {{ chatName }}</div>
+          <div class="sub">{{ chatName }}</div>
         </div>
 
         <button class="refresh" @click="loadMessages">↻</button>
@@ -65,8 +65,11 @@ import Layout from "../components/Layout.vue";
 const router = useRouter();
 const route = useRoute();
 
-const conversationId = route.query.conversationId || "";
-const chatName = route.query.name || "Chat";
+const apiBase = (import.meta.env.VITE_API_URL || "http://localhost:5000").replace(/\/$/, "");
+const token = localStorage.getItem("token") || "";
+
+const conversationId = String(route.query.conversationId || "");
+const chatName = String(route.query.name || "Chat");
 
 const loading = ref(false);
 const sending = ref(false);
@@ -76,9 +79,20 @@ const draft = ref("");
 const messagesBox = ref(null);
 
 function getMe() {
-  try { return JSON.parse(localStorage.getItem("user") || "null"); } catch { return null; }
+  try {
+    return JSON.parse(localStorage.getItem("user") || "null");
+  } catch {
+    return null;
+  }
 }
 const me = getMe();
+
+function authHeaders(extra = {}) {
+  return {
+    ...(token ? { Authorization: `Bearer ${token}` } : {}),
+    ...extra,
+  };
+}
 
 function goInbox() {
   router.push("/inbox");
@@ -88,7 +102,12 @@ function formatTime(v) {
   if (!v) return "";
   const d = new Date(v);
   if (isNaN(d.getTime())) return "";
-  return d.toLocaleString([], { month: "numeric", day: "numeric", hour: "2-digit", minute: "2-digit" });
+  return d.toLocaleString([], {
+    month: "numeric",
+    day: "numeric",
+    hour: "2-digit",
+    minute: "2-digit",
+  });
 }
 
 async function scrollBottom() {
@@ -104,8 +123,18 @@ async function loadMessages() {
   error.value = "";
 
   try {
-    const data = await apiFetch(`/messages?conversationId=${conversationId}`);
-    messages.value = Array.isArray(data) ? data : (data?.messages || []);
+    const res = await fetch(
+      `${apiBase}/messages?conversationId=${encodeURIComponent(conversationId)}`,
+      { headers: authHeaders() }
+    );
+
+    const data = await res.json().catch(() => ([]));
+
+    if (!res.ok) {
+      throw new Error(data?.error || "Failed to load messages");
+    }
+
+    messages.value = Array.isArray(data) ? data : data?.messages || [];
     await scrollBottom();
   } catch (e) {
     error.value = e?.message || "Failed to load messages";
@@ -127,14 +156,23 @@ async function send() {
       text: draft.value.trim(),
     };
 
-    const created = await apiFetch("/messages", {
+    const res = await fetch(`${apiBase}/messages`, {
       method: "POST",
+      headers: {
+        "Content-Type": "application/json",
+        ...authHeaders(),
+      },
       body: JSON.stringify(payload),
     });
 
-    const newMsg = created?.message || created;
-    if (newMsg?.id) {
-      messages.value.push(newMsg);
+    const created = await res.json().catch(() => ({}));
+
+    if (!res.ok) {
+      throw new Error(created?.error || "Failed to send");
+    }
+
+    if (created?.id) {
+      messages.value.push(created);
     } else {
       await loadMessages();
     }
