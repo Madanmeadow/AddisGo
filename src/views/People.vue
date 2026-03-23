@@ -1,113 +1,105 @@
+<!-- src/views/People.vue -->
 <template>
-  <div class="people-page">
-    <div class="hero">
-      <div>
-        <h1>People</h1>
-        <p>See who is online, open chat, or start audio/video calls.</p>
-      </div>
-
-      <button class="refresh-btn" @click="loadPeople" :disabled="loading">
-        {{ loading ? "Refreshing..." : "Refresh" }}
-      </button>
-    </div>
-
-    <div class="search-wrap">
-      <input
-        v-model="search"
-        class="search"
-        type="text"
-        placeholder="Search people..."
-      />
-    </div>
-
-    <div v-if="incomingCall" class="incoming-call">
-      <div class="incoming-title">
-        Incoming {{ incomingCall.kind }} call
-      </div>
-      <div class="incoming-sub">
-        From {{ incomingCall.fromName || `User ${incomingCall.fromUserId}` }}
-      </div>
-
-      <div class="incoming-actions">
-        <button class="accept" @click="acceptIncoming">Accept</button>
-        <button class="reject" @click="rejectIncoming">Reject</button>
-      </div>
-    </div>
-
-    <div class="grid">
-      <div
-        v-for="person in filteredPeople"
-        :key="person.id"
-        class="card"
-      >
-        <div class="avatar">
-          {{ initials(person) }}
-          <span
-            class="status-dot"
-            :class="{ online: isOnline(person.id) }"
-          ></span>
+  <Layout>
+    <div class="page">
+      <header class="hero">
+        <div>
+          <h1>People</h1>
+          <p>See who is online, open chat, or start a call.</p>
         </div>
 
-        <div class="meta">
-          <div class="name">
-            {{ displayName(person) }}
+        <button class="chip" @click="fetchPeople" :disabled="peopleLoading">
+          {{ peopleLoading ? "Refreshing..." : "Refresh" }}
+        </button>
+      </header>
+
+      <div class="searchWrap">
+        <input
+          v-model="search"
+          class="search"
+          type="text"
+          placeholder="Search people..."
+        />
+      </div>
+
+      <div v-if="incomingCall" class="incoming">
+        <div class="incomingTitle">
+          Incoming {{ incomingCall.kind || "audio" }} call
+        </div>
+        <div class="incomingSub">
+          From {{ incomingCall.fromName || incomingCall.fromUsername || `User ${incomingCall.fromUserId}` }}
+        </div>
+
+        <div class="incomingActions">
+          <button class="accept" @click="acceptIncoming">Accept</button>
+          <button class="reject" @click="rejectIncoming">Reject</button>
+        </div>
+      </div>
+
+      <div v-if="peopleError" class="errorBox">
+        {{ peopleError }}
+      </div>
+
+      <div class="grid">
+        <div
+          v-for="person in filteredPeople"
+          :key="person.id"
+          class="card"
+        >
+          <div class="avatar">
+            {{ initials(person) }}
+            <span class="statusDot" :class="{ online: isOnline(person.id) }"></span>
           </div>
-          <div class="sub">
-            {{ isOnline(person.id) ? "Online" : "Offline" }}
+
+          <div class="meta">
+            <div class="name">{{ displayName(person) }}</div>
+            <div class="sub">{{ isOnline(person.id) ? "Online" : "Offline" }}</div>
+          </div>
+
+          <div class="actions">
+            <button class="btn ghost" @click="openMessages(person)">Message</button>
+            <button class="btn" @click="startCall(person, 'audio')">Audio</button>
+            <button class="btn video" @click="startCall(person, 'video')">Video</button>
           </div>
         </div>
+      </div>
 
-        <div class="actions">
-          <button class="btn ghost" @click="openMessages(person)">
-            Message
-          </button>
-          <button
-            class="btn"
-            @click="startCall(person, 'audio')"
-            :disabled="String(person.id) === myUserId"
-          >
-            Audio
-          </button>
-          <button
-            class="btn video"
-            @click="startCall(person, 'video')"
-            :disabled="String(person.id) === myUserId"
-          >
-            Video
-          </button>
-        </div>
+      <div v-if="!peopleLoading && !filteredPeople.length" class="empty">
+        No people found.
       </div>
     </div>
-
-    <div v-if="!filteredPeople.length" class="empty">
-      No people found.
-    </div>
-  </div>
+  </Layout>
 </template>
 
 <script setup>
-import { computed, onMounted, onBeforeUnmount, ref } from "vue";
+import { computed, onBeforeUnmount, onMounted, ref } from "vue";
 import { useRouter } from "vue-router";
+import Layout from "../components/Layout.vue";
 import socket, { refreshSocketAuth } from "../socket";
 
 const router = useRouter();
 
-const loading = ref(false);
-const search = ref("");
-const people = ref([]);
-const onlineUserIds = ref([]);
-const incomingCall = ref(null);
+const apiUrl =
+  import.meta.env.VITE_API_URL ||
+  "https://addisgo-production-63ae.up.railway.app";
 
+const token = localStorage.getItem("token") || "";
 const me = JSON.parse(localStorage.getItem("user") || "{}");
 const myUserId = String(me?.id || "");
 
+const people = ref([]);
+const peopleLoading = ref(false);
+const peopleError = ref("");
+const search = ref("");
+const onlineUserIds = ref([]);
+const incomingCall = ref(null);
+
 function displayName(person) {
-  return person?.username || person?.display_name || person?.name || `User ${person?.id}`;
+  return person?.display_name || person?.username || person?.name || `User ${person?.id}`;
 }
 
 function initials(person) {
-  const n = displayName(person).trim();
-  return n.slice(0, 2).toUpperCase();
+  return displayName(person).trim().slice(0, 2).toUpperCase();
 }
 
 function isOnline(userId) {
@@ -116,33 +108,53 @@ function isOnline(userId) {
 
 const filteredPeople = computed(() => {
   const q = search.value.trim().toLowerCase();
-  if (!q) return people.value.filter((p) => String(p.id) !== myUserId);
 
-  return people.value.filter((p) => {
-    const txt = `${p?.username || ""} ${p?.name || ""} ${p?.display_name || ""} ${p?.email || ""}`.toLowerCase();
-    return String(p.id) !== myUserId && txt.includes(q);
-  });
+  return people.value
+    .filter((p) => String(p.id) !== myUserId)
+    .filter((p) => {
+      if (!q) return true;
+      const hay =
+        `${p?.display_name || ""} ${p?.username || ""} ${p?.name || ""} ${p?.email || ""}`.toLowerCase();
+      return hay.includes(q);
+    });
 });
 
-async function loadPeople() {
-  loading.value = true;
+async function fetchPeople() {
+  if (!token) {
+    peopleError.value = "Please login again.";
+    people.value = [];
+    return;
+  }
+
+  peopleLoading.value = true;
+  peopleError.value = "";
+
   try {
-    const base = import.meta.env.VITE_API_URL || "http://localhost:5000";
-    const res = await fetch(`${base}/users`);
+    const res = await fetch(`${apiUrl}/users`, {
+      headers: {
+        Authorization: `Bearer ${token}`,
+      },
+    });
+
     const data = await res.json();
 
-    if (Array.isArray(data)) {
-      people.value = data;
-    } else if (Array.isArray(data?.users)) {
-      people.value = data.users;
-    } else {
+    if (!res.ok) {
+      peopleError.value = data?.error || "Failed to load users";
       people.value = [];
+      return;
     }
+
+    people.value = Array.isArray(data)
+      ? data
+      : Array.isArray(data?.users)
+      ? data.users
+      : [];
   } catch (err) {
-    console.error("Failed loading people:", err);
+    console.error("fetchPeople error:", err);
+    peopleError.value = "Failed to load users";
     people.value = [];
   } finally {
-    loading.value = false;
+    peopleLoading.value = false;
   }
 }
 
@@ -151,11 +163,11 @@ function registerPresence() {
 
   if (!myUserId) return;
 
-  socket.emit("user:online", {
-    userId: myUserId,
-    username: me?.username || me?.name || `User${myUserId}`,
-  });
+  const username =
+    me?.username || me?.display_name || me?.name || me?.email || `User${myUserId}`;
 
+  socket.emit("user:online", { userId: myUserId, username });
+  socket.emit("register-user", { id: myUserId, username });
   socket.emit("presence:get");
 }
 
@@ -164,7 +176,9 @@ function openMessages(person) {
 }
 
 function startCall(person, kind = "audio") {
+  if (!token) return alert("Login again to call.");
   if (!person?.id) return;
+  if (!isOnline(person.id)) return alert("User is offline.");
 
   socket.emit("call:request", {
     toUserId: String(person.id),
@@ -175,24 +189,18 @@ function startCall(person, kind = "audio") {
 function acceptIncoming() {
   if (!incomingCall.value?.roomId) return;
 
-  socket.emit("call:accept", {
-    roomId: incomingCall.value.roomId,
-  });
+  const roomId = String(incomingCall.value.roomId);
+  const kind = incomingCall.value.kind || "audio";
 
-  router.push(
-    `/call?roomId=${encodeURIComponent(incomingCall.value.roomId)}&kind=${encodeURIComponent(incomingCall.value.kind || "audio")}`
-  );
-
+  socket.emit("call:accept", { roomId });
   incomingCall.value = null;
+
+  router.push(`/call?roomId=${encodeURIComponent(roomId)}&role=callee&kind=${encodeURIComponent(kind)}`);
 }
 
 function rejectIncoming() {
   if (!incomingCall.value?.roomId) return;
-
-  socket.emit("call:reject", {
-    roomId: incomingCall.value.roomId,
-  });
-
+  socket.emit("call:reject", { roomId: String(incomingCall.value.roomId) });
   incomingCall.value = null;
 }
 
@@ -209,8 +217,7 @@ function onPresenceUpdate(payload) {
   const set = new Set(onlineUserIds.value.map(String));
   if (payload?.online) set.add(uid);
   else set.delete(uid);
-
-  onlineUserIds.value = Array.from(set);
+  onlineUserIds.value = [...set];
 }
 
 function onCallIncoming(payload) {
@@ -219,29 +226,25 @@ function onCallIncoming(payload) {
 
 function onCallAccepted(payload) {
   if (!payload?.roomId) return;
+
   router.push(
-    `/call?roomId=${encodeURIComponent(payload.roomId)}&kind=${encodeURIComponent(payload.kind || "audio")}`
+    `/call?roomId=${encodeURIComponent(payload.roomId)}&role=caller&kind=${encodeURIComponent(payload.kind || "audio")}`
   );
 }
 
-function onCallBusy(payload) {
-  alert(payload?.message || "User is busy.");
-}
-
-function onCallError(payload) {
-  alert(payload?.message || "Call error.");
+function onCallEnded() {
+  incomingCall.value = null;
 }
 
 onMounted(async () => {
-  await loadPeople();
+  await fetchPeople();
   registerPresence();
 
   socket.on("presence:list", onPresenceList);
   socket.on("presence:update", onPresenceUpdate);
   socket.on("call:incoming", onCallIncoming);
   socket.on("call:accepted", onCallAccepted);
-  socket.on("call:busy", onCallBusy);
-  socket.on("call:error", onCallError);
+  socket.on("call:ended", onCallEnded);
 });
 
 onBeforeUnmount(() => {
@@ -249,68 +252,133 @@ onBeforeUnmount(() => {
   socket.off("presence:update", onPresenceUpdate);
   socket.off("call:incoming", onCallIncoming);
   socket.off("call:accepted", onCallAccepted);
-  socket.off("call:busy", onCallBusy);
-  socket.off("call:error", onCallError);
+  socket.off("call:ended", onCallEnded);
 });
 </script>
 
 <style scoped>
-.people-page {
+.page {
   min-height: 100vh;
-  padding: 20px;
+  padding: 16px;
   background: linear-gradient(180deg, #07111f, #0e1f37 40%, #132a49);
   color: white;
 }
-.hero, .card, .incoming-call {
+
+.hero,
+.card,
+.incoming,
+.errorBox {
   background: rgba(255,255,255,0.08);
   border: 1px solid rgba(255,255,255,0.1);
   backdrop-filter: blur(14px);
 }
+
 .hero {
   border-radius: 24px;
-  padding: 20px;
-  margin-bottom: 16px;
+  padding: 18px;
+  margin-bottom: 14px;
   display: flex;
   justify-content: space-between;
-  gap: 12px;
   align-items: center;
+  gap: 12px;
 }
-.search-wrap { margin-bottom: 16px; }
-.search {
-  width: 100%;
-  padding: 14px 16px;
-  border-radius: 18px;
-  border: none;
-  outline: none;
+
+.hero h1 {
+  margin: 0;
+  font-size: 1.4rem;
 }
-.refresh-btn, .btn, .accept, .reject {
+
+.hero p {
+  margin: 6px 0 0;
+  opacity: 0.8;
+}
+
+.chip,
+.btn,
+.accept,
+.reject {
   border: none;
   border-radius: 14px;
   padding: 10px 14px;
   cursor: pointer;
 }
+
+.searchWrap {
+  margin-bottom: 14px;
+}
+
+.search {
+  width: 100%;
+  border: none;
+  outline: none;
+  border-radius: 18px;
+  padding: 14px 16px;
+}
+
+.incoming {
+  border-radius: 22px;
+  padding: 16px;
+  margin-bottom: 14px;
+}
+
+.incomingTitle {
+  font-size: 1.05rem;
+  font-weight: 800;
+}
+
+.incomingSub {
+  margin-top: 6px;
+  opacity: 0.9;
+}
+
+.incomingActions {
+  margin-top: 14px;
+  display: flex;
+  gap: 10px;
+}
+
+.accept {
+  background: #22c55e;
+  color: white;
+}
+
+.reject {
+  background: #ef4444;
+  color: white;
+}
+
+.errorBox {
+  border-radius: 18px;
+  padding: 14px;
+  margin-bottom: 14px;
+  color: #ffd4d4;
+}
+
 .grid {
   display: grid;
-  grid-template-columns: repeat(auto-fill, minmax(260px, 1fr));
+  grid-template-columns: repeat(auto-fill, minmax(240px, 1fr));
   gap: 14px;
 }
+
 .card {
   border-radius: 22px;
   padding: 18px;
 }
+
 .avatar {
-  width: 56px;
-  height: 56px;
+  width: 58px;
+  height: 58px;
   border-radius: 50%;
   background: linear-gradient(135deg, #7c3aed, #06b6d4);
   display: flex;
   align-items: center;
   justify-content: center;
-  font-weight: 800;
+  font-weight: 900;
   position: relative;
   margin-bottom: 12px;
 }
-.status-dot {
+
+.statusDot {
   position: absolute;
   right: 1px;
   bottom: 1px;
@@ -320,27 +388,45 @@ onBeforeUnmount(() => {
   background: #6b7280;
   border: 2px solid #07111f;
 }
-.status-dot.online { background: #22c55e; }
-.name { font-weight: 800; font-size: 1.05rem; }
-.sub { opacity: 0.8; margin-top: 4px; }
+
+.statusDot.online {
+  background: #22c55e;
+}
+
+.name {
+  font-weight: 900;
+  font-size: 1.03rem;
+}
+
+.sub {
+  opacity: 0.78;
+  margin-top: 4px;
+}
+
 .actions {
   display: flex;
   gap: 8px;
   margin-top: 14px;
   flex-wrap: wrap;
 }
-.btn { background: white; color: #0f172a; }
-.btn.ghost { background: rgba(255,255,255,0.12); color: white; }
-.btn.video { background: #22c55e; color: white; }
-.incoming-call {
-  border-radius: 22px;
-  padding: 18px;
-  margin-bottom: 16px;
+
+.btn {
+  background: white;
+  color: #0f172a;
 }
-.incoming-title { font-size: 1.1rem; font-weight: 800; }
-.incoming-sub { margin-top: 6px; opacity: 0.9; }
-.incoming-actions { margin-top: 14px; display: flex; gap: 10px; }
-.accept { background: #22c55e; color: white; }
-.reject { background: #ef4444; color: white; }
-.empty { opacity: 0.8; padding: 20px 0; }
+
+.btn.ghost {
+  background: rgba(255,255,255,0.12);
+  color: white;
+}
+
+.btn.video {
+  background: #22c55e;
+  color: white;
+}
+
+.empty {
+  opacity: 0.8;
+  padding: 18px 4px;
+}
 </style>
