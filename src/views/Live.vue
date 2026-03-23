@@ -344,10 +344,10 @@ const theaterMode = ref(false)
 const focusChat = ref(false)
 const currentFacingMode = ref("user")
 
-let pc = null
-let localStream = null
-let remoteStream = null
-let hostSocketId = null
+const pc = ref(null)
+const localStream = ref(null)
+const remoteStream = ref(null)
+const hostSocketId = ref(null)
 let pendingCandidates = []
 
 const stageInitial = computed(() => {
@@ -358,14 +358,14 @@ const stageInitial = computed(() => {
 })
 
 const streamStateLabel = computed(() => {
-  if (isHost && localStream) return "LIVE"
-  if (!isHost && remoteStream) return "LIVE"
+  if (isHost && localStream.value) return "LIVE"
+  if (!isHost && remoteStream.value) return "LIVE"
   return "WAIT"
 })
 
 const qualityLabel = computed(() => {
-  if (!pc) return "Standby"
-  const s = pc.connectionState
+  if (!pc.value) return "Standby"
+  const s = pc.value.connectionState
   if (s === "connected") return "Strong"
   if (s === "connecting") return "Linking"
   if (s === "disconnected") return "Weak"
@@ -374,23 +374,23 @@ const qualityLabel = computed(() => {
 })
 
 const showLocalPlaceholder = computed(() => {
-  if (!localStream) return true
-  const videoTrack = localStream.getVideoTracks?.()[0]
+  if (!localStream.value) return true
+  const videoTrack = localStream.value.getVideoTracks?.()[0]
   if (!videoTrack) return true
   return !videoTrack.enabled || videoTrack.readyState !== "live"
 })
 
 const showRemotePlaceholder = computed(() => {
-  if (!remoteStream) return true
-  const videoTrack = remoteStream.getVideoTracks?.()[0]
+  if (!remoteStream.value) return true
+  const videoTrack = remoteStream.value.getVideoTracks?.()[0]
   return !videoTrack || videoTrack.readyState !== "live"
 })
 
 const remoteReadyLabel = computed(() => {
   if (isHost) {
-    return localStream ? "Host Media Ready" : "Host Media Pending"
+    return localStream.value ? "Host Media Ready" : "Host Media Pending"
   }
-  return remoteStream ? "Stream Ready" : "Waiting for Host"
+  return remoteStream.value ? "Stream Ready" : "Waiting for Host"
 })
 
 function getInitial(name) {
@@ -430,66 +430,74 @@ async function getIceServers() {
 }
 
 async function ensurePeer() {
-  if (pc) return pc
+  if (pc.value) return pc.value
 
-  pc = new RTCPeerConnection({
+  pc.value = new RTCPeerConnection({
     iceServers: await getIceServers(),
   })
 
-  remoteStream = new MediaStream()
+  remoteStream.value = new MediaStream()
 
-  if (remoteVideo.value) {
-    remoteVideo.value.srcObject = remoteStream
+  await nextTick()
+
+  if (remoteVideo.value && remoteStream.value) {
+    remoteVideo.value.srcObject = remoteStream.value
   }
 
-  pc.ontrack = (event) => {
+  pc.value.ontrack = (event) => {
+    if (!remoteStream.value) {
+      remoteStream.value = new MediaStream()
+    }
+
     event.streams[0].getTracks().forEach((track) => {
-      const exists = remoteStream.getTracks().some((t) => t.id === track.id)
-      if (!exists) remoteStream.addTrack(track)
+      const exists = remoteStream.value.getTracks().some((t) => t.id === track.id)
+      if (!exists) remoteStream.value.addTrack(track)
     })
 
-    if (remoteVideo.value) {
-      remoteVideo.value.srcObject = remoteStream
-      remoteVideo.value.play?.().catch(() => {})
-    }
+    nextTick(() => {
+      if (remoteVideo.value && remoteStream.value) {
+        remoteVideo.value.srcObject = remoteStream.value
+        remoteVideo.value.play?.().catch(() => {})
+      }
+    })
 
     statusText.value = "Connected to live"
   }
 
-  pc.onicecandidate = (event) => {
-    if (!event.candidate || !hostSocketId) return
+  pc.value.onicecandidate = (event) => {
+    if (!event.candidate || !hostSocketId.value) return
 
     socket.emit("webrtc:ice", {
       liveId,
-      to: hostSocketId,
+      to: hostSocketId.value,
       candidate: event.candidate,
     })
   }
 
-  pc.onconnectionstatechange = () => {
-    const s = pc?.connectionState || ""
+  pc.value.onconnectionstatechange = () => {
+    const s = pc.value?.connectionState || ""
     if (s === "connected") statusText.value = "Connected to live"
     else if (s === "connecting") statusText.value = "Connecting..."
     else if (s === "disconnected") statusText.value = "Reconnecting..."
     else if (s === "failed") statusText.value = "Connection weak"
   }
 
-  return pc
+  return pc.value
 }
 
 async function flushPendingCandidates() {
-  if (!pc || !pc.remoteDescription) return
+  if (!pc.value || !pc.value.remoteDescription) return
 
   while (pendingCandidates.length) {
     const c = pendingCandidates.shift()
     try {
-      await pc.addIceCandidate(new RTCIceCandidate(c))
+      await pc.value.addIceCandidate(new RTCIceCandidate(c))
     } catch {}
   }
 }
 
 async function createHostStream() {
-  localStream = await navigator.mediaDevices.getUserMedia({
+  const stream = await navigator.mediaDevices.getUserMedia({
     video: {
       facingMode: currentFacingMode.value,
       width: { ideal: 1280, max: 1280 },
@@ -503,14 +511,21 @@ async function createHostStream() {
     },
   })
 
+  localStream.value = stream
+
+  await nextTick()
+
   if (localVideo.value) {
-    localVideo.value.srcObject = localStream
+    localVideo.value.srcObject = stream
+    localVideo.value.muted = true
     localVideo.value.play?.().catch(() => {})
   }
+
+  statusText.value = "You are live"
 }
 
 async function connectViewerToHost() {
-  if (!hostSocketId) return
+  if (!hostSocketId.value) return
 
   const peer = await ensurePeer()
 
@@ -525,7 +540,7 @@ async function connectViewerToHost() {
       : false,
   })
 
-  localStream = stream
+  localStream.value = stream
 
   stream.getTracks().forEach((track) => {
     const exists = peer.getSenders().some((s) => s.track && s.track.kind === track.kind)
@@ -541,7 +556,7 @@ async function connectViewerToHost() {
 
   socket.emit("webrtc:offer", {
     liveId,
-    to: hostSocketId,
+    to: hostSocketId.value,
     offer,
   })
 
@@ -593,23 +608,23 @@ function denyMic(req) {
 }
 
 async function toggleMute() {
-  if (!localStream) return
+  if (!localStream.value) return
   micMuted.value = !micMuted.value
-  localStream.getAudioTracks().forEach((t) => {
+  localStream.value.getAudioTracks().forEach((t) => {
     t.enabled = !micMuted.value
   })
 }
 
 async function toggleCamera() {
-  if (!localStream) return
+  if (!localStream.value) return
   cameraOff.value = !cameraOff.value
-  localStream.getVideoTracks().forEach((t) => {
+  localStream.value.getVideoTracks().forEach((t) => {
     t.enabled = !cameraOff.value
   })
 }
 
 async function switchCamera() {
-  if (!isHost || !localStream || switchingCamera.value) return
+  if (!isHost || !localStream.value || switchingCamera.value) return
 
   switchingCamera.value = true
   try {
@@ -629,21 +644,23 @@ async function switchCamera() {
     const newTrack = newStream.getVideoTracks()[0]
     if (!newTrack) return
 
-    const oldTrack = localStream.getVideoTracks()[0]
+    const oldTrack = localStream.value.getVideoTracks()[0]
     if (oldTrack) {
       try { oldTrack.stop() } catch {}
     }
 
-    const audioTracks = localStream.getAudioTracks()
-    localStream = new MediaStream([...audioTracks, newTrack])
+    const audioTracks = localStream.value.getAudioTracks()
+    localStream.value = new MediaStream([...audioTracks, newTrack])
+
+    await nextTick()
 
     if (localVideo.value) {
-      localVideo.value.srcObject = localStream
+      localVideo.value.srcObject = localStream.value
       localVideo.value.play?.().catch(() => {})
     }
 
-    if (pc) {
-      const sender = pc.getSenders().find((s) => s.track && s.track.kind === "video")
+    if (pc.value) {
+      const sender = pc.value.getSenders().find((s) => s.track && s.track.kind === "video")
       if (sender) {
         await sender.replaceTrack(newTrack)
       }
@@ -731,25 +748,26 @@ function endLive() {
 }
 
 function cleanup() {
-  if (localStream) {
-    localStream.getTracks().forEach((t) => {
+  if (localStream.value) {
+    localStream.value.getTracks().forEach((t) => {
       try { t.stop() } catch {}
     })
-    localStream = null
+    localStream.value = null
   }
 
-  if (remoteStream) {
-    remoteStream.getTracks().forEach((t) => {
+  if (remoteStream.value) {
+    remoteStream.value.getTracks().forEach((t) => {
       try { t.stop() } catch {}
     })
-    remoteStream = null
+    remoteStream.value = null
   }
 
-  if (pc) {
-    try { pc.close() } catch {}
-    pc = null
+  if (pc.value) {
+    try { pc.value.close() } catch {}
+    pc.value = null
   }
 
+  hostSocketId.value = null
   pendingCandidates = []
 
   if (localVideo.value) localVideo.value.srcObject = null
@@ -757,9 +775,9 @@ function cleanup() {
 }
 
 async function onLiveHost(payload) {
-  hostSocketId = payload?.hostSocketId || null
+  hostSocketId.value = payload?.hostSocketId || null
 
-  if (!isHost && hostSocketId) {
+  if (!isHost && hostSocketId.value) {
     await connectViewerToHost()
   }
 }
@@ -794,16 +812,16 @@ async function onMicStatus(payload) {
 async function onOffer({ offer, from }) {
   if (!isHost) return
 
-  hostSocketId = from
+  hostSocketId.value = from
   const peer = await ensurePeer()
 
-  if (!localStream) {
+  if (!localStream.value) {
     await createHostStream()
   }
 
-  localStream.getTracks().forEach((track) => {
+  localStream.value.getTracks().forEach((track) => {
     const already = peer.getSenders().some((s) => s.track === track)
-    if (!already) peer.addTrack(track, localStream)
+    if (!already) peer.addTrack(track, localStream.value)
   })
 
   await peer.setRemoteDescription(new RTCSessionDescription(offer))
@@ -820,16 +838,16 @@ async function onOffer({ offer, from }) {
 }
 
 async function onAnswer({ answer }) {
-  if (!pc) return
-  await pc.setRemoteDescription(new RTCSessionDescription(answer))
+  if (!pc.value) return
+  await pc.value.setRemoteDescription(new RTCSessionDescription(answer))
   await flushPendingCandidates()
 }
 
 async function onIce({ candidate }) {
-  if (!pc || !candidate) return
+  if (!pc.value || !candidate) return
 
-  if (pc.remoteDescription) {
-    await pc.addIceCandidate(new RTCIceCandidate(candidate))
+  if (pc.value.remoteDescription) {
+    await pc.value.addIceCandidate(new RTCIceCandidate(candidate))
   } else {
     pendingCandidates.push(candidate)
   }
