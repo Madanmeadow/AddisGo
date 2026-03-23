@@ -44,10 +44,10 @@
           <button class="chip eliteChip" @click="openQuickCreate('post')">✍️ Post</button>
           <button class="chip ghost eliteChip" @click="openQuickCreate('call')">📞 Call</button>
           <button class="chip ghost eliteChip" @click="openQuickCreate('live')">🔴 Live</button>
-          <button class="chip ghost hide-sm" @click="togglePeople">
+          <button class="chip ghost eliteChip" @click="togglePeople">
             {{ peopleOpen ? "Hide People" : "People" }}
           </button>
-          <button class="chip ghost hide-sm" @click="toggleChat">
+          <button class="chip ghost eliteChip" @click="toggleChat">
             {{ chatOpen ? "Close Chat" : "Chat" }}
           </button>
           <button class="chip ghost hide-sm" @click="toggleTools">
@@ -66,9 +66,10 @@
       <!-- ELITE QUICK RAIL -->
       <section class="eliteQuickRail">
         <button class="quickRailBtn" @click="focusComposer">✍️ Create</button>
+        <button class="quickRailBtn" @click="togglePeople">👥 People</button>
+        <button class="quickRailBtn" @click="goInbox">💬 Inbox</button>
         <button class="quickRailBtn" @click="createFastRoom">🎧 Room</button>
         <button class="quickRailBtn" @click="startLive">🔴 Live</button>
-        <button class="quickRailBtn" @click="goInbox">💬 Inbox</button>
         <button class="quickRailBtn" @click="goProfile">👤 Profile</button>
       </section>
             <!-- DYNAMIC ISLAND -->
@@ -358,6 +359,32 @@
               {{ tag }}
             </button>
           </div>
+        </section>
+
+        <section v-if="token" class="panel glassy commHub">
+          <div class="panel-head">
+            <div class="panel-title">📡 Connect</div>
+            <div class="dockActions">
+              <button class="btn ghostBtn" @click="togglePeople">{{ peopleOpen ? "Hide People" : "Show People" }}</button>
+              <button class="btn ghostBtn" @click="goInbox">Open Inbox</button>
+              <button class="btn ghostBtn" @click="setFeedMode('rooms')">Open Rooms</button>
+            </div>
+          </div>
+
+          <div class="miniAvatars">
+            <div
+              v-for="u in filteredPeople.slice(0, 12)"
+              :key="'hub-' + u.id"
+              class="miniAvatarWrap"
+              :title="displayUserName(u)"
+              @click="startCall(u, 'audio')"
+            >
+              <div class="miniAvatar">{{ displayUserName(u)[0]?.toUpperCase() }}</div>
+              <span class="miniDot" :class="{ on: isOnline(u.id) }"></span>
+            </div>
+          </div>
+
+          <div class="hint mt10">Tap a person bubble for a quick audio call. Open People for full call buttons and Inbox for messages.</div>
         </section>
 
         <!-- STUDIO -->
@@ -1605,7 +1632,7 @@ function connectSocket() {
 /* =========================
    PEOPLE
 ========================= */
-const peopleOpen = ref(false)
+const peopleOpen = ref(true)
 const people = ref([])
 const peopleLoading = ref(false)
 const peopleError = ref("")
@@ -2861,6 +2888,15 @@ onMounted(async () => {
 
   await fetchPosts()
   if (token) await fetchPeople()
+
+  if (typeof window !== "undefined") {
+    if (window.innerWidth <= 900) {
+      peopleOpen.value = true
+    }
+    if (window.innerWidth <= 700 && feedMode.value === "live") {
+      feedMode.value = "foryou"
+    }
+  }
 
   connectSocket()
 
@@ -4759,708 +4795,27 @@ onBeforeUnmount(() => {
 }
 
 
-
-/* =============================
-   DASHBOARD 2026 REFINEMENT OVERRIDES
-   Safe visual/layout upgrade only
-============================= */
-.wrap {
-  padding-bottom: 110px;
-}
-
-.eliteTopbar {
-  position: sticky;
-  top: 0;
-  z-index: 80;
-  margin: 0 auto;
-  max-width: 1180px;
-  padding: 12px 16px;
-  border-radius: 0 0 24px 24px;
-  backdrop-filter: blur(22px) saturate(140%);
-  background: linear-gradient(180deg, rgba(10,14,26,.88), rgba(10,14,26,.68));
-  border-top: 0;
-  box-shadow: 0 18px 50px rgba(0,0,0,.22);
-}
-
-.eliteTopActions {
-  gap: 10px;
-  align-items: center;
-}
-
-.eliteTopActions .chip,
-.dynamicIsland .islandBtn,
-.quickRailBtn,
-.mode,
-.filterChip,
-.toolBtn,
-.quickCreateCard,
-.chat-item,
-.bn {
-  transition: transform .18s ease, box-shadow .18s ease, border-color .18s ease, background .18s ease;
-}
-
-.eliteTopActions .chip:hover,
-.dynamicIsland .islandBtn:hover,
-.quickRailBtn:hover,
-.mode:hover,
-.filterChip:hover,
-.toolBtn:hover,
-.quickCreateCard:hover,
-.chat-item:hover,
-.bn:hover {
-  transform: translateY(-1px);
-}
-
-.eliteCenterSearch {
-  min-width: 0;
-}
-
-.eliteSearchWrap,
-.mode-right .searchWrap {
-  background: rgba(255,255,255,.05);
-  border: 1px solid rgba(255,255,255,.09);
-  box-shadow: inset 0 1px 0 rgba(255,255,255,.06);
-}
-
-.eliteSearch,
-.search {
-  min-width: 0;
-}
-
-.netBadge {
-  box-shadow: inset 0 1px 0 rgba(255,255,255,.08), 0 8px 26px rgba(0,0,0,.14);
-}
-
-.eliteQuickRail {
-  position: fixed;
-  left: max(14px, calc((100vw - 1280px) / 2));
-  top: 128px;
-  z-index: 35;
-  display: flex;
-  flex-direction: column;
-  gap: 10px;
-  pointer-events: none;
-}
-
-.quickRailBtn {
-  pointer-events: auto;
-  min-width: 122px;
-  justify-content: flex-start;
-  padding: 12px 14px;
-  border-radius: 18px;
-  backdrop-filter: blur(18px);
-  background: linear-gradient(180deg, rgba(255,255,255,.09), rgba(255,255,255,.05));
-  border: 1px solid rgba(255,255,255,.1);
-  box-shadow: 0 14px 30px rgba(0,0,0,.20);
-}
-
-.dynamicIsland {
-  top: 84px;
-  max-width: 1180px;
-  padding: 12px 18px;
-  margin-top: 14px;
-  margin-bottom: 12px;
-  background: linear-gradient(180deg, rgba(12,18,34,.86), rgba(12,18,34,.70));
-  border: 1px solid rgba(255,255,255,.10);
-  box-shadow: 0 20px 48px rgba(0,0,0,.20);
-}
-
-.islandCenter {
-  display: flex;
-  align-items: center;
-  gap: 10px;
-  flex-wrap: wrap;
-  justify-content: center;
-}
-
-.islandBtn {
-  white-space: nowrap;
-}
-
-.heroStrip,
-.modebar,
-.filterbar,
-.main,
-.dock,
-.dynamicIsland {
-  max-width: 1180px;
-}
-
-.heroCard {
-  position: relative;
-  overflow: hidden;
-  grid-template-columns: minmax(0, 1.3fr) minmax(300px, .9fr);
-  padding: 22px;
-  border: 1px solid rgba(255,255,255,.10);
-  background:
-    radial-gradient(circle at top right, rgba(89, 104, 255, .22), transparent 35%),
-    radial-gradient(circle at bottom left, rgba(255, 65, 108, .18), transparent 32%),
-    linear-gradient(180deg, rgba(16,22,40,.92), rgba(12,18,34,.78));
-  box-shadow: 0 24px 54px rgba(0,0,0,.22);
-}
-
-.heroCard::after {
-  content: "";
-  position: absolute;
-  inset: auto -70px -70px auto;
-  width: 220px;
-  height: 220px;
-  border-radius: 50%;
-  background: radial-gradient(circle, rgba(255,255,255,.14), rgba(255,255,255,0));
-  pointer-events: none;
-}
-
-.heroTitle {
-  line-height: 1.02;
-}
-
-.heroSub {
-  font-size: 14.5px;
-}
-
-.heroStats {
-  align-self: stretch;
-  grid-template-columns: repeat(2, minmax(0, 1fr));
-}
-
-.heroStat {
-  position: relative;
-  overflow: hidden;
-  min-height: 96px;
-  display: flex;
-  flex-direction: column;
-  justify-content: center;
-  background: linear-gradient(180deg, rgba(255,255,255,.08), rgba(255,255,255,.04));
-  box-shadow: inset 0 1px 0 rgba(255,255,255,.06);
-}
-
-.heroStat::before {
-  content: "";
-  position: absolute;
-  inset: 0;
-  background: linear-gradient(135deg, rgba(255,255,255,.05), transparent 48%);
-  pointer-events: none;
-}
-
-.dock {
-  max-width: 1180px;
-  display: grid;
-  grid-template-columns: repeat(2, minmax(0, 1fr));
-  gap: 14px;
-}
-
-.dockCard,
-.panel.glassy,
-.chatPanel,
-.quickCreateSheet,
-.modal,
-.toast {
-  border: 1px solid rgba(255,255,255,.10);
-  box-shadow: 0 20px 50px rgba(0,0,0,.18);
-}
-
-.panel {
-  scroll-margin-top: 160px;
-}
-
-.modebar {
-  position: sticky;
-  top: 150px;
-  z-index: 45;
-  padding-bottom: 2px;
-  margin-top: 14px;
-}
-
-.modebar::before,
-.filterbar::before {
-  content: "";
-  position: absolute;
-  inset: 0;
-  border-radius: 22px;
-  background: linear-gradient(180deg, rgba(10,14,26,.78), rgba(10,14,26,.58));
-  border: 1px solid rgba(255,255,255,.08);
-  backdrop-filter: blur(18px);
-  box-shadow: 0 18px 42px rgba(0,0,0,.16);
-  z-index: -1;
-}
-
-.modebar,
-.filterbar {
-  padding: 10px 12px;
-  border-radius: 22px;
-}
-
-.modebar .mode,
-.filterbar .filterChip {
-  white-space: nowrap;
-}
-
-.mode-right {
-  margin-left: auto;
-  display: flex;
-  align-items: center;
-  gap: 10px;
-  flex-wrap: wrap;
-}
-
-.filterbar {
-  position: sticky;
-  top: 224px;
-  z-index: 40;
-  margin-top: 10px;
-  gap: 10px;
-}
-
-.main {
-  display: grid;
-  grid-template-columns: minmax(0, 1fr);
-  gap: 14px;
-  margin-top: 14px;
-  padding-bottom: 14px;
-}
-
-.miniPanel .panel-head,
-.panel-head {
-  gap: 10px;
-}
-
-.trendingRow {
-  gap: 10px;
-}
-
-.badgePill,
-.trendChip {
-  box-shadow: inset 0 1px 0 rgba(255,255,255,.05);
-}
-
-.toolsGrid {
-  gap: 12px;
-}
-
-.toolBtn,
-.quickCreateCard {
-  min-height: 58px;
-  border-radius: 18px;
-  background: linear-gradient(180deg, rgba(255,255,255,.08), rgba(255,255,255,.04));
-  border: 1px solid rgba(255,255,255,.09);
-}
-
-.toolBtn:hover,
-.quickCreateCard:hover {
-  box-shadow: 0 16px 34px rgba(0,0,0,.16);
-  border-color: rgba(255,255,255,.16);
-}
-
-.live-strip {
-  display: grid;
-  grid-template-columns: repeat(auto-fit, minmax(160px, 1fr));
-  gap: 10px;
-}
-
-.live-pill {
-  min-height: 56px;
-  align-items: center;
-}
-
-.peopleCompact,
-.chat-box,
-.rooms-messages,
-.chat-messages {
-  scrollbar-width: thin;
-}
-
-.peopleCompact {
-  max-height: 420px;
-  padding-right: 4px;
-}
-
-.person.compact {
-  padding: 10px 12px;
-  border-radius: 18px;
-  background: rgba(255,255,255,.04);
-  border: 1px solid rgba(255,255,255,.06);
-}
-
-.person.compact:hover {
-  background: rgba(255,255,255,.07);
-  border-color: rgba(255,255,255,.11);
-}
-
-.peopleList {
-  gap: 10px;
-}
-
-.composerCard {
+.commHub {
   position: relative;
   overflow: hidden;
 }
 
-.composerCard::before {
-  content: "";
-  position: absolute;
-  inset: 0;
-  background: radial-gradient(circle at top right, rgba(89,104,255,.12), transparent 30%);
-  pointer-events: none;
-}
-
-.feed {
-  gap: 14px;
-}
-
-.post,
-.comments-shell {
-  border-radius: 24px;
-  border: 1px solid rgba(255,255,255,.10);
-  box-shadow: 0 18px 44px rgba(0,0,0,.16);
-}
-
-.post-head {
-  gap: 12px;
-}
-
-.media {
-  border-radius: 18px;
-}
-
-.actions {
-  gap: 8px;
-  flex-wrap: wrap;
-}
-
-.action-btn {
-  min-height: 42px;
-  border-radius: 14px;
-}
-
-.chatDrawer {
-  z-index: 72;
-}
-
-.chatPanel {
-  background: linear-gradient(180deg, rgba(16,22,40,.96), rgba(12,18,34,.88));
-}
-
-.chat-list {
-  display: grid;
-  grid-template-columns: repeat(2, minmax(0, 1fr));
-  gap: 10px;
-}
-
-.chat-item {
-  min-height: 48px;
-  border-radius: 16px;
-}
-
-.chat-messages {
-  min-height: 280px;
-  max-height: 42vh;
-}
-
-.chat-msg {
-  border-radius: 14px;
-  background: rgba(255,255,255,.05);
-  border: 1px solid rgba(255,255,255,.06);
-  padding: 10px 12px;
-}
-
-.quickCreateSheet {
-  max-width: 760px;
-  width: calc(100% - 24px);
-  background: linear-gradient(180deg, rgba(18,24,42,.96), rgba(12,18,34,.92));
-}
-
-.quickCreateGrid {
-  gap: 12px;
-}
-
-.quickQueueBar {
-  border-radius: 16px;
-  background: rgba(255,255,255,.05);
-  border: 1px solid rgba(255,255,255,.08);
-}
-
-.eliteBottomNav {
-  max-width: 520px;
-  left: 50%;
-  transform: translateX(-50%);
-  bottom: 14px;
-  border: 1px solid rgba(255,255,255,.10);
-  box-shadow: 0 18px 44px rgba(0,0,0,.24);
-  backdrop-filter: blur(20px);
-  background: linear-gradient(180deg, rgba(16,22,40,.90), rgba(12,18,34,.86));
-}
-
-.bn {
-  min-height: 54px;
-  border-radius: 16px;
-}
-
-.createBn {
-  box-shadow: 0 16px 30px rgba(255,65,108,.24);
-}
-
-.modal {
-  max-width: 420px;
-}
-
-.toast {
-  bottom: 96px;
-}
-
-@media (max-width: 1380px) {
-  .eliteQuickRail {
-    left: 12px;
-  }
-}
-
-@media (max-width: 1200px) {
-  .eliteQuickRail {
-    display: none;
-  }
-
-  .heroCard {
-    grid-template-columns: minmax(0, 1fr);
-  }
-
-  .dock {
-    grid-template-columns: 1fr;
-  }
-}
-
-@media (max-width: 980px) {
-  .eliteTopbar {
-    gap: 12px;
-    padding: 12px;
-    border-radius: 0 0 22px 22px;
-  }
-
-  .eliteCenterSearch {
-    order: 3;
-    width: 100%;
-    flex: 1 0 100%;
-  }
-
-  .dynamicIsland {
-    top: 88px;
-    padding: 12px 14px;
-    border-radius: 24px;
+@media (max-width: 900px) {
+  .eliteTopActions {
+    gap: 8px;
     flex-wrap: wrap;
   }
 
-  .modebar {
-    top: 184px;
-    overflow-x: auto;
-    flex-wrap: nowrap;
-    padding-bottom: 10px;
-    scrollbar-width: none;
+  .eliteTopActions .chip {
+    display: inline-flex;
   }
 
-  .modebar::-webkit-scrollbar {
-    display: none;
+  .eliteQuickRail {
+    grid-template-columns: repeat(3, minmax(0, 1fr));
   }
 
-  .mode-right {
-    min-width: max-content;
-    padding-left: 4px;
-  }
-
-  .filterbar {
-    top: 252px;
-    overflow-x: auto;
-    flex-wrap: nowrap;
-    scrollbar-width: none;
-  }
-
-  .filterbar::-webkit-scrollbar {
-    display: none;
-  }
-
-  .main {
-    gap: 12px;
-  }
-}
-
-@media (max-width: 720px) {
-  .wrap {
-    padding-bottom: 104px;
-  }
-
-  .eliteTopbar {
-    position: sticky;
-  }
-
-  .hide-sm {
-    display: none !important;
-  }
-
-  .dynamicIsland {
-    top: 132px;
-    align-items: stretch;
-  }
-
-  .islandLeft,
-  .islandCenter,
-  .islandRight {
-    width: 100%;
-    justify-content: space-between;
-  }
-
-  .islandCenter {
-    overflow-x: auto;
-    flex-wrap: nowrap;
-    padding-bottom: 2px;
-    justify-content: flex-start;
-  }
-
-  .heroStrip,
-  .modebar,
-  .filterbar,
-  .main,
-  .dock,
-  .dynamicIsland {
-    padding-left: 12px;
-    padding-right: 12px;
-  }
-
-  .heroCard {
-    padding: 18px;
-    border-radius: 22px;
-  }
-
-  .heroTitle {
-    font-size: 24px;
-  }
-
-  .heroActions {
-    display: grid;
-    grid-template-columns: repeat(2, minmax(0, 1fr));
-  }
-
-  .heroStats {
-    grid-template-columns: repeat(2, minmax(0, 1fr));
-  }
-
-  .heroStat {
-    min-height: 86px;
-  }
-
-  .modebar {
-    top: 260px;
+  .commHub {
     margin-top: 10px;
   }
-
-  .filterbar {
-    top: 334px;
-    margin-top: 8px;
-  }
-
-  .mode-right .searchWrap,
-  .mode-right .selectControl,
-  .mode-right .chip {
-    min-width: max-content;
-  }
-
-  .panel,
-  .post,
-  .comments-shell,
-  .quickCreateSheet,
-  .modal {
-    border-radius: 20px;
-  }
-
-  .live-strip,
-  .toolsGrid,
-  .quickCreateGrid,
-  .chat-list {
-    grid-template-columns: 1fr;
-  }
-
-  .miniAvatars {
-    padding-bottom: 2px;
-    overflow-x: auto;
-    flex-wrap: nowrap;
-    scrollbar-width: none;
-  }
-
-  .miniAvatars::-webkit-scrollbar {
-    display: none;
-  }
-
-  .peopleCompact {
-    max-height: none;
-  }
-
-  .chatDrawer {
-    inset: auto 0 84px 0;
-    padding: 0 12px;
-    transform: translateY(calc(100% + 24px));
-  }
-
-  .chatDrawer.open {
-    transform: translateY(0);
-  }
-
-  .chatPanel {
-    border-radius: 24px 24px 0 0;
-    max-height: 68vh;
-  }
-
-  .chat-messages {
-    min-height: 180px;
-    max-height: 30vh;
-  }
-
-  .quickCreateBackdrop {
-    align-items: flex-end;
-  }
-
-  .quickCreateSheet {
-    width: 100%;
-    max-width: none;
-    border-radius: 24px 24px 0 0;
-  }
-
-  .eliteBottomNav {
-    width: calc(100% - 18px);
-    max-width: none;
-    bottom: 10px;
-  }
-
-  .toast {
-    left: 12px;
-    right: 12px;
-    bottom: 90px;
-    width: auto;
-  }
 }
-
-@media (max-width: 560px) {
-  .heroActions {
-    grid-template-columns: 1fr;
-  }
-
-  .heroStats {
-    grid-template-columns: 1fr 1fr;
-  }
-
-  .modebar {
-    top: 274px;
-  }
-
-  .filterbar {
-    top: 348px;
-  }
-
-  .islandRight {
-    gap: 6px;
-    flex-wrap: wrap;
-    justify-content: flex-start;
-  }
-
-  .action-btn .label,
-  .bnT {
-    font-size: 11px;
-  }
-}
-
 </style>
