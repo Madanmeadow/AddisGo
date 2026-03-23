@@ -99,6 +99,9 @@
 <script setup>
 import { computed, onMounted, ref } from "vue";
 import { useRouter } from "vue-router";
+import Layout from "../components/Layout.vue";
+import api from "../lib/api";
+import socket from "../lib/socket";
 
 const router = useRouter();
 
