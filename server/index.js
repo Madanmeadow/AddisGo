@@ -23,6 +23,30 @@ import likesRoutes from "./routes/likes.routes.js";
 
 dotenv.config();
 
+/* =========================
+   ✅ PRETTY LOGS (COLORFUL)
+========================= */
+const C = {
+  reset: "\x1b[0m",
+  dim: "\x1b[2m",
+  red: "\x1b[31m",
+  green: "\x1b[32m",
+  yellow: "\x1b[33m",
+  blue: "\x1b[34m",
+  magenta: "\x1b[35m",
+  cyan: "\x1b[36m",
+};
+function logOK(...a) { console.log(`${C.green}✅${C.reset}`, ...a); }
+function logWARN(...a) { console.log(`${C.yellow}⚠️${C.reset}`, ...a); }
+function logERR(...a) { console.log(`${C.red}❌${C.reset}`, ...a); }
+function logSOCK(...a) { console.log(`${C.cyan}🔌${C.reset}`, ...a); }
+function logLIVE(...a) { console.log(`${C.magenta}🔴${C.reset}`, ...a); }
+function logCALL(...a) { console.log(`${C.blue}📞${C.reset}`, ...a); }
+function logROOM(...a) { console.log(`${C.blue}🏠${C.reset}`, ...a); }
+
+/* =========================
+   APP + SERVER
+========================= */
 const app = express();
 const server = http.createServer(app);
 
@@ -30,426 +54,1392 @@ const __filename = fileURLToPath(import.meta.url);
 const __dirname = path.dirname(__filename);
 
 const PORT = process.env.PORT || 5000;
-const JWT_SECRET = process.env.JWT_SECRET || "change-me";
-const ORIGINS = (process.env.CORS_ORIGIN || process.env.CLIENT_URL || "*")
-  .split(",")
-  .map((s) => s.trim())
-  .filter(Boolean);
+const CLIENT_ORIGIN = process.env.CLIENT_ORIGIN || "*";
+const JWT_SECRET = process.env.JWT_SECRET || "dev_secret_change_me";
 
+const ORIGINS =
+  CLIENT_ORIGIN === "*"
+    ? "*"
+    : CLIENT_ORIGIN.split(",").map((s) => s.trim()).filter(Boolean);
+
+const canon = (v) => (v === null || v === undefined ? null : String(v));
+
+/* =========================
+   MIDDLEWARE
+========================= */
+app.use(
+  cors({
+    origin: ORIGINS,
+    credentials: true,
+    methods: ["GET", "POST", "PUT", "PATCH", "DELETE", "OPTIONS"],
+  })
+);
+
+app.use(express.json({ limit: "15mb" }));
+app.use(express.urlencoded({ extended: true }));
+
+/* =========================
+   STATIC UPLOADS + ROUTES
+========================= */
+app.use("/uploads", express.static(path.join(__dirname, "uploads")));
+
+app.use("/reels", reelsRoutes);
+app.use("/upload", uploadRoutes);
+app.use("/likes", likesRoutes);
+app.use("/posts", postsRoutes);
+app.use("/users", usersRoutes);
+app.use("/conversations", conversationsRoutes);
+app.use("/messages", messagesRoutes);
+
+// Optional backwards compat
+app.use("/api/upload", uploadRoutes);
+
+/* =========================
+   DB HEALTH
+========================= */
+pool.on("connect", () => logOK("PostgreSQL Connected"));
+
+/* =========================
+   AUTH (register/login)
+========================= */
+function signToken(user) {
+  const userId = canon(user?.id);
+  const username =
+    user?.username ||
+    user?.display_name ||
+    user?.name ||
+    user?.email ||
+    (userId ? `User${userId}` : "User");
+
+  return jwt.sign(
+    { userId, id: userId, username },
+    JWT_SECRET,
+    { expiresIn: "7d" }
+  );
+}
+
+app.post("/auth/register", async (req, res) => {
+  try {
+    const { username, name, email, password } = req.body;
+    if (!email || !password) {
+      return res.status(400).json({ error: "Email and password required" });
+    }
+
+    const display = username || name || email.split("@")[0];
+    const hashed = await bcrypt.hash(password, 10);
+
+    let created;
+    try {
+      created = await pool.query(
+        `INSERT INTO users (username, email, password)
+         VALUES ($1,$2,$3)
+         RETURNING id, username, email, display_name, name`,
+        [display, email, hashed]
+      );
+    } catch {
+      created = await pool.query(
+        `INSERT INTO users (name, email, password)
+         VALUES ($1,$2,$3)
+         RETURNING id, name, email, display_name, username`,
+        [display, email, hashed]
+      );
+    }
+
+    const userRow = created.rows[0];
+    const token = signToken(userRow);
+
+    res.json({
+      token,
+      user: {
+        id: userRow.id,
+        username:
+          userRow.username ||
+          userRow.display_name ||
+          userRow.name ||
+          userRow.email,
+      },
+    });
+  } catch (err) {
+    logERR("REGISTER ERROR:", err);
+    res.status(500).json({ error: "Register failed" });
+  }
+});
+
+app.post("/auth/login", async (req, res) => {
+  try {
+    const { email, password } = req.body;
+    if (!email || !password) {
+      return res.status(400).json({ error: "Email and password required" });
+    }
+
+    const found = await pool.query(
+      `SELECT * FROM users WHERE email=$1 LIMIT 1`,
+      [email]
+    );
+
+    if (!found.rows.length) {
+      return res.status(400).json({ error: "User not found" });
+    }
+
+    const user = found.rows[0];
+    const ok = await bcrypt.compare(password, user.password);
+    if (!ok) {
+      return res.status(400).json({ error: "Wrong password" });
+    }
+
+    const token = signToken(user);
+
+    res.json({
+      token,
+      user: {
+        id: user.id,
+        username:
+          user.username ||
+          user.display_name ||
+          user.name ||
+          user.email,
+      },
+    });
+  } catch (err) {
+    logERR("LOGIN ERROR:", err);
+    res.status(500).json({ error: "Login failed" });
+  }
+});
+
+/* =========================
+   HEALTH
+========================= */
+app.get("/", (req, res) => res.send("🚀 AddisGo backend running"));
+
+app.get("/health", async (req, res) => {
+  try {
+    const r = await pool.query("SELECT NOW() as now");
+    res.json({ ok: true, now: r.rows[0].now });
+  } catch {
+    res.status(500).json({ ok: false });
+  }
+});
+
+app.get("/api/health", async (req, res) => {
+  try {
+    const r = await pool.query("SELECT NOW() as now");
+    res.json({ ok: true, now: r.rows[0].now });
+  } catch {
+    res.status(500).json({ ok: false });
+  }
+});
+
+/* =========================
+   TURN (ICE servers)
+========================= */
+async function buildIceServers() {
+  const sid = (process.env.TWILIO_ACCOUNT_SID || "").trim();
+  const auth = (process.env.TWILIO_AUTH_TOKEN || "").trim();
+  const ttl = Number(process.env.TWILIO_TURN_TTL || 3600);
+
+  const fallback = {
+    ok: true,
+    iceServers: [{ urls: "stun:stun.l.google.com:19302" }],
+    note: "STUN only (TURN not available)",
+  };
+
+  if (!sid || !auth) {
+    return { ...fallback, note: "TURN not configured; STUN only" };
+  }
+
+  try {
+    const client = twilio(sid, auth);
+    const token = await client.tokens.create({ ttl });
+    return { ok: true, iceServers: token.iceServers, note: "TURN via Twilio" };
+  } catch (e) {
+    console.error("TURN(Twilio) ERROR -> fallback to STUN:", e?.message || e);
+    return { ...fallback, error: "Twilio TURN failed; using STUN fallback" };
+  }
+}
+
+app.get("/api/turn", async (req, res) => {
+  try {
+    res.json(await buildIceServers());
+  } catch (e) {
+    logERR("TURN ERROR:", e);
+    res.status(500).json({ ok: false, message: "Failed to get TURN servers" });
+  }
+});
+
+/* =========================
+   SOCKET.IO
+========================= */
 const io = new Server(server, {
   cors: {
-    origin: ORIGINS.includes("*") ? true : ORIGINS,
+    origin: ORIGINS,
     credentials: true,
     methods: ["GET", "POST"],
   },
 });
 
 /* =========================
-   MIDDLEWARE
+   SOCKET JWT AUTH
 ========================= */
-app.use(cors({
-  origin: ORIGINS.includes("*") ? true : ORIGINS,
-  credentials: true,
-}));
-app.use(express.json({ limit: "25mb" }));
-app.use(express.urlencoded({ extended: true, limit: "25mb" }));
-app.use("/uploads", express.static(path.join(__dirname, "uploads")));
-
-/* =========================
-   HELPERS
-========================= */
-function authRequired(req, res, next) {
+io.use((socket, next) => {
   try {
-    const header = req.headers.authorization || "";
-    const token = header.startsWith("Bearer ") ? header.slice(7) : null;
-    if (!token) return res.status(401).json({ error: "Missing token" });
+    const token =
+      socket.handshake.auth?.token ||
+      socket.handshake.headers?.authorization?.replace("Bearer ", "");
 
-    const decoded = jwt.verify(token, JWT_SECRET);
-    req.user = decoded;
-    next();
-  } catch {
-    return res.status(401).json({ error: "Invalid token" });
+    if (!token) return next();
+
+    const payload = jwt.verify(token, JWT_SECRET);
+    const userId = canon(payload?.userId ?? payload?.id);
+    if (!userId) return next(new Error("INVALID_TOKEN_PAYLOAD"));
+
+    socket.userId = userId;
+    socket.username = payload?.username || `User${userId}`;
+    return next();
+  } catch (e) {
+    logWARN("Socket auth failed (continuing as guest):", e?.message || e);
+    return next();
   }
+});
+
+/* ---------- PRESENCE ---------- */
+const onlineUsers = new Map();    // userId -> socketId
+const socketToUserId = new Map(); // socketId -> userId
+
+function emitOnlineUsersLegacy() {
+  io.emit("online-users", Array.from(onlineUsers.entries()));
 }
 
-function getSocketUserLabel(socket) {
-  return socket.username || "User";
-}
-
-/* =========================
-   SOCKET STATE
-========================= */
-const onlineUsers = new Map(); // userId -> socketId
-const socketToUser = new Map(); // socketId -> userId
-const callRooms = new Map(); // roomId -> Set(socketIds)
-const liveHosts = new Map(); // liveId -> hostSocketId
-const liveViewers = new Map(); // liveId -> Set(socketIds)
-
-/* =========================
-   PRESENCE HELPERS
-========================= */
-function emitPresenceList(targetSocket = null) {
-  const onlineUserIds = Array.from(onlineUsers.keys()).map(String);
-  if (targetSocket) targetSocket.emit("presence:list", { onlineUserIds });
+function emitPresenceList(toSocket) {
+  const onlineUserIds = Array.from(onlineUsers.keys());
+  if (toSocket) toSocket.emit("presence:list", { onlineUserIds });
   else io.emit("presence:list", { onlineUserIds });
 }
 
 function broadcastPresenceUpdate(userId, online) {
-  io.emit("presence:update", {
-    userId: String(userId),
-    online: !!online,
+  io.emit("presence:update", { userId: String(userId), online: !!online });
+}
+
+function setOnline(socket, userId, username) {
+  const uid = canon(userId);
+  if (!uid) return false;
+
+  socket.data.user = {
+    id: uid,
+    username: username || socket.username || `User${uid}`,
+  };
+
+  onlineUsers.set(uid, socket.id);
+  socketToUserId.set(socket.id, uid);
+
+  socket.join(`user:${uid}`);
+  return true;
+}
+
+/* ---------- LIVE ---------- */
+const liveStreams = new Set();
+const liveHosts = new Map(); // liveId -> hostSocketId
+
+function emitLiveList() {
+  io.emit("live-list", Array.from(liveStreams));
+}
+
+function emitLivePresence(liveId) {
+  const room = io.sockets.adapter.rooms.get(`live:${liveId}`);
+  const count = room ? room.size : 0;
+  io.to(`live:${liveId}`).emit("live:presence", {
+    liveId: String(liveId),
+    viewerCount: count,
   });
 }
 
-/* =========================
-   CALL HELPERS
-========================= */
-function joinCallRoom(roomId, socketId) {
-  if (!callRooms.has(roomId)) callRooms.set(roomId, new Set());
-  callRooms.get(roomId).add(socketId);
+/* ---------- LIVE MIC CONTROL ---------- */
+const liveSpeakers = new Map();     // liveId -> Set<userId>
+const liveMicRequests = new Map();  // liveId -> Map<userId -> payload>
+
+function ensureLiveSpeakerSet(liveId) {
+  const id = String(liveId);
+  if (!liveSpeakers.has(id)) liveSpeakers.set(id, new Set());
+  return liveSpeakers.get(id);
 }
 
-function leaveCallRoom(roomId, socketId) {
-  if (!callRooms.has(roomId)) return;
-  const set = callRooms.get(roomId);
-  set.delete(socketId);
-  if (set.size === 0) callRooms.delete(roomId);
+function ensureLiveRequestMap(liveId) {
+  const id = String(liveId);
+  if (!liveMicRequests.has(id)) liveMicRequests.set(id, new Map());
+  return liveMicRequests.get(id);
 }
 
-function getPeers(roomId, selfSocketId) {
-  if (!callRooms.has(roomId)) return [];
-  return Array.from(callRooms.get(roomId)).filter((id) => id !== selfSocketId);
+/* ---------- DIRECT CALLS: OFFLINE QUEUE + BUSY ---------- */
+const pendingIncomingCalls = new Map(); // userId -> Map(roomId -> payload)
+const userBusyRoom = new Map();         // userId -> roomId
+
+function queueIncomingCall(userId, payload) {
+  const uid = String(userId);
+  const rid = String(payload.roomId);
+  if (!pendingIncomingCalls.has(uid)) pendingIncomingCalls.set(uid, new Map());
+  pendingIncomingCalls.get(uid).set(rid, payload);
 }
 
-/* =========================
-   LIVE HELPERS
-========================= */
-function getLiveViewerCount(liveId) {
-  return liveViewers.has(liveId) ? liveViewers.get(liveId).size : 0;
+function removeQueuedIncomingCall(userId, roomId) {
+  const uid = String(userId);
+  const rid = String(roomId);
+  const m = pendingIncomingCalls.get(uid);
+  if (!m) return;
+  m.delete(rid);
+  if (m.size === 0) pendingIncomingCalls.delete(uid);
 }
 
-function emitServerStats() {
-  io.emit("server:stats", {
-    onlineUsers: onlineUsers.size,
-    liveStreams: liveHosts.size,
-    directCalls: callRooms.size,
-    callRooms: callRooms.size,
-    onlineUserIds: Array.from(onlineUsers.keys()).map(String),
-  });
-}
+function flushQueuedIncomingCallsToUser(userId) {
+  const uid = String(userId);
+  const m = pendingIncomingCalls.get(uid);
+  if (!m || m.size === 0) return;
 
-/* =========================
-   BASIC HEALTH / AUTH
-========================= */
-app.get("/", (_req, res) => {
-  res.json({ ok: true, app: "Pulse API" });
-});
-
-app.get("/api/health", async (_req, res) => {
-  try {
-    await pool.query("SELECT 1");
-    res.json({ ok: true, db: true });
-  } catch (err) {
-    res.status(500).json({ ok: false, db: false, error: err.message });
+  for (const payload of m.values()) {
+    io.to(`user:${uid}`).emit("call:incoming", { ...payload, queued: true });
+    io.to(`user:${uid}`).emit("call:ring", {
+      roomId: String(payload.roomId),
+      kind: payload.kind,
+      side: "callee",
+    });
+    io.to(`user:${uid}`).emit("call:ringing", {
+      roomId: String(payload.roomId),
+      kind: payload.kind,
+      side: "callee",
+      queued: true,
+    });
   }
-});
+}
 
-app.post("/auth/register", async (req, res) => {
+/* ---------- DIRECT CALLS ---------- */
+const callSessions = new Map();
+const RING_TIMEOUT_MS = 30_000;
+
+function makeCallRoomId(socket) {
+  return `call-${socket.id}-${Date.now()}`;
+}
+
+function emitCallParticipants(roomId) {
+  const sess = callSessions.get(String(roomId));
+  if (!sess) return;
+
+  io.to(`call:${roomId}`).emit("call:participants", {
+    roomId: String(roomId),
+    hostUserId: sess.hostUserId,
+    kind: sess.kind,
+    invitedUserIds: Array.from(sess.invitedUserIds || []),
+    joinedUserIds: Array.from(sess.joinedUserIds || []),
+  });
+}
+
+function ringToUser(userId, roomId, kind, side) {
+  io.to(`user:${String(userId)}`).emit("call:ring", {
+    roomId: String(roomId),
+    kind: String(kind),
+    side: side || "unknown",
+  });
+  io.to(`user:${String(userId)}`).emit("call:ringing", {
+    roomId: String(roomId),
+    kind: String(kind),
+    side: side || "unknown",
+  });
+}
+
+function stopRingToUser(userId, roomId) {
+  io.to(`user:${String(userId)}`).emit("call:stopRing", {
+    roomId: String(roomId),
+  });
+}
+
+function stopRingForSession(sess) {
+  if (!sess) return;
+
+  if (sess.ringTimer) {
+    clearTimeout(sess.ringTimer);
+    sess.ringTimer = null;
+  }
+
+  for (const uid of sess.invitedUserIds || []) {
+    stopRingToUser(uid, sess.roomId);
+  }
+}
+
+function isUserBusy(userId) {
+  return userBusyRoom.has(String(userId));
+}
+
+function setUserBusy(userId, roomId) {
+  userBusyRoom.set(String(userId), String(roomId));
+}
+
+function clearUserBusy(userId, roomId) {
+  const uid = String(userId);
+  const rid = String(roomId);
+  const cur = userBusyRoom.get(uid);
+  if (cur && cur === rid) userBusyRoom.delete(uid);
+}
+
+function clearBusyForSession(sess) {
+  if (!sess) return;
+  for (const uid of sess.invitedUserIds || []) {
+    clearUserBusy(uid, sess.roomId);
+  }
+}
+
+/* ======= OPTIONAL DB helpers ======= */
+async function dbNotifyIncomingCall(userId, payload) {
   try {
-    const { username, email, password, name } = req.body || {};
-    if (!username || !email || !password) {
-      return res.status(400).json({ error: "username, email, password required" });
-    }
-
-    const exists = await pool.query(
-      `SELECT id FROM users WHERE email = $1 OR username = $2 LIMIT 1`,
-      [email, username]
+    await pool.query(
+      `INSERT INTO notifications (user_id, type, payload)
+       VALUES ($1, 'incoming_call', $2::jsonb)`,
+      [Number(userId), JSON.stringify(payload)]
     );
-    if (exists.rows.length) {
-      return res.status(409).json({ error: "User already exists" });
-    }
+  } catch {}
+}
 
-    const hash = await bcrypt.hash(password, 10);
+async function dbEnsureCall(roomId, kind, hostUserId) {
+  try {
+    const r = await pool.query(
+      `SELECT id FROM calls WHERE room_id=$1 LIMIT 1`,
+      [String(roomId)]
+    );
+    if (r.rows?.[0]?.id) return r.rows[0].id;
 
     const created = await pool.query(
-      `
-      INSERT INTO users (username, email, password, name)
-      VALUES ($1, $2, $3, $4)
-      RETURNING id, username, email, name, avatar_url, bio, created_at
-      `,
-      [username, email, hash, name || username]
+      `INSERT INTO calls (room_id, kind, created_by, status)
+       VALUES ($1,$2,$3,'ringing')
+       RETURNING id`,
+      [String(roomId), String(kind), hostUserId ? Number(hostUserId) : null]
     );
-
-    const user = created.rows[0];
-    const token = jwt.sign(
-      { id: user.id, username: user.username, email: user.email },
-      JWT_SECRET,
-      { expiresIn: "7d" }
-    );
-
-    res.status(201).json({ token, user });
-  } catch (err) {
-    console.error("POST /auth/register error:", err);
-    res.status(500).json({ error: "Failed to register" });
+    return created.rows[0].id;
+  } catch (e) {
+    logERR("DB ensure call error:", e);
+    return null;
   }
-});
+}
 
-app.post("/auth/login", async (req, res) => {
+async function dbUpsertParticipant(callId, userId, role = "member", status = "invited") {
   try {
-    const { email, username, password } = req.body || {};
-    const identifier = email || username;
-    if (!identifier || !password) {
-      return res.status(400).json({ error: "email/username and password required" });
+    await pool.query(
+      `INSERT INTO call_participants (call_id, user_id, role, status)
+       VALUES ($1,$2,$3,$4)
+       ON CONFLICT (call_id, user_id)
+       DO UPDATE SET role=EXCLUDED.role, status=EXCLUDED.status`,
+      [Number(callId), Number(userId), String(role), String(status)]
+    );
+  } catch (e) {
+    logERR("DB upsert participant error:", e);
+  }
+}
+
+async function dbMarkJoined(callId, userId) {
+  try {
+    await pool.query(
+      `UPDATE call_participants
+       SET status='joined', joined_at=COALESCE(joined_at, NOW())
+       WHERE call_id=$1 AND user_id=$2`,
+      [Number(callId), Number(userId)]
+    );
+  } catch (e) {
+    logERR("DB mark joined error:", e);
+  }
+}
+
+async function dbActivateIfTwoJoined(callId) {
+  try {
+    const j = await pool.query(
+      `SELECT COUNT(*)::int AS n
+       FROM call_participants
+       WHERE call_id=$1 AND status='joined'`,
+      [Number(callId)]
+    );
+    if ((j.rows?.[0]?.n || 0) >= 2) {
+      await pool.query(
+        `UPDATE calls
+         SET status='active', started_at=COALESCE(started_at, NOW())
+         WHERE id=$1`,
+        [Number(callId)]
+      );
+    }
+  } catch (e) {
+    logERR("DB activate error:", e);
+  }
+}
+
+async function dbEndCall(roomId) {
+  try {
+    await pool.query(
+      `UPDATE calls
+       SET status='ended', ended_at=NOW()
+       WHERE room_id=$1 AND status <> 'ended'`,
+      [String(roomId)]
+    );
+  } catch (e) {
+    logERR("DB end call error:", e);
+  }
+}
+
+function scheduleMissedTimer(roomId) {
+  const sess = callSessions.get(String(roomId));
+  if (!sess) return;
+
+  if (sess.ringTimer) {
+    clearTimeout(sess.ringTimer);
+    sess.ringTimer = null;
+  }
+
+  sess.ringTimer = setTimeout(async () => {
+    const s = callSessions.get(String(roomId));
+    if (!s) return;
+
+    const room = io.sockets.adapter.rooms.get(`call:${roomId}`);
+    const count = room ? room.size : 0;
+    const joinedCount = s.joinedUserIds ? s.joinedUserIds.size : 0;
+
+    if (count >= 2 || joinedCount >= 2) {
+      if (s.ringTimer) {
+        clearTimeout(s.ringTimer);
+        s.ringTimer = null;
+      }
+      callSessions.set(String(roomId), s);
+      return;
     }
 
-    const found = await pool.query(
-      `
-      SELECT id, username, email, password, name, avatar_url, bio, created_at
-      FROM users
-      WHERE email = $1 OR username = $1
-      LIMIT 1
-      `,
-      [identifier]
-    );
+    stopRingForSession(s);
+    clearBusyForSession(s);
 
-    const user = found.rows[0];
-    if (!user) return res.status(401).json({ error: "Invalid credentials" });
+    for (const uid of s.invitedUserIds || []) {
+      removeQueuedIncomingCall(uid, s.roomId);
+    }
 
-    const ok = await bcrypt.compare(password, user.password || "");
-    if (!ok) return res.status(401).json({ error: "Invalid credentials" });
+    await dbEndCall(roomId);
 
-    const token = jwt.sign(
-      { id: user.id, username: user.username, email: user.email },
-      JWT_SECRET,
-      { expiresIn: "7d" }
-    );
+    io.to(`call:${roomId}`).emit("call:ended", {
+      roomId: String(roomId),
+      reason: "timeout",
+    });
 
-    delete user.password;
-    res.json({ token, user });
-  } catch (err) {
-    console.error("POST /auth/login error:", err);
-    res.status(500).json({ error: "Failed to login" });
-  }
-});
-
-app.get("/users/me", authRequired, async (req, res) => {
-  try {
-    const { rows } = await pool.query(
-      `
-      SELECT id, username, email, name, avatar_url, bio, created_at
-      FROM users
-      WHERE id = $1
-      LIMIT 1
-      `,
-      [req.user.id]
-    );
-
-    if (!rows.length) return res.status(404).json({ error: "User not found" });
-    res.json(rows[0]);
-  } catch (err) {
-    console.error("GET /users/me error:", err);
-    res.status(500).json({ error: "Failed to fetch current user" });
-  }
-});
-
-/* =========================
-   TURN / SERVER STATS
-========================= */
-app.get("/api/server-stats", (_req, res) => {
-  res.json({
-    onlineUsers: onlineUsers.size,
-    liveStreams: liveHosts.size,
-    directCalls: callRooms.size,
-    callRooms: callRooms.size,
-    onlineUserIds: Array.from(onlineUsers.keys()).map(String),
-  });
-});
-
-app.get("/api/turn", async (_req, res) => {
-  try {
-    const sid = process.env.TWILIO_ACCOUNT_SID;
-    const secret = process.env.TWILIO_API_SECRET;
-    const key = process.env.TWILIO_API_KEY;
-
-    if (!sid || !secret || !key) {
-      return res.json({
-        iceServers: [{ urls: "stun:stun.l.google.com:19302" }],
+    for (const uid of s.invitedUserIds || []) {
+      io.to(`user:${uid}`).emit("call:ended", {
+        roomId: String(roomId),
+        reason: "timeout",
       });
+      stopRingToUser(uid, roomId);
     }
 
-    const client = twilio(key, secret, { accountSid: sid });
-    const token = await client.tokens.create();
+    callSessions.delete(String(roomId));
+  }, RING_TIMEOUT_MS);
 
-    res.json({
-      iceServers: token.iceServers || [{ urls: "stun:stun.l.google.com:19302" }],
+  callSessions.set(String(roomId), sess);
+}
+
+/* ---------- CALL ROOMS ---------- */
+const callRooms = new Map();
+/*
+room shape:
+{
+  roomId,
+  name,
+  kind, // audio | video
+  hostUserId,
+  hostSocketId,
+  createdAt,
+  participants: Map<userId, {
+    userId,
+    username,
+    name,
+    socketId,
+    joinedAt,
+    micOn,
+    camOn
+  }>
+}
+*/
+
+function roomTarget(roomId) {
+  return `callroom:${String(roomId)}`;
+}
+
+function getRoomParticipant(room, userId) {
+  return room?.participants?.get(String(userId)) || null;
+}
+
+function normalizeCallRoomParticipant(room, p) {
+  return {
+    userId: String(p.userId),
+    username: p.username || `User${p.userId}`,
+    name: p.name || p.username || `User ${p.userId}`,
+    socketId: p.socketId,
+    joinedAt: p.joinedAt,
+    micOn: !!p.micOn,
+    camOn: !!p.camOn,
+    isHost: String(p.userId) === String(room.hostUserId),
+    connected: true,
+  };
+}
+
+function emitCallRoomList(toSocket = null) {
+  const rooms = Array.from(callRooms.values()).map((r) => ({
+    roomId: String(r.roomId),
+    name: r.name,
+    kind: r.kind,
+    hostUserId: String(r.hostUserId || ""),
+    participantCount: r.participants?.size || 0,
+    createdAt: r.createdAt,
+  }));
+
+  if (toSocket) toSocket.emit("callroom:list", rooms);
+  else io.emit("callroom:list", rooms);
+}
+
+function emitCallRoomState(roomId) {
+  const room = callRooms.get(String(roomId));
+  if (!room) return;
+
+  const participants = Array.from(room.participants.values()).map((p) =>
+    normalizeCallRoomParticipant(room, p)
+  );
+
+  io.to(roomTarget(roomId)).emit("callroom:state", {
+    roomId: String(room.roomId),
+    name: room.name,
+    kind: room.kind,
+    hostUserId: String(room.hostUserId || ""),
+    participants,
+  });
+}
+
+function removeParticipantFromCallRooms(socket) {
+  const meId = socket.data.user?.id ? String(socket.data.user.id) : null;
+  if (!meId) return;
+
+  for (const [roomId, room] of callRooms.entries()) {
+    if (!room.participants.has(meId)) continue;
+
+    room.participants.delete(meId);
+    socket.leave(roomTarget(roomId));
+
+    socket.to(roomTarget(roomId)).emit("callroom:user-left", {
+      roomId: String(roomId),
+      userId: String(meId),
+      name: socket.data.user?.username || `User ${meId}`,
+      username: socket.data.user?.username || `User${meId}`,
+      socketId: socket.id,
     });
-  } catch (err) {
-    console.error("GET /api/turn error:", err);
-    res.json({
-      iceServers: [{ urls: "stun:stun.l.google.com:19302" }],
+
+    socket.to(roomTarget(roomId)).emit("callroom:peer-left", {
+      roomId: String(roomId),
+      userId: String(meId),
+      socketId: socket.id,
     });
+
+    if (room.participants.size === 0) {
+      callRooms.delete(roomId);
+      emitCallRoomList();
+      continue;
+    }
+
+    if (String(room.hostUserId) === meId) {
+      const next = Array.from(room.participants.values())[0];
+      if (next) {
+        room.hostUserId = String(next.userId);
+        room.hostSocketId = next.socketId;
+      }
+    }
+
+    callRooms.set(roomId, room);
+    emitCallRoomState(roomId);
+    emitCallRoomList();
   }
-});
+}
 
 /* =========================
-   APP ROUTES
-========================= */
-app.use("/reels", reelsRoutes);
-app.use("/posts", postsRoutes);
-app.use("/users", usersRoutes);
-app.use("/", conversationsRoutes);
-app.use("/", messagesRoutes);
-app.use("/upload", uploadRoutes);
-app.use("/likes", likesRoutes);
-
-/* =========================
-   SOCKET.IO
+   SOCKET CONNECTION
 ========================= */
 io.on("connection", (socket) => {
-  console.log("🔌 connected:", socket.id);
+  logSOCK("Socket connected:", socket.id);
+  socket.data.user = socket.data.user || null;
 
-  /* ---------- REGISTER USER ---------- */
-  socket.on("register-user", ({ id, username }) => {
-    if (!id) return;
+  /* ✅ Auto-register if JWT auth succeeded */
+  if (socket.userId) {
+    setOnline(socket, socket.userId, socket.username);
+    emitPresenceList(socket);
+    broadcastPresenceUpdate(socket.userId, true);
+    emitOnlineUsersLegacy();
+    flushQueuedIncomingCallsToUser(socket.userId);
+  }
 
-    const userId = String(id);
-    onlineUsers.set(userId, socket.id);
-    socketToUser.set(socket.id, userId);
+  /* =========================
+     PRESENCE
+  ========================= */
+  socket.on("user:online", ({ userId, username }) => {
+    if (!userId) return;
 
-    socket.userId = userId;
-    socket.username = username || "User";
-
+    setOnline(socket, userId, username);
     emitPresenceList(socket);
     broadcastPresenceUpdate(userId, true);
-    emitServerStats();
-
-    console.log("👤 online:", userId, socket.username);
+    emitOnlineUsersLegacy();
+    flushQueuedIncomingCallsToUser(userId);
   });
 
-  socket.on("presence:get", () => {
+  socket.on("presence:get", () => emitPresenceList(socket));
+
+  socket.on("register-user", (user) => {
+    const userId = typeof user === "object" ? user?.id : user;
+    const username = typeof user === "object" ? user?.username : null;
+    if (!userId) return;
+
+    setOnline(socket, userId, username);
     emitPresenceList(socket);
+    broadcastPresenceUpdate(userId, true);
+    emitOnlineUsersLegacy();
+    flushQueuedIncomingCallsToUser(userId);
   });
 
   /* =========================
-     MESSAGES
+     CHAT (general rooms)
   ========================= */
-  socket.on("messages:join", ({ conversationId }) => {
-    if (!conversationId) return;
-    socket.join(`conversation:${conversationId}`);
+  socket.on("join-room", (room) => {
+    if (!room) return;
+    socket.join(String(room));
   });
 
-  socket.on("messages:leave", ({ conversationId }) => {
-    if (!conversationId) return;
-    socket.leave(`conversation:${conversationId}`);
+  socket.on("send-message", ({ room, from, text }) => {
+    const r = String(room || "");
+    const t = String(text || "").trim();
+    if (!r || !t) return;
+
+    io.to(r).emit("receive-message", {
+      from: from || socket.data.user?.username || "user",
+      text: t,
+      createdAt: new Date().toISOString(),
+    });
   });
 
-  socket.on("message:send", ({ conversationId, message }) => {
-    if (!conversationId || !message) return;
+  socket.on("send-room-message", (data) => {
+    const room = data?.room;
+    const text = data?.text?.trim();
+    if (!room || !text) return;
 
-    io.to(`conversation:${conversationId}`).emit("message:new", {
-      conversationId: String(conversationId),
-      message,
+    io.to(String(room)).emit("receive-message", {
+      room: String(room),
+      from: data.from || socket.data.user?.username || "user",
+      text: String(text),
+      created_at: new Date().toISOString(),
     });
   });
 
   /* =========================
-     DIRECT CALL
+     DIRECT CALLS
   ========================= */
-  socket.on("call:request", ({ toUserId, kind }) => {
-    const targetSocketId = onlineUsers.get(String(toUserId));
-
-    if (!socket.userId) {
-      socket.emit("call:error", { message: "You are not registered." });
-      return;
+  socket.on("call:request", async ({ toUserId, kind = "audio" }) => {
+    const from = socket.data.user;
+    if (!from?.id) {
+      return socket.emit("call:error", { message: "Not online." });
     }
 
-    if (!targetSocketId) {
-      socket.emit("call:offline", { message: "User offline" });
-      return;
+    if (!toUserId) {
+      return socket.emit("call:error", { message: "Missing toUserId" });
     }
 
-    const roomId = `call_${Date.now()}_${socket.userId}_${String(toUserId)}`;
-    callRooms.set(roomId, new Set());
+    const callerUserId = String(from.id);
+    const calleeUserId = String(toUserId);
+    const callKind = kind === "video" ? "video" : "audio";
 
-    socket.emit("call:ringing", { roomId });
+    if (calleeUserId === callerUserId) {
+      return socket.emit("call:error", { message: "You cannot call yourself." });
+    }
 
-    io.to(targetSocketId).emit("call:incoming", {
+    if (isUserBusy(callerUserId)) {
+      return socket.emit("call:error", { message: "You are already in a call." });
+    }
+
+    if (isUserBusy(calleeUserId)) {
+      return socket.emit("call:busy", { message: "User is busy." });
+    }
+
+    const roomId = String(makeCallRoomId(socket));
+    const invitedUserIds = new Set([callerUserId, calleeUserId]);
+    const joinedUserIds = new Set();
+
+    const dbCallId = await dbEnsureCall(roomId, callKind, from.id);
+    if (dbCallId) {
+      await dbUpsertParticipant(dbCallId, from.id, "host", "invited");
+      await dbUpsertParticipant(dbCallId, calleeUserId, "member", "invited");
+    }
+
+    const incomingPayload = {
       roomId,
-      fromUserId: socket.userId,
-      fromName: getSocketUserLabel(socket),
-      kind: kind || "video",
+      kind: callKind,
+      fromUserId: callerUserId,
+      fromName: from.username || `User${from.id}`,
+      isGroup: false,
+      from: callerUserId,
+      callerSocketId: socket.id,
+      hostUserId: callerUserId,
+    };
+
+    callSessions.set(roomId, {
+      roomId,
+      kind: callKind,
+      hostUserId: callerUserId,
+      invitedUserIds,
+      joinedUserIds,
+      createdAt: Date.now(),
+      dbCallId: dbCallId || null,
+      ringTimer: null,
     });
 
-    emitServerStats();
-  });
+    setUserBusy(callerUserId, roomId);
+    setUserBusy(calleeUserId, roomId);
 
-  socket.on("call:accept", ({ roomId }) => {
-    if (!roomId) return;
-    io.to(roomId).emit("call:accepted", { roomId });
-    socket.emit("call:accepted", { roomId });
-  });
+    scheduleMissedTimer(roomId);
 
-  socket.on("call:reject", ({ roomId }) => {
-    if (!roomId) return;
-    io.to(roomId).emit("call:ended", { roomId, reason: "rejected" });
-    callRooms.delete(roomId);
-    emitServerStats();
-  });
-
-  socket.on("call:join", ({ roomId }) => {
-    if (!roomId) return;
-
-    socket.join(roomId);
-    joinCallRoom(roomId, socket.id);
-
-    const peerSocketIds = getPeers(roomId, socket.id);
-
-    socket.emit("call:joined", {
-      peerSocketIds,
-      shouldCreateOffer: peerSocketIds.length === 1,
+    socket.emit("call:ringing", {
+      roomId,
+      kind: callKind,
+      isCaller: true,
     });
 
-    peerSocketIds.forEach((peerSocketId) => {
-      io.to(peerSocketId).emit("call:peer-joined", {
-        peerSocketId: socket.id,
+    ringToUser(callerUserId, roomId, callKind, "caller");
+
+    const calleeSocketId = onlineUsers.get(calleeUserId);
+
+    if (!calleeSocketId) {
+      queueIncomingCall(calleeUserId, incomingPayload);
+      await dbNotifyIncomingCall(calleeUserId, incomingPayload);
+
+      socket.emit("call:status", {
+        roomId,
+        calleeOnline: false,
       });
-    });
+      return;
+    }
 
-    emitServerStats();
+    io.to(`user:${calleeUserId}`).emit("call:incoming", incomingPayload);
+    ringToUser(calleeUserId, roomId, callKind, "callee");
+
+    socket.emit("call:status", {
+      roomId,
+      calleeOnline: true,
+    });
   });
 
-  socket.on("call:webrtc:offer", ({ roomId, offer, to }) => {
-    if (!offer || !to) return;
-    io.to(String(to)).emit("call:webrtc:offer", {
-      roomId,
-      offer,
-      fromSocketId: socket.id,
+  socket.on("call:accept", async ({ roomId }) => {
+    const sess = callSessions.get(String(roomId));
+    if (!sess) return;
+
+    stopRingForSession(sess);
+
+    for (const uid of sess.invitedUserIds || []) {
+      io.to(`user:${uid}`).emit("call:accepted", {
+        roomId: String(roomId),
+        kind: sess.kind,
+        hostUserId: sess.hostUserId,
+      });
+      stopRingToUser(uid, roomId);
+    }
+
+    io.to(`call:${roomId}`).emit("call:accepted", {
+      roomId: String(roomId),
+      kind: sess.kind,
+      hostUserId: sess.hostUserId,
     });
+  });
+
+  socket.on("call:reject", async ({ roomId }) => {
+    const sess = callSessions.get(String(roomId));
+    if (!sess) return;
+
+    stopRingForSession(sess);
+    clearBusyForSession(sess);
+
+    for (const uid of sess.invitedUserIds || []) {
+      removeQueuedIncomingCall(uid, sess.roomId);
+    }
+
+    io.to(`call:${roomId}`).emit("call:ended", {
+      roomId: String(roomId),
+      reason: "rejected",
+    });
+
+    for (const uid of sess.invitedUserIds || []) {
+      io.to(`user:${uid}`).emit("call:ended", {
+        roomId: String(roomId),
+        reason: "rejected",
+      });
+      stopRingToUser(uid, roomId);
+    }
+
+    if (sess.ringTimer) {
+      clearTimeout(sess.ringTimer);
+      sess.ringTimer = null;
+    }
+
+    callSessions.delete(String(roomId));
+  });
+
+  socket.on("call:join", async ({ roomId }) => {
+    const sess = callSessions.get(String(roomId));
+    if (!sess) {
+      return socket.emit("call:error", { message: "Call session not found." });
+    }
+
+    const meId = socket.data.user?.id ? String(socket.data.user.id) : null;
+    socket.join(`call:${roomId}`);
+
+    if (meId) {
+      sess.joinedUserIds.add(meId);
+      callSessions.set(String(roomId), sess);
+
+      removeQueuedIncomingCall(meId, roomId);
+      setUserBusy(meId, roomId);
+
+      if (sess.ringTimer) {
+        clearTimeout(sess.ringTimer);
+        sess.ringTimer = null;
+      }
+
+      if (sess.dbCallId) {
+        await dbMarkJoined(sess.dbCallId, meId);
+        await dbActivateIfTwoJoined(sess.dbCallId);
+      }
+    }
+
+    const room = io.sockets.adapter.rooms.get(`call:${roomId}`);
+    const count = room ? room.size : 0;
+
+    io.to(`call:${roomId}`).emit("call:presence", {
+      roomId: String(roomId),
+      count,
+      joinedUserIds: Array.from(sess.joinedUserIds || []),
+      hostUserId: sess.hostUserId,
+    });
+
+    socket.to(`call:${roomId}`).emit("call:peer-joined", {
+      roomId: String(roomId),
+      peerSocketId: socket.id,
+      peerUserId: meId,
+      hostUserId: sess.hostUserId,
+    });
+
+    emitCallParticipants(roomId);
+
+    if (count >= 2) {
+      stopRingForSession(sess);
+
+      io.to(`call:${roomId}`).emit("call:ready", {
+        roomId: String(roomId),
+        kind: sess.kind,
+        hostUserId: sess.hostUserId,
+        joinedUserIds: Array.from(sess.joinedUserIds || []),
+      });
+    }
+  });
+
+  socket.on("call:end", async ({ roomId }) => {
+    const sess = callSessions.get(String(roomId));
+    logCALL("call:end", { roomId: String(roomId) });
+
+    await dbEndCall(roomId);
+
+    if (sess) {
+      stopRingForSession(sess);
+      clearBusyForSession(sess);
+
+      for (const uid of sess.invitedUserIds || []) {
+        removeQueuedIncomingCall(uid, sess.roomId);
+      }
+
+      if (sess.ringTimer) {
+        clearTimeout(sess.ringTimer);
+        sess.ringTimer = null;
+      }
+
+      for (const uid of sess.invitedUserIds || []) {
+        io.to(`user:${uid}`).emit("call:ended", {
+          roomId: String(roomId),
+          reason: "ended",
+        });
+        stopRingToUser(uid, roomId);
+      }
+    }
+
+    io.to(`call:${roomId}`).emit("call:ended", {
+      roomId: String(roomId),
+      reason: "ended",
+    });
+
+    callSessions.delete(String(roomId));
+  });
+
+  socket.on("call:cancel", async ({ roomId }) => {
+    const sess = callSessions.get(String(roomId));
+    if (!sess) return;
+
+    logCALL("call:cancel", { roomId: String(roomId) });
+    await dbEndCall(roomId);
+
+    stopRingForSession(sess);
+    clearBusyForSession(sess);
+
+    for (const uid of sess.invitedUserIds || []) {
+      removeQueuedIncomingCall(uid, sess.roomId);
+    }
+
+    io.to(`call:${roomId}`).emit("call:ended", {
+      roomId: String(roomId),
+      reason: "canceled",
+    });
+
+    for (const uid of sess.invitedUserIds || []) {
+      io.to(`user:${uid}`).emit("call:ended", {
+        roomId: String(roomId),
+        reason: "canceled",
+      });
+      stopRingToUser(uid, roomId);
+    }
+
+    if (sess.ringTimer) {
+      clearTimeout(sess.ringTimer);
+      sess.ringTimer = null;
+    }
+
+    callSessions.delete(String(roomId));
+  });
+
+  socket.on("call:invite", async ({ roomId, toUserId }) => {
+    const sess = callSessions.get(String(roomId));
+    const from = socket.data.user;
+
+    if (!sess || !from?.id || !toUserId) return;
+
+    const inviteeUserId = String(toUserId);
+    if (sess.invitedUserIds.has(inviteeUserId)) return;
+
+    sess.invitedUserIds.add(inviteeUserId);
+    callSessions.set(String(roomId), sess);
+
+    setUserBusy(inviteeUserId, roomId);
+
+    if (sess.dbCallId) {
+      await dbUpsertParticipant(sess.dbCallId, inviteeUserId, "member", "invited");
+    }
+
+    const incomingPayload = {
+      roomId: String(roomId),
+      kind: sess.kind,
+      fromUserId: String(from.id),
+      fromName: from.username || `User${from.id}`,
+      isGroup: true,
+      from: String(from.id),
+      callerSocketId: socket.id,
+      hostUserId: sess.hostUserId,
+    };
+
+    const inviteeSocketId = onlineUsers.get(inviteeUserId);
+    if (!inviteeSocketId) {
+      queueIncomingCall(inviteeUserId, incomingPayload);
+      return;
+    }
+
+    io.to(`user:${inviteeUserId}`).emit("call:incoming", incomingPayload);
+    ringToUser(inviteeUserId, roomId, sess.kind, "callee");
+  });
+
+  /* =========================
+     DIRECT CALLS: WebRTC RELAY
+  ========================= */
+  socket.on("call:webrtc:offer", ({ roomId, offer, to }) => {
+    if (!roomId || !offer) return;
+
+    const payload = {
+      roomId: String(roomId),
+      offer,
+      from: socket.id,
+    };
+
+    if (to) return io.to(String(to)).emit("call:webrtc:offer", payload);
+    socket.to(`call:${roomId}`).emit("call:webrtc:offer", payload);
   });
 
   socket.on("call:webrtc:answer", ({ roomId, answer, to }) => {
-    if (!answer || !to) return;
-    io.to(String(to)).emit("call:webrtc:answer", {
-      roomId,
+    if (!roomId || !answer) return;
+
+    const payload = {
+      roomId: String(roomId),
       answer,
-      fromSocketId: socket.id,
-    });
+      from: socket.id,
+    };
+
+    if (to) return io.to(String(to)).emit("call:webrtc:answer", payload);
+    socket.to(`call:${roomId}`).emit("call:webrtc:answer", payload);
   });
 
   socket.on("call:webrtc:ice", ({ roomId, candidate, to }) => {
-    if (!candidate || !to) return;
-    io.to(String(to)).emit("call:webrtc:ice", {
-      roomId,
+    if (!roomId || !candidate) return;
+
+    const payload = {
+      roomId: String(roomId),
       candidate,
-      fromSocketId: socket.id,
+      from: socket.id,
+    };
+
+    if (to) return io.to(String(to)).emit("call:webrtc:ice", payload);
+    socket.to(`call:${roomId}`).emit("call:webrtc:ice", payload);
+  });
+
+  /* =========================
+     CALL ROOMS
+  ========================= */
+  socket.on("callroom:list:get", () => {
+    emitCallRoomList(socket);
+  });
+
+  socket.on("callroom:get", ({ roomId } = {}) => {
+    const room = callRooms.get(String(roomId));
+    if (!room) {
+      return socket.emit("callroom:error", { message: "Room not found." });
+    }
+
+    const participants = Array.from(room.participants.values()).map((p) =>
+      normalizeCallRoomParticipant(room, p)
+    );
+
+    socket.emit("callroom:state", {
+      roomId: String(room.roomId),
+      name: room.name,
+      kind: room.kind,
+      hostUserId: String(room.hostUserId || ""),
+      participants,
     });
   });
 
-  socket.on("call:end", ({ roomId }) => {
-    if (!roomId) return;
-    io.to(roomId).emit("call:ended", { roomId });
-    callRooms.delete(roomId);
-    emitServerStats();
+  socket.on("callroom:create", ({ name, kind = "audio" } = {}) => {
+    const me = socket.data.user;
+    if (!me?.id) {
+      return socket.emit("callroom:error", { message: "Login required." });
+    }
+
+    const roomKind = kind === "video" ? "video" : "audio";
+    const roomName =
+      String(name || "").trim() ||
+      `${me.username || "User"}'s ${roomKind === "video" ? "Video" : "Audio"} Room`;
+
+    const roomId = `cr-${Date.now()}-${Math.random().toString(36).slice(2, 8)}`;
+    const userId = String(me.id);
+
+    const room = {
+      roomId,
+      name: roomName,
+      kind: roomKind,
+      hostUserId: userId,
+      hostSocketId: socket.id,
+      createdAt: new Date().toISOString(),
+      participants: new Map(),
+    };
+
+    room.participants.set(userId, {
+      userId,
+      username: me.username || `User${userId}`,
+      name: me.username || `User ${userId}`,
+      socketId: socket.id,
+      joinedAt: new Date().toISOString(),
+      micOn: true,
+      camOn: roomKind === "video",
+    });
+
+    callRooms.set(roomId, room);
+    socket.join(roomTarget(roomId));
+
+    socket.emit("callroom:created", {
+      roomId,
+      name: roomName,
+      kind: roomKind,
+    });
+
+    emitCallRoomState(roomId);
+    emitCallRoomList();
+    logROOM("callroom:create", { roomId, roomName, roomKind, host: userId });
+  });
+
+  socket.on("callroom:join", ({ roomId } = {}) => {
+    const me = socket.data.user;
+    if (!me?.id) {
+      return socket.emit("callroom:error", { message: "Login required." });
+    }
+
+    const room = callRooms.get(String(roomId));
+    if (!room) {
+      return socket.emit("callroom:error", { message: "Room not found." });
+    }
+
+    const userId = String(me.id);
+
+    room.participants.set(userId, {
+      userId,
+      username: me.username || `User${userId}`,
+      name: me.username || `User ${userId}`,
+      socketId: socket.id,
+      joinedAt: new Date().toISOString(),
+      micOn: true,
+      camOn: room.kind === "video",
+    });
+
+    callRooms.set(String(roomId), room);
+    socket.join(roomTarget(roomId));
+
+    const joinedPayload = {
+      roomId: String(roomId),
+      userId,
+      name: me.username || `User ${userId}`,
+      username: me.username || `User${userId}`,
+      socketId: socket.id,
+      isHost: String(room.hostUserId) === userId,
+    };
+
+    socket.to(roomTarget(roomId)).emit("callroom:user-joined", joinedPayload);
+    socket.to(roomTarget(roomId)).emit("callroom:peer-joined", joinedPayload);
+
+    emitCallRoomState(roomId);
+    emitCallRoomList();
+    logROOM("callroom:join", { roomId: String(roomId), userId });
+  });
+
+  socket.on("callroom:leave", ({ roomId } = {}) => {
+    const me = socket.data.user;
+    if (!me?.id) return;
+
+    const room = callRooms.get(String(roomId));
+    if (!room) return;
+
+    const userId = String(me.id);
+    room.participants.delete(userId);
+    socket.leave(roomTarget(roomId));
+
+    const leftPayload = {
+      roomId: String(roomId),
+      userId,
+      name: me.username || `User ${userId}`,
+      username: me.username || `User${userId}`,
+      socketId: socket.id,
+    };
+
+    socket.to(roomTarget(roomId)).emit("callroom:user-left", leftPayload);
+    socket.to(roomTarget(roomId)).emit("callroom:peer-left", leftPayload);
+
+    if (room.participants.size === 0) {
+      callRooms.delete(String(roomId));
+      emitCallRoomList();
+      logROOM("callroom:deleted-empty", { roomId: String(roomId) });
+      return;
+    }
+
+    if (String(room.hostUserId) === userId) {
+      const next = Array.from(room.participants.values())[0];
+      if (next) {
+        room.hostUserId = String(next.userId);
+        room.hostSocketId = next.socketId;
+      }
+    }
+
+    callRooms.set(String(roomId), room);
+    emitCallRoomState(roomId);
+    emitCallRoomList();
+    logROOM("callroom:leave", { roomId: String(roomId), userId });
+  });
+
+  socket.on("callroom:media-state", ({ roomId, micOn, camOn } = {}) => {
+    const me = socket.data.user;
+    if (!me?.id) return;
+
+    const room = callRooms.get(String(roomId));
+    if (!room) return;
+
+    const userId = String(me.id);
+    const p = room.participants.get(userId);
+    if (!p) return;
+
+    if (typeof micOn === "boolean") p.micOn = micOn;
+    if (typeof camOn === "boolean") p.camOn = camOn;
+
+    room.participants.set(userId, p);
+    callRooms.set(String(roomId), room);
+    emitCallRoomState(roomId);
+  });
+
+  socket.on("callroom:webrtc:offer", ({ roomId, toUserId, offer, meta } = {}) => {
+    if (!roomId || !toUserId || !offer) return;
+
+    const fromUserId = socket.data.user?.id ? String(socket.data.user.id) : null;
+    const fromName =
+      meta?.name ||
+      socket.data.user?.username ||
+      (fromUserId ? `User ${fromUserId}` : "User");
+
+    io.to(`user:${String(toUserId)}`).emit("callroom:webrtc:offer", {
+      roomId: String(roomId),
+      fromUserId,
+      fromName,
+      offer,
+      meta: {
+        userId: fromUserId,
+        name: fromName,
+        username: socket.data.user?.username || fromName,
+      },
+    });
+  });
+
+  socket.on("callroom:webrtc:answer", ({ roomId, toUserId, answer } = {}) => {
+    if (!roomId || !toUserId || !answer) return;
+
+    const fromUserId = socket.data.user?.id ? String(socket.data.user.id) : null;
+
+    io.to(`user:${String(toUserId)}`).emit("callroom:webrtc:answer", {
+      roomId: String(roomId),
+      fromUserId,
+      answer,
+    });
+  });
+
+  socket.on("callroom:webrtc:ice", ({ roomId, toUserId, candidate } = {}) => {
+    if (!roomId || !toUserId || !candidate) return;
+
+    const fromUserId = socket.data.user?.id ? String(socket.data.user.id) : null;
+
+    io.to(`user:${String(toUserId)}`).emit("callroom:webrtc:ice", {
+      roomId: String(roomId),
+      fromUserId,
+      candidate,
+    });
+  });
+
+  /* =========================
+     LIVE: WebRTC RELAY (host <-> viewer)
+  ========================= */
+  socket.on("webrtc:offer", ({ liveId, to, offer }) => {
+    if (!liveId || !to || !offer) return;
+    io.to(String(to)).emit("webrtc:offer", {
+      liveId: String(liveId),
+      from: socket.id,
+      offer,
+    });
+  });
+
+  socket.on("webrtc:answer", ({ liveId, to, answer }) => {
+    if (!liveId || !to || !answer) return;
+    io.to(String(to)).emit("webrtc:answer", {
+      liveId: String(liveId),
+      from: socket.id,
+      answer,
+    });
+  });
+
+  socket.on("webrtc:ice", ({ liveId, to, candidate }) => {
+    if (!liveId || !to || !candidate) return;
+    io.to(String(to)).emit("webrtc:ice", {
+      liveId: String(liveId),
+      from: socket.id,
+      candidate,
+    });
   });
 
   /* =========================
@@ -457,120 +1447,202 @@ io.on("connection", (socket) => {
   ========================= */
   socket.on("live:create", ({ liveId }) => {
     if (!liveId) return;
+
     liveHosts.set(String(liveId), socket.id);
-    if (!liveViewers.has(String(liveId))) liveViewers.set(String(liveId), new Set());
+    liveStreams.add(String(liveId));
+    emitLiveList();
 
     socket.join(`live:${liveId}`);
-    io.emit("live:created", {
+    io.to(`live:${liveId}`).emit("live:host", {
       liveId: String(liveId),
       hostSocketId: socket.id,
     });
-    emitServerStats();
+
+    const hostUserId = socket.data.user?.id ? String(socket.data.user.id) : null;
+    if (hostUserId) ensureLiveSpeakerSet(liveId).add(hostUserId);
+
+    emitLivePresence(liveId);
+    logLIVE("live:create", { liveId: String(liveId), hostSocketId: socket.id });
   });
 
   socket.on("live:join", ({ liveId }) => {
     if (!liveId) return;
-    const key = String(liveId);
 
-    socket.join(`live:${key}`);
-    if (!liveViewers.has(key)) liveViewers.set(key, new Set());
-    liveViewers.get(key).add(socket.id);
+    socket.join(`live:${liveId}`);
 
-    io.to(`live:${key}`).emit("live:viewers", {
-      liveId: key,
-      viewerCount: getLiveViewerCount(key),
+    const hostSocketId = liveHosts.get(String(liveId)) || null;
+    socket.emit("live:host", {
+      liveId: String(liveId),
+      hostSocketId,
     });
 
-    const hostSocketId = liveHosts.get(key);
-    if (hostSocketId && hostSocketId !== socket.id) {
+    if (hostSocketId) {
       io.to(hostSocketId).emit("live:viewer-joined", {
-        liveId: key,
+        liveId: String(liveId),
         viewerSocketId: socket.id,
       });
     }
 
-    emitServerStats();
+    const meId = socket.data.user?.id ? String(socket.data.user.id) : null;
+    const speakers = ensureLiveSpeakerSet(liveId);
+    socket.emit("live:mic:status", {
+      liveId: String(liveId),
+      canSpeak: meId ? speakers.has(meId) : false,
+    });
+
+    emitLivePresence(liveId);
   });
 
   socket.on("live:leave", ({ liveId }) => {
     if (!liveId) return;
-    const key = String(liveId);
 
-    socket.leave(`live:${key}`);
-    if (liveViewers.has(key)) {
-      liveViewers.get(key).delete(socket.id);
-      if (liveViewers.get(key).size === 0 && !liveHosts.has(key)) {
-        liveViewers.delete(key);
-      }
+    socket.leave(`live:${liveId}`);
+
+    const hostSocketId = liveHosts.get(String(liveId)) || null;
+    if (hostSocketId) {
+      io.to(hostSocketId).emit("live:viewer-left", {
+        liveId: String(liveId),
+        viewerSocketId: socket.id,
+      });
     }
 
-    io.to(`live:${key}`).emit("live:viewers", {
-      liveId: key,
-      viewerCount: getLiveViewerCount(key),
-    });
-
-    emitServerStats();
-  });
-
-  socket.on("live:chat", ({ liveId, message }) => {
-    if (!liveId || !message) return;
-    io.to(`live:${liveId}`).emit("live:chat", message);
-  });
-
-  socket.on("live:webrtc:offer", ({ liveId, to, offer }) => {
-    if (!liveId || !to || !offer) return;
-    io.to(String(to)).emit("live:webrtc:offer", {
-      liveId: String(liveId),
-      fromSocketId: socket.id,
-      offer,
-    });
-  });
-
-  socket.on("live:webrtc:answer", ({ liveId, to, answer }) => {
-    if (!liveId || !to || !answer) return;
-    io.to(String(to)).emit("live:webrtc:answer", {
-      liveId: String(liveId),
-      fromSocketId: socket.id,
-      answer,
-    });
-  });
-
-  socket.on("live:webrtc:ice", ({ liveId, to, candidate }) => {
-    if (!liveId || !to || !candidate) return;
-    io.to(String(to)).emit("live:webrtc:ice", {
-      liveId: String(liveId),
-      fromSocketId: socket.id,
-      candidate,
-    });
+    emitLivePresence(liveId);
   });
 
   socket.on("live:end", ({ liveId }) => {
     if (!liveId) return;
-    const key = String(liveId);
+    const hostSocketId = liveHosts.get(String(liveId));
+    if (hostSocketId === socket.id) {
+      io.to(`live:${liveId}`).emit("live:ended", { liveId: String(liveId) });
+      liveHosts.delete(String(liveId));
+      liveStreams.delete(String(liveId));
+      emitLiveList();
 
-    io.to(`live:${key}`).emit("live:ended", { liveId: key });
-    liveHosts.delete(key);
-    liveViewers.delete(key);
-    emitServerStats();
+      liveSpeakers.delete(String(liveId));
+      liveMicRequests.delete(String(liveId));
+
+      logLIVE("live:end", { liveId: String(liveId) });
+    }
+  });
+
+  socket.on("get-live-list", () => {
+    socket.emit("live-list", Array.from(liveStreams));
+  });
+
+  socket.on("live:chat", ({ liveId, message }) => {
+    const msg = String(message || "").trim();
+    if (!liveId || !msg) return;
+
+    const from = socket.data.user || { id: null, username: "Anon" };
+
+    io.to(`live:${liveId}`).emit("live:chat", {
+      liveId: String(liveId),
+      message: msg,
+      from: {
+        id: from.id ? String(from.id) : null,
+        username: from.username || "Anon",
+      },
+      at: new Date().toISOString(),
+    });
+  });
+
+  socket.on("live:mic:request", ({ liveId }) => {
+    if (!liveId) return;
+    const me = socket.data.user;
+    const meId = me?.id ? String(me.id) : null;
+    if (!meId) return;
+
+    const hostSocketId = liveHosts.get(String(liveId));
+    if (!hostSocketId) return;
+
+    const reqMap = ensureLiveRequestMap(liveId);
+    const payload = {
+      liveId: String(liveId),
+      fromUserId: meId,
+      fromName: me?.username || `User${meId}`,
+      fromSocketId: socket.id,
+      requestedAt: Date.now(),
+    };
+    reqMap.set(meId, payload);
+
+    io.to(hostSocketId).emit("live:mic:requested", payload);
+    socket.emit("live:mic:requested:ack", {
+      liveId: String(liveId),
+      ok: true,
+    });
+
+    logLIVE("live:mic:request", { liveId: String(liveId), userId: meId });
+  });
+
+  socket.on("live:mic:approve", ({ liveId, userId }) => {
+    if (!liveId || !userId) return;
+
+    const hostSocketId = liveHosts.get(String(liveId));
+    if (hostSocketId !== socket.id) return;
+
+    const uid = String(userId);
+    ensureLiveSpeakerSet(liveId).add(uid);
+
+    const reqMap = ensureLiveRequestMap(liveId);
+    reqMap.delete(uid);
+
+    io.to(`user:${uid}`).emit("live:mic:approved", {
+      liveId: String(liveId),
+      ok: true,
+    });
+    io.to(`user:${uid}`).emit("live:mic:status", {
+      liveId: String(liveId),
+      canSpeak: true,
+    });
+
+    io.to(`live:${liveId}`).emit("live:mic:speakers", {
+      liveId: String(liveId),
+      speakerUserIds: Array.from(ensureLiveSpeakerSet(liveId)),
+    });
+
+    logLIVE("live:mic:approve", { liveId: String(liveId), userId: uid });
+  });
+
+  socket.on("live:mic:deny", ({ liveId, userId, reason }) => {
+    if (!liveId || !userId) return;
+
+    const hostSocketId = liveHosts.get(String(liveId));
+    if (hostSocketId !== socket.id) return;
+
+    const uid = String(userId);
+    const reqMap = ensureLiveRequestMap(liveId);
+    reqMap.delete(uid);
+
+    io.to(`user:${uid}`).emit("live:mic:denied", {
+      liveId: String(liveId),
+      ok: false,
+      reason: reason || "denied",
+    });
+
+    logLIVE("live:mic:deny", { liveId: String(liveId), userId: uid });
   });
 
   /* =========================
-     DISCONNECT
+     DISCONNECT CLEANUP
   ========================= */
   socket.on("disconnect", () => {
-    const userId = socketToUser.get(socket.id);
+    const offlineUserId = socketToUserId.get(socket.id) || null;
 
-    if (userId) {
-      onlineUsers.delete(String(userId));
-      socketToUser.delete(socket.id);
-      broadcastPresenceUpdate(userId, false);
-    }
+    removeParticipantFromCallRooms(socket);
 
-    for (const [roomId, members] of callRooms.entries()) {
-      if (members.has(socket.id)) {
-        members.delete(socket.id);
-        io.to(roomId).emit("call:ended", { roomId, reason: "peer-left" });
-        if (members.size === 0) callRooms.delete(roomId);
+    if (offlineUserId) {
+      onlineUsers.delete(offlineUserId);
+      socketToUserId.delete(socket.id);
+      broadcastPresenceUpdate(offlineUserId, false);
+
+      const busyRoomId = userBusyRoom.get(String(offlineUserId));
+      if (busyRoomId) {
+        userBusyRoom.delete(String(offlineUserId));
+        io.to(`call:${busyRoomId}`).emit("call:peer-left", {
+          roomId: String(busyRoomId),
+          userId: String(offlineUserId),
+          socketId: socket.id,
+        });
       }
     }
 
@@ -578,25 +1650,17 @@ io.on("connection", (socket) => {
       if (hostSocketId === socket.id) {
         io.to(`live:${liveId}`).emit("live:ended", { liveId });
         liveHosts.delete(liveId);
-        liveViewers.delete(liveId);
+        liveStreams.delete(liveId);
+        emitLiveList();
+
+        liveSpeakers.delete(String(liveId));
+        liveMicRequests.delete(String(liveId));
       }
     }
 
-    for (const [liveId, viewers] of liveViewers.entries()) {
-      if (viewers.has(socket.id)) {
-        viewers.delete(socket.id);
-        io.to(`live:${liveId}`).emit("live:viewers", {
-          liveId,
-          viewerCount: getLiveViewerCount(liveId),
-        });
-        if (viewers.size === 0 && !liveHosts.has(liveId)) {
-          liveViewers.delete(liveId);
-        }
-      }
-    }
-
-    emitServerStats();
-    console.log("❌ disconnected:", socket.id);
+    emitPresenceList();
+    emitOnlineUsersLegacy();
+    logSOCK("Socket disconnected:", socket.id);
   });
 });
 
@@ -604,5 +1668,5 @@ io.on("connection", (socket) => {
    START
 ========================= */
 server.listen(PORT, () => {
-  console.log(`🚀 Server running on port ${PORT}`);
+  logOK(`🔥 Pulse Server running on port ${PORT}`);
 });
