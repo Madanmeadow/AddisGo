@@ -69,9 +69,6 @@
 <script setup>
 import { computed, nextTick, onMounted, ref, watch } from "vue";
 import { useRoute, useRouter } from "vue-router";
-import Layout from "@/components/Layout.vue";
-import api from "@/lib/api";
-import socket from "@/lib/socket";
 
 const route = useRoute();
 const router = useRouter();
