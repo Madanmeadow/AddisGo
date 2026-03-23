@@ -1,252 +1,144 @@
 <template>
-  <Layout>
-    <div class="page">
-      <div class="head">
-        <button class="back" @click="goBack">← Back</button>
+  <div class="live-page">
+    <div class="topbar">
+      <button class="back" @click="leaveLive">← Back</button>
 
-        <div class="titleBlock">
-          <div class="title">🔴 Pulse Live</div>
-          <div class="sub">{{ modeLabel }}</div>
-        </div>
-
-        <button class="danger" @click="leave">Leave</button>
+      <div class="meta">
+        <div class="title">Live</div>
+        <div class="sub">{{ modeLabel }} • {{ liveId }}</div>
       </div>
 
-      <div v-if="!liveId" class="card">
-        <div class="big">Live Lobby</div>
-        <div class="small">Create a live room or open an existing one.</div>
-
-        <div class="actions">
-          <button class="primary" @click="startHost">Start Live</button>
-          <input
-            v-model="joinId"
-            class="input"
-            placeholder="Enter liveId to watch..."
-          />
-          <button class="btn" @click="joinWatch">Watch</button>
-        </div>
+      <div class="right">
+        <span class="pill">{{ viewerCount }} viewers</span>
       </div>
+    </div>
 
-      <div v-else class="card">
-        <div class="row">
-          <div class="badge">{{ mode === "host" ? "HOSTING" : "WATCHING" }}</div>
-          <div class="meta">liveId: {{ liveId }}</div>
-        </div>
+    <div class="stage">
+      <video
+        v-if="isHost"
+        ref="localVideo"
+        autoplay
+        playsinline
+        muted
+        class="main-video"
+      ></video>
 
-        <div class="tools">
-          <div class="viewerPill">👁 {{ viewerCount }} watching</div>
-          <button class="btn" @click="copyInvite">Copy Invite</button>
-          <button class="btn" @click="shareInvite">Share</button>
-        </div>
+      <video
+        v-else
+        ref="remoteVideo"
+        autoplay
+        playsinline
+        class="main-video"
+      ></video>
+    </div>
 
-        <!-- host local preview -->
-        <video
-          v-if="mode === 'host'"
-          ref="localVideoEl"
-          class="video"
-          autoplay
-          playsinline
-          muted
-        ></video>
+    <div class="controls">
+      <button v-if="!isHost" class="btn" @click="requestMic">
+        Request Mic
+      </button>
 
-        <!-- watcher remote stream -->
-        <video
-          v-else
-          ref="remoteVideoEl"
-          class="video"
-          autoplay
-          playsinline
-          controls
-        ></video>
+      <button v-if="isHost" class="btn danger" @click="endLive">
+        End Live
+      </button>
+    </div>
 
-        <div class="notice">
-          {{
-            mode === "host"
-              ? "Your local camera preview is running. Share this liveId with viewers."
-              : "Watching live stream. If the host is broadcasting, video will appear here."
-          }}
-        </div>
+    <div v-if="isHost && micRequests.length" class="host-panel">
+      <div class="panel-title">Mic requests</div>
 
-        <div class="chatCard">
-          <div class="chatHead">
-            <div class="chatTitle">💬 Live Chat</div>
-          </div>
-
-          <div class="chatList" ref="chatBox">
-            <div v-if="chatMessages.length === 0" class="chatEmpty">
-              No chat yet. Say hi 👋
-            </div>
-
-            <div
-              v-for="m in chatMessages"
-              :key="m.id"
-              class="chatMsg"
-            >
-              <strong>{{ m.name || "User" }}:</strong>
-              <span>{{ m.text }}</span>
-            </div>
-          </div>
-
-          <div class="chatComposer">
-            <input
-              v-model="chatDraft"
-              class="chatInput"
-              placeholder="Write a live message..."
-              @keydown.enter="sendChat"
-            />
-            <button class="primary smallBtn" @click="sendChat" :disabled="!chatDraft.trim()">
-              Send
-            </button>
-          </div>
+      <div
+        v-for="req in micRequests"
+        :key="req.fromUserId"
+        class="req-row"
+      >
+        <span>{{ req.fromName }}</span>
+        <div class="row-actions">
+          <button @click="approveMic(req)">Approve</button>
+          <button class="danger" @click="denyMic(req)">Deny</button>
         </div>
       </div>
     </div>
-  </Layout>
+
+    <div class="chat">
+      <div class="messages">
+        <div v-for="(msg, i) in chat" :key="i" class="msg">
+          <strong>{{ msg.from?.username || "Anon" }}:</strong> {{ msg.message }}
+        </div>
+      </div>
+
+      <form class="composer" @submit.prevent="sendChat">
+        <input v-model="chatText" placeholder="Say something..." />
+        <button type="submit">Send</button>
+      </form>
+    </div>
+  </div>
 </template>
 
 <script setup>
-import { computed, nextTick, onBeforeUnmount, onMounted, ref } from "vue";
+import { onBeforeUnmount, onMounted, ref } from "vue";
 import { useRoute, useRouter } from "vue-router";
-import Layout from "../components/Layout.vue";
-import socket from "../socket.js";
+import socket, { refreshSocketAuth } from "../socket";
 
-const router = useRouter();
 const route = useRoute();
+const router = useRouter();
 
-const mode = ref(String(route.query.mode || "lobby"));
-const liveId = ref(String(route.query.liveId || ""));
-const joinId = ref("");
+const liveId = String(route.query.liveId || `live-${Date.now()}`);
+const mode = String(route.query.mode || "viewer");
 
-const localVideoEl = ref(null);
-const remoteVideoEl = ref(null);
-const chatBox = ref(null);
+const isHost = mode === "host";
+const modeLabel = isHost ? "Hosting" : "Watching";
+
+const localVideo = ref(null);
+const remoteVideo = ref(null);
 
 const viewerCount = ref(0);
-const chatDraft = ref("");
-const chatMessages = ref([]);
+const chat = ref([]);
+const chatText = ref("");
+const micRequests = ref([]);
+const canSpeak = ref(false);
 
-let localStream = null;
 let pc = null;
-let currentPeerSocketId = null;
+let localStream = null;
+let remoteStream = null;
+let hostSocketId = null;
 
-const modeLabel = computed(() => {
-  if (!liveId.value) return "Lobby";
-  return mode.value === "host" ? "Hosting live stream" : "Watching live stream";
-});
-
-function getMe() {
+async function getIceServers() {
   try {
-    return JSON.parse(localStorage.getItem("user") || "null");
+    const base = import.meta.env.VITE_API_URL || "http://localhost:5000";
+    const res = await fetch(`${base}/api/turn`);
+    const data = await res.json();
+    return data?.iceServers?.length
+      ? data.iceServers
+      : [{ urls: "stun:stun.l.google.com:19302" }];
   } catch {
-    return null;
+    return [{ urls: "stun:stun.l.google.com:19302" }];
   }
 }
 
-function authPayload() {
-  const me = getMe();
-  return {
-    id: String(me?.id || ""),
-    username: me?.username || me?.display_name || me?.name || "User",
-  };
-}
-
-function goBack() {
-  router.push("/dashboard");
-}
-
-function inviteUrl() {
-  return `${window.location.origin}/live?mode=watch&liveId=${encodeURIComponent(liveId.value)}`;
-}
-
-function startHost() {
-  const id = `live_${Date.now()}`;
-  router.push(`/live?mode=host&liveId=${id}`);
-}
-
-function joinWatch() {
-  if (!joinId.value.trim()) return;
-  router.push(`/live?mode=watch&liveId=${encodeURIComponent(joinId.value.trim())}`);
-}
-
-async function copyInvite() {
-  try {
-    await navigator.clipboard.writeText(inviteUrl());
-    alert("Invite link copied");
-  } catch {
-    alert(inviteUrl());
-  }
-}
-
-async function shareInvite() {
-  const url = inviteUrl();
-  try {
-    if (navigator.share) {
-      await navigator.share({
-        title: "Join my Pulse Live",
-        text: "Tap to watch my live stream",
-        url,
-      });
-    } else {
-      await copyInvite();
-    }
-  } catch {}
-}
-
-async function scrollChatBottom() {
-  await nextTick();
-  const el = chatBox.value;
-  if (el) el.scrollTop = el.scrollHeight;
-}
-
-async function getTurnConfig() {
-  try {
-    const apiBase = (import.meta.env.VITE_API_URL || "http://localhost:5000").replace(/\/$/, "");
-    const res = await fetch(`${apiBase}/api/turn`);
-    const data = await res.json().catch(() => ({}));
-    if (res.ok && Array.isArray(data.iceServers)) return data.iceServers;
-  } catch {}
-  return [{ urls: "stun:stun.l.google.com:19302" }];
-}
-
-async function ensureLocalMedia() {
-  if (localStream) return localStream;
-
-  localStream = await navigator.mediaDevices.getUserMedia({
-    video: true,
-    audio: true,
-  });
-
-  if (mode.value === "host" && localVideoEl.value) {
-    localVideoEl.value.srcObject = localStream;
-    await localVideoEl.value.play().catch(() => {});
-  }
-
-  return localStream;
-}
-
-async function ensurePeerConnection() {
+async function ensurePeer() {
   if (pc) return pc;
 
-  const iceServers = await getTurnConfig();
-  pc = new RTCPeerConnection({ iceServers });
+  pc = new RTCPeerConnection({
+    iceServers: await getIceServers(),
+  });
 
-  if (mode.value === "host") {
-    const stream = await ensureLocalMedia();
-    stream.getTracks().forEach((track) => pc.addTrack(track, stream));
+  remoteStream = new MediaStream();
+
+  if (remoteVideo.value) {
+    remoteVideo.value.srcObject = remoteStream;
   }
 
   pc.ontrack = (event) => {
-    const [stream] = event.streams;
-    if (remoteVideoEl.value && stream) {
-      remoteVideoEl.value.srcObject = stream;
-    }
+    event.streams[0].getTracks().forEach((track) => {
+      remoteStream.addTrack(track);
+    });
   };
 
   pc.onicecandidate = (event) => {
-    if (!event.candidate || !liveId.value || !currentPeerSocketId) return;
-    socket.emit("live:webrtc:ice", {
-      liveId: liveId.value,
-      to: currentPeerSocketId,
+    if (!event.candidate || !hostSocketId) return;
+
+    socket.emit("webrtc:ice", {
+      liveId,
+      to: hostSocketId,
       candidate: event.candidate,
     });
   };
@@ -254,230 +146,289 @@ async function ensurePeerConnection() {
   return pc;
 }
 
-async function makeOffer(targetSocketId) {
-  currentPeerSocketId = targetSocketId;
-  const peer = await ensurePeerConnection();
+async function createHostStream() {
+  localStream = await navigator.mediaDevices.getUserMedia({
+    video: true,
+    audio: true,
+  });
+
+  if (localVideo.value) {
+    localVideo.value.srcObject = localStream;
+  }
+}
+
+async function connectViewerToHost() {
+  if (!hostSocketId) return;
+
+  const peer = await ensurePeer();
+
+  const stream = await navigator.mediaDevices.getUserMedia({
+    video: false,
+    audio: canSpeak.value,
+  });
+
+  localStream = stream;
+  stream.getTracks().forEach((track) => peer.addTrack(track, stream));
+
   const offer = await peer.createOffer();
   await peer.setLocalDescription(offer);
 
-  socket.emit("live:webrtc:offer", {
-    liveId: liveId.value,
-    to: targetSocketId,
+  socket.emit("webrtc:offer", {
+    liveId,
+    to: hostSocketId,
     offer,
   });
 }
 
 function sendChat() {
-  const me = getMe();
-  if (!chatDraft.value.trim() || !liveId.value) return;
-
-  const payload = {
-    id: Date.now(),
-    name: me?.username || me?.display_name || me?.name || "User",
-    text: chatDraft.value.trim(),
-    createdAt: new Date().toISOString(),
-  };
+  const value = chatText.value.trim();
+  if (!value) return;
 
   socket.emit("live:chat", {
-    liveId: liveId.value,
-    message: payload,
+    liveId,
+    message: value,
   });
 
-  chatDraft.value = "";
+  chatText.value = "";
 }
 
-function stopMedia() {
-  try {
-    if (pc) {
-      pc.ontrack = null;
-      pc.onicecandidate = null;
-      pc.close();
-      pc = null;
-    }
-  } catch {}
-
-  try {
-    if (localStream) {
-      localStream.getTracks().forEach((t) => t.stop());
-      localStream = null;
-    }
-  } catch {}
-
-  currentPeerSocketId = null;
+function requestMic() {
+  socket.emit("live:mic:request", { liveId });
 }
 
-function leave() {
-  try {
-    if (liveId.value) {
-      if (mode.value === "host") socket.emit("live:end", { liveId: liveId.value });
-      else socket.emit("live:leave", { liveId: liveId.value });
-    }
-  } catch {}
+function approveMic(req) {
+  socket.emit("live:mic:approve", {
+    liveId,
+    userId: req.fromUserId,
+  });
 
-  stopMedia();
-  router.push("/dashboard");
+  micRequests.value = micRequests.value.filter(
+    (x) => String(x.fromUserId) !== String(req.fromUserId)
+  );
 }
 
-function connectSocket() {
-  const onConnect = async () => {
-    socket.emit("register-user", authPayload());
+function denyMic(req) {
+  socket.emit("live:mic:deny", {
+    liveId,
+    userId: req.fromUserId,
+    reason: "Host denied request",
+  });
 
-    if (!liveId.value) return;
-
-    if (mode.value === "host") {
-      await ensureLocalMedia();
-      socket.emit("live:create", { liveId: liveId.value });
-    } else {
-      socket.emit("live:join", { liveId: liveId.value });
-    }
-  };
-
-  const onViewerJoined = async ({ liveId: incomingLiveId, viewerSocketId }) => {
-    if (String(incomingLiveId) !== String(liveId.value)) return;
-    if (mode.value !== "host") return;
-    await makeOffer(viewerSocketId);
-  };
-
-  const onOffer = async ({ liveId: incomingLiveId, offer, fromSocketId }) => {
-    if (String(incomingLiveId) !== String(liveId.value)) return;
-    currentPeerSocketId = fromSocketId;
-
-    const peer = await ensurePeerConnection();
-    await peer.setRemoteDescription(new RTCSessionDescription(offer));
-
-    const answer = await peer.createAnswer();
-    await peer.setLocalDescription(answer);
-
-    socket.emit("live:webrtc:answer", {
-      liveId: liveId.value,
-      to: fromSocketId,
-      answer,
-    });
-  };
-
-  const onAnswer = async ({ liveId: incomingLiveId, answer, fromSocketId }) => {
-    if (String(incomingLiveId) !== String(liveId.value)) return;
-    currentPeerSocketId = fromSocketId;
-
-    const peer = await ensurePeerConnection();
-    await peer.setRemoteDescription(new RTCSessionDescription(answer));
-  };
-
-  const onIce = async ({ liveId: incomingLiveId, candidate }) => {
-    if (String(incomingLiveId) !== String(liveId.value)) return;
-    try {
-      const peer = await ensurePeerConnection();
-      await peer.addIceCandidate(new RTCIceCandidate(candidate));
-    } catch (e) {
-      console.error("live ICE add error:", e);
-    }
-  };
-
-  const onViewers = ({ liveId: incomingLiveId, viewerCount: count }) => {
-    if (String(incomingLiveId) !== String(liveId.value)) return;
-    viewerCount.value = Number(count || 0);
-  };
-
-  const onChat = async (message) => {
-    chatMessages.value.push(message);
-    await scrollChatBottom();
-  };
-
-  const onEnded = ({ liveId: incomingLiveId }) => {
-    if (String(incomingLiveId) !== String(liveId.value)) return;
-    alert("Live ended");
-    stopMedia();
-    router.push("/dashboard");
-  };
-
-  socket.on("connect", onConnect);
-  socket.on("live:viewer-joined", onViewerJoined);
-  socket.on("live:webrtc:offer", onOffer);
-  socket.on("live:webrtc:answer", onAnswer);
-  socket.on("live:webrtc:ice", onIce);
-  socket.on("live:viewers", onViewers);
-  socket.on("live:chat", onChat);
-  socket.on("live:ended", onEnded);
-
-  if (socket.connected) onConnect();
-
-  return () => {
-    socket.off("connect", onConnect);
-    socket.off("live:viewer-joined", onViewerJoined);
-    socket.off("live:webrtc:offer", onOffer);
-    socket.off("live:webrtc:answer", onAnswer);
-    socket.off("live:webrtc:ice", onIce);
-    socket.off("live:viewers", onViewers);
-    socket.off("live:chat", onChat);
-    socket.off("live:ended", onEnded);
-  };
+  micRequests.value = micRequests.value.filter(
+    (x) => String(x.fromUserId) !== String(req.fromUserId)
+  );
 }
 
-let cleanupSocket = null;
+function leaveLive() {
+  socket.emit("live:leave", { liveId });
+  cleanup();
+  router.back();
+}
 
-onMounted(() => {
-  cleanupSocket = connectSocket();
+function endLive() {
+  socket.emit("live:end", { liveId });
+  cleanup();
+  router.back();
+}
+
+function cleanup() {
+  if (localStream) {
+    localStream.getTracks().forEach((t) => t.stop());
+    localStream = null;
+  }
+  if (pc) {
+    pc.close();
+    pc = null;
+  }
+}
+
+async function onLiveHost(payload) {
+  hostSocketId = payload?.hostSocketId || null;
+
+  if (!isHost && hostSocketId) {
+    await connectViewerToHost();
+  }
+}
+
+function onLivePresence(payload) {
+  viewerCount.value = Number(payload?.viewerCount || 0);
+}
+
+function onLiveChat(payload) {
+  chat.value.push(payload);
+}
+
+function onMicRequested(payload) {
+  if (!isHost) return;
+  micRequests.value.unshift(payload);
+}
+
+function onMicStatus(payload) {
+  canSpeak.value = !!payload?.canSpeak;
+}
+
+async function onOffer({ offer, from }) {
+  if (!isHost) return;
+
+  hostSocketId = from;
+  const peer = await ensurePeer();
+
+  if (!localStream) {
+    await createHostStream();
+  }
+
+  localStream.getTracks().forEach((track) => {
+    const already = peer.getSenders().some((s) => s.track === track);
+    if (!already) peer.addTrack(track, localStream);
+  });
+
+  await peer.setRemoteDescription(offer);
+  const answer = await peer.createAnswer();
+  await peer.setLocalDescription(answer);
+
+  socket.emit("webrtc:answer", {
+    liveId,
+    to: from,
+    answer,
+  });
+}
+
+async function onAnswer({ answer }) {
+  if (!pc) return;
+  await pc.setRemoteDescription(answer);
+}
+
+async function onIce({ candidate }) {
+  if (!pc || !candidate) return;
+  await pc.addIceCandidate(candidate);
+}
+
+function onLiveEnded() {
+  cleanup();
+  router.back();
+}
+
+onMounted(async () => {
+  refreshSocketAuth();
+
+  socket.on("live:host", onLiveHost);
+  socket.on("live:presence", onLivePresence);
+  socket.on("live:chat", onLiveChat);
+  socket.on("live:mic:requested", onMicRequested);
+  socket.on("live:mic:status", onMicStatus);
+  socket.on("webrtc:offer", onOffer);
+  socket.on("webrtc:answer", onAnswer);
+  socket.on("webrtc:ice", onIce);
+  socket.on("live:ended", onLiveEnded);
+
+  if (isHost) {
+    await createHostStream();
+    socket.emit("live:create", { liveId });
+  } else {
+    socket.emit("live:join", { liveId });
+  }
 });
 
 onBeforeUnmount(() => {
-  try {
-    cleanupSocket?.();
-  } catch {}
-  stopMedia();
+  socket.off("live:host", onLiveHost);
+  socket.off("live:presence", onLivePresence);
+  socket.off("live:chat", onLiveChat);
+  socket.off("live:mic:requested", onMicRequested);
+  socket.off("live:mic:status", onMicStatus);
+  socket.off("webrtc:offer", onOffer);
+  socket.off("webrtc:answer", onAnswer);
+  socket.off("webrtc:ice", onIce);
+  socket.off("live:ended", onLiveEnded);
+
+  cleanup();
 });
 </script>
 
 <style scoped>
-.page{max-width:980px;margin:0 auto;padding:18px;color:#fff}
-.head{display:flex;align-items:center;justify-content:space-between;gap:12px;margin-bottom:14px}
-.back,.btn,.danger,.primary{
-  border:none;border-radius:999px;padding:12px 16px;color:#fff;font-weight:900
+.live-page {
+  min-height: 100vh;
+  background: #08111d;
+  color: white;
+  padding: 14px;
 }
-.back,.btn{background:rgba(255,255,255,.12)}
-.danger{background:rgba(255,82,82,.20);border:1px solid rgba(255,82,82,.28)}
-.primary{background:linear-gradient(45deg,#ff416c,#ff4b2b)}
-.smallBtn{padding:12px 16px}
-.title{font-size:28px;font-weight:950}
-.sub{opacity:.75}
-.card,.chatCard{
-  padding:18px;border-radius:24px;background:rgba(255,255,255,.08);
-  border:1px solid rgba(255,255,255,.12)
+.topbar {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
 }
-.big{font-size:22px;font-weight:950}
-.small{opacity:.75;margin-top:6px}
-.actions{display:flex;gap:10px;flex-wrap:wrap;margin-top:14px}
-.input{
-  flex:1;min-width:220px;padding:12px 14px;border-radius:14px;
-  border:1px solid rgba(255,255,255,.12);background:rgba(0,0,0,.22);color:#fff
+.back, .btn, .row-actions button {
+  border: none;
+  border-radius: 14px;
+  padding: 10px 14px;
 }
-.row{display:flex;justify-content:space-between;gap:12px;align-items:center;margin-bottom:14px;flex-wrap:wrap}
-.tools{display:flex;gap:10px;flex-wrap:wrap;align-items:center;margin-bottom:14px}
-.badge{
-  padding:10px 14px;border-radius:999px;background:rgba(255,77,77,.16);
-  border:1px solid rgba(255,77,77,.22);font-weight:900
+.title { font-weight: 900; }
+.sub { opacity: 0.75; }
+.pill {
+  background: rgba(255,255,255,0.1);
+  padding: 10px 12px;
+  border-radius: 999px;
 }
-.viewerPill{
-  padding:10px 14px;border-radius:999px;background:rgba(255,255,255,.10);
-  border:1px solid rgba(255,255,255,.12);font-weight:900
+.stage {
+  margin-top: 14px;
+  border-radius: 24px;
+  overflow: hidden;
+  background: #000;
 }
-.meta{opacity:.72;word-break:break-all}
-.video{
-  width:100%;min-height:300px;max-height:70vh;border-radius:22px;
-  background:#000;display:block
+.main-video {
+  width: 100%;
+  min-height: 52vh;
+  object-fit: cover;
 }
-.notice{margin-top:12px;opacity:.8;line-height:1.5}
-.chatCard{margin-top:14px}
-.chatHead{margin-bottom:12px}
-.chatTitle{font-size:20px;font-weight:900}
-.chatList{
-  min-height:180px;max-height:260px;overflow:auto;
-  border-radius:18px;background:rgba(0,0,0,.22);padding:12px
+.controls {
+  margin-top: 12px;
+  display: flex;
+  gap: 10px;
 }
-.chatEmpty{opacity:.7}
-.chatMsg{margin-bottom:10px;line-height:1.5;word-break:break-word}
-.chatComposer{display:flex;gap:10px;margin-top:12px}
-.chatInput{
-  flex:1;padding:12px 14px;border-radius:14px;
-  border:1px solid rgba(255,255,255,.12);background:rgba(0,0,0,.22);color:#fff
+.btn { background: white; }
+.btn.danger, .danger { background: #ef4444; color: white; }
+.host-panel, .chat {
+  margin-top: 14px;
+  border-radius: 22px;
+  padding: 14px;
+  background: rgba(255,255,255,0.06);
+}
+.panel-title { font-weight: 800; margin-bottom: 10px; }
+.req-row {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 10px;
+  padding: 10px 0;
+}
+.row-actions {
+  display: flex;
+  gap: 8px;
+}
+.messages {
+  max-height: 220px;
+  overflow: auto;
+}
+.msg {
+  padding: 8px 0;
+  border-bottom: 1px solid rgba(255,255,255,0.08);
+}
+.composer {
+  display: flex;
+  gap: 10px;
+  margin-top: 10px;
+}
+.composer input {
+  flex: 1;
+  border: none;
+  border-radius: 14px;
+  padding: 12px;
+}
+.composer button {
+  border: none;
+  border-radius: 14px;
+  padding: 0 16px;
+  background: #22c55e;
+  color: white;
 }
 </style>
