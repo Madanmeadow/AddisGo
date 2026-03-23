@@ -1,414 +1,184 @@
 <template>
-  <Layout>
-    <div class="messages-page">
-      <div class="bg bg1"></div>
-      <div class="bg bg2"></div>
-
-      <header class="topbar glassy">
-        <div class="left">
-          <button class="chip ghost" @click="goInbox">← Inbox</button>
-
-          <div class="title-wrap">
-            <h1>Messages</h1>
-            <p>{{ headerName }}</p>
-          </div>
-        </div>
-
-        <div class="right">
-          <button class="chip" @click="reloadMessages" :disabled="loading">
-            ↻
-          </button>
-        </div>
-      </header>
-
-      <section v-if="routeError" class="notice error">
-        {{ routeError }}
-      </section>
-
-      <section v-else class="chat-shell glassy">
-        <div class="chat-body" ref="chatBodyRef">
-          <div v-if="loading" class="state">Loading messages...</div>
-
-          <template v-else-if="messages.length">
-            <div
-              v-for="msg in messages"
-              :key="msg.id"
-              class="bubble-wrap"
-              :class="{ mine: isMine(msg) }"
-            >
-              <div class="bubble">
-                <div class="bubble-text">{{ msg.text || msg.body || msg.content }}</div>
-                <div class="bubble-time">{{ formatTime(msg.created_at || msg.createdAt) }}</div>
-              </div>
-            </div>
-          </template>
-
-          <div v-else class="state">
-            No messages yet. Start the conversation.
-          </div>
-        </div>
-
-        <div class="composer">
-          <textarea
-            v-model="draft"
-            class="input"
-            rows="1"
-            placeholder="Type a message..."
-            @keydown.enter.exact.prevent="sendMessage"
-          ></textarea>
-
-          <button class="send" @click="sendMessage" :disabled="sending || !draft.trim()">
-            {{ sending ? "Sending..." : "Send" }}
-          </button>
-        </div>
-      </section>
+  <div class="messages-page">
+    <div class="topbar">
+      <button class="back" @click="router.back()">← Back</button>
+      <div>
+        <div class="title">{{ chatName }}</div>
+        <div class="sub">Direct messages</div>
+      </div>
     </div>
-  </Layout>
+
+    <div ref="listEl" class="messages-list">
+      <div
+        v-for="(msg, i) in messages"
+        :key="i"
+        class="bubble-wrap"
+        :class="{ me: String(msg.senderId) === myUserId }"
+      >
+        <div class="bubble">
+          <div class="from">
+            {{ String(msg.senderId) === myUserId ? "You" : (msg.from || chatName) }}
+          </div>
+          <div class="text">{{ msg.text }}</div>
+        </div>
+      </div>
+    </div>
+
+    <form class="composer" @submit.prevent="sendMessage">
+      <input
+        v-model="text"
+        type="text"
+        placeholder="Write a message..."
+      />
+      <button type="submit">Send</button>
+    </form>
+  </div>
 </template>
 
 <script setup>
-import { computed, nextTick, onMounted, ref, watch } from "vue";
+import { nextTick, onBeforeUnmount, onMounted, ref } from "vue";
 import { useRoute, useRouter } from "vue-router";
+import socket, { refreshSocketAuth } from "../socket";
 
 const route = useRoute();
 const router = useRouter();
 
+const me = JSON.parse(localStorage.getItem("user") || "{}");
+const myUserId = String(me?.id || "");
+
+const otherUserId = String(route.query.userId || "");
+const chatName = route.query.name || `User ${otherUserId}`;
+const roomId = [myUserId, otherUserId].sort().join("-");
+
+const text = ref("");
 const messages = ref([]);
-const loading = ref(false);
-const sending = ref(false);
-const draft = ref("");
-const routeError = ref("");
-const chatBodyRef = ref(null);
+const listEl = ref(null);
 
-const currentUser = computed(() => {
-  try {
-    return JSON.parse(localStorage.getItem("user") || "{}");
-  } catch {
-    return {};
-  }
-});
-
-const conversationId = computed(() => {
-  const value = route.query.conversationId;
-  return value ? String(value) : "";
-});
-
-const headerName = computed(() => {
-  return route.query.name ? String(route.query.name) : "Chat";
-});
-
-function goInbox() {
-  router.push("/inbox");
-}
-
-function isMine(msg) {
-  const mineId = String(currentUser.value?.id || "");
-  return String(msg.sender_id || msg.senderId || "") === mineId;
-}
-
-function formatTime(value) {
-  if (!value) return "";
-  const d = new Date(value);
-  if (Number.isNaN(d.getTime())) return "";
-  return d.toLocaleTimeString([], { hour: "numeric", minute: "2-digit" });
-}
-
-async function scrollToBottom() {
-  await nextTick();
-  const el = chatBodyRef.value;
-  if (el) el.scrollTop = el.scrollHeight;
-}
-
-async function reloadMessages() {
-  if (!conversationId.value) {
-    routeError.value = "Missing conversationId. Open chat from People or Inbox.";
-    setTimeout(() => router.push("/people"), 1400);
-    return;
-  }
-
-  routeError.value = "";
-  loading.value = true;
-
-  try {
-    const { data } = await api.get(`/messages/${conversationId.value}`);
-    messages.value = Array.isArray(data) ? data : data.messages || [];
-    await scrollToBottom();
-  } catch (err) {
-    routeError.value =
-      err?.response?.data?.message || "Failed to load messages.";
-  } finally {
-    loading.value = false;
-  }
-}
-
-async function sendMessage() {
-  const text = draft.value.trim();
-  if (!text || !conversationId.value) return;
-
-  sending.value = true;
-
-  try {
-    const { data } = await api.post(`/messages/${conversationId.value}`, { text });
-
-    const saved =
-      data?.message || data || {
-        id: `local_${Date.now()}`,
-        text,
-        sender_id: currentUser.value?.id,
-        created_at: new Date().toISOString(),
-      };
-
-    messages.value.push(saved);
-
-    socket.emit("message:send", {
-      conversationId: conversationId.value,
-      message: saved,
-    });
-
-    draft.value = "";
-    await scrollToBottom();
-  } catch (err) {
-    routeError.value =
-      err?.response?.data?.message || "Failed to send message.";
-  } finally {
-    sending.value = false;
-  }
-}
-
-onMounted(async () => {
-  await reloadMessages();
-
-  socket.on("message:new", async (payload) => {
-    if (String(payload?.conversationId) !== conversationId.value) return;
-
-    const msg = payload?.message;
-    if (!msg) return;
-
-    const exists = messages.value.some((m) => String(m.id) === String(msg.id));
-    if (!exists) {
-      messages.value.push(msg);
-      await scrollToBottom();
+function scrollBottom() {
+  nextTick(() => {
+    if (listEl.value) {
+      listEl.value.scrollTop = listEl.value.scrollHeight;
     }
   });
+}
+
+function sendMessage() {
+  const value = text.value.trim();
+  if (!value) return;
+
+  const mine = {
+    room: roomId,
+    from: me?.username || "You",
+    senderId: myUserId,
+    text: value,
+    createdAt: new Date().toISOString(),
+  };
+
+  messages.value.push(mine);
+
+  socket.emit("send-message", {
+    room: roomId,
+    from: me?.username || "You",
+    text: value,
+  });
+
+  text.value = "";
+  scrollBottom();
+}
+
+function onReceiveMessage(payload) {
+  const incoming = {
+    room: payload?.room || roomId,
+    from: payload?.from || "User",
+    senderId: payload?.from === (me?.username || "You") ? myUserId : otherUserId,
+    text: payload?.text || "",
+    createdAt: payload?.createdAt || payload?.created_at || new Date().toISOString(),
+  };
+
+  if (incoming.text) {
+    messages.value.push(incoming);
+    scrollBottom();
+  }
+}
+
+onMounted(() => {
+  refreshSocketAuth();
+  socket.emit("join-room", roomId);
+
+  socket.on("receive-message", onReceiveMessage);
+  scrollBottom();
 });
 
-watch(
-  () => route.query.conversationId,
-  async () => {
-    await reloadMessages();
-  }
-);
+onBeforeUnmount(() => {
+  socket.off("receive-message", onReceiveMessage);
+});
 </script>
 
 <style scoped>
 .messages-page {
   min-height: 100vh;
-  padding: 18px;
-  position: relative;
-  color: #fff;
-  background:
-    radial-gradient(circle at top left, rgba(255, 0, 153, 0.12), transparent 26%),
-    radial-gradient(circle at right, rgba(59, 130, 246, 0.14), transparent 30%),
-    linear-gradient(180deg, #07111f 0%, #0d1528 100%);
-}
-
-.bg {
-  position: absolute;
-  border-radius: 999px;
-  filter: blur(46px);
-  opacity: 0.3;
-}
-
-.bg1 {
-  width: 240px;
-  height: 240px;
-  left: -50px;
-  top: -30px;
-  background: #ff3aa7;
-}
-
-.bg2 {
-  width: 260px;
-  height: 260px;
-  right: -70px;
-  top: 140px;
-  background: #2563eb;
-}
-
-.glassy {
-  position: relative;
-  z-index: 1;
-  backdrop-filter: blur(14px);
-  background: rgba(255, 255, 255, 0.06);
-  border: 1px solid rgba(255, 255, 255, 0.08);
-  box-shadow: 0 18px 40px rgba(0, 0, 0, 0.22);
-}
-
-.topbar,
-.chat-shell,
-.notice {
-  border-radius: 22px;
-}
-
-.topbar {
-  padding: 16px 18px;
-  margin-bottom: 14px;
-  display: flex;
-  justify-content: space-between;
-  align-items: center;
-  gap: 14px;
-}
-
-.left {
-  display: flex;
-  gap: 14px;
-  align-items: center;
-}
-
-.title-wrap h1 {
-  margin: 0;
-  font-size: 30px;
-}
-
-.title-wrap p {
-  margin: 4px 0 0;
-  color: rgba(255, 255, 255, 0.7);
-}
-
-.chat-shell {
-  height: calc(100vh - 145px);
+  background: #0b1220;
+  color: white;
   display: flex;
   flex-direction: column;
-  overflow: hidden;
 }
-
-.chat-body {
+.topbar {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  padding: 16px;
+  border-bottom: 1px solid rgba(255,255,255,0.08);
+}
+.back {
+  border: none;
+  border-radius: 12px;
+  padding: 10px 12px;
+}
+.title { font-weight: 900; }
+.sub { opacity: 0.7; font-size: 0.9rem; }
+.messages-list {
   flex: 1;
-  overflow-y: auto;
-  padding: 18px;
+  overflow: auto;
+  padding: 16px;
 }
-
-.state {
-  text-align: center;
-  padding: 24px;
-  color: rgba(255, 255, 255, 0.72);
-}
-
 .bubble-wrap {
   display: flex;
-  margin-bottom: 12px;
+  margin-bottom: 10px;
 }
-
-.bubble-wrap.mine {
+.bubble-wrap.me {
   justify-content: flex-end;
 }
-
 .bubble {
-  max-width: min(78%, 620px);
+  max-width: 78%;
   padding: 12px 14px;
   border-radius: 18px;
-  background: rgba(255, 255, 255, 0.08);
+  background: rgba(255,255,255,0.08);
 }
-
-.bubble-wrap.mine .bubble {
-  background: linear-gradient(135deg, #ff2d9c, #7c3aed);
+.bubble-wrap.me .bubble {
+  background: #2563eb;
 }
-
-.bubble-text {
-  white-space: pre-wrap;
-  word-break: break-word;
-}
-
-.bubble-time {
-  margin-top: 6px;
-  font-size: 12px;
+.from {
+  font-size: 0.8rem;
   opacity: 0.75;
+  margin-bottom: 4px;
 }
-
 .composer {
   display: flex;
-  gap: 12px;
+  gap: 10px;
   padding: 14px;
-  border-top: 1px solid rgba(255, 255, 255, 0.08);
+  border-top: 1px solid rgba(255,255,255,0.08);
 }
-
-.input {
+.composer input {
   flex: 1;
-  resize: none;
-  min-height: 54px;
-  max-height: 160px;
+  padding: 14px;
+  border-radius: 14px;
   border: none;
-  outline: none;
-  color: #fff;
-  border-radius: 16px;
-  padding: 14px 16px;
-  background: rgba(255, 255, 255, 0.08);
 }
-
-.input::placeholder {
-  color: rgba(255, 255, 255, 0.56);
-}
-
-.send,
-.chip {
+.composer button {
   border: none;
-  outline: none;
-  cursor: pointer;
-  color: #fff;
-  font-weight: 700;
-}
-
-.send {
-  min-width: 110px;
-  border-radius: 16px;
-  background: linear-gradient(135deg, #ff2d9c, #7c3aed);
   padding: 0 18px;
-}
-
-.chip {
-  border-radius: 999px;
-  padding: 12px 16px;
-  background: rgba(255, 255, 255, 0.08);
-}
-
-.notice {
-  position: relative;
-  z-index: 1;
-  padding: 14px 16px;
-}
-
-.notice.error {
-  background: rgba(255, 90, 90, 0.12);
-  border: 1px solid rgba(255, 90, 90, 0.25);
-}
-
-@media (max-width: 720px) {
-  .messages-page {
-    padding: 12px;
-  }
-
-  .topbar {
-    padding: 14px;
-  }
-
-  .title-wrap h1 {
-    font-size: 24px;
-  }
-
-  .chat-shell {
-    height: calc(100vh - 128px);
-  }
-
-  .composer {
-    flex-direction: column;
-  }
-
-  .send {
-    height: 48px;
-  }
-
-  .bubble {
-    max-width: 88%;
-  }
+  border-radius: 14px;
+  background: #22c55e;
+  color: white;
 }
 </style>
