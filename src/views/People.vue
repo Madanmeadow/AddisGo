@@ -1,71 +1,113 @@
-<!-- src/views/People.vue -->
 <template>
   <Layout>
     <div class="page">
-      <header class="hero">
+      <div class="head">
         <div>
-          <h1>People</h1>
-          <p>See who is online, open chat, or start a call.</p>
+          <div class="title">👥 People</div>
+          <div class="sub">See who is online, live, and ready to connect</div>
         </div>
 
-        <button class="chip" @click="fetchPeople" :disabled="peopleLoading">
-          {{ peopleLoading ? "Refreshing..." : "Refresh" }}
-        </button>
-      </header>
+        <div class="headActions">
+          <button class="chip" @click="fetchPeople" :disabled="loading">
+            {{ loading ? "Loading..." : "↻ Refresh" }}
+          </button>
+        </div>
+      </div>
+
+      <div class="stats">
+        <div class="stat">
+          <div class="statNum">{{ onlineCount }}</div>
+          <div class="statLab">Online</div>
+        </div>
+        <div class="stat">
+          <div class="statNum">{{ liveStreams.length }}</div>
+          <div class="statLab">Live</div>
+        </div>
+        <div class="stat">
+          <div class="statNum">{{ people.length }}</div>
+          <div class="statLab">People</div>
+        </div>
+      </div>
 
       <div class="searchWrap">
-        <input
-          v-model="search"
-          class="search"
-          type="text"
-          placeholder="Search people..."
-        />
+        <input v-model="search" class="search" placeholder="Search people..." />
       </div>
 
-      <div v-if="incomingCall" class="incoming">
-        <div class="incomingTitle">
-          Incoming {{ incomingCall.kind || "audio" }} call
-        </div>
-        <div class="incomingSub">
-          From {{ incomingCall.fromName || incomingCall.fromUsername || `User ${incomingCall.fromUserId}` }}
-        </div>
+      <div v-if="error" class="alert">{{ error }}</div>
 
-        <div class="incomingActions">
-          <button class="accept" @click="acceptIncoming">Accept</button>
-          <button class="reject" @click="rejectIncoming">Reject</button>
-        </div>
+      <div v-if="loading" class="state">
+        <div class="big">Loading people...</div>
       </div>
 
-      <div v-if="peopleError" class="errorBox">
-        {{ peopleError }}
+      <div v-else-if="filteredPeople.length === 0" class="state">
+        <div class="big">No users found</div>
+        <div class="small">Try another search.</div>
       </div>
 
-      <div class="grid">
+      <div v-else class="list">
         <div
-          v-for="person in filteredPeople"
-          :key="person.id"
+          v-for="u in filteredPeople"
+          :key="u.id"
           class="card"
         >
-          <div class="avatar">
-            {{ initials(person) }}
-            <span class="statusDot" :class="{ online: isOnline(person.id) }"></span>
+          <div class="avatarWrap">
+            <img
+              v-if="u.avatar_url"
+              :src="u.avatar_url"
+              class="avatarImg"
+              alt=""
+            />
+            <div v-else class="avatar">
+              {{ getInitial(u) }}
+            </div>
+
+            <span class="onlineDot" :class="{ on: isOnline(u.id) }"></span>
           </div>
 
           <div class="meta">
-            <div class="name">{{ displayName(person) }}</div>
-            <div class="sub">{{ isOnline(person.id) ? "Online" : "Offline" }}</div>
+            <div class="nameRow">
+              <div class="name">{{ getName(u) }}</div>
+              <span v-if="isLiveUser(u)" class="liveBadge">LIVE</span>
+            </div>
+
+            <div class="statusRow">
+              <span class="status" :class="{ on: isOnline(u.id) }"></span>
+              <span>{{ isOnline(u.id) ? "Online" : "Offline" }}</span>
+              <span class="sep">•</span>
+              <span>ID {{ u.id }}</span>
+            </div>
+
+            <div v-if="u.bio || u.location" class="extra">
+              {{ u.bio || u.location }}
+            </div>
           </div>
 
           <div class="actions">
-            <button class="btn ghost" @click="openMessages(person)">Message</button>
-            <button class="btn" @click="startCall(person, 'audio')">Audio</button>
-            <button class="btn video" @click="startCall(person, 'video')">Video</button>
+            <button class="action" @click="openMessages(u)">
+              💬 <span>Message</span>
+            </button>
+
+            <button
+              class="action"
+              :disabled="!isOnline(u.id)"
+              @click="startCall(u, 'audio')"
+            >
+              📞 <span>Audio</span>
+            </button>
+
+            <button
+              class="action"
+              :disabled="!isOnline(u.id)"
+              @click="startCall(u, 'video')"
+            >
+              🎥 <span>Video</span>
+            </button>
+
+            <button class="action ghost" @click="openProfile(u)">
+              👤 <span>Profile</span>
+            </button>
           </div>
         </div>
-      </div>
-
-      <div v-if="!peopleLoading && !filteredPeople.length" class="empty">
-        No people found.
       </div>
     </div>
   </Layout>
@@ -79,129 +121,177 @@ import socket, { refreshSocketAuth } from "../socket";
 
 const router = useRouter();
 
-const apiUrl =
-  import.meta.env.VITE_API_URL ||
-  "https://addisgo-production-63ae.up.railway.app";
-
+const API_URL = (import.meta.env.VITE_API_URL || "https://addisgo-production-63ae.up.railway.app").replace(/\/$/, "");
 const token = localStorage.getItem("token") || "";
-const me = JSON.parse(localStorage.getItem("user") || "{}");
-const myUserId = String(me?.id || "");
+
+const me = (() => {
+  try {
+    return JSON.parse(localStorage.getItem("user") || "{}");
+  } catch {
+    return {};
+  }
+})();
 
 const people = ref([]);
-const peopleLoading = ref(false);
-const peopleError = ref("");
+const loading = ref(false);
+const error = ref("");
 const search = ref("");
-const onlineUserIds = ref([]);
-const incomingCall = ref(null);
 
-function displayName(person) {
-  return person?.display_name || person?.username || person?.name || `User ${person?.id}`;
+const onlineUserIds = ref([]);
+const liveStreams = ref([]);
+
+function authHeaders() {
+  return {
+    "Content-Type": "application/json",
+    ...(token ? { Authorization: `Bearer ${token}` } : {}),
+  };
 }
 
-function initials(person) {
-  return displayName(person).trim().slice(0, 2).toUpperCase();
+async function apiGet(path) {
+  const res = await fetch(`${API_URL}${path}`, {
+    headers: authHeaders(),
+  });
+  const data = await res.json().catch(() => ({}));
+  if (!res.ok) {
+    throw new Error(data?.error || "Request failed");
+  }
+  return data;
+}
+
+function getName(u) {
+  return (
+    u?.display_name ||
+    u?.username ||
+    u?.name ||
+    u?.email ||
+    `User ${u?.id || ""}`
+  );
+}
+
+function getInitial(u) {
+  return getName(u)[0]?.toUpperCase() || "U";
 }
 
 function isOnline(userId) {
   return onlineUserIds.value.includes(String(userId));
 }
 
-const filteredPeople = computed(() => {
-  const q = search.value.trim().toLowerCase();
-
-  return people.value
-    .filter((p) => String(p.id) !== myUserId)
-    .filter((p) => {
-      if (!q) return true;
-      const hay =
-        `${p?.display_name || ""} ${p?.username || ""} ${p?.name || ""} ${p?.email || ""}`.toLowerCase();
-      return hay.includes(q);
-    });
-});
-
-async function fetchPeople() {
-  if (!token) {
-    peopleError.value = "Please login again.";
-    people.value = [];
-    return;
-  }
-
-  peopleLoading.value = true;
-  peopleError.value = "";
-
-  try {
-    const res = await fetch(`${apiUrl}/users`, {
-      headers: {
-        Authorization: `Bearer ${token}`,
-      },
-    });
-
-    const data = await res.json();
-
-    if (!res.ok) {
-      peopleError.value = data?.error || "Failed to load users";
-      people.value = [];
-      return;
-    }
-
-    people.value = Array.isArray(data)
-      ? data
-      : Array.isArray(data?.users)
-      ? data.users
-      : [];
-  } catch (err) {
-    console.error("fetchPeople error:", err);
-    peopleError.value = "Failed to load users";
-    people.value = [];
-  } finally {
-    peopleLoading.value = false;
-  }
-}
-
-function registerPresence() {
-  refreshSocketAuth();
-
-  if (!myUserId) return;
-
-  const username =
-    me?.username || me?.display_name || me?.name || me?.email || `User${myUserId}`;
-
-  socket.emit("user:online", { userId: myUserId, username });
-  socket.emit("register-user", { id: myUserId, username });
-  socket.emit("presence:get");
-}
-
-function openMessages(person) {
-  router.push(`/messages?userId=${person.id}&name=${encodeURIComponent(displayName(person))}`);
-}
-
-function startCall(person, kind = "audio") {
-  if (!token) return alert("Login again to call.");
-  if (!person?.id) return;
-  if (!isOnline(person.id)) return alert("User is offline.");
-
-  socket.emit("call:request", {
-    toUserId: String(person.id),
-    kind,
+function isLiveUser(user) {
+  const id = String(user?.id || "");
+  const name = String(getName(user) || "").toLowerCase();
+  return liveStreams.value.some((entry) => {
+    const s = String(entry || "").toLowerCase();
+    return s === id || s === name;
   });
 }
 
-function acceptIncoming() {
-  if (!incomingCall.value?.roomId) return;
+const onlineCount = computed(() => onlineUserIds.value.length);
 
-  const roomId = String(incomingCall.value.roomId);
-  const kind = incomingCall.value.kind || "audio";
+const filteredPeople = computed(() => {
+  const q = search.value.trim().toLowerCase();
 
-  socket.emit("call:accept", { roomId });
-  incomingCall.value = null;
+  const filtered = people.value.filter((u) => {
+    if (String(u.id) === String(me?.id || "")) return false;
+    if (!q) return true;
 
-  router.push(`/call?roomId=${encodeURIComponent(roomId)}&role=callee&kind=${encodeURIComponent(kind)}`);
+    return (
+      getName(u).toLowerCase().includes(q) ||
+      String(u?.email || "").toLowerCase().includes(q) ||
+      String(u?.location || "").toLowerCase().includes(q)
+    );
+  });
+
+  return filtered.sort((a, b) => {
+    const aOnline = isOnline(a.id) ? 1 : 0;
+    const bOnline = isOnline(b.id) ? 1 : 0;
+    const aLive = isLiveUser(a) ? 1 : 0;
+    const bLive = isLiveUser(b) ? 1 : 0;
+
+    if (bLive !== aLive) return bLive - aLive;
+    if (bOnline !== aOnline) return bOnline - aOnline;
+
+    return getName(a).localeCompare(getName(b));
+  });
+});
+
+async function fetchPeople() {
+  loading.value = true;
+  error.value = "";
+
+  try {
+    const data = await apiGet("/users");
+    people.value = Array.isArray(data) ? data : [];
+  } catch (e) {
+    error.value = e?.message || "Failed to load people";
+    people.value = [];
+  } finally {
+    loading.value = false;
+  }
 }
 
-function rejectIncoming() {
-  if (!incomingCall.value?.roomId) return;
-  socket.emit("call:reject", { roomId: String(incomingCall.value.roomId) });
-  incomingCall.value = null;
+async function ensureConversationWith(user) {
+  try {
+    let data;
+    try {
+      data = await fetch(`${API_URL}/conversations/conversations`, {
+        method: "POST",
+        headers: authHeaders(),
+        body: JSON.stringify({
+          userId1: me?.id,
+          userId2: user.id,
+        }),
+      }).then(async (r) => {
+        const j = await r.json().catch(() => ({}));
+        if (!r.ok) throw new Error(j?.error || "Failed to create conversation");
+        return j;
+      });
+    } catch {
+      data = await fetch(`${API_URL}/conversations`, {
+        method: "POST",
+        headers: authHeaders(),
+        body: JSON.stringify({
+          userId1: me?.id,
+          userId2: user.id,
+        }),
+      }).then(async (r) => {
+        const j = await r.json().catch(() => ({}));
+        if (!r.ok) throw new Error(j?.error || "Failed to create conversation");
+        return j;
+      });
+    }
+
+    return data?.id ? String(data.id) : "";
+  } catch {
+    return "";
+  }
+}
+
+async function openMessages(user) {
+  const convoId = await ensureConversationWith(user);
+
+  router.push({
+    path: "/messages",
+    query: {
+      conversationId: convoId,
+      userId: user.id,
+      name: getName(user),
+    },
+  });
+}
+
+function startCall(user, kind = "audio") {
+  router.push({
+    path: "/call",
+    query: {
+      userId: user.id,
+      name: getName(user),
+      kind,
+    },
+  });
+}
+
+function openProfile(user) {
+  router.push(`/profile/${user.id}`);
 }
 
 function onPresenceList(payload) {
@@ -214,219 +304,267 @@ function onPresenceUpdate(payload) {
   const uid = String(payload?.userId || "");
   if (!uid) return;
 
-  const set = new Set(onlineUserIds.value.map(String));
-  if (payload?.online) set.add(uid);
-  else set.delete(uid);
-  onlineUserIds.value = [...set];
+  if (payload?.online) {
+    if (!onlineUserIds.value.includes(uid)) {
+      onlineUserIds.value = [...onlineUserIds.value, uid];
+    }
+  } else {
+    onlineUserIds.value = onlineUserIds.value.filter((id) => id !== uid);
+  }
 }
 
-function onCallIncoming(payload) {
-  incomingCall.value = payload;
-}
-
-function onCallAccepted(payload) {
-  if (!payload?.roomId) return;
-
-  router.push(
-    `/call?roomId=${encodeURIComponent(payload.roomId)}&role=caller&kind=${encodeURIComponent(payload.kind || "audio")}`
-  );
-}
-
-function onCallEnded() {
-  incomingCall.value = null;
+function onLiveList(payload) {
+  liveStreams.value = Array.isArray(payload) ? payload : [];
 }
 
 onMounted(async () => {
   await fetchPeople();
-  registerPresence();
+
+  refreshSocketAuth();
 
   socket.on("presence:list", onPresenceList);
   socket.on("presence:update", onPresenceUpdate);
-  socket.on("call:incoming", onCallIncoming);
-  socket.on("call:accepted", onCallAccepted);
-  socket.on("call:ended", onCallEnded);
+  socket.on("live-list", onLiveList);
+
+  if (socket.connected && me?.id) {
+    socket.emit("user:online", {
+      userId: String(me.id),
+      username: me?.username || me?.name || `User${me.id}`,
+    });
+  }
 });
 
 onBeforeUnmount(() => {
   socket.off("presence:list", onPresenceList);
   socket.off("presence:update", onPresenceUpdate);
-  socket.off("call:incoming", onCallIncoming);
-  socket.off("call:accepted", onCallAccepted);
-  socket.off("call:ended", onCallEnded);
+  socket.off("live-list", onLiveList);
 });
 </script>
 
 <style scoped>
 .page {
-  min-height: 100vh;
-  padding: 16px;
-  background: linear-gradient(180deg, #07111f, #0e1f37 40%, #132a49);
-  color: white;
-}
-
-.hero,
-.card,
-.incoming,
-.errorBox {
-  background: rgba(255,255,255,0.08);
-  border: 1px solid rgba(255,255,255,0.1);
-  backdrop-filter: blur(14px);
-}
-
-.hero {
-  border-radius: 24px;
+  max-width: 1100px;
+  margin: 0 auto;
   padding: 18px;
-  margin-bottom: 14px;
+  color: #fff;
+}
+.head {
   display: flex;
   justify-content: space-between;
   align-items: center;
   gap: 12px;
+  margin-bottom: 14px;
 }
-
-.hero h1 {
-  margin: 0;
-  font-size: 1.4rem;
+.title {
+  font-size: 26px;
+  font-weight: 900;
 }
-
-.hero p {
-  margin: 6px 0 0;
-  opacity: 0.8;
+.sub {
+  opacity: 0.75;
+  font-weight: 600;
 }
-
-.chip,
-.btn,
-.accept,
-.reject {
+.headActions {
+  display: flex;
+  gap: 10px;
+}
+.chip {
   border: none;
-  border-radius: 14px;
+  border-radius: 999px;
   padding: 10px 14px;
+  background: rgba(255,255,255,0.12);
+  color: #fff;
+  font-weight: 800;
   cursor: pointer;
 }
-
+.stats {
+  display: grid;
+  grid-template-columns: repeat(3, minmax(0, 1fr));
+  gap: 10px;
+  margin-bottom: 14px;
+}
+.stat {
+  padding: 14px;
+  border-radius: 16px;
+  background: rgba(255,255,255,0.08);
+  border: 1px solid rgba(255,255,255,0.1);
+}
+.statNum {
+  font-size: 22px;
+  font-weight: 900;
+}
+.statLab {
+  opacity: 0.7;
+  font-weight: 700;
+  margin-top: 4px;
+}
 .searchWrap {
   margin-bottom: 14px;
 }
-
 .search {
   width: 100%;
   border: none;
   outline: none;
-  border-radius: 18px;
+  border-radius: 16px;
   padding: 14px 16px;
 }
-
-.incoming {
-  border-radius: 22px;
-  padding: 16px;
-  margin-bottom: 14px;
-}
-
-.incomingTitle {
-  font-size: 1.05rem;
-  font-weight: 800;
-}
-
-.incomingSub {
-  margin-top: 6px;
-  opacity: 0.9;
-}
-
-.incomingActions {
-  margin-top: 14px;
-  display: flex;
-  gap: 10px;
-}
-
-.accept {
-  background: #22c55e;
-  color: white;
-}
-
-.reject {
-  background: #ef4444;
-  color: white;
-}
-
-.errorBox {
-  border-radius: 18px;
+.alert {
   padding: 14px;
-  margin-bottom: 14px;
-  color: #ffd4d4;
-}
-
-.grid {
-  display: grid;
-  grid-template-columns: repeat(auto-fill, minmax(240px, 1fr));
-  gap: 14px;
-}
-
-.card {
-  border-radius: 22px;
-  padding: 18px;
-}
-
-.avatar {
-  width: 58px;
-  height: 58px;
-  border-radius: 50%;
-  background: linear-gradient(135deg, #7c3aed, #06b6d4);
-  display: flex;
-  align-items: center;
-  justify-content: center;
-  font-weight: 900;
-  position: relative;
   margin-bottom: 12px;
+  border-radius: 14px;
+  background: rgba(255, 80, 80, 0.12);
+  border: 1px solid rgba(255, 80, 80, 0.35);
 }
-
-.statusDot {
+.state {
+  padding: 18px;
+  border-radius: 16px;
+  background: rgba(255,255,255,0.08);
+}
+.big {
+  font-size: 18px;
+  font-weight: 900;
+}
+.small {
+  margin-top: 6px;
+  opacity: 0.75;
+}
+.list {
+  display: flex;
+  flex-direction: column;
+  gap: 12px;
+}
+.card {
+  display: grid;
+  grid-template-columns: auto 1fr auto;
+  gap: 12px;
+  align-items: center;
+  padding: 12px;
+  border-radius: 18px;
+  background: rgba(255,255,255,0.08);
+  border: 1px solid rgba(255,255,255,0.12);
+}
+.avatarWrap {
+  position: relative;
+}
+.avatar,
+.avatarImg {
+  width: 56px;
+  height: 56px;
+  border-radius: 18px;
+  object-fit: cover;
+}
+.avatar {
+  display: grid;
+  place-items: center;
+  background: linear-gradient(45deg, #7c3aed, #2563eb);
+  font-weight: 900;
+  font-size: 20px;
+}
+.onlineDot {
   position: absolute;
-  right: 1px;
-  bottom: 1px;
+  right: -2px;
+  bottom: -2px;
   width: 14px;
   height: 14px;
-  border-radius: 50%;
-  background: #6b7280;
-  border: 2px solid #07111f;
+  border-radius: 999px;
+  background: #475569;
+  border: 2px solid #0b1220;
 }
-
-.statusDot.online {
+.onlineDot.on {
   background: #22c55e;
 }
-
-.name {
-  font-weight: 900;
-  font-size: 1.03rem;
+.meta {
+  min-width: 0;
 }
-
-.sub {
+.nameRow {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  flex-wrap: wrap;
+}
+.name {
+  font-size: 17px;
+  font-weight: 900;
+}
+.liveBadge {
+  padding: 4px 8px;
+  border-radius: 999px;
+  background: rgba(255, 55, 95, 0.16);
+  border: 1px solid rgba(255, 55, 95, 0.32);
+  color: #ff8aa7;
+  font-size: 11px;
+  font-weight: 900;
+}
+.statusRow {
+  display: flex;
+  gap: 6px;
+  align-items: center;
   opacity: 0.78;
   margin-top: 4px;
+  font-size: 13px;
+  flex-wrap: wrap;
 }
-
+.status {
+  width: 8px;
+  height: 8px;
+  border-radius: 999px;
+  background: #64748b;
+}
+.status.on {
+  background: #22c55e;
+}
+.sep {
+  opacity: 0.45;
+}
+.extra {
+  margin-top: 6px;
+  opacity: 0.75;
+  font-size: 13px;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
 .actions {
   display: flex;
   gap: 8px;
-  margin-top: 14px;
   flex-wrap: wrap;
+  justify-content: flex-end;
 }
-
-.btn {
-  background: white;
-  color: #0f172a;
-}
-
-.btn.ghost {
-  background: rgba(255,255,255,0.12);
+.action {
+  border: none;
+  border-radius: 14px;
+  padding: 10px 12px;
+  background: rgba(255,255,255,0.1);
   color: white;
+  font-weight: 800;
+  cursor: pointer;
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
 }
-
-.btn.video {
-  background: #22c55e;
-  color: white;
+.action.ghost {
+  background: rgba(255,255,255,0.06);
 }
-
-.empty {
-  opacity: 0.8;
-  padding: 18px 4px;
+.action:disabled {
+  opacity: 0.45;
+  cursor: default;
+}
+@media (max-width: 760px) {
+  .page {
+    padding: 14px;
+  }
+  .stats {
+    grid-template-columns: repeat(3, 1fr);
+  }
+  .card {
+    grid-template-columns: auto 1fr;
+  }
+  .actions {
+    grid-column: 1 / -1;
+    justify-content: stretch;
+  }
+  .action {
+    flex: 1;
+    justify-content: center;
+  }
 }
 </style>
