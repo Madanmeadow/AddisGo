@@ -1,4 +1,3 @@
-<!-- src/views/Call.vue -->
 <template>
   <Layout>
     <div
@@ -6,20 +5,20 @@
       :class="{
         audioMode: isAudioOnly,
         connected: inCall,
-        reconnecting: isRecoveringState
+        reconnecting: isRecoveringState,
       }"
     >
       <div class="bg bg1"></div>
       <div class="bg bg2"></div>
       <div class="bg bg3"></div>
 
-      <!-- INCOMING CALL -->
+      <!-- INCOMING -->
       <transition name="fadeUp">
         <div v-if="incomingCall && !inCall" class="incoming-overlay">
           <div class="incoming-card">
             <div class="incoming-top">
               <div class="incoming-live-dot"></div>
-              <div class="incoming-small">ADDISGO CALL</div>
+              <div class="incoming-small">PULSE CALL</div>
             </div>
 
             <div class="incoming-avatar">{{ callerInitial }}</div>
@@ -55,49 +54,33 @@
         </div>
 
         <div class="topbar-actions">
-          <span class="status-pill" :class="statusPillClass">{{ connectionLabel }}</span>
+          <span class="status-pill" :class="statusPillClass">
+            {{ connectionLabel }}
+          </span>
         </div>
       </header>
 
-      <!-- DYNAMIC STATUS STRIP -->
-      <section class="dynamic-strip glassy">
-        <div class="dynamic-left">
-          <div class="signal-wrap">
-            <span class="signal-dot" :class="{ on: socketConnected }"></span>
-            <span class="dynamic-text">
-              {{ socketConnected ? "Realtime Connected" : "Realtime Offline" }}
-            </span>
-          </div>
+      <!-- MOBILE QUICK STRIP -->
+      <section class="quick-strip glassy">
+        <div class="quick-left">
+          <span class="signal-dot" :class="{ on: socketConnected }"></span>
+          <span class="quick-text">{{ socketConnected ? "Realtime Connected" : "Realtime Offline" }}</span>
         </div>
 
-        <div class="dynamic-center">
-          <button class="dyn-btn" @click="recoverMedia" :disabled="recoveringMedia">
-            {{ recoveringMedia ? "Recovering…" : "Recover" }}
-          </button>
-
-          <button class="dyn-btn" @click="toggleSpeaker">
-            {{ speakerEnabled ? "Speaker On" : "Speaker Low" }}
-          </button>
-
-          <button class="dyn-btn" @click="copyCallDiagnostics">
-            Copy Debug
-          </button>
-        </div>
-
-        <div class="dynamic-right">
+        <div class="quick-right">
           <span class="mini-pill">{{ isAudioOnly ? "Audio" : "Video" }}</span>
           <span class="mini-pill">{{ qualityLabel }}</span>
           <span class="mini-pill">{{ remoteTrackSummary }}</span>
         </div>
       </section>
 
-      <!-- CALL HERO -->
+      <!-- HERO -->
       <section class="call-hero glassy">
-        <div class="hero-left">
-          <div class="hero-kicker">ADDISGO DIRECT CALL</div>
+        <div class="hero-main">
+          <div class="hero-kicker">DIRECT CALL</div>
           <h1 class="hero-title">{{ callPartnerName }}</h1>
           <div class="hero-sub">
-            {{ isAudioOnly ? "Crystal audio call" : "Video call with smart recovery, reconnect logic, and camera switching." }}
+            {{ isAudioOnly ? "Crystal audio call" : "Video call with smart reconnect and better mobile controls." }}
           </div>
 
           <div class="hero-badges">
@@ -114,27 +97,27 @@
           </div>
         </div>
 
-        <div class="hero-right">
-          <div class="hero-stat">
-            <div class="hero-stat-num">{{ inCall ? "LIVE" : "IDLE" }}</div>
-            <div class="hero-stat-lab">Call State</div>
+        <div class="hero-mini">
+          <div class="mini-stat">
+            <div class="mini-num">{{ inCall ? "LIVE" : "IDLE" }}</div>
+            <div class="mini-lab">State</div>
           </div>
-          <div class="hero-stat">
-            <div class="hero-stat-num">{{ micMuted ? "OFF" : "ON" }}</div>
-            <div class="hero-stat-lab">Mic</div>
+          <div class="mini-stat">
+            <div class="mini-num">{{ micMuted ? "OFF" : "ON" }}</div>
+            <div class="mini-lab">Mic</div>
           </div>
-          <div class="hero-stat">
-            <div class="hero-stat-num">{{ isAudioOnly ? "AUDIO" : (cameraOff ? "OFF" : "ON") }}</div>
-            <div class="hero-stat-lab">Camera</div>
+          <div class="mini-stat">
+            <div class="mini-num">{{ isAudioOnly ? "AUDIO" : (cameraOff ? "OFF" : "ON") }}</div>
+            <div class="mini-lab">Camera</div>
           </div>
-          <div class="hero-stat">
-            <div class="hero-stat-num">{{ speakerEnabled ? "ON" : "LOW" }}</div>
-            <div class="hero-stat-lab">Speaker</div>
+          <div class="mini-stat">
+            <div class="mini-num">{{ speakerEnabled ? "ON" : "LOW" }}</div>
+            <div class="mini-lab">Speaker</div>
           </div>
         </div>
       </section>
 
-      <!-- VIDEO STAGE -->
+      <!-- STAGE -->
       <main class="call-stage" :class="{ audioOnly: isAudioOnly, focusedRemote: focusRemote }">
         <!-- REMOTE -->
         <section
@@ -142,7 +125,7 @@
           :class="{
             activeCard: focusRemote,
             speaking: remoteSpeaking,
-            reconnecting: isRecoveringState
+            reconnecting: isRecoveringState,
           }"
           @click="focusRemote = true"
         >
@@ -189,7 +172,7 @@
           class="video-card local-card"
           :class="{
             activeCard: !focusRemote,
-            speaking: localSpeaking
+            speaking: localSpeaking,
           }"
           @click="focusRemote = false"
         >
@@ -197,7 +180,7 @@
             <div class="video-label">You</div>
             <div class="video-chip-row">
               <span class="video-chip">{{ micMuted ? "Muted" : "Mic Live" }}</span>
-              <span class="video-chip" v-if="!isAudioOnly">
+              <span v-if="!isAudioOnly" class="video-chip">
                 {{ cameraOff ? "Cam Off" : "Cam On" }}
               </span>
             </div>
@@ -227,7 +210,7 @@
         </section>
       </main>
 
-      <!-- QUALITY / TOOLS -->
+      <!-- MINI TOOLS -->
       <section class="tools-strip glassy">
         <div class="tools-col">
           <div class="tools-title">Connection</div>
@@ -296,6 +279,13 @@
 
         <button
           class="control-btn"
+          @click="copyCallDiagnostics"
+        >
+          Debug
+        </button>
+
+        <button
+          class="control-btn"
           @click="minimizeCurrentCall"
           :disabled="!inCall"
         >
@@ -313,9 +303,8 @@ defineOptions({ name: "Call" })
 
 import { ref, computed, watch, onMounted, onBeforeUnmount, nextTick } from "vue"
 import { useRoute, useRouter } from "vue-router"
-import { io } from "socket.io-client"
 import Layout from "../components/Layout.vue"
-import { useCallOverlay } from "../composables/useCallOverlay"
+import socket, { refreshSocketAuth } from "../socket"
 
 /* =========================
    ROUTER / USER
@@ -344,10 +333,9 @@ const me = (() => {
 const roomId = ref(route.query.roomId || "")
 const kind = ref(route.query.kind || "video")
 const mode = ref(route.query.mode || route.query.role || "caller")
-const toUserId = ref(route.query.toUserId || "")
+const toUserId = ref(route.query.toUserId || route.query.userId || "")
 const initialPartnerName = ref(route.query.name || "User")
 
-const socket = ref(null)
 const pc = ref(null)
 
 const localVideo = ref(null)
@@ -369,13 +357,11 @@ const focusRemote = ref(true)
 
 const hasRemoteDescription = ref(false)
 const cleaningUp = ref(false)
-const hasJoinedRoom = ref(false)
-const madeOffer = ref(false)
 const requestSent = ref(false)
 const reconnectAttempted = ref(false)
 const negotiationBusy = ref(false)
 const makingOffer = ref(false)
-const socketConnected = ref(false)
+const socketConnected = ref(socket.connected)
 
 const statusText = ref("Ready")
 const hostUserId = ref("")
@@ -397,12 +383,6 @@ let statsTimer = null
 let localAudioMonitor = null
 let remoteAudioMonitor = null
 let audioContext = null
-
-const {
-  syncCallOverlay,
-  minimizeCall,
-  resetOverlay,
-} = useCallOverlay()
 
 /* =========================
    COMPUTED
@@ -462,11 +442,11 @@ const statusPillClass = computed(() => ({
 }))
 
 const isRecoveringState = computed(() =>
-  ["Recovering...", "Recovering media...", "Reconnecting...", "Connecting..."].includes(statusText.value)
+  ["Recovering...", "Recovering media...", "Reconnecting...", "Connecting...", "Answering..."].includes(statusText.value)
 )
 
 const remoteTrackSummary = computed(() => {
-  if (!remoteStream.value) return "No remote stream"
+  if (!remoteStream.value) return "No remote"
   const hasAudio = !!remoteStream.value.getAudioTracks?.().length
   const hasVideo = !!remoteStream.value.getVideoTracks?.().length
   if (hasAudio && hasVideo) return "Audio + Video"
@@ -537,16 +517,15 @@ function ensureAudioContext() {
 }
 
 function stopMonitor(refObj) {
-  try { refObj?.value?.source?.disconnect?.() } catch {}
-  try { refObj?.value?.analyser?.disconnect?.() } catch {}
-  if (refObj) refObj.value = null
+  try { refObj?.source?.disconnect?.() } catch {}
+  try { refObj?.analyser?.disconnect?.() } catch {}
 }
 
-function createSpeakingMonitor(stream, targetRef, type = "local") {
-  if (!stream?.getAudioTracks?.().length) return
+function createSpeakingMonitor(stream, type = "local") {
+  if (!stream?.getAudioTracks?.().length) return null
   try {
     ensureAudioContext()
-    if (!audioContext) return
+    if (!audioContext) return null
 
     const source = audioContext.createMediaStreamSource(stream)
     const analyser = audioContext.createAnalyser()
@@ -555,58 +534,23 @@ function createSpeakingMonitor(stream, targetRef, type = "local") {
     const data = new Uint8Array(analyser.frequencyBinCount)
     source.connect(analyser)
 
-    targetRef.value = { source, analyser, data, type }
+    return { source, analyser, data, type }
   } catch (err) {
     console.warn("createSpeakingMonitor failed", type, err)
+    return null
   }
 }
 
 /* =========================
-   OVERLAY SYNC
-========================= */
-watch(
-  [inCall, roomId, kind, statusText, localStream, remoteStream, callPartnerName],
-  () => {
-    syncCallOverlay({
-      inCall: inCall.value,
-      roomId: roomId.value,
-      kind: kind.value,
-      partnerName: callPartnerName.value,
-      statusText: statusText.value,
-      localStream: localStream.value,
-      remoteStream: remoteStream.value,
-      expandPath: "/call",
-      expandQuery: {
-        roomId: roomId.value,
-        mode: mode.value,
-        role: mode.value,
-        kind: kind.value,
-        toUserId: toUserId.value,
-        name: callPartnerName.value,
-      },
-    })
-  },
-  { immediate: true }
-)
-
-/* =========================
    SOCKET
 ========================= */
-function createSocket() {
-  socket.value = io(API_BASE, {
-    transports: ["websocket", "polling"],
-    auth: token ? { token } : undefined,
-    withCredentials: true,
-    reconnection: true,
-    reconnectionAttempts: 30,
-    reconnectionDelay: 1000,
-    reconnectionDelayMax: 5000,
-    timeout: 20000,
-  })
+function bindSocketEvents() {
+  socketConnected.value = socket.connected
 
-  socket.value.on("connect", async () => {
+  socket.on("connect", async () => {
     socketConnected.value = true
-    console.log("✅ socket connected", socket.value.id)
+
+    if (token) refreshSocketAuth()
 
     if (roomId.value && inCall.value) {
       try {
@@ -618,27 +562,22 @@ function createSocket() {
     }
   })
 
-  socket.value.on("disconnect", (reason) => {
+  socket.on("disconnect", () => {
     socketConnected.value = false
-    console.log("⚠️ socket disconnected:", reason)
     if (inCall.value) statusText.value = "Reconnecting..."
   })
 
-  socket.value.on("call:ringing", (data = {}) => {
-    console.log("📳 call:ringing", data)
+  socket.on("call:ringing", (data = {}) => {
     if (data.roomId) roomId.value = String(data.roomId)
     if (data.kind) kind.value = data.kind
-    isCaller.value = !!data.isCaller
     statusText.value = "Ringing..."
   })
 
-  socket.value.on("call:status", ({ calleeOnline } = {}) => {
+  socket.on("call:status", ({ calleeOnline } = {}) => {
     statusText.value = calleeOnline ? "Calling..." : "Queued"
   })
 
-  socket.value.on("call:incoming", (data = {}) => {
-    console.log("📲 call:incoming", data)
-
+  socket.on("call:incoming", (data = {}) => {
     incomingCall.value = {
       roomId: String(data.roomId || ""),
       fromUserId: String(data.fromUserId || ""),
@@ -655,9 +594,7 @@ function createSocket() {
     statusText.value = "Incoming"
   })
 
-  socket.value.on("call:accepted", async (data = {}) => {
-    console.log("✅ call:accepted", data)
-
+  socket.on("call:accepted", async (data = {}) => {
     if (data.roomId) roomId.value = String(data.roomId)
     if (data.kind) kind.value = data.kind
     if (data.hostUserId) hostUserId.value = String(data.hostUserId)
@@ -668,16 +605,13 @@ function createSocket() {
     joinCallRoom()
   })
 
-  socket.value.on("call:peer-joined", async () => {
-    console.log("👤 call:peer-joined")
+  socket.on("call:peer-joined", async () => {
     if (!pc.value) {
       await createPeerConnection()
     }
   })
 
-  socket.value.on("call:ready", async (data = {}) => {
-    console.log("🚀 call:ready", data)
-
+  socket.on("call:ready", async (data = {}) => {
     if (data.roomId) roomId.value = String(data.roomId)
     if (data.kind) kind.value = data.kind
     if (data.hostUserId) hostUserId.value = String(data.hostUserId)
@@ -688,15 +622,12 @@ function createSocket() {
       await createPeerConnection()
     }
 
-    if (isOfferOwner() && !madeOffer.value) {
-      madeOffer.value = true
+    if (isOfferOwner() && !makingOffer.value) {
       await createAndSendOffer(false)
     }
   })
 
-  socket.value.on("call:webrtc:offer", async ({ roomId: incomingRoomId, offer, from } = {}) => {
-    console.log("📡 got offer", incomingRoomId, from)
-
+  socket.on("call:webrtc:offer", async ({ roomId: incomingRoomId, offer, from } = {}) => {
     try {
       if (incomingRoomId) roomId.value = String(incomingRoomId)
       statusText.value = "Answering..."
@@ -708,10 +639,7 @@ function createSocket() {
       const offerCollision = offer && makingOffer.value
       const polite = !isOfferOwner()
 
-      if (offerCollision && !polite) {
-        console.log("Ignoring offer collision (impolite peer)")
-        return
-      }
+      if (offerCollision && !polite) return
 
       await pc.value.setRemoteDescription(new RTCSessionDescription(offer))
       hasRemoteDescription.value = true
@@ -720,7 +648,7 @@ function createSocket() {
       const answer = await pc.value.createAnswer()
       await pc.value.setLocalDescription(answer)
 
-      socket.value?.emit("call:webrtc:answer", {
+      socket.emit("call:webrtc:answer", {
         roomId: roomId.value,
         answer: pc.value.localDescription,
         to: from,
@@ -730,9 +658,7 @@ function createSocket() {
     }
   })
 
-  socket.value.on("call:webrtc:answer", async ({ answer } = {}) => {
-    console.log("📡 got answer")
-
+  socket.on("call:webrtc:answer", async ({ answer } = {}) => {
     try {
       if (!pc.value) return
       await pc.value.setRemoteDescription(new RTCSessionDescription(answer))
@@ -745,7 +671,7 @@ function createSocket() {
     }
   })
 
-  socket.value.on("call:webrtc:ice", async ({ candidate } = {}) => {
+  socket.on("call:webrtc:ice", async ({ candidate } = {}) => {
     try {
       if (!candidate || !pc.value) return
 
@@ -759,20 +685,17 @@ function createSocket() {
     }
   })
 
-  socket.value.on("call:ended", ({ reason } = {}) => {
-    console.log("📴 call ended:", reason)
+  socket.on("call:ended", () => {
     statusText.value = "Call ended"
     cleanupAll()
     router.back()
   })
 
-  socket.value.on("call:error", ({ message } = {}) => {
-    console.error("call:error", message)
+  socket.on("call:error", ({ message } = {}) => {
     statusText.value = message || "Error"
   })
 
-  socket.value.on("call:busy", ({ message } = {}) => {
-    console.error("call:busy", message)
+  socket.on("call:busy", ({ message } = {}) => {
     statusText.value = message || "Busy"
   })
 }
@@ -792,9 +715,7 @@ async function getIceServers() {
         return data.iceServers
       }
     }
-  } catch {
-    console.log("TURN fetch failed, using fallback STUN")
-  }
+  } catch {}
 
   return [
     { urls: "stun:stun.l.google.com:19302" },
@@ -818,18 +739,14 @@ async function applySenderParameters() {
         params.degradationPreference = "balanced"
         params.encodings[0].maxBitrate = 1200 * 1000
         params.encodings[0].maxFramerate = 30
-        params.encodings[0].scaleResolutionDownBy = 1
       }
 
       if (sender.track.kind === "audio") {
-        params.degradationPreference = "maintain-framerate"
         params.encodings[0].maxBitrate = 64 * 1000
       }
 
       await sender.setParameters(params)
-    } catch (err) {
-      console.log("sender parameter skip", err?.message || err)
-    }
+    } catch {}
   }
 }
 
@@ -853,7 +770,7 @@ async function createPeerConnection() {
 
   pc.value.onicecandidate = (event) => {
     if (event.candidate && roomId.value) {
-      socket.value?.emit("call:webrtc:ice", {
+      socket.emit("call:webrtc:ice", {
         roomId: roomId.value,
         candidate: event.candidate,
       })
@@ -865,7 +782,7 @@ async function createPeerConnection() {
     if (!stream) return
 
     remoteStream.value = stream
-    createSpeakingMonitor(stream, remoteAudioMonitor, "remote")
+    remoteAudioMonitor = createSpeakingMonitor(stream, "remote")
 
     const remoteVideoTrack = stream.getVideoTracks?.()[0]
     const remoteAudioTrack = stream.getAudioTracks?.()[0]
@@ -905,7 +822,6 @@ async function createPeerConnection() {
 
   pc.value.onconnectionstatechange = async () => {
     const state = pc.value?.connectionState
-    console.log("pc.connectionState =", state)
 
     if (state === "connected") {
       reconnectAttempted.value = false
@@ -939,7 +855,6 @@ async function createPeerConnection() {
 
   pc.value.oniceconnectionstatechange = async () => {
     const state = pc.value?.iceConnectionState
-    console.log("pc.iceConnectionState =", state)
 
     if (state === "failed") {
       statusText.value = "Recovering..."
@@ -967,7 +882,7 @@ async function createPeerConnection() {
 }
 
 async function createAndSendOffer(iceRestart = false) {
-  if (!pc.value || !socket.value || !roomId.value) return
+  if (!pc.value || !roomId.value) return
 
   try {
     makingOffer.value = true
@@ -979,13 +894,12 @@ async function createAndSendOffer(iceRestart = false) {
     })
 
     if (pc.value.signalingState !== "stable" && !iceRestart) {
-      console.log("Skipping offer because signalingState is not stable")
       return
     }
 
     await pc.value.setLocalDescription(offer)
 
-    socket.value.emit("call:webrtc:offer", {
+    socket.emit("call:webrtc:offer", {
       roomId: roomId.value,
       offer: pc.value.localDescription,
     })
@@ -1022,27 +936,15 @@ async function enhanceLocalTracks(stream) {
 
   if (audioTrack) {
     audioTrack.onended = async () => {
-      console.log("Local audio track ended, recovering...")
       await recoverMedia()
     }
   }
 
   if (videoTrack) {
     videoTrack.onended = async () => {
-      console.log("Local video track ended, recovering...")
       if (!isAudioOnly.value && !cameraOff.value) {
         await recoverMedia()
       }
-    }
-
-    try {
-      await videoTrack.applyConstraints({
-        width: { ideal: 1280, max: 1280 },
-        height: { ideal: 720, max: 720 },
-        frameRate: { ideal: 24, max: 30 },
-      })
-    } catch (err) {
-      console.log("video applyConstraints skip", err?.message || err)
     }
   }
 }
@@ -1064,7 +966,7 @@ async function ensureLocalMedia(force = false) {
   await enhanceLocalTracks(stream)
 
   localStream.value = stream
-  createSpeakingMonitor(stream, localAudioMonitor, "local")
+  localAudioMonitor = createSpeakingMonitor(stream, "local")
 
   if (localVideo.value && !isAudioOnly.value) {
     localVideo.value.srcObject = stream
@@ -1133,14 +1035,12 @@ async function switchCamera() {
     const oldVideoTracks = localStream.value.getVideoTracks()
 
     oldVideoTracks.forEach((track) => {
-      try {
-        track.stop()
-      } catch {}
+      try { track.stop() } catch {}
     })
 
     localStream.value = new MediaStream([...audioTracks, newVideoTrack])
     await enhanceLocalTracks(localStream.value)
-    createSpeakingMonitor(localStream.value, localAudioMonitor, "local")
+    localAudioMonitor = createSpeakingMonitor(localStream.value, "local")
 
     if (localVideo.value) {
       localVideo.value.srcObject = localStream.value
@@ -1174,10 +1074,8 @@ async function flushPendingIceCandidates() {
   }
 }
 
-async function maybeRecoverConnection(reason = "") {
+async function maybeRecoverConnection() {
   try {
-    console.log("Recovering connection because:", reason)
-
     if (!pc.value) {
       await createPeerConnection()
     }
@@ -1212,7 +1110,7 @@ async function recoverMedia() {
   }
 }
 
-async function startStatsWatcher() {
+function startStatsWatcher() {
   stopStatsWatcher()
 
   statsTimer = setInterval(async () => {
@@ -1233,24 +1131,22 @@ async function startStatsWatcher() {
         remoteVideoOff.value = true
       }
 
-      if (localAudioMonitor.value?.analyser) {
-        const d = localAudioMonitor.value.data
-        localAudioMonitor.value.analyser.getByteFrequencyData(d)
+      if (localAudioMonitor?.analyser) {
+        const d = localAudioMonitor.data
+        localAudioMonitor.analyser.getByteFrequencyData(d)
         let sum = 0
         for (let i = 0; i < d.length; i++) sum += d[i]
         localSpeaking.value = (sum / (d.length * 255)) > 0.08
       }
 
-      if (remoteAudioMonitor.value?.analyser) {
-        const d = remoteAudioMonitor.value.data
-        remoteAudioMonitor.value.analyser.getByteFrequencyData(d)
+      if (remoteAudioMonitor?.analyser) {
+        const d = remoteAudioMonitor.data
+        remoteAudioMonitor.analyser.getByteFrequencyData(d)
         let sum = 0
         for (let i = 0; i < d.length; i++) sum += d[i]
         remoteSpeaking.value = (sum / (d.length * 255)) > 0.08
       }
-    } catch (err) {
-      console.log("stats watcher skip", err?.message || err)
-    }
+    } catch {}
   }, 2500)
 }
 
@@ -1269,7 +1165,7 @@ function startHealthChecks() {
 
     const connectionState = pc.value?.connectionState
     if (["failed", "disconnected"].includes(connectionState)) {
-      await maybeRecoverConnection("health check")
+      await maybeRecoverConnection()
     }
   }, 6000)
 }
@@ -1294,7 +1190,6 @@ function setStatusBrief(text) {
    CALL FLOW
 ========================= */
 async function requestOutgoingCall() {
-  if (!socket.value) return
   if (!toUserId.value) return
   if (requestSent.value) return
 
@@ -1304,7 +1199,7 @@ async function requestOutgoingCall() {
 
   await ensureLocalMedia()
 
-  socket.value.emit("call:request", {
+  socket.emit("call:request", {
     toUserId: String(toUserId.value),
     kind: kind.value,
   })
@@ -1312,8 +1207,7 @@ async function requestOutgoingCall() {
 
 function joinCallRoom() {
   if (!roomId.value) return
-  socket.value?.emit("call:join", { roomId: roomId.value })
-  hasJoinedRoom.value = true
+  socket.emit("call:join", { roomId: roomId.value })
   statusText.value = "Joining..."
 }
 
@@ -1346,7 +1240,7 @@ async function acceptIncoming() {
 
     await ensureLocalMedia()
 
-    socket.value?.emit("call:accept", {
+    socket.emit("call:accept", {
       roomId: roomId.value,
     })
 
@@ -1361,7 +1255,7 @@ async function acceptIncoming() {
 function rejectIncoming() {
   if (!incomingCall.value) return
 
-  socket.value?.emit("call:reject", {
+  socket.emit("call:reject", {
     roomId: incomingCall.value.roomId,
   })
 
@@ -1407,18 +1301,12 @@ function toggleSpeaker() {
 }
 
 function minimizeCurrentCall() {
-  if (!inCall.value) {
-    router.back()
-    return
-  }
-
-  minimizeCall()
   router.push("/dashboard")
 }
 
 function endCall() {
   if (roomId.value) {
-    socket.value?.emit("call:end", {
+    socket.emit("call:end", {
       roomId: roomId.value,
     })
   }
@@ -1483,9 +1371,7 @@ async function copyCallDiagnostics() {
 function stopStream(stream) {
   if (!stream) return
   stream.getTracks().forEach((track) => {
-    try {
-      track.stop()
-    } catch {}
+    try { track.stop() } catch {}
   })
 }
 
@@ -1530,6 +1416,9 @@ function cleanupAll() {
   stopMonitor(localAudioMonitor)
   stopMonitor(remoteAudioMonitor)
 
+  localAudioMonitor = null
+  remoteAudioMonitor = null
+
   incomingCall.value = null
   inCall.value = false
   callStartedAt.value = null
@@ -1539,8 +1428,6 @@ function cleanupAll() {
   switchingCamera.value = false
   recoveringMedia.value = false
   statusText.value = "Ready"
-  hasJoinedRoom.value = false
-  madeOffer.value = false
   requestSent.value = false
   reconnectAttempted.value = false
   currentFacingMode.value = "user"
@@ -1548,22 +1435,15 @@ function cleanupAll() {
   remoteVideoOff.value = false
   negotiationBusy.value = false
   makingOffer.value = false
-  socketConnected.value = false
   localSpeaking.value = false
   remoteSpeaking.value = false
-
-  resetOverlay()
 
   cleaningUp.value = false
 }
 
 /* =========================
-   GLOBAL EVENTS
+   VISIBILITY
 ========================= */
-function onOverlayEndCall() {
-  endCall()
-}
-
 async function onVisibilityChange() {
   if (document.visibilityState === "visible" && inCall.value) {
     try {
@@ -1577,7 +1457,7 @@ async function onVisibilityChange() {
         safePlay(remoteVideo.value)
       }
 
-      await maybeRecoverConnection("tab visible")
+      await maybeRecoverConnection()
     } catch (err) {
       console.error("visibility recovery error", err)
     }
@@ -1585,14 +1465,40 @@ async function onVisibilityChange() {
 }
 
 /* =========================
+   SOCKET OFF HELPERS
+========================= */
+function unbindSocketEvents() {
+  socket.off("connect")
+  socket.off("disconnect")
+  socket.off("call:ringing")
+  socket.off("call:status")
+  socket.off("call:incoming")
+  socket.off("call:accepted")
+  socket.off("call:peer-joined")
+  socket.off("call:ready")
+  socket.off("call:webrtc:offer")
+  socket.off("call:webrtc:answer")
+  socket.off("call:webrtc:ice")
+  socket.off("call:ended")
+  socket.off("call:error")
+  socket.off("call:busy")
+}
+
+/* =========================
    LIFECYCLE
 ========================= */
+watch(
+  () => socket.connected,
+  (v) => {
+    socketConnected.value = v
+  },
+  { immediate: true }
+)
+
 onMounted(async () => {
   try {
-    window.addEventListener("pulse:end-call", onOverlayEndCall)
-    document.addEventListener("visibilitychange", onVisibilityChange)
-
-    createSocket()
+    refreshSocketAuth()
+    bindSocketEvents()
     await nextTick()
 
     if (mode.value === "caller") {
@@ -1608,32 +1514,14 @@ onMounted(async () => {
     console.error("Call mount error", err)
     alert("Unable to start call. Check camera/mic permissions.")
   }
+
+  document.addEventListener("visibilitychange", onVisibilityChange)
 })
 
 onBeforeUnmount(() => {
-  window.removeEventListener("pulse:end-call", onOverlayEndCall)
   document.removeEventListener("visibilitychange", onVisibilityChange)
-
+  unbindSocketEvents()
   cleanupAll()
-
-  if (socket.value) {
-    socket.value.off("connect")
-    socket.value.off("disconnect")
-    socket.value.off("call:ringing")
-    socket.value.off("call:status")
-    socket.value.off("call:incoming")
-    socket.value.off("call:accepted")
-    socket.value.off("call:peer-joined")
-    socket.value.off("call:ready")
-    socket.value.off("call:webrtc:offer")
-    socket.value.off("call:webrtc:answer")
-    socket.value.off("call:webrtc:ice")
-    socket.value.off("call:ended")
-    socket.value.off("call:error")
-    socket.value.off("call:busy")
-    socket.value.disconnect()
-    socket.value = null
-  }
 
   try { audioContext?.close?.() } catch {}
   audioContext = null
@@ -1646,7 +1534,7 @@ onBeforeUnmount(() => {
   min-height: 100vh;
   color: #fff;
   overflow: hidden;
-  padding-bottom: 104px;
+  padding-bottom: 112px;
   background:
     radial-gradient(circle at top left, rgba(255, 80, 120, 0.16), transparent 28%),
     radial-gradient(circle at top right, rgba(100, 160, 255, 0.15), transparent 24%),
@@ -1671,7 +1559,7 @@ onBeforeUnmount(() => {
 }
 
 .topbar,
-.dynamic-strip,
+.quick-strip,
 .call-hero,
 .tools-strip {
   position: relative;
@@ -1705,7 +1593,6 @@ onBeforeUnmount(() => {
 .call-title {
   font-size: 18px;
   font-weight: 800;
-  letter-spacing: 0.2px;
 }
 
 .call-subtitle {
@@ -1715,12 +1602,6 @@ onBeforeUnmount(() => {
   white-space: nowrap;
   overflow: hidden;
   text-overflow: ellipsis;
-}
-
-.topbar-actions {
-  display: flex;
-  align-items: center;
-  gap: 8px;
 }
 
 .status-pill {
@@ -1751,10 +1632,10 @@ onBeforeUnmount(() => {
   backdrop-filter: blur(18px);
 }
 
-.dynamic-strip {
+.quick-strip {
   margin: 0 16px 14px;
   padding: 12px 14px;
-  border-radius: 999px;
+  border-radius: 20px;
   display: flex;
   justify-content: space-between;
   gap: 12px;
@@ -1762,19 +1643,12 @@ onBeforeUnmount(() => {
   flex-wrap: wrap;
 }
 
-.dynamic-left,
-.dynamic-center,
-.dynamic-right {
+.quick-left,
+.quick-right {
   display: flex;
   align-items: center;
   gap: 10px;
   flex-wrap: wrap;
-}
-
-.signal-wrap {
-  display: flex;
-  align-items: center;
-  gap: 8px;
 }
 
 .signal-dot {
@@ -1789,19 +1663,9 @@ onBeforeUnmount(() => {
   box-shadow: 0 0 14px #1ce783;
 }
 
-.dynamic-text {
+.quick-text {
   font-size: 12px;
   opacity: 0.82;
-}
-
-.dyn-btn {
-  border: 0;
-  color: #fff;
-  cursor: pointer;
-  padding: 9px 12px;
-  border-radius: 999px;
-  background: rgba(255,255,255,0.10);
-  font-weight: 700;
 }
 
 .mini-pill {
@@ -1815,29 +1679,28 @@ onBeforeUnmount(() => {
 .call-hero {
   margin: 0 16px 14px;
   padding: 18px;
-  border-radius: 26px;
+  border-radius: 24px;
   display: grid;
-  grid-template-columns: 1.2fr 0.8fr;
+  grid-template-columns: 1.15fr 0.85fr;
   gap: 18px;
 }
 
 .hero-kicker {
   font-size: 11px;
-  letter-spacing: 0.18em;
+  letter-spacing: 0.16em;
   font-weight: 900;
   opacity: 0.72;
 }
 
 .hero-title {
   margin: 8px 0 8px;
-  font-size: clamp(28px, 4vw, 42px);
+  font-size: clamp(26px, 4vw, 40px);
   line-height: 1.02;
 }
 
 .hero-sub {
   opacity: 0.82;
-  line-height: 1.55;
-  max-width: 680px;
+  line-height: 1.5;
 }
 
 .hero-badges {
@@ -1869,25 +1732,25 @@ onBeforeUnmount(() => {
   background: linear-gradient(135deg, rgba(0,210,255,0.20), rgba(124,58,237,0.22));
 }
 
-.hero-right {
+.hero-mini {
   display: grid;
   grid-template-columns: repeat(2, 1fr);
   gap: 12px;
 }
 
-.hero-stat {
-  border-radius: 20px;
+.mini-stat {
+  border-radius: 18px;
   background: rgba(255,255,255,0.06);
   padding: 16px 12px;
   text-align: center;
 }
 
-.hero-stat-num {
+.mini-num {
   font-size: 22px;
   font-weight: 900;
 }
 
-.hero-stat-lab {
+.mini-lab {
   font-size: 12px;
   opacity: 0.72;
   margin-top: 6px;
@@ -1897,7 +1760,7 @@ onBeforeUnmount(() => {
   position: relative;
   z-index: 2;
   display: grid;
-  grid-template-columns: 1.12fr 0.88fr;
+  grid-template-columns: 1.1fr 0.9fr;
   gap: 14px;
   padding: 0 16px 14px;
 }
@@ -1906,29 +1769,20 @@ onBeforeUnmount(() => {
   grid-template-columns: 1fr;
 }
 
-.call-stage.focusedRemote .remote-card {
-  transform: scale(1.01);
-}
-
 .video-card {
   position: relative;
   min-height: 56vh;
-  border-radius: 28px;
+  border-radius: 24px;
   overflow: hidden;
-  background: rgba(255, 255, 255, 0.07);
-  border: 1px solid rgba(255, 255, 255, 0.08);
+  background: rgba(255,255,255,0.07);
+  border: 1px solid rgba(255,255,255,0.08);
   box-shadow:
-    0 10px 40px rgba(0, 0, 0, 0.28),
-    inset 0 1px 0 rgba(255, 255, 255, 0.05);
-  backdrop-filter: blur(14px);
-  transition: 0.18s ease;
+    0 10px 40px rgba(0,0,0,0.28),
+    inset 0 1px 0 rgba(255,255,255,0.05);
 }
 
 .video-card.activeCard {
   border-color: rgba(0,210,255,0.18);
-  box-shadow:
-    0 18px 52px rgba(0,0,0,0.28),
-    0 0 0 1px rgba(0,210,255,0.10);
 }
 
 .video-card.speaking {
@@ -1943,11 +1797,11 @@ onBeforeUnmount(() => {
 }
 
 .remote-card {
-  min-height: 64vh;
+  min-height: 62vh;
 }
 
 .local-card {
-  min-height: 64vh;
+  min-height: 62vh;
 }
 
 .video-topbar {
@@ -1968,7 +1822,6 @@ onBeforeUnmount(() => {
   font-size: 12px;
   font-weight: 800;
   background: rgba(0, 0, 0, 0.35);
-  backdrop-filter: blur(8px);
 }
 
 .video-chip-row {
@@ -1984,7 +1837,6 @@ onBeforeUnmount(() => {
   font-size: 11px;
   font-weight: 800;
   background: rgba(0, 0, 0, 0.35);
-  backdrop-filter: blur(8px);
 }
 
 .video-chip.badchip {
@@ -2010,7 +1862,7 @@ onBeforeUnmount(() => {
   align-content: center;
   gap: 10px;
   background:
-    radial-gradient(circle at 50% 20%, rgba(255, 255, 255, 0.08), transparent 24%),
+    radial-gradient(circle at 50% 20%, rgba(255,255,255,0.08), transparent 24%),
     linear-gradient(180deg, rgba(255,255,255,0.04), rgba(255,255,255,0.02));
 }
 
@@ -2023,7 +1875,6 @@ onBeforeUnmount(() => {
   font-size: 36px;
   font-weight: 900;
   background: linear-gradient(135deg, rgba(255,90,120,0.95), rgba(120,120,255,0.95));
-  box-shadow: 0 10px 30px rgba(0,0,0,0.25);
 }
 
 .avatar-big.remote {
@@ -2054,7 +1905,6 @@ onBeforeUnmount(() => {
   background: rgba(0,0,0,0.36);
   font-size: 12px;
   font-weight: 700;
-  backdrop-filter: blur(10px);
 }
 
 .state-dot {
@@ -2074,14 +1924,10 @@ onBeforeUnmount(() => {
   z-index: 2;
   margin: 0 16px 16px;
   padding: 14px;
-  border-radius: 24px;
+  border-radius: 20px;
   display: grid;
   grid-template-columns: 1fr 1fr;
   gap: 14px;
-}
-
-.tools-col {
-  min-width: 0;
 }
 
 .tools-title {
@@ -2121,15 +1967,14 @@ onBeforeUnmount(() => {
 
 .control-btn {
   border: 0;
-  min-width: 88px;
-  height: 52px;
-  padding: 0 16px;
+  min-width: 84px;
+  height: 50px;
+  padding: 0 14px;
   color: #fff;
   cursor: pointer;
   font-weight: 800;
-  border-radius: 18px;
+  border-radius: 16px;
   background: rgba(255, 255, 255, 0.12);
-  backdrop-filter: blur(14px);
   box-shadow: 0 10px 28px rgba(0,0,0,0.22);
 }
 
@@ -2154,11 +1999,10 @@ onBeforeUnmount(() => {
 
 .incoming-card {
   width: min(92vw, 400px);
-  border-radius: 30px;
+  border-radius: 28px;
   padding: 26px 22px;
   text-align: center;
-  background:
-    linear-gradient(180deg, rgba(20, 27, 45, 0.96), rgba(9, 14, 28, 0.96));
+  background: linear-gradient(180deg, rgba(20, 27, 45, 0.96), rgba(9, 14, 28, 0.96));
   border: 1px solid rgba(255,255,255,0.08);
   box-shadow: 0 20px 60px rgba(0,0,0,0.35);
 }
@@ -2189,7 +2033,7 @@ onBeforeUnmount(() => {
   width: 92px;
   height: 92px;
   border-radius: 999px;
-  margin: 16px auto 16px;
+  margin: 16px auto;
   display: grid;
   place-items: center;
   font-size: 34px;
@@ -2261,21 +2105,15 @@ onBeforeUnmount(() => {
 }
 
 @media (max-width: 980px) {
-  .call-hero {
-    grid-template-columns: 1fr;
-  }
-
-  .tools-strip {
-    grid-template-columns: 1fr;
-  }
-
+  .call-hero,
+  .tools-strip,
   .call-stage {
     grid-template-columns: 1fr;
   }
 
   .remote-card,
   .local-card {
-    min-height: 42vh;
+    min-height: 40vh;
   }
 }
 
@@ -2285,29 +2123,35 @@ onBeforeUnmount(() => {
     padding-right: 12px;
   }
 
-  .dynamic-strip,
+  .quick-strip,
   .call-hero,
   .tools-strip {
     margin-left: 12px;
     margin-right: 12px;
-    border-radius: 22px;
   }
 
   .call-stage {
     gap: 10px;
-    padding: 0 12px 128px;
+    padding: 0 12px 132px;
   }
 
   .video-card {
-    border-radius: 20px;
-    min-height: 32vh;
+    border-radius: 18px;
+    min-height: 30vh;
+  }
+
+  .remote-card {
+    min-height: 36vh;
+  }
+
+  .local-card {
+    min-height: 26vh;
   }
 
   .control-btn {
-    min-width: 82px;
+    min-width: 78px;
     height: 48px;
     padding: 0 12px;
-    border-radius: 16px;
     font-size: 13px;
   }
 
@@ -2319,12 +2163,8 @@ onBeforeUnmount(() => {
     font-size: 12px;
   }
 
-  .hero-right {
-    grid-template-columns: repeat(2, 1fr);
-  }
-
-  .dynamic-strip {
-    border-radius: 20px;
+  .hero-title {
+    font-size: 28px;
   }
 }
 </style>
