@@ -147,7 +147,7 @@
               <template v-if="isOwnProfile">
                 <button class="btn primary" @click="openEdit = true">Edit Profile</button>
                 <button class="btn ghost" @click="copyLink">Share</button>
-                <button class="btn ghost" @click="goInbox">Message</button>
+                <button class="btn ghost" @click="goInbox">Inbox</button>
                 <button class="btn ghost" @click="goLive">Go Live</button>
                 <button class="btn ghost" @click="goHome">Home</button>
               </template>
@@ -161,6 +161,55 @@
                 <button class="btn ghost" @click="startCall('video')">Video Call</button>
                 <button class="btn ghost" @click="copyLink">Share</button>
               </template>
+            </div>
+
+            <div class="connectDeck">
+              <button class="connectCard glassMini" @click="goInbox">
+                <div class="connectIcon">💬</div>
+                <div class="connectMeta">
+                  <div class="connectTitle">{{ isOwnProfile ? "Open Inbox" : "Message" }}</div>
+                  <div class="connectSub">
+                    {{ isOwnProfile ? "Jump back into chats fast." : "Start a direct conversation now." }}
+                  </div>
+                </div>
+              </button>
+
+              <button
+                v-if="!isOwnProfile"
+                class="connectCard glassMini"
+                @click="startCall('audio')"
+              >
+                <div class="connectIcon">📞</div>
+                <div class="connectMeta">
+                  <div class="connectTitle">Audio Call</div>
+                  <div class="connectSub">Quick voice connection from the profile.</div>
+                </div>
+              </button>
+
+              <button
+                class="connectCard glassMini"
+                @click="isOwnProfile ? goLive() : copyLink()"
+              >
+                <div class="connectIcon">{{ isOwnProfile ? "🔴" : "🔗" }}</div>
+                <div class="connectMeta">
+                  <div class="connectTitle">{{ isOwnProfile ? "Start Live" : "Share Profile" }}</div>
+                  <div class="connectSub">
+                    {{ isOwnProfile ? "Go live directly from your profile hub." : "Send this profile to other people." }}
+                  </div>
+                </div>
+              </button>
+
+              <button
+                v-if="!isOwnProfile"
+                class="connectCard glassMini"
+                @click="startCall('video')"
+              >
+                <div class="connectIcon">🎥</div>
+                <div class="connectMeta">
+                  <div class="connectTitle">Video Call</div>
+                  <div class="connectSub">Launch a face-to-face call in one tap.</div>
+                </div>
+              </button>
             </div>
           </div>
         </div>
@@ -419,22 +468,33 @@
 
           <div class="divider"></div>
 
-          <div class="panelTitle small">Quick Actions</div>
-          <div class="sideActions">
+          <div class="panelTitle small">{{ isOwnProfile ? "Command Center" : "Connect" }}</div>
+          <div class="signalCard glassMini">
+            <div class="signalRow">
+              <span class="signalLabel">Status</span>
+              <strong>{{ isOnlineNow ? "Online now" : "Offline now" }}</strong>
+            </div>
+            <div class="signalRow">
+              <span class="signalLabel">Best next move</span>
+              <strong>{{ isOwnProfile ? "Post, message, or go live" : "Message or call from here" }}</strong>
+            </div>
+          </div>
+
+          <div class="sideActions premiumActions">
             <template v-if="isOwnProfile">
               <button class="btn ghost fullBtn" @click="goHome">Create Post</button>
-              <button class="btn ghost fullBtn" @click="goLive">Start Live</button>
               <button class="btn ghost fullBtn" @click="goInbox">Open Inbox</button>
+              <button class="btn ghost fullBtn" @click="goLive">Start Live</button>
               <button class="btn primary fullBtn" @click="openEdit = true">Update Profile</button>
             </template>
 
             <template v-else>
-              <button class="btn primary fullBtn" @click="toggleFollow">
-                {{ isFollowing ? "Following" : "Follow User" }}
-              </button>
-              <button class="btn ghost fullBtn" @click="goInbox">Message User</button>
+              <button class="btn primary fullBtn" @click="goInbox">Message User</button>
               <button class="btn ghost fullBtn" @click="startCall('video')">Video Call</button>
               <button class="btn ghost fullBtn" @click="startCall('audio')">Audio Call</button>
+              <button class="btn ghost fullBtn" @click="toggleFollow">
+                {{ isFollowing ? "Following" : "Follow User" }}
+              </button>
             </template>
           </div>
         </aside>
@@ -989,7 +1049,14 @@ function goHome() {
 }
 
 function goInbox() {
-  router.push("/messages")
+  const query = {}
+
+  if (!isOwnProfile.value && profile.id) {
+    query.userId = String(profile.id)
+    query.name = displayName.value
+  }
+
+  router.push({ path: "/messages", query })
 }
 
 function goLive() {
@@ -1299,6 +1366,74 @@ onBeforeUnmount(() => {
 .usernameRow {
   margin-top: 10px;
 }
+.connectDeck {
+  margin-top: 16px;
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: 12px;
+}
+.connectCard {
+  width: 100%;
+  padding: 16px;
+  display: flex;
+  align-items: center;
+  gap: 14px;
+  color: white;
+  text-align: left;
+  cursor: pointer;
+  transition: transform .18s ease, border-color .18s ease, background .18s ease;
+}
+.connectCard:hover {
+  transform: translateY(-2px);
+  border-color: rgba(127, 208, 255, 0.28);
+  background: rgba(255,255,255,.08);
+}
+.connectIcon {
+  width: 52px;
+  height: 52px;
+  border-radius: 18px;
+  display: grid;
+  place-items: center;
+  font-size: 24px;
+  flex: 0 0 52px;
+  background: linear-gradient(135deg, rgba(255,42,109,.24), rgba(91,140,255,.24));
+  border: 1px solid rgba(255,255,255,.12);
+}
+.connectMeta {
+  min-width: 0;
+}
+.connectTitle {
+  font-size: 15px;
+  font-weight: 900;
+}
+.connectSub {
+  margin-top: 4px;
+  opacity: .72;
+  font-size: 13px;
+  line-height: 1.35;
+}
+.signalCard {
+  padding: 14px;
+  margin-bottom: 14px;
+}
+.signalRow {
+  display: flex;
+  justify-content: space-between;
+  gap: 12px;
+  align-items: center;
+}
+.signalRow + .signalRow {
+  margin-top: 10px;
+  padding-top: 10px;
+  border-top: 1px solid rgba(255,255,255,.08);
+}
+.signalLabel {
+  opacity: .74;
+}
+.premiumActions {
+  margin-top: 0;
+}
+
 .bio {
   margin: 16px 0 0;
   font-size: 16px;
