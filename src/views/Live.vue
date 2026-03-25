@@ -297,7 +297,8 @@ const me = (() => {
 })()
 
 const liveId = String(route.query.liveId || `live-${Date.now()}`)
-const mode = String(route.query.mode || "viewer")
+const rawMode = String(route.query.mode || "watch").toLowerCase()
+const mode = rawMode === "viewer" ? "watch" : rawMode
 const isHost = mode === "host"
 const modeLabel = isHost ? "Hosting" : "Watching"
 
@@ -642,7 +643,7 @@ async function copyLiveId() {
 }
 
 async function shareLive() {
-  const url = `${window.location.origin}/live?mode=viewer&liveId=${encodeURIComponent(liveId)}`
+  const url = `${window.location.origin}/live?mode=watch&liveId=${encodeURIComponent(liveId)}`
   const text = `Join my Pulse live: ${url}`
 
   try {
@@ -666,21 +667,23 @@ function resetStatusSoon() {
 }
 
 function goDashboard() {
-  router.push("/dashboard")
+  cleanup()
+  document.body.style.overflow = ""
+  router.replace("/dashboard")
 }
 
 function leaveLive() {
   socket.emit("live:leave", { liveId })
   cleanup()
   document.body.style.overflow = ""
-  router.back()
+  router.replace("/dashboard")
 }
 
 function endLive() {
   socket.emit("live:end", { liveId })
   cleanup()
   document.body.style.overflow = ""
-  router.back()
+  router.replace("/dashboard")
 }
 
 function clearRejoinTimer() {
@@ -812,7 +815,7 @@ async function onIce({ candidate }) {
 function onLiveEnded() {
   cleanup()
   document.body.style.overflow = ""
-  router.back()
+  router.replace("/dashboard")
 }
 
 function onSocketConnect() {
