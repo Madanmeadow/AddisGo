@@ -338,17 +338,27 @@ function setOnline(socket, userId, username) {
 /* ---------- LIVE ---------- */
 const liveStreams = new Set();
 const liveHosts = new Map(); // liveId -> hostSocketId
+const liveViewers = new Map(); // liveId -> Set<socketId>
+
+function ensureLiveViewerSet(liveId) {
+  const id = String(liveId);
+  if (!liveViewers.has(id)) liveViewers.set(id, new Set());
+  return liveViewers.get(id);
+}
 
 function emitLiveList() {
   io.emit("live-list", Array.from(liveStreams));
 }
 
 function emitLivePresence(liveId) {
-  const room = io.sockets.adapter.rooms.get(`live:${liveId}`);
-  const count = room ? room.size : 0;
-  io.to(`live:${liveId}`).emit("live:presence", {
-    liveId: String(liveId),
-    viewerCount: count,
+  const id = String(liveId);
+  const viewers = ensureLiveViewerSet(id);
+  const hostSocketId = liveHosts.get(id);
+
+  io.to(`live:${id}`).emit("live:presence", {
+    liveId: id,
+    viewerCount: viewers.size,
+    hostSocketId: hostSocketId || null,
   });
 }
 
@@ -367,7 +377,6 @@ function ensureLiveRequestMap(liveId) {
   if (!liveMicRequests.has(id)) liveMicRequests.set(id, new Map());
   return liveMicRequests.get(id);
 }
-
 /* ---------- DIRECT CALLS: OFFLINE QUEUE + BUSY ---------- */
 const pendingIncomingCalls = new Map(); // userId -> Map(roomId -> payload)
 const userBusyRoom = new Map();         // userId -> roomId
