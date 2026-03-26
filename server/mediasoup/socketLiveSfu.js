@@ -1,71 +1,61 @@
-// server/mediasoup/socketLiveSfu.js
-
-const rooms = new Map(); // liveId -> room
-
+// server/mediasoup/socketLiveSfu.js (enhanced)
 export function registerLiveSfuHandlers(io, socket) {
-  /* ================= JOIN ================= */
+  const rooms = new Map(); // liveId -> room
+
+  /* ====================== JOIN ====================== */
   socket.on("sfu:join", async ({ liveId, role }, cb) => {
-    try {
-      if (!liveId) return cb({ error: "liveId required" });
+    if (!liveId) return cb({ error: "liveId required" });
 
-      let room = rooms.get(liveId);
-
-      if (!room) {
-        room = await createRoom(liveId);
-        rooms.set(liveId, room);
-
-        // 🔥 sync with global live system
-        io.emit("live-list", Array.from(rooms.keys()));
-      }
-
-      socket.join(`live:${liveId}`);
-      room.peers.set(socket.id, { role });
-
-      cb({
-        rtpCapabilities: room.router.rtpCapabilities,
-      });
-    } catch (err) {
-      console.error("SFU JOIN ERROR:", err);
-      cb({ error: err.message });
+    let room = rooms.get(liveId);
+    if (!room) {
+      room = await createRoom(liveId);
+      rooms.set(liveId, room);
+      io.emit("live-list", Array.from(rooms.keys()));
     }
+
+    socket.join(`live:${liveId}`);
+    room.peers.set(socket.id, { role, micOn: role === "speaker" });
+
+    cb({ rtpCapabilities: room.router.rtpCapabilities });
+
+    // send existing producers for grid
+    const producers = Array.from(room.producers.keys());
+    socket.emit("sfu:getProducers", producers);
   });
 
-  /* ================= CREATE TRANSPORT ================= */
-  socket.on("sfu:createTransport", async ({ liveId }, cb) => {
-    const room = rooms.get(liveId);
-    if (!room) return cb({ error: "Room not found" });
-
-    const transport = await room.router.createWebRtcTransport({
-      listenIps: [
-        {
-          ip: "0.0.0.0",
-          announcedIp: process.env.PUBLIC_IP, // ⚠️ IMPORTANT
-        },
-      ],
-      enableUdp: true,
-      enableTcp: true,
-    });
-
-    room.transports.set(socket.id, transport);
-
-    cb({
-      id: transport.id,
-      iceParameters: transport.iceParameters,
-      iceCandidates: transport.iceCandidates,
-      dtlsParameters: transport.dtlsParameters,
-    });
-  });
-
-  /* ================= CONNECT ================= */
-  socket.on("sfu:connectTransport", async ({ liveId, dtlsParameters }) => {
+  /* ====================== SPEAKER REQUEST ====================== */
+  socket.on("sfu:requestSpeak", ({ liveId }) => {
     const room = rooms.get(liveId);
     if (!room) return;
 
-    const transport = room.transports.get(socket.id);
-    await transport.connect({ dtlsParameters });
+    const hostSocketId = room.hostSocketId;
+    if (!hostSocketId) return;
+
+    const req = { socketId: socket.id, userId: socket.data.user?.id };
+    if (!room.speakerRequests) room.speakerRequests = new Map();
+    room.speakerRequests.set(socket.id, req);
+
+    // notify host
+    io.to(hostSocketId).emit("sfu:speakerRequested", req);
   });
 
-  /* ================= PRODUCE ================= */
+  socket.on("sfu:approveSpeaker", ({ liveId, socketId }) => {
+    const room = rooms.get(liveId);
+    if (!room) return;
+    if (!room.peers.has(socketId)) return;
+
+    const peer = room.peers.get(socketId);
+    peer.role = "speaker";
+    peer.micOn = true;
+
+    room.peers.set(socketId, peer);
+    io.to(socketId).emit("sfu:approvedSpeaker", { liveId });
+
+    // broadcast new grid update
+    io.to(`live:${liveId}`).emit("sfu:gridUpdate", Array.from(room.peers.values()));
+  });
+
+  /* ====================== PRODUCE ====================== */
   socket.on("sfu:produce", async ({ liveId, kind, rtpParameters }, cb) => {
     const room = rooms.get(liveId);
     if (!room) return;
@@ -74,73 +64,47 @@ export function registerLiveSfuHandlers(io, socket) {
     const producer = await transport.produce({ kind, rtpParameters });
 
     room.producers.set(producer.id, producer);
-
-    // 🔥 notify ALL viewers
-    socket.to(`live:${liveId}`).emit("sfu:newProducer", {
-      producerId: producer.id,
-    });
-
     cb({ id: producer.id });
+
+    // notify all for new grid
+    socket.to(`live:${liveId}`).emit("sfu:newProducer", { producerId: producer.id });
   });
 
-  /* ================= CONSUME ================= */
-  socket.on("sfu:consume", async ({ liveId, producerId, rtpCapabilities }, cb) => {
+  /* ====================== RECORDING ====================== */
+  socket.on("sfu:startRecording", ({ liveId }) => {
     const room = rooms.get(liveId);
-    if (!room) return cb({ error: "Room not found" });
+    if (!room) return;
 
-    if (!room.router.canConsume({ producerId, rtpCapabilities })) {
-      return cb({ error: "Cannot consume" });
-    }
-
-    const transport = room.transports.get(socket.id);
-
-    const consumer = await transport.consume({
-      producerId,
-      rtpCapabilities,
-      paused: false,
-    });
-
-    cb({
-      id: consumer.id,
-      producerId,
-      kind: consumer.kind,
-      rtpParameters: consumer.rtpParameters,
-    });
+    // setup recording logic (external FFmpeg or mediasoup recording)
+    // just flag for now
+    room.recording = true;
+    io.to(`live:${liveId}`).emit("sfu:recordingStarted", { liveId });
   });
 
-  /* ================= GET PRODUCERS ================= */
-  socket.on("sfu:getProducers", ({ liveId }, cb) => {
+  socket.on("sfu:stopRecording", ({ liveId }) => {
     const room = rooms.get(liveId);
-    if (!room) return cb([]);
+    if (!room) return;
 
-    cb(Array.from(room.producers.keys()));
+    room.recording = false;
+    io.to(`live:${liveId}`).emit("sfu:recordingStopped", { liveId });
   });
 
-  /* ================= DISCONNECT ================= */
+  /* ====================== DISCONNECT ====================== */
   socket.on("disconnect", () => {
     for (const room of rooms.values()) {
       room.transports.delete(socket.id);
       room.peers.delete(socket.id);
+      if (room.speakerRequests) room.speakerRequests.delete(socket.id);
     }
   });
 }
 
-/* ================= HELPERS ================= */
-
+/* ====================== CREATE ROOM ====================== */
 async function createRoom(liveId) {
   const router = await global.mediasoupWorker.createRouter({
     mediaCodecs: [
-      {
-        kind: "audio",
-        mimeType: "audio/opus",
-        clockRate: 48000,
-        channels: 2,
-      },
-      {
-        kind: "video",
-        mimeType: "video/VP8",
-        clockRate: 90000,
-      },
+      { kind: "audio", mimeType: "audio/opus", clockRate: 48000, channels: 2 },
+      { kind: "video", mimeType: "video/VP8", clockRate: 90000 },
     ],
   });
 
@@ -150,5 +114,8 @@ async function createRoom(liveId) {
     peers: new Map(),
     transports: new Map(),
     producers: new Map(),
+    hostSocketId: null,
+    speakerRequests: new Map(),
+    recording: false,
   };
 }

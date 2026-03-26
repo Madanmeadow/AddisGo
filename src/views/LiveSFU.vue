@@ -1,149 +1,129 @@
 <template>
   <Layout>
     <div class="live">
-      <h2>🔴 Live SFU</h2>
+      <h2>🔴 Live SFU Grid</h2>
 
-      <video ref="videoEl" autoplay playsinline muted class="video"></video>
-
-      <div class="controls">
-        <button @click="start">Start Live</button>
-        <button @click="join">Join Live</button>
+      <div class="grid">
+        <video
+          v-for="peer in peers"
+          :key="peer.userId"
+          ref="videoEl"
+          autoplay
+          playsinline
+          :muted="peer.userId === localUserId"
+        ></video>
       </div>
 
-      <div class="info">
-        Live ID: {{ liveId }}
+      <div class="controls">
+        <button v-if="role==='audience'" @click="requestSpeak">Request to Speak</button>
+        <button v-if="role==='host'" @click="startRecording">Start Recording</button>
+        <button v-if="role==='host'" @click="stopRecording">Stop Recording</button>
       </div>
     </div>
   </Layout>
 </template>
 
 <script setup>
-import { ref, onMounted } from "vue";
+import { ref, onMounted, reactive } from "vue";
 import io from "socket.io-client";
 import * as mediasoupClient from "mediasoup-client";
 
 const socket = io(import.meta.env.VITE_API_URL);
 
-const videoEl = ref(null);
-let device;
-let transport;
+const localUserId = ref(null);
+const liveId = new URLSearchParams(window.location.search).get("liveId") || `live-${Date.now()}`;
+const role = ref("audience"); // audience | host | speaker
+const peers = reactive([]);
 
-const params = new URLSearchParams(window.location.search);
-const liveId = params.get("liveId") || `live-${Date.now()}`;
+let device, transport, localStream;
 
-let localStream;
+onMounted(async () => {
+  localUserId.value = String(Math.floor(Math.random()*9999)); // demo userId
+  joinLive();
+});
 
-/* ================= HOST ================= */
-async function start() {
-  localStream = await navigator.mediaDevices.getUserMedia({
-    video: true,
-    audio: true,
-  });
-
-  videoEl.value.srcObject = localStream;
-
-  socket.emit("sfu:join", { liveId, role: "host" }, async (data) => {
+async function joinLive() {
+  socket.emit("sfu:join", { liveId, role: role.value }, async (data) => {
     device = new mediasoupClient.Device();
     await device.load({ routerRtpCapabilities: data.rtpCapabilities });
 
-    socket.emit("sfu:createTransport", { liveId }, (t) => {
+    socket.emit("sfu:createTransport", { liveId }, async (t) => {
       transport = device.createSendTransport(t);
 
       transport.on("connect", ({ dtlsParameters }, cb) => {
-        socket.emit("sfu:connectTransport", {
-          liveId,
-          dtlsParameters,
-        });
+        socket.emit("sfu:connectTransport", { liveId, dtlsParameters });
         cb();
       });
 
       transport.on("produce", ({ kind, rtpParameters }, cb) => {
-        socket.emit(
-          "sfu:produce",
-          {
-            liveId,
-            kind,
-            rtpParameters,
-          },
-          ({ id }) => cb({ id })
-        );
+        socket.emit("sfu:produce", { liveId, kind, rtpParameters }, ({ id }) => cb({ id }));
       });
 
-      localStream.getTracks().forEach((track) => {
-        transport.produce({ track });
-      });
+      if (role.value !== "audience") {
+        localStream = await navigator.mediaDevices.getUserMedia({ video: true, audio: true });
+        localStream.getTracks().forEach(track => transport.produce({ track }));
+        addPeer(localUserId.value, localStream, role.value);
+      }
     });
+  });
+
+  socket.on("sfu:newProducer", ({ producerId }) => {
+    consume(producerId);
+  });
+
+  socket.on("sfu:gridUpdate", (updatedPeers) => {
+    peers.splice(0, peers.length, ...updatedPeers);
+  });
+
+  socket.on("sfu:approvedSpeaker", () => {
+    role.value = "speaker";
+    startSpeaking();
   });
 }
 
-/* ================= VIEWER ================= */
-async function join() {
-  socket.emit("sfu:join", { liveId, role: "viewer" }, async (data) => {
-    device = new mediasoupClient.Device();
-    await device.load({ routerRtpCapabilities: data.rtpCapabilities });
+function addPeer(userId, stream, role) {
+  peers.push({ userId, stream, role });
+}
 
-    socket.emit("sfu:createTransport", { liveId }, (t) => {
-      const recvTransport = device.createRecvTransport(t);
+async function consume(producerId) {
+  const recvTransport = device.createRecvTransport(await new Promise(res => {
+    socket.emit("sfu:createTransport", { liveId }, res);
+  }));
 
-      recvTransport.on("connect", ({ dtlsParameters }, cb) => {
-        socket.emit("sfu:connectTransport", {
-          liveId,
-          dtlsParameters,
-        });
-        cb();
-      });
+  recvTransport.on("connect", ({ dtlsParameters }, cb) => {
+    socket.emit("sfu:connectTransport", { liveId, dtlsParameters });
+    cb();
+  });
 
-      // 🔥 get existing producers
-      socket.emit("sfu:getProducers", { liveId }, async (producers) => {
-        for (const producerId of producers) {
-          consume(producerId, recvTransport);
-        }
-      });
-
-      // 🔥 listen new producers
-      socket.on("sfu:newProducer", ({ producerId }) => {
-        consume(producerId, recvTransport);
-      });
-    });
+  socket.emit("sfu:consume", { liveId, producerId, rtpCapabilities: device.rtpCapabilities }, async (data) => {
+    const consumer = await recvTransport.consume(data);
+    const stream = new MediaStream([consumer.track]);
+    addPeer(data.producerId, stream, "speaker");
   });
 }
 
-/* ================= CONSUME ================= */
-function consume(producerId, transport) {
-  socket.emit(
-    "sfu:consume",
-    {
-      liveId,
-      producerId,
-      rtpCapabilities: device.rtpCapabilities,
-    },
-    async (data) => {
-      const consumer = await transport.consume(data);
+function requestSpeak() {
+  socket.emit("sfu:requestSpeak", { liveId });
+}
 
-      const stream = new MediaStream([consumer.track]);
-      videoEl.value.srcObject = stream;
-    }
-  );
+function startSpeaking() {
+  role.value = "speaker";
+  joinLive();
+}
+
+function startRecording() {
+  socket.emit("sfu:startRecording", { liveId });
+}
+
+function stopRecording() {
+  socket.emit("sfu:stopRecording", { liveId });
 }
 </script>
 
 <style scoped>
-.live {
-  padding: 20px;
-  color: white;
-}
-.video {
-  width: 100%;
-  border-radius: 12px;
-  background: black;
-}
-.controls {
-  margin-top: 15px;
-  display: flex;
-  gap: 10px;
-}
-button {
-  padding: 10px;
-  border-radius: 8px;
-}
+.live { padding:20px; color:white; }
+.grid { display:grid; grid-template-columns:repeat(auto-fill,minmax(120px,1fr)); gap:8px; }
+video { width:100%; border-radius:8px; background:black; }
+.controls { margin-top:15px; display:flex; gap:10px; }
+button { padding:8px 12px; border-radius:6px; }
 </style>
