@@ -31,7 +31,7 @@ const routes = [
   // ✅ NEW ROUTE (DO NOT REMOVE OLD LIVE)
   { path: "/live-sfu", component: LiveSFU },
 
-  { path: "/call-sfu", component: () => import("./views/CallSFU.vue") }
+  { path: "/call-sfu", component: () => import("../views/CallSFU.vue") },
   { path: "/call", component: Call },
   { path: "/roomcall", component: RoomCall },
   { path: "/room-call", component: RoomCall },
