@@ -20,7 +20,10 @@ import conversationsRoutes from "./routes/conversations.routes.js";
 import messagesRoutes from "./routes/messages.routes.js";
 import uploadRoutes from "./routes/upload.routes.js";
 import likesRoutes from "./routes/likes.routes.js";
+import { initMediasoupWorker } from "./mediasoup/workers.js";
+import { registerLiveSfuHandlers } from "./mediasoup/socketLiveSfu.js";
 
+await initMediasoupWorker();
 dotenv.config();
 
 /* =========================
@@ -766,7 +769,7 @@ function removeParticipantFromCallRooms(socket) {
 io.on("connection", (socket) => {
   logSOCK("Socket connected:", socket.id);
   socket.data.user = socket.data.user || null;
-
+  registerLiveSfuHandlers(io, socket);
   /* ✅ Auto-register if JWT auth succeeded */
   if (socket.userId) {
     setOnline(socket, socket.userId, socket.username);
