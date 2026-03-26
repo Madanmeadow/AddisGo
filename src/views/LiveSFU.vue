@@ -17,6 +17,14 @@
             <button
               v-if="isHost && joined"
               type="button"
+              class="chip ghost"
+              @click="copyJoinLink"
+            >
+              Copy Join Link
+            </button>
+            <button
+              v-if="isHost && joined"
+              type="button"
               class="chip danger"
               @click="endLive"
             >
@@ -44,6 +52,34 @@
             <div class="card-title">Join as Viewer</div>
             <input v-model.trim="liveIdInput" class="input" placeholder="live-123" />
             <button type="button" class="primary alt" @click="joinAsViewer">Join SFU Live</button>
+          </div>
+        </section>
+
+        <section v-if="!joined" class="discover card glassy">
+          <div class="discover-head">
+            <div class="card-title">Live Now</div>
+            <button type="button" class="chip ghost" @click="loadLiveList">Refresh</button>
+          </div>
+
+          <div v-if="!sfuLives.length" class="empty">
+            No SFU lives yet.
+          </div>
+
+          <div v-else class="live-list">
+            <article v-for="live in sfuLives" :key="live.liveId" class="live-item">
+              <div>
+                <div class="live-name">{{ live.liveId }}</div>
+                <div class="live-meta">
+                  Host: {{ live.hostUsername || "Host" }} •
+                  {{ live.audienceCount || 0 }} audience •
+                  {{ live.guestCount || 0 }} guests
+                </div>
+              </div>
+
+              <button type="button" class="chip" @click="joinListedLive(live)">
+                Join
+              </button>
+            </article>
           </div>
         </section>
 
@@ -81,9 +117,7 @@
 
               <div class="video-overlay">
                 <div class="big">{{ isHost ? "Your Live Preview" : "Stage Viewer" }}</div>
-                <div class="small">
-                  {{ stageStatus }}
-                </div>
+                <div class="small">{{ stageStatus }}</div>
               </div>
             </div>
 
@@ -142,12 +176,13 @@
 
 <script setup>
 import { nextTick, onBeforeUnmount, onMounted, ref } from "vue";
-import { useRouter } from "vue-router";
+import { useRoute, useRouter } from "vue-router";
 import Layout from "../components/Layout.vue";
 import socket, { ensurePulseSocket, refreshSocketAuth } from "../socket";
 import { LiveSfuClient } from "../lib/liveSfuClient";
 
 const router = useRouter();
+const route = useRoute();
 
 const joined = ref(false);
 const role = ref("");
@@ -158,6 +193,7 @@ const chatText = ref("");
 const chat = ref([]);
 const socketConnected = ref(socket.connected);
 const chatListRef = ref(null);
+const sfuLives = ref([]);
 
 const presence = ref({
   audienceCount: 0,
@@ -184,6 +220,13 @@ function makeLiveId() {
   return `live-${me?.id || "user"}-${Date.now().toString().slice(-6)}`;
 }
 
+function setQueryLiveId(liveId) {
+  router.replace({
+    path: "/live-sfu",
+    query: liveId ? { liveId } : {},
+  });
+}
+
 async function startAsHost() {
   error.value = "";
   const id = String(liveIdInput.value || makeLiveId()).trim();
@@ -201,12 +244,13 @@ async function startAsHost() {
       role.value = "host";
       isHost.value = true;
       stageStatus.value = "Creating SFU device...";
+      setQueryLiveId(id);
 
       sfu = new LiveSfuClient();
-      await sfu.init({ liveId: id });
+      await sfu.init(id);
 
       stageStatus.value = "Starting local media...";
-      const stream = await sfu.startHostMedia();
+      const stream = await sfu.startHost();
 
       await nextTick();
       if (localVideoRef.value) {
@@ -214,6 +258,7 @@ async function startAsHost() {
       }
 
       stageStatus.value = "Live and publishing";
+      loadLiveList();
     } catch (e) {
       error.value = e?.message || "Failed to start host live";
       stageStatus.value = "Host start failed";
@@ -241,10 +286,12 @@ async function joinAsViewer() {
       role.value = res.role || "audience";
       isHost.value = false;
       stageStatus.value = "Joining audience...";
+      setQueryLiveId(id);
 
       sfu = new LiveSfuClient();
-      await sfu.init({ liveId: id });
-      const stream = await sfu.startAudienceMedia();
+      await sfu.init(id);
+
+      const stream = await sfu.startViewer();
 
       await nextTick();
       if (remoteVideoRef.value) {
@@ -252,11 +299,17 @@ async function joinAsViewer() {
       }
 
       stageStatus.value = "Connected to live";
+      loadLiveList();
     } catch (e) {
       error.value = e?.message || "Failed to join live";
       stageStatus.value = "Join failed";
     }
   });
+}
+
+function joinListedLive(live) {
+  liveIdInput.value = String(live?.liveId || "");
+  joinAsViewer();
 }
 
 function sendChat() {
@@ -276,6 +329,12 @@ function copyLiveId() {
   navigator.clipboard?.writeText(currentLiveId.value).catch(() => {});
 }
 
+function copyJoinLink() {
+  if (!currentLiveId.value) return;
+  const url = `${window.location.origin}/live-sfu?liveId=${encodeURIComponent(currentLiveId.value)}`;
+  navigator.clipboard?.writeText(url).catch(() => {});
+}
+
 function resetState() {
   joined.value = false;
   role.value = "";
@@ -292,6 +351,7 @@ function resetState() {
   chat.value = [];
   micOn.value = true;
   camOn.value = true;
+  setQueryLiveId("");
 
   try { sfu?.close(); } catch {}
   sfu = null;
@@ -306,6 +366,7 @@ function leaveLive() {
 
   socket.emit("sfu:live:leave", { liveId: currentLiveId.value }, () => {
     resetState();
+    loadLiveList();
     router.replace("/dashboard");
   });
 }
@@ -319,6 +380,7 @@ function endLive() {
 
   socket.emit("sfu:live:end", { liveId: currentLiveId.value }, () => {
     resetState();
+    loadLiveList();
     router.replace("/dashboard");
   });
 }
@@ -338,6 +400,14 @@ function toggleCam() {
   camOn.value = !camOn.value;
   const track = sfu?.localStream?.getVideoTracks?.()[0];
   if (track) track.enabled = camOn.value;
+}
+
+function loadLiveList() {
+  socket.emit("sfu:live:list:get", {}, (res) => {
+    if (res?.ok) {
+      sfuLives.value = Array.isArray(res.lives) ? res.lives : [];
+    }
+  });
 }
 
 function onPresence(payload) {
@@ -361,26 +431,40 @@ function onChat(payload) {
 
 function onLiveEnded() {
   resetState();
+  loadLiveList();
   router.replace("/dashboard");
 }
 
 function onConnect() {
   socketConnected.value = true;
+  loadLiveList();
 }
 
 function onDisconnect() {
   socketConnected.value = false;
 }
 
+function onLiveList(lives) {
+  sfuLives.value = Array.isArray(lives) ? lives : [];
+}
+
 onMounted(() => {
   ensurePulseSocket();
   refreshSocketAuth(true);
+
+  const qLiveId = String(route.query.liveId || "").trim();
+  if (qLiveId) {
+    liveIdInput.value = qLiveId;
+  }
 
   socket.on("connect", onConnect);
   socket.on("disconnect", onDisconnect);
   socket.on("sfu:live:presence", onPresence);
   socket.on("sfu:live:chat", onChat);
   socket.on("sfu:live:ended", onLiveEnded);
+  socket.on("sfu:live:list", onLiveList);
+
+  loadLiveList();
 });
 
 onBeforeUnmount(() => {
@@ -389,6 +473,7 @@ onBeforeUnmount(() => {
   socket.off("sfu:live:presence", onPresence);
   socket.off("sfu:live:chat", onChat);
   socket.off("sfu:live:ended", onLiveEnded);
+  socket.off("sfu:live:list", onLiveList);
 
   try { sfu?.close(); } catch {}
   sfu = null;
@@ -544,6 +629,43 @@ onBeforeUnmount(() => {
   background: linear-gradient(135deg, #ff5f7d, #ff7a59);
 }
 
+.discover {
+  margin-bottom: 16px;
+}
+
+.discover-head {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  gap: 12px;
+  margin-bottom: 12px;
+}
+
+.live-list {
+  display: grid;
+  gap: 12px;
+}
+
+.live-item {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  gap: 12px;
+  border-radius: 16px;
+  padding: 14px;
+  background: rgba(255,255,255,0.05);
+}
+
+.live-name {
+  font-weight: 800;
+}
+
+.live-meta {
+  margin-top: 4px;
+  color: #b8c2e6;
+  font-size: 13px;
+}
+
 .stage-head {
   display: flex;
   align-items: center;
@@ -676,6 +798,12 @@ onBeforeUnmount(() => {
   .video-wrap,
   .video {
     min-height: 300px;
+  }
+
+  .live-item,
+  .discover-head {
+    flex-direction: column;
+    align-items: stretch;
   }
 }
 </style>

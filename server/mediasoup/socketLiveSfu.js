@@ -9,6 +9,7 @@ import {
   closePeer,
   deleteRoom,
   getAllProducerSummaries,
+  listRooms,
 } from "./rooms.js";
 
 function safeAck(ack, payload) {
@@ -32,6 +33,10 @@ function emitRoomPresence(io, room) {
     hostUserId: room.hostUserId,
     hostUsername: room.hostUsername,
   });
+}
+
+function emitSfuLiveList(io) {
+  io.emit("sfu:live:list", listRooms());
 }
 
 export function registerLiveSfuHandlers(io, socket) {
@@ -59,6 +64,7 @@ export function registerLiveSfuHandlers(io, socket) {
       });
 
       emitRoomPresence(io, room);
+      emitSfuLiveList(io);
       console.log("[SFU CREATE]", room.liveId, "host:", socket.id);
     } catch (err) {
       console.error("[SFU CREATE ERROR]", err);
@@ -96,17 +102,25 @@ export function registerLiveSfuHandlers(io, socket) {
         hostUsername: room.hostUsername,
       });
 
-      io.to(`sfu:${id}`).emit("sfu:producerAdded:sync", {
+      io.to(socket.id).emit("sfu:producerAdded:sync", {
         liveId: room.liveId,
         producers: getAllProducerSummaries(room, socket.id),
       });
 
       emitRoomPresence(io, room);
+      emitSfuLiveList(io);
       console.log("[SFU JOIN]", room.liveId, "socket:", socket.id);
     } catch (err) {
       console.error("[SFU JOIN ERROR]", err);
       safeAck(ack, { ok: false, error: err.message || "Failed to join SFU live" });
     }
+  });
+
+  socket.on("sfu:live:list:get", (_payload = {}, ack) => {
+    safeAck(ack, {
+      ok: true,
+      lives: listRooms(),
+    });
   });
 
   socket.on("sfu:getRouterRtpCapabilities", ({ liveId } = {}, ack) => {
@@ -167,144 +181,134 @@ export function registerLiveSfuHandlers(io, socket) {
     }
   });
 
-  socket.on(
-    "sfu:connectWebRtcTransport",
-    async ({ liveId, transportId, dtlsParameters } = {}, ack) => {
-      try {
-        const room = getRoom(liveId);
-        if (!room) return safeAck(ack, { ok: false, error: "Live not found" });
+  socket.on("sfu:connectWebRtcTransport", async ({ liveId, transportId, dtlsParameters } = {}, ack) => {
+    try {
+      const room = getRoom(liveId);
+      if (!room) return safeAck(ack, { ok: false, error: "Live not found" });
 
-        const peer = getPeer(room, socket.id);
-        if (!peer) return safeAck(ack, { ok: false, error: "Peer not found" });
+      const peer = getPeer(room, socket.id);
+      if (!peer) return safeAck(ack, { ok: false, error: "Peer not found" });
 
-        const transport = peer.transports.get(String(transportId));
-        if (!transport) return safeAck(ack, { ok: false, error: "Transport not found" });
+      const transport = peer.transports.get(String(transportId));
+      if (!transport) return safeAck(ack, { ok: false, error: "Transport not found" });
 
-        await transport.connect({ dtlsParameters });
-
-        safeAck(ack, { ok: true });
-      } catch (err) {
-        console.error("[SFU TRANSPORT CONNECT ERROR]", err);
-        safeAck(ack, { ok: false, error: err.message || "Failed to connect transport" });
-      }
+      await transport.connect({ dtlsParameters });
+      safeAck(ack, { ok: true });
+    } catch (err) {
+      console.error("[SFU TRANSPORT CONNECT ERROR]", err);
+      safeAck(ack, { ok: false, error: err.message || "Failed to connect transport" });
     }
-  );
+  });
 
-  socket.on(
-    "sfu:produce",
-    async ({ liveId, transportId, kind, rtpParameters, appData } = {}, ack) => {
-      try {
-        const room = getRoom(liveId);
-        if (!room) return safeAck(ack, { ok: false, error: "Live not found" });
+  socket.on("sfu:produce", async ({ liveId, transportId, kind, rtpParameters, appData } = {}, ack) => {
+    try {
+      const room = getRoom(liveId);
+      if (!room) return safeAck(ack, { ok: false, error: "Live not found" });
 
-        const peer = getPeer(room, socket.id);
-        if (!peer) return safeAck(ack, { ok: false, error: "Peer not found" });
+      const peer = getPeer(room, socket.id);
+      if (!peer) return safeAck(ack, { ok: false, error: "Peer not found" });
 
-        const transport = peer.transports.get(String(transportId));
-        if (!transport) return safeAck(ack, { ok: false, error: "Transport not found" });
+      const transport = peer.transports.get(String(transportId));
+      if (!transport) return safeAck(ack, { ok: false, error: "Transport not found" });
 
-        const producer = await transport.produce({
-          kind,
-          rtpParameters,
-          appData: {
-            ...appData,
-            socketId: socket.id,
-            userId: peer.userId,
-            username: peer.username,
-            role: peer.role,
-          },
-        });
-
-        peer.producers.set(producer.id, producer);
-
-        producer.on("transportclose", () => {
-          peer.producers.delete(producer.id);
-        });
-
-        producer.on("close", () => {
-          peer.producers.delete(producer.id);
-          io.to(`sfu:${room.liveId}`).emit("sfu:producerClosed", {
-            liveId: room.liveId,
-            producerId: producer.id,
-            socketId: socket.id,
-          });
-        });
-
-        io.to(`sfu:${room.liveId}`).emit("sfu:producerAdded", {
-          liveId: room.liveId,
-          producerId: producer.id,
+      const producer = await transport.produce({
+        kind,
+        rtpParameters,
+        appData: {
+          ...appData,
           socketId: socket.id,
           userId: peer.userId,
           username: peer.username,
           role: peer.role,
-          kind: producer.kind,
-          appData: producer.appData || {},
-        });
+        },
+      });
 
-        safeAck(ack, {
-          ok: true,
+      peer.producers.set(producer.id, producer);
+
+      producer.on("transportclose", () => {
+        peer.producers.delete(producer.id);
+      });
+
+      producer.on("close", () => {
+        peer.producers.delete(producer.id);
+        io.to(`sfu:${room.liveId}`).emit("sfu:producerClosed", {
+          liveId: room.liveId,
           producerId: producer.id,
+          socketId: socket.id,
         });
-      } catch (err) {
-        console.error("[SFU PRODUCE ERROR]", err);
-        safeAck(ack, { ok: false, error: err.message || "Failed to produce" });
-      }
+      });
+
+      io.to(`sfu:${room.liveId}`).emit("sfu:producerAdded", {
+        liveId: room.liveId,
+        producerId: producer.id,
+        socketId: socket.id,
+        userId: peer.userId,
+        username: peer.username,
+        role: peer.role,
+        kind: producer.kind,
+        appData: producer.appData || {},
+      });
+
+      safeAck(ack, {
+        ok: true,
+        producerId: producer.id,
+      });
+    } catch (err) {
+      console.error("[SFU PRODUCE ERROR]", err);
+      safeAck(ack, { ok: false, error: err.message || "Failed to produce" });
     }
-  );
+  });
 
-  socket.on(
-    "sfu:consume",
-    async ({ liveId, transportId, producerId, rtpCapabilities } = {}, ack) => {
-      try {
-        const room = getRoom(liveId);
-        if (!room) return safeAck(ack, { ok: false, error: "Live not found" });
+  socket.on("sfu:consume", async ({ liveId, transportId, producerId, rtpCapabilities } = {}, ack) => {
+    try {
+      const room = getRoom(liveId);
+      if (!room) return safeAck(ack, { ok: false, error: "Live not found" });
 
-        if (!room.router.canConsume({ producerId, rtpCapabilities })) {
-          return safeAck(ack, { ok: false, error: "Cannot consume producer" });
-        }
+      if (!room.router.canConsume({ producerId, rtpCapabilities })) {
+        return safeAck(ack, { ok: false, error: "Cannot consume producer" });
+      }
 
-        const peer = getPeer(room, socket.id);
-        if (!peer) return safeAck(ack, { ok: false, error: "Peer not found" });
+      const peer = getPeer(room, socket.id);
+      if (!peer) return safeAck(ack, { ok: false, error: "Peer not found" });
 
-        const transport = peer.transports.get(String(transportId));
-        if (!transport) return safeAck(ack, { ok: false, error: "Transport not found" });
+      const transport = peer.transports.get(String(transportId));
+      if (!transport) return safeAck(ack, { ok: false, error: "Transport not found" });
 
-        const consumer = await transport.consume({
+      const consumer = await transport.consume({
+        producerId,
+        rtpCapabilities,
+        paused: true,
+      });
+
+      peer.consumers.set(consumer.id, consumer);
+
+      consumer.on("transportclose", () => {
+        peer.consumers.delete(consumer.id);
+      });
+
+      consumer.on("producerclose", () => {
+        peer.consumers.delete(consumer.id);
+        io.to(socket.id).emit("sfu:consumerClosed", {
+          liveId: room.liveId,
+          consumerId: consumer.id,
           producerId,
-          rtpCapabilities,
-          paused: true,
         });
+      });
 
-        peer.consumers.set(consumer.id, consumer);
-
-        consumer.on("transportclose", () => {
-          peer.consumers.delete(consumer.id);
-        });
-
-        consumer.on("producerclose", () => {
-          peer.consumers.delete(consumer.id);
-          io.to(socket.id).emit("sfu:consumerClosed", {
-            liveId: room.liveId,
-            consumerId: consumer.id,
-            producerId,
-          });
-        });
-
-        safeAck(ack, {
-          ok: true,
-          consumerOptions: {
-            id: consumer.id,
-            producerId,
-            kind: consumer.kind,
-            rtpParameters: consumer.rtpParameters,
-          },
-        });
-      } catch (err) {
-        console.error("[SFU CONSUME ERROR]", err);
-        safeAck(ack, { ok: false, error: err.message || "Failed to consume" });
-      }
+      safeAck(ack, {
+        ok: true,
+        consumerOptions: {
+          id: consumer.id,
+          producerId,
+          kind: consumer.kind,
+          rtpParameters: consumer.rtpParameters,
+        },
+      });
+    } catch (err) {
+      console.error("[SFU CONSUME ERROR]", err);
+      safeAck(ack, { ok: false, error: err.message || "Failed to consume" });
     }
-  );
+  });
 
   socket.on("sfu:resumeConsumer", async ({ liveId, consumerId } = {}, ack) => {
     try {
@@ -358,8 +362,10 @@ export function registerLiveSfuHandlers(io, socket) {
           liveId: room.liveId,
         });
         deleteRoom(room.liveId);
+        emitSfuLiveList(io);
       } else {
         emitRoomPresence(io, room);
+        emitSfuLiveList(io);
       }
 
       safeAck(ack, { ok: true });
@@ -383,6 +389,7 @@ export function registerLiveSfuHandlers(io, socket) {
       });
 
       deleteRoom(room.liveId);
+      emitSfuLiveList(io);
       safeAck(ack, { ok: true });
     } catch (err) {
       console.error("[SFU END ERROR]", err);
@@ -391,17 +398,10 @@ export function registerLiveSfuHandlers(io, socket) {
   });
 
   socket.on("disconnect", () => {
+    const socketRooms = Array.from(socket.rooms || []);
     const affected = [];
 
-    // Find rooms this socket belongs to.
-    // Room count is low initially, so linear scan is fine.
-    for (const roomId of []) {
-      void roomId;
-    }
-
-    // Safer simple cleanup:
-    // scan known live ids from active socket rooms
-    for (const roomName of socket.rooms || []) {
+    for (const roomName of socketRooms) {
       if (typeof roomName === "string" && roomName.startsWith("sfu:")) {
         const liveId = roomName.replace(/^sfu:/, "");
         const room = getRoom(liveId);
@@ -426,5 +426,7 @@ export function registerLiveSfuHandlers(io, socket) {
       const room = getRoom(liveId);
       if (room) emitRoomPresence(io, room);
     }
+
+    emitSfuLiveList(io);
   });
 }
