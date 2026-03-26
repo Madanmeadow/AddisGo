@@ -1,9 +1,10 @@
+// src/lib/liveSfuClient.js
 import socket from "../socket";
-import { Device } from "mediasoup-client";
+import { createLoadedDevice } from "./mediasoupDevice";
 
-function emitAsync(event, data = {}) {
+function ackEmit(event, payload = {}) {
   return new Promise((resolve) => {
-    socket.emit(event, data, (res) => resolve(res));
+    socket.emit(event, payload, (res) => resolve(res));
   });
 }
 
@@ -11,61 +12,114 @@ export class LiveSfuClient {
   constructor() {
     this.device = null;
     this.liveId = "";
+    this.role = "";
     this.sendTransport = null;
     this.recvTransport = null;
     this.localStream = null;
     this.remoteStream = new MediaStream();
-    this.consumers = new Map();
-    this.bound = false;
-    this._onProducerAdded = null;
+    this.producers = new Map(); // kind -> producer
+    this.consumers = new Map(); // consumerId -> consumer
+    this.knownProducerIds = new Set();
+
+    this.onProducerAdded = null;
+    this.onProducerClosed = null;
   }
 
-  async init(liveId) {
+  async init({ liveId }) {
     this.liveId = String(liveId || "").trim();
     if (!this.liveId) throw new Error("liveId required");
 
-    const res = await emitAsync("sfu:getRouterRtpCapabilities", { liveId: this.liveId });
+    const caps = await ackEmit("sfu:getRouterRtpCapabilities", {
+      liveId: this.liveId,
+    });
 
-    if (!res?.ok) {
-      throw new Error(res?.error || "Failed to get RTP capabilities");
+    if (!caps?.ok) {
+      throw new Error(caps?.error || "Failed to get router RTP capabilities");
     }
 
-    this.device = new Device();
-    await this.device.load({ routerRtpCapabilities: res.rtpCapabilities });
-
-    this.bindSocket();
+    this.device = await createLoadedDevice(caps.rtpCapabilities);
+    this.bindSocketEvents();
+    return this.device;
   }
 
-  bindSocket() {
-    if (this.bound) return;
-    this.bound = true;
+  bindSocketEvents() {
+    socket.off("sfu:producerAdded", this._handleProducerAdded);
+    socket.off("sfu:producerAdded:sync", this._handleProducerSync);
+    socket.off("sfu:producerClosed", this._handleProducerClosed);
+    socket.off("sfu:consumerClosed", this._handleConsumerClosed);
 
-    this._onProducerAdded = async ({ producerId }) => {
-      if (!producerId || !this.recvTransport) return;
-      try {
-        await this.consume(producerId);
-      } catch (e) {
-        console.error("[SFU producerAdded consume error]", e);
+    this._handleProducerAdded = async (payload) => {
+      if (!payload?.producerId) return;
+      if (this.knownProducerIds.has(payload.producerId)) return;
+
+      this.knownProducerIds.add(payload.producerId);
+      if (this.recvTransport && payload.role !== "host" ? true : true) {
+        try {
+          await this.consumeProducer(payload.producerId);
+        } catch (e) {
+          console.error("[SFU consume producerAdded]", e);
+        }
+      }
+
+      if (typeof this.onProducerAdded === "function") {
+        this.onProducerAdded(payload);
       }
     };
 
-    socket.on("sfu:producerAdded", this._onProducerAdded);
+    this._handleProducerSync = async (payload) => {
+      const list = Array.isArray(payload?.producers) ? payload.producers : [];
+      for (const item of list) {
+        if (!item?.producerId) continue;
+        if (this.knownProducerIds.has(item.producerId)) continue;
+        this.knownProducerIds.add(item.producerId);
 
-    socket.on("sfu:producerAdded:sync", async ({ producers }) => {
-      const list = Array.isArray(producers) ? producers : [];
-      for (const p of list) {
-        if (!p?.producerId || !this.recvTransport) continue;
-        try {
-          await this.consume(p.producerId);
-        } catch (e) {
-          console.error("[SFU producer sync consume error]", e);
+        if (this.recvTransport) {
+          try {
+            await this.consumeProducer(item.producerId);
+          } catch (e) {
+            console.error("[SFU consume sync]", e);
+          }
         }
       }
-    });
+    };
+
+    this._handleProducerClosed = (payload) => {
+      const producerId = String(payload?.producerId || "");
+      if (!producerId) return;
+
+      for (const [consumerId, consumer] of this.consumers.entries()) {
+        if (String(consumer.producerId) === producerId) {
+          try { consumer.close(); } catch {}
+          this.consumers.delete(consumerId);
+        }
+      }
+
+      this.knownProducerIds.delete(producerId);
+
+      if (typeof this.onProducerClosed === "function") {
+        this.onProducerClosed(payload);
+      }
+    };
+
+    this._handleConsumerClosed = (payload) => {
+      const consumerId = String(payload?.consumerId || "");
+      if (!consumerId) return;
+
+      const consumer = this.consumers.get(consumerId);
+      if (consumer) {
+        try { consumer.close(); } catch {}
+        this.consumers.delete(consumerId);
+      }
+    };
+
+    socket.on("sfu:producerAdded", this._handleProducerAdded);
+    socket.on("sfu:producerAdded:sync", this._handleProducerSync);
+    socket.on("sfu:producerClosed", this._handleProducerClosed);
+    socket.on("sfu:consumerClosed", this._handleConsumerClosed);
   }
 
   async createSendTransport() {
-    const res = await emitAsync("sfu:createWebRtcTransport", {
+    const res = await ackEmit("sfu:createWebRtcTransport", {
       liveId: this.liveId,
       direction: "send",
     });
@@ -76,39 +130,47 @@ export class LiveSfuClient {
 
     this.sendTransport = this.device.createSendTransport(res.transportOptions);
 
-    this.sendTransport.on("connect", async ({ dtlsParameters }, cb, errback) => {
+    this.sendTransport.on("connect", async ({ dtlsParameters }, callback, errback) => {
       try {
-        const reply = await emitAsync("sfu:connectWebRtcTransport", {
+        const reply = await ackEmit("sfu:connectWebRtcTransport", {
+          liveId: this.liveId,
           transportId: this.sendTransport.id,
           dtlsParameters,
-          liveId: this.liveId,
         });
+
         if (!reply?.ok) throw new Error(reply?.error || "Send transport connect failed");
-        cb();
+        callback();
       } catch (err) {
         errback(err);
       }
     });
 
-    this.sendTransport.on("produce", async ({ kind, rtpParameters, appData }, cb, errback) => {
+    this.sendTransport.on("produce", async ({ kind, rtpParameters, appData }, callback, errback) => {
       try {
-        const reply = await emitAsync("sfu:produce", {
+        const reply = await ackEmit("sfu:produce", {
+          liveId: this.liveId,
           transportId: this.sendTransport.id,
           kind,
           rtpParameters,
           appData,
-          liveId: this.liveId,
         });
+
         if (!reply?.ok) throw new Error(reply?.error || "Produce failed");
-        cb({ id: reply.producerId });
+        callback({ id: reply.producerId });
       } catch (err) {
         errback(err);
       }
     });
+
+    this.sendTransport.on("connectionstatechange", (state) => {
+      console.log("[SFU send transport]", state);
+    });
+
+    return this.sendTransport;
   }
 
   async createRecvTransport() {
-    const res = await emitAsync("sfu:createWebRtcTransport", {
+    const res = await ackEmit("sfu:createWebRtcTransport", {
       liveId: this.liveId,
       direction: "recv",
     });
@@ -119,23 +181,32 @@ export class LiveSfuClient {
 
     this.recvTransport = this.device.createRecvTransport(res.transportOptions);
 
-    this.recvTransport.on("connect", async ({ dtlsParameters }, cb, errback) => {
+    this.recvTransport.on("connect", async ({ dtlsParameters }, callback, errback) => {
       try {
-        const reply = await emitAsync("sfu:connectWebRtcTransport", {
+        const reply = await ackEmit("sfu:connectWebRtcTransport", {
+          liveId: this.liveId,
           transportId: this.recvTransport.id,
           dtlsParameters,
-          liveId: this.liveId,
         });
+
         if (!reply?.ok) throw new Error(reply?.error || "Recv transport connect failed");
-        cb();
+        callback();
       } catch (err) {
         errback(err);
       }
     });
+
+    this.recvTransport.on("connectionstatechange", (state) => {
+      console.log("[SFU recv transport]", state);
+    });
+
+    return this.recvTransport;
   }
 
-  async startHost() {
-    await this.createSendTransport();
+  async startHostMedia() {
+    if (!this.sendTransport) {
+      await this.createSendTransport();
+    }
 
     this.localStream = await navigator.mediaDevices.getUserMedia({
       video: true,
@@ -146,67 +217,106 @@ export class LiveSfuClient {
     const audioTrack = this.localStream.getAudioTracks()[0];
 
     if (videoTrack) {
-      await this.sendTransport.produce({
+      const producer = await this.sendTransport.produce({
         track: videoTrack,
-        appData: { mediaTag: "host-video" },
+        appData: {
+          mediaTag: "host-video",
+        },
       });
+      this.producers.set("video", producer);
     }
 
     if (audioTrack) {
-      await this.sendTransport.produce({
+      const producer = await this.sendTransport.produce({
         track: audioTrack,
-        appData: { mediaTag: "host-audio" },
+        appData: {
+          mediaTag: "host-audio",
+        },
       });
+      this.producers.set("audio", producer);
     }
 
     return this.localStream;
   }
 
-  async startViewer() {
-    await this.createRecvTransport();
+  async startAudienceMedia() {
+    if (!this.recvTransport) {
+      await this.createRecvTransport();
+    }
     return this.remoteStream;
   }
 
-  async consume(producerId) {
-    const res = await emitAsync("sfu:consume", {
+  async consumeProducer(producerId) {
+    if (!this.recvTransport) {
+      await this.createRecvTransport();
+    }
+
+    const reply = await ackEmit("sfu:consume", {
       liveId: this.liveId,
       transportId: this.recvTransport.id,
       producerId,
       rtpCapabilities: this.device.rtpCapabilities,
     });
 
-    if (!res?.ok) {
-      throw new Error(res?.error || "Consume failed");
+    if (!reply?.ok) {
+      throw new Error(reply?.error || "Consume failed");
     }
 
-    const opts = res.consumerOptions;
+    const { id, kind, rtpParameters } = reply.consumerOptions;
 
     const consumer = await this.recvTransport.consume({
-      id: opts.id,
+      id,
       producerId,
-      kind: opts.kind,
-      rtpParameters: opts.rtpParameters,
+      kind,
+      rtpParameters,
     });
 
-    this.remoteStream.addTrack(consumer.track);
     this.consumers.set(consumer.id, consumer);
+    this.remoteStream.addTrack(consumer.track);
 
-    await emitAsync("sfu:resumeConsumer", {
-      consumerId: consumer.id,
+    const resumeReply = await ackEmit("sfu:resumeConsumer", {
       liveId: this.liveId,
+      consumerId: consumer.id,
     });
+
+    if (!resumeReply?.ok) {
+      throw new Error(resumeReply?.error || "Resume consumer failed");
+    }
 
     return consumer;
   }
 
   close() {
     try {
-      if (this._onProducerAdded) {
-        socket.off("sfu:producerAdded", this._onProducerAdded);
-      }
-      this.sendTransport?.close();
-      this.recvTransport?.close();
-      this.localStream?.getTracks().forEach((t) => t.stop());
+      socket.off("sfu:producerAdded", this._handleProducerAdded);
+      socket.off("sfu:producerAdded:sync", this._handleProducerSync);
+      socket.off("sfu:producerClosed", this._handleProducerClosed);
+      socket.off("sfu:consumerClosed", this._handleConsumerClosed);
     } catch {}
+
+    for (const producer of this.producers.values()) {
+      try { producer.close(); } catch {}
+    }
+    for (const consumer of this.consumers.values()) {
+      try { consumer.close(); } catch {}
+    }
+
+    try { this.sendTransport?.close(); } catch {}
+    try { this.recvTransport?.close(); } catch {}
+
+    if (this.localStream) {
+      for (const track of this.localStream.getTracks()) {
+        try { track.stop(); } catch {}
+      }
+    }
+
+    this.producers.clear();
+    this.consumers.clear();
+    this.knownProducerIds.clear();
+    this.localStream = null;
+    this.remoteStream = new MediaStream();
+    this.sendTransport = null;
+    this.recvTransport = null;
+    this.device = null;
   }
 }
