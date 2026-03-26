@@ -1,8 +1,10 @@
-// server/mediasoup/socketLiveSfu.js (enhanced)
-export function registerLiveSfuHandlers(io, socket) {
-  const rooms = new Map(); // liveId -> room
+// server/mediasoup/socketLiveSfu.js
 
-  /* ====================== JOIN ====================== */
+const rooms = new Map(); // liveId -> room
+
+export function registerLiveSfuHandlers(io, socket) {
+
+  /* ================= JOIN ================= */
   socket.on("sfu:join", async ({ liveId, role }, cb) => {
     if (!liveId) return cb({ error: "liveId required" });
 
@@ -14,97 +16,137 @@ export function registerLiveSfuHandlers(io, socket) {
     }
 
     socket.join(`live:${liveId}`);
-    room.peers.set(socket.id, { role, micOn: role === "speaker" });
+
+    room.peers.set(socket.id, { role });
 
     cb({ rtpCapabilities: room.router.rtpCapabilities });
 
-    // send existing producers for grid
-    const producers = Array.from(room.producers.keys());
-    socket.emit("sfu:getProducers", producers);
+    // send existing producers
+    socket.emit("sfu:getProducers", Array.from(room.producers.keys()));
   });
 
-  /* ====================== SPEAKER REQUEST ====================== */
-  socket.on("sfu:requestSpeak", ({ liveId }) => {
+  /* ================= CREATE TRANSPORT ================= */
+  socket.on("sfu:createTransport", async ({ liveId }, cb) => {
     const room = rooms.get(liveId);
     if (!room) return;
 
-    const hostSocketId = room.hostSocketId;
-    if (!hostSocketId) return;
+    const transport = await room.router.createWebRtcTransport({
+      listenIps: [
+        {
+          ip: "0.0.0.0",
+          announcedIp: process.env.MEDIASOUP_ANNOUNCED_IP || null,
+        },
+      ],
+      enableUdp: true,
+      enableTcp: true,
+      preferUdp: true,
+    });
 
-    const req = { socketId: socket.id, userId: socket.data.user?.id };
-    if (!room.speakerRequests) room.speakerRequests = new Map();
-    room.speakerRequests.set(socket.id, req);
+    room.transports.set(socket.id, transport);
 
-    // notify host
-    io.to(hostSocketId).emit("sfu:speakerRequested", req);
+    cb({
+      id: transport.id,
+      iceParameters: transport.iceParameters,
+      iceCandidates: transport.iceCandidates,
+      dtlsParameters: transport.dtlsParameters,
+    });
   });
 
-  socket.on("sfu:approveSpeaker", ({ liveId, socketId }) => {
+  /* ================= CONNECT TRANSPORT ================= */
+  socket.on("sfu:connectTransport", async ({ liveId, dtlsParameters }) => {
     const room = rooms.get(liveId);
     if (!room) return;
-    if (!room.peers.has(socketId)) return;
 
-    const peer = room.peers.get(socketId);
-    peer.role = "speaker";
-    peer.micOn = true;
+    const transport = room.transports.get(socket.id);
+    if (!transport) return;
 
-    room.peers.set(socketId, peer);
-    io.to(socketId).emit("sfu:approvedSpeaker", { liveId });
-
-    // broadcast new grid update
-    io.to(`live:${liveId}`).emit("sfu:gridUpdate", Array.from(room.peers.values()));
+    await transport.connect({ dtlsParameters });
   });
 
-  /* ====================== PRODUCE ====================== */
+  /* ================= PRODUCE ================= */
   socket.on("sfu:produce", async ({ liveId, kind, rtpParameters }, cb) => {
     const room = rooms.get(liveId);
     if (!room) return;
 
     const transport = room.transports.get(socket.id);
+    if (!transport) return;
+
     const producer = await transport.produce({ kind, rtpParameters });
 
     room.producers.set(producer.id, producer);
+
     cb({ id: producer.id });
 
-    // notify all for new grid
-    socket.to(`live:${liveId}`).emit("sfu:newProducer", { producerId: producer.id });
+    socket.to(`live:${liveId}`).emit("sfu:newProducer", {
+      producerId: producer.id,
+    });
   });
 
-  /* ====================== RECORDING ====================== */
-  socket.on("sfu:startRecording", ({ liveId }) => {
+  /* ================= CONSUME ================= */
+  socket.on(
+    "sfu:consume",
+    async ({ liveId, producerId, rtpCapabilities }, cb) => {
+      const room = rooms.get(liveId);
+      if (!room) return;
+
+      const router = room.router;
+
+      if (!router.canConsume({ producerId, rtpCapabilities })) {
+        return cb({ error: "Cannot consume" });
+      }
+
+      const transport = room.transports.get(socket.id);
+      if (!transport) return;
+
+      const consumer = await transport.consume({
+        producerId,
+        rtpCapabilities,
+        paused: false,
+      });
+
+      cb({
+        id: consumer.id,
+        producerId,
+        kind: consumer.kind,
+        rtpParameters: consumer.rtpParameters,
+      });
+    }
+  );
+
+  /* ================= REQUEST SPEAK ================= */
+  socket.on("sfu:requestSpeak", ({ liveId }) => {
     const room = rooms.get(liveId);
     if (!room) return;
 
-    // setup recording logic (external FFmpeg or mediasoup recording)
-    // just flag for now
-    room.recording = true;
-    io.to(`live:${liveId}`).emit("sfu:recordingStarted", { liveId });
+    io.to(`live:${liveId}`).emit("sfu:speakerRequested", {
+      socketId: socket.id,
+    });
   });
 
-  socket.on("sfu:stopRecording", ({ liveId }) => {
-    const room = rooms.get(liveId);
-    if (!room) return;
-
-    room.recording = false;
-    io.to(`live:${liveId}`).emit("sfu:recordingStopped", { liveId });
-  });
-
-  /* ====================== DISCONNECT ====================== */
+  /* ================= DISCONNECT ================= */
   socket.on("disconnect", () => {
     for (const room of rooms.values()) {
       room.transports.delete(socket.id);
       room.peers.delete(socket.id);
-      if (room.speakerRequests) room.speakerRequests.delete(socket.id);
     }
   });
 }
 
-/* ====================== CREATE ROOM ====================== */
+/* ================= CREATE ROOM ================= */
 async function createRoom(liveId) {
   const router = await global.mediasoupWorker.createRouter({
     mediaCodecs: [
-      { kind: "audio", mimeType: "audio/opus", clockRate: 48000, channels: 2 },
-      { kind: "video", mimeType: "video/VP8", clockRate: 90000 },
+      {
+        kind: "audio",
+        mimeType: "audio/opus",
+        clockRate: 48000,
+        channels: 2,
+      },
+      {
+        kind: "video",
+        mimeType: "video/VP8",
+        clockRate: 90000,
+      },
     ],
   });
 
@@ -114,8 +156,5 @@ async function createRoom(liveId) {
     peers: new Map(),
     transports: new Map(),
     producers: new Map(),
-    hostSocketId: null,
-    speakerRequests: new Map(),
-    recording: false,
   };
 }
