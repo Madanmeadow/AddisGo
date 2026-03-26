@@ -47,6 +47,9 @@
           <button class="chip ghost eliteChip" @click="togglePeople">
             {{ peopleOpen ? "Hide People" : "People" }}
           </button>
+          <button @click="$router.push('/live-sfu')">
+             🚀 Go Live (New)
+          </button>
           <button class="chip ghost eliteChip" @click="toggleChat">
             {{ chatOpen ? "Close Chat" : "Chat" }}
           </button>
