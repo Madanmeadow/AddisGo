@@ -7,6 +7,7 @@ import path from "path";
 import { fileURLToPath } from "url";
 import { Server } from "socket.io";
 import bcrypt from "bcrypt";
+import { registerCallSfuHandlers } from "./mediasoup/socketCallSfu.js";
 import jwt from "jsonwebtoken";
 import twilio from "twilio";
 
@@ -280,6 +281,12 @@ const io = new Server(server, {
   },
 });
 
+io.on("connection", (socket) => {
+
+  registerLiveSfuHandlers(io, socket);
+  registerCallSfuHandlers(io, socket); // ✅ ADD THIS
+
+});
 /* =========================
    SOCKET JWT AUTH
 ========================= */
