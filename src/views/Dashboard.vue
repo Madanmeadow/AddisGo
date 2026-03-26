@@ -40,7 +40,7 @@
                   : `Offline ${offlineQueueCount ? "• " + offlineQueueCount + " queued" : ""}`
             }}
           </span>
-
+          <button class="fab" @click="goCallSFU">📞+</button>
           <button class="chip eliteChip" @click="openQuickCreate('post')">✍️ Post</button>
           <button class="chip ghost eliteChip" @click="openQuickCreate('call')">📞 Call</button>
           <button class="chip ghost eliteChip" @click="openQuickCreate('live')">🔴 Live</button>
@@ -280,7 +280,9 @@
         <button class="mode" :class="{ on: feedMode === 'live' }" @click="setFeedMode('live')">🔴 Live</button>
         <button class="mode" :class="{ on: feedMode === 'saved' }" @click="setFeedMode('saved')">💾 Saved</button>
         <button class="mode" :class="{ on: feedMode === 'pinned' }" @click="setFeedMode('pinned')">📌 Pinned</button>
-
+        <button class="chip primary" @click="goCallSFU">
+          🚀 SFU Call
+        </button>
         <div class="mode-right">
           <div class="searchWrap">
             <input ref="searchRef" v-model="search" class="search" placeholder="Search…" />
