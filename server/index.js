@@ -281,12 +281,7 @@ const io = new Server(server, {
   },
 });
 
-io.on("connection", (socket) => {
 
-  registerLiveSfuHandlers(io, socket);
-  registerCallSfuHandlers(io, socket); // ✅ ADD THIS
-
-});
 /* =========================
    SOCKET JWT AUTH
 ========================= */
@@ -775,8 +770,13 @@ function removeParticipantFromCallRooms(socket) {
 ========================= */
 io.on("connection", (socket) => {
   logSOCK("Socket connected:", socket.id);
+
   socket.data.user = socket.data.user || null;
+
+  // ✅ ADD THIS (merge point)
   registerLiveSfuHandlers(io, socket);
+  registerCallSfuHandlers(io, socket);
+
   /* ✅ Auto-register if JWT auth succeeded */
   if (socket.userId) {
     setOnline(socket, socket.userId, socket.username);
@@ -785,7 +785,6 @@ io.on("connection", (socket) => {
     emitOnlineUsersLegacy();
     flushQueuedIncomingCallsToUser(socket.userId);
   }
-
   /* =========================
      PRESENCE
   ========================= */
