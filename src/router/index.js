@@ -11,8 +11,7 @@ import RoomCall from "../views/RoomCall.vue";
 import Profile from "../views/Profile.vue";
 import People from "../views/People.vue";
 
-// ✅ ADD THIS (lazy load new SFU live)
-const LiveSFU = () => import("../views/LiveSFU.vue");
+
 
 const routes = [
   { path: "/", redirect: "/login" },
@@ -28,8 +27,7 @@ const routes = [
 
   { path: "/live", component: Live },
 
-  // ✅ NEW ROUTE (DO NOT REMOVE OLD LIVE)
-  { path: "/live-sfu", component: LiveSFU },
+ 
 
   { path: "/call-sfu", component: () => import("../views/CallSFU.vue") },
   { path: "/call", component: Call },

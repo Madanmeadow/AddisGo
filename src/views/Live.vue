@@ -742,9 +742,23 @@ function cleanup() {
 }
 
 async function onLiveHost(payload) {
-  hostSocketId.value = payload?.hostSocketId || null
-  if (!isHost && hostSocketId.value) await connectViewerToHost()
+  hostSocketId.value = payload?.hostSocketId || null;
+
+  if (!isHost && hostSocketId.value) {
+    console.log("🎯 Found host:", hostSocketId.value);
+
+    // Force reconnect cleanly
+    if (pc.value) {
+      try { pc.value.close(); } catch {}
+      pc.value = null;
+    }
+
+    remoteStream.value = null;
+
+    await connectViewerToHost();
+  }
 }
+
 
 function onLivePresence(payload) {
   viewerCount.value = Number(payload?.viewerCount || 0)
