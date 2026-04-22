@@ -858,15 +858,27 @@ onMounted(async () => {
   socket.on("webrtc:ice", onIce)
   socket.on("live:ended", onLiveEnded)
 
-  if (isHost) {
-    await createHostStream()
-    socket.emit("live:create", { liveId })
-    statusText.value = "You are live"
-  } else {
-    socket.emit("live:join", { liveId })
-    statusText.value = "Joining live..."
-  }
-})
+if (isHost) {
+  await createHostStream()
+  socket.emit("live:create", { liveId })
+  statusText.value = "You are live"
+} else {
+  socket.emit("live:join", { liveId })
+  statusText.value = "Joining live..."
+
+  // ✅ CRITICAL: fallback + auto-connect
+  setTimeout(() => {
+    if (!hostSocketId.value) {
+      console.log("⚠️ Retrying join (no host yet)...");
+      socket.emit("live:join", { liveId })
+    }
+
+    if (hostSocketId.value && !remoteStream.value) {
+      console.log("🔁 Forcing WebRTC connection...");
+      connectViewerToHost()
+    }
+  }, 1500)
+}
 
 onBeforeUnmount(() => {
   socket.off("connect", onSocketConnect)
