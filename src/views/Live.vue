@@ -747,7 +747,7 @@ async function onLiveHost(payload) {
   if (!isHost && hostSocketId.value) {
     console.log("🎯 Found host:", hostSocketId.value);
 
-    // Force reconnect cleanly
+    // Clean reset
     if (pc.value) {
       try { pc.value.close(); } catch {}
       pc.value = null;
@@ -755,7 +755,10 @@ async function onLiveHost(payload) {
 
     remoteStream.value = null;
 
-    await connectViewerToHost();
+    // ✅ small delay = more stable on mobile networks
+    setTimeout(() => {
+      connectViewerToHost();
+    }, 300);
   }
 }
 
