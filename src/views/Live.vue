@@ -23,13 +23,14 @@
         class="main-video"
       ></video>
 
-      <video
-        v-else
-        ref="remoteVideo"
-        autoplay
-        playsinline
-        class="main-video"
-      ></video>
+<video
+  v-else
+  ref="remoteVideo"
+  autoplay
+  playsinline
+  webkit-playsinline
+  class="main-video"
+/></video>
     </div>
 
     <div class="controls">
