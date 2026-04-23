@@ -742,23 +742,29 @@ function cleanup() {
 }
 
 async function onLiveHost(payload) {
-  hostSocketId.value = payload?.hostSocketId || null;
+  const newHostId = payload?.hostSocketId || null
+
+  // prevent unnecessary reconnect loops
+  if (hostSocketId.value === newHostId && remoteStream.value) return
+
+  hostSocketId.value = newHostId
 
   if (!isHost && hostSocketId.value) {
-    console.log("🎯 Found host:", hostSocketId.value);
+    console.log("🎯 Found host:", hostSocketId.value)
 
-    // Clean reset
+    // FULL reset (important)
     if (pc.value) {
-      try { pc.value.close(); } catch {}
-      pc.value = null;
+      try { pc.value.close() } catch {}
+      pc.value = null
     }
 
-    remoteStream.value = null;
+    remoteStream.value = null
+    pendingCandidates = []
 
-    // ✅ small delay = more stable on mobile networks
+    // 🔥 small delay improves mobile stability
     setTimeout(() => {
-      connectViewerToHost();
-    }, 300);
+      connectViewerToHost()
+    }, 300)
   }
 }
 
@@ -860,7 +866,10 @@ onMounted(async () => {
   socket.on("webrtc:answer", onAnswer)
   socket.on("webrtc:ice", onIce)
   socket.on("live:ended", onLiveEnded)
-
+if (!hostSocketId.value) {
+  console.warn("No host yet, skipping connect")
+  return
+}
 if (isHost) {
   await createHostStream()
   socket.emit("live:create", { liveId })
@@ -868,6 +877,29 @@ if (isHost) {
 } else {
   socket.emit("live:join", { liveId })
   statusText.value = "Joining live..."
+
+  // 🔁 KEEP trying until connected (robust)
+  const tryJoinLoop = () => {
+    if (isHost) return
+
+    if (!hostSocketId.value) {
+      console.log("🔁 retry join...")
+      socket.emit("live:join", { liveId })
+    }
+
+    if (hostSocketId.value && !remoteStream.value) {
+      console.log("🔁 retry connect...")
+      connectViewerToHost()
+    }
+
+    // keep retrying until video arrives
+    if (!remoteStream.value) {
+      setTimeout(tryJoinLoop, 2000)
+    }
+  }
+
+  tryJoinLoop()
+}
 
   // ✅ CRITICAL: fallback + auto-connect
   setTimeout(() => {
@@ -881,8 +913,7 @@ if (isHost) {
       connectViewerToHost()
     }
   }, 1500)
-}
-
+})
 onBeforeUnmount(() => {
   socket.off("connect", onSocketConnect)
   socket.off("disconnect", onSocketDisconnect)
