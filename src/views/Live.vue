@@ -190,7 +190,11 @@ async function connectViewerToHost() {
   });
 }
 
-  const offer = await peer.createOffer();
+  const offer = await peer.createOffer({
+    offerToReceiveVideo: true,
+    offerToReceiveAudio: true,
+  });
+
   await peer.setLocalDescription(offer);
 
   socket.emit("webrtc:offer", {
@@ -313,23 +317,7 @@ async function onOffer({ offer, from }) {
     answer,
   });
 }
-async function connectViewerToHost() {
-  const peer = await ensurePeer();
 
-  // ✅ VERY IMPORTANT: tell WebRTC you want video
-  const offer = await peer.createOffer({
-    offerToReceiveVideo: true,
-    offerToReceiveAudio: true,
-  });
-
-  await peer.setLocalDescription(offer);
-
-  socket.emit("webrtc:offer", {
-    liveId,
-    to: hostSocketId,
-    offer,
-  });
-}
 async function onAnswer({ answer }) {
   if (!pc) return;
   await pc.setRemoteDescription(answer);
