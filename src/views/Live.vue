@@ -341,16 +341,17 @@ onMounted(async () => {
   socket.on("webrtc:ice", onIce);
   socket.on("live:ended", onLiveEnded);
 
-if (isHost) {
-  await createHostStream();
+  if (isHost) {
+    await createHostStream();
 
-  console.log("🎥 Host stream ready:", localStream);
+    setTimeout(() => {
+      socket.emit("live:create", { liveId });
+    }, 100);
 
-  // VERY IMPORTANT: wait 100ms so video element attaches
-  setTimeout(() => {
-    socket.emit("live:create", { liveId });
-  }, 100);
-}
+  } else {
+    // ✅ THIS WAS MISSING
+    socket.emit("live:join", { liveId });
+  }
 });
 
 onBeforeUnmount(() => {
