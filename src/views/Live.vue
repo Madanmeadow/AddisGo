@@ -114,38 +114,25 @@ async function getIceServers() {
   }
 }
 
-async function ensurePeer() {
-  if (pc) return pc;
+pc.ontrack = (event) => {
+  console.log("📡 TRACK:", event.track.kind);
 
-  pc = new RTCPeerConnection({
-    iceServers: await getIceServers(),
-  });
-
-  remoteStream = new MediaStream();
-
-  if (remoteVideo.value) {
-    remoteVideo.value.srcObject = remoteStream;
+  if (!remoteStream) {
+    remoteStream = new MediaStream();
   }
 
-  pc.ontrack = (event) => {
-    event.streams[0].getTracks().forEach((track) => {
-      remoteStream.addTrack(track);
+  // ✅ Add ONLY the incoming track (cleaner + more reliable)
+  remoteStream.addTrack(event.track);
+
+  // ✅ Force attach every time
+  if (remoteVideo.value) {
+    remoteVideo.value.srcObject = remoteStream;
+
+    remoteVideo.value.play().catch((e) => {
+      console.log("⚠️ autoplay blocked", e);
     });
-  };
-
-  pc.onicecandidate = (event) => {
-    if (!event.candidate || !hostSocketId) return;
-
-    socket.emit("webrtc:ice", {
-      liveId,
-      to: hostSocketId,
-      candidate: event.candidate,
-    });
-  };
-
-  return pc;
-}
-
+  }
+};
 async function createHostStream() {
   localStream = await navigator.mediaDevices.getUserMedia({
     video: true,
