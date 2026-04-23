@@ -742,32 +742,9 @@ function cleanup() {
 }
 
 async function onLiveHost(payload) {
-  const newHostId = payload?.hostSocketId || null
-
-  // prevent unnecessary reconnect loops
-  if (hostSocketId.value === newHostId && remoteStream.value) return
-
-  hostSocketId.value = newHostId
-
-  if (!isHost && hostSocketId.value) {
-    console.log("🎯 Found host:", hostSocketId.value)
-
-    // FULL reset (important)
-    if (pc.value) {
-      try { pc.value.close() } catch {}
-      pc.value = null
-    }
-
-    remoteStream.value = null
-    pendingCandidates = []
-
-    // 🔥 small delay improves mobile stability
-    setTimeout(() => {
-      connectViewerToHost()
-    }, 300)
-  }
+  hostSocketId.value = payload?.hostSocketId || null
+  if (!isHost && hostSocketId.value) await connectViewerToHost()
 }
-
 
 function onLivePresence(payload) {
   viewerCount.value = Number(payload?.viewerCount || 0)
@@ -866,54 +843,17 @@ onMounted(async () => {
   socket.on("webrtc:answer", onAnswer)
   socket.on("webrtc:ice", onIce)
   socket.on("live:ended", onLiveEnded)
-if (!hostSocketId.value) {
-  console.warn("No host yet, skipping connect")
-  return
-}
-if (isHost) {
-  await createHostStream()
-  socket.emit("live:create", { liveId })
-  statusText.value = "You are live"
-} else {
-  socket.emit("live:join", { liveId })
-  statusText.value = "Joining live..."
 
-  // 🔁 KEEP trying until connected (robust)
-  const tryJoinLoop = () => {
-    if (isHost) return
-
-    if (!hostSocketId.value) {
-      console.log("🔁 retry join...")
-      socket.emit("live:join", { liveId })
-    }
-
-    if (hostSocketId.value && !remoteStream.value) {
-      console.log("🔁 retry connect...")
-      connectViewerToHost()
-    }
-
-    // keep retrying until video arrives
-    if (!remoteStream.value) {
-      setTimeout(tryJoinLoop, 2000)
-    }
+  if (isHost) {
+    await createHostStream()
+    socket.emit("live:create", { liveId })
+    statusText.value = "You are live"
+  } else {
+    socket.emit("live:join", { liveId })
+    statusText.value = "Joining live..."
   }
-
-  tryJoinLoop()
-}
-
-  // ✅ CRITICAL: fallback + auto-connect
-  setTimeout(() => {
-    if (!hostSocketId.value) {
-      console.log("⚠️ Retrying join (no host yet)...");
-      socket.emit("live:join", { liveId })
-    }
-
-    if (hostSocketId.value && !remoteStream.value) {
-      console.log("🔁 Forcing WebRTC connection...");
-      connectViewerToHost()
-    }
-  }, 1500)
 })
+
 onBeforeUnmount(() => {
   socket.off("connect", onSocketConnect)
   socket.off("disconnect", onSocketDisconnect)
