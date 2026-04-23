@@ -297,12 +297,13 @@ async function onOffer({ offer, from }) {
     await createHostStream();
   }
 
+  // ✅ ALWAYS add tracks (no condition)
   localStream.getTracks().forEach((track) => {
-    const already = peer.getSenders().some((s) => s.track === track);
-    if (!already) peer.addTrack(track, localStream);
+    peer.addTrack(track, localStream);
   });
 
   await peer.setRemoteDescription(offer);
+
   const answer = await peer.createAnswer();
   await peer.setLocalDescription(answer);
 
