@@ -122,27 +122,23 @@ async function ensurePeer() {
     iceServers: await getIceServers(),
   });
 
-  // ✅ always create fresh stream
+  // ✅ CRITICAL FIX
+  pc.addTransceiver("video", { direction: "recvonly" });
+  pc.addTransceiver("audio", { direction: "recvonly" });
+
   remoteStream = new MediaStream();
 
   if (remoteVideo.value) {
     remoteVideo.value.srcObject = remoteStream;
   }
 
-  // 🔥 FIXED ontrack (THIS WAS YOUR ISSUE)
   pc.ontrack = (event) => {
     console.log("📡 TRACK:", event.track.kind);
 
-    // use direct track (not streams[0])
     remoteStream.addTrack(event.track);
 
-    // force attach every time (important for mobile)
     if (remoteVideo.value) {
       remoteVideo.value.srcObject = remoteStream;
-
-      remoteVideo.value.play().catch((e) => {
-        console.log("⚠️ autoplay blocked", e);
-      });
     }
   };
 
