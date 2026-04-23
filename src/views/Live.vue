@@ -23,14 +23,14 @@
         class="main-video"
       ></video>
 
-<video
-  v-else
-  ref="remoteVideo"
-  autoplay
-  playsinline
-  webkit-playsinline
-  class="main-video"
-/></video>
+      <video
+        v-else
+        ref="remoteVideo"
+        autoplay
+        playsinline
+        webkit-playsinline
+        class="main-video"
+      />
     </div>
 
     <div class="controls">
@@ -115,25 +115,50 @@ async function getIceServers() {
   }
 }
 
-pc.ontrack = (event) => {
-  console.log("📡 TRACK:", event.track.kind);
+async function ensurePeer() {
+  if (pc) return pc;
 
-  if (!remoteStream) {
-    remoteStream = new MediaStream();
-  }
+  pc = new RTCPeerConnection({
+    iceServers: await getIceServers(),
+  });
 
-  // ✅ Add ONLY the incoming track (cleaner + more reliable)
-  remoteStream.addTrack(event.track);
+  // ✅ always create fresh stream
+  remoteStream = new MediaStream();
 
-  // ✅ Force attach every time
   if (remoteVideo.value) {
     remoteVideo.value.srcObject = remoteStream;
-
-    remoteVideo.value.play().catch((e) => {
-      console.log("⚠️ autoplay blocked", e);
-    });
   }
-};
+
+  // 🔥 FIXED ontrack (THIS WAS YOUR ISSUE)
+  pc.ontrack = (event) => {
+    console.log("📡 TRACK:", event.track.kind);
+
+    // use direct track (not streams[0])
+    remoteStream.addTrack(event.track);
+
+    // force attach every time (important for mobile)
+    if (remoteVideo.value) {
+      remoteVideo.value.srcObject = remoteStream;
+
+      remoteVideo.value.play().catch((e) => {
+        console.log("⚠️ autoplay blocked", e);
+      });
+    }
+  };
+
+  pc.onicecandidate = (event) => {
+    if (!event.candidate || !hostSocketId) return;
+
+    socket.emit("webrtc:ice", {
+      liveId,
+      to: hostSocketId,
+      candidate: event.candidate,
+    });
+  };
+
+  return pc;
+}
+
 async function createHostStream() {
   localStream = await navigator.mediaDevices.getUserMedia({
     video: true,
@@ -150,13 +175,20 @@ async function connectViewerToHost() {
 
   const peer = await ensurePeer();
 
-  const stream = await navigator.mediaDevices.getUserMedia({
+  let stream = null;
+
+  if (canSpeak.value) {
+  stream = await navigator.mediaDevices.getUserMedia({
     video: false,
-    audio: canSpeak.value,
+    audio: true,
   });
 
   localStream = stream;
-  stream.getTracks().forEach((track) => peer.addTrack(track, stream));
+
+  stream.getTracks().forEach((track) => {
+    peer.addTrack(track, stream);
+  });
+}
 
   const offer = await peer.createOffer();
   await peer.setLocalDescription(offer);
