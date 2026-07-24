@@ -286,7 +286,7 @@ const me = (() => {
 })()
 
 const roomId = ref(route.query.roomId || "")
-const kind = ref(route.query.kind || "video")
+const kind = ref(route.query.kind === "audio" ? "audio" : "video")
 const mode = ref(route.query.mode || route.query.role || "caller")
 const toUserId = ref(route.query.toUserId || route.query.userId || "")
 const initialPartnerName = ref(route.query.name || "User")
@@ -316,14 +316,11 @@ const reconnectAttempted = ref(false)
 const negotiationBusy = ref(false)
 const makingOffer = ref(false)
 const socketConnected = ref(socket.connected)
+const pcCreating = ref(false)
 
 const statusText = ref("Ready")
 const hostUserId = ref("")
 const isCaller = ref(mode.value === "caller")
-
-const pendingCandidates = []
-let healthCheckTimer = null
-let reconnectDebounce = null
 
 const callStartedAt = ref(null)
 const callSeconds = ref(0)
@@ -338,6 +335,12 @@ let statsTimer = null
 let localAudioMonitor = null
 let remoteAudioMonitor = null
 let audioContext = null
+
+// Per-instance candidate buffer (NOT module-level)
+const pendingCandidates = ref([])
+
+let healthCheckTimer = null
+let reconnectDebounce = null
 
 const isAudioOnly = computed(() => kind.value === "audio")
 
@@ -506,148 +509,191 @@ function queueRecover(reason = "") {
   }, 300)
 }
 
+/* ================= NAMED HANDLERS (for proper cleanup) ================= */
+const onSocketConnect = async () => {
+  socketConnected.value = true
+  if (token) refreshSocketAuth()
+
+  if (roomId.value && inCall.value) {
+    try {
+      joinCallRoom()
+      await maybeRecoverConnection("socket reconnect")
+    } catch (err) {
+      console.error("socket reconnect recovery error", err)
+    }
+  }
+}
+
+const onSocketDisconnect = () => {
+  socketConnected.value = false
+  if (inCall.value) setStatus("Reconnecting...")
+}
+
+const onCallRinging = (data = {}) => {
+  if (data.roomId) roomId.value = String(data.roomId)
+  if (data.kind) kind.value = data.kind
+  setStatus("Ringing...")
+}
+
+const onCallStatus = ({ calleeOnline } = {}) => {
+  setStatus(calleeOnline ? "Calling..." : "Queued")
+}
+
+const onCallIncoming = (data = {}) => {
+  incomingCall.value = {
+    roomId: String(data.roomId || ""),
+    fromUserId: String(data.fromUserId || ""),
+    fromName: data.fromName || "Caller",
+    kind: data.kind || "video",
+  }
+
+  roomId.value = String(data.roomId || "")
+  kind.value = data.kind || "video"
+  initialPartnerName.value = data.fromName || "Caller"
+  hostUserId.value = String(data.hostUserId || data.fromUserId || "")
+  mode.value = "receiver"
+  isCaller.value = false
+  setStatus("Incoming")
+}
+
+const onCallAccepted = async (data = {}) => {
+  if (data.roomId) roomId.value = String(data.roomId)
+  if (data.kind) kind.value = data.kind
+  if (data.hostUserId) hostUserId.value = String(data.hostUserId)
+
+  setStatus("Accepted")
+
+  await ensureLocalMedia()
+  joinCallRoom()
+}
+
+const onCallPeerJoined = async () => {
+  if (!pc.value && !pcCreating.value) await createPeerConnection()
+}
+
+const onCallReady = async (data = {}) => {
+  if (data.roomId) roomId.value = String(data.roomId)
+  if (data.kind) kind.value = data.kind
+  if (data.hostUserId) hostUserId.value = String(data.hostUserId)
+
+  setStatus("Connecting...")
+
+  if (!pc.value && !pcCreating.value) await createPeerConnection()
+  if (isOfferOwner() && !makingOffer.value && !negotiationBusy.value) {
+    await createAndSendOffer(false)
+  }
+}
+
+const onCallWebrtcOffer = async ({ roomId: incomingRoomId, offer, from } = {}) => {
+  try {
+    if (incomingRoomId) roomId.value = String(incomingRoomId)
+    setStatus("Answering...")
+
+    if (!pc.value && !pcCreating.value) await createPeerConnection()
+
+    const offerCollision = offer && makingOffer.value
+    const polite = !isOfferOwner()
+    if (offerCollision && !polite) return
+
+    await pc.value.setRemoteDescription(new RTCSessionDescription(offer))
+    hasRemoteDescription.value = true
+    await flushPendingIceCandidates()
+
+    const answer = await pc.value.createAnswer()
+    await pc.value.setLocalDescription(answer)
+
+    socket.emit("call:webrtc:answer", {
+      roomId: roomId.value,
+      answer: pc.value.localDescription,
+      to: from,
+    })
+  } catch (err) {
+    console.error("call:webrtc:offer error", err)
+  }
+}
+
+const onCallWebrtcAnswer = async ({ answer } = {}) => {
+  try {
+    if (!pc.value) return
+    await pc.value.setRemoteDescription(new RTCSessionDescription(answer))
+    hasRemoteDescription.value = true
+    await flushPendingIceCandidates()
+    setStatus("Connected")
+    markCallStarted()
+  } catch (err) {
+    console.error("call:webrtc:answer error", err)
+  }
+}
+
+const onCallWebrtcIce = async ({ candidate } = {}) => {
+  try {
+    if (!candidate || !pc.value) return
+    if (hasRemoteDescription.value && pc.value.remoteDescription) {
+      await pc.value.addIceCandidate(new RTCIceCandidate(candidate))
+    } else {
+      pendingCandidates.value.push(candidate)
+    }
+  } catch (err) {
+    console.error("call:webrtc:ice error", err)
+  }
+}
+
+const onCallEnded = () => {
+  setStatus("Call ended")
+  cleanupAll()
+  router.back()
+}
+
+const onCallError = ({ message } = {}) => {
+  setStatus(message || "Error")
+}
+
+const onCallBusy = ({ message } = {}) => {
+  setStatus(message || "Busy")
+}
+
+const onCallRejected = ({ message } = {}) => {
+  setStatus(message || "Call rejected")
+  cleanupAll()
+  setTimeout(() => router.back(), 2000)
+}
+
 function bindSocketEvents() {
   socketConnected.value = socket.connected
 
-  socket.on("connect", async () => {
-    socketConnected.value = true
-    if (token) refreshSocketAuth()
+  socket.on("connect", onSocketConnect)
+  socket.on("disconnect", onSocketDisconnect)
+  socket.on("call:ringing", onCallRinging)
+  socket.on("call:status", onCallStatus)
+  socket.on("call:incoming", onCallIncoming)
+  socket.on("call:accepted", onCallAccepted)
+  socket.on("call:peer-joined", onCallPeerJoined)
+  socket.on("call:ready", onCallReady)
+  socket.on("call:webrtc:offer", onCallWebrtcOffer)
+  socket.on("call:webrtc:answer", onCallWebrtcAnswer)
+  socket.on("call:webrtc:ice", onCallWebrtcIce)
+  socket.on("call:ended", onCallEnded)
+  socket.on("call:error", onCallError)
+  socket.on("call:busy", onCallBusy)
+  socket.on("call:rejected", onCallRejected)
+}
 
-    if (roomId.value && inCall.value) {
-      try {
-        joinCallRoom()
-        await maybeRecoverConnection("socket reconnect")
-      } catch (err) {
-        console.error("socket reconnect recovery error", err)
-      }
-    }
-  })
-
-  socket.on("disconnect", () => {
-    socketConnected.value = false
-    if (inCall.value) setStatus("Reconnecting...")
-  })
-
-  socket.on("call:ringing", (data = {}) => {
-    if (data.roomId) roomId.value = String(data.roomId)
-    if (data.kind) kind.value = data.kind
-    setStatus("Ringing...")
-  })
-
-  socket.on("call:status", ({ calleeOnline } = {}) => {
-    setStatus(calleeOnline ? "Calling..." : "Queued")
-  })
-
-  socket.on("call:incoming", (data = {}) => {
-    incomingCall.value = {
-      roomId: String(data.roomId || ""),
-      fromUserId: String(data.fromUserId || ""),
-      fromName: data.fromName || "Caller",
-      kind: data.kind || "video",
-    }
-
-    roomId.value = String(data.roomId || "")
-    kind.value = data.kind || "video"
-    initialPartnerName.value = data.fromName || "Caller"
-    hostUserId.value = String(data.hostUserId || data.fromUserId || "")
-    mode.value = "receiver"
-    isCaller.value = false
-    setStatus("Incoming")
-  })
-
-  socket.on("call:accepted", async (data = {}) => {
-    if (data.roomId) roomId.value = String(data.roomId)
-    if (data.kind) kind.value = data.kind
-    if (data.hostUserId) hostUserId.value = String(data.hostUserId)
-
-    setStatus("Accepted")
-
-    await ensureLocalMedia()
-    joinCallRoom()
-  })
-
-  socket.on("call:peer-joined", async () => {
-    if (!pc.value) await createPeerConnection()
-  })
-
-  socket.on("call:ready", async (data = {}) => {
-    if (data.roomId) roomId.value = String(data.roomId)
-    if (data.kind) kind.value = data.kind
-    if (data.hostUserId) hostUserId.value = String(data.hostUserId)
-
-    setStatus("Connecting...")
-
-    if (!pc.value) await createPeerConnection()
-    if (isOfferOwner() && !makingOffer.value) await createAndSendOffer(false)
-  })
-
-  socket.on("call:webrtc:offer", async ({ roomId: incomingRoomId, offer, from } = {}) => {
-    try {
-      if (incomingRoomId) roomId.value = String(incomingRoomId)
-      setStatus("Answering...")
-
-      if (!pc.value) await createPeerConnection()
-
-      const offerCollision = offer && makingOffer.value
-      const polite = !isOfferOwner()
-      if (offerCollision && !polite) return
-
-      await pc.value.setRemoteDescription(new RTCSessionDescription(offer))
-      hasRemoteDescription.value = true
-      await flushPendingIceCandidates()
-
-      const answer = await pc.value.createAnswer()
-      await pc.value.setLocalDescription(answer)
-
-      socket.emit("call:webrtc:answer", {
-        roomId: roomId.value,
-        answer: pc.value.localDescription,
-        to: from,
-      })
-    } catch (err) {
-      console.error("call:webrtc:offer error", err)
-    }
-  })
-
-  socket.on("call:webrtc:answer", async ({ answer } = {}) => {
-    try {
-      if (!pc.value) return
-      await pc.value.setRemoteDescription(new RTCSessionDescription(answer))
-      hasRemoteDescription.value = true
-      await flushPendingIceCandidates()
-      setStatus("Connected")
-      markCallStarted()
-    } catch (err) {
-      console.error("call:webrtc:answer error", err)
-    }
-  })
-
-  socket.on("call:webrtc:ice", async ({ candidate } = {}) => {
-    try {
-      if (!candidate || !pc.value) return
-      if (hasRemoteDescription.value && pc.value.remoteDescription) {
-        await pc.value.addIceCandidate(new RTCIceCandidate(candidate))
-      } else {
-        pendingCandidates.push(candidate)
-      }
-    } catch (err) {
-      console.error("call:webrtc:ice error", err)
-    }
-  })
-
-  socket.on("call:ended", () => {
-    setStatus("Call ended")
-    cleanupAll()
-    router.back()
-  })
-
-  socket.on("call:error", ({ message } = {}) => {
-    setStatus(message || "Error")
-  })
-
-  socket.on("call:busy", ({ message } = {}) => {
-    setStatus(message || "Busy")
-  })
+function unbindSocketEvents() {
+  socket.off("connect", onSocketConnect)
+  socket.off("disconnect", onSocketDisconnect)
+  socket.off("call:ringing", onCallRinging)
+  socket.off("call:status", onCallStatus)
+  socket.off("call:incoming", onCallIncoming)
+  socket.off("call:accepted", onCallAccepted)
+  socket.off("call:peer-joined", onCallPeerJoined)
+  socket.off("call:ready", onCallReady)
+  socket.off("call:webrtc:offer", onCallWebrtcOffer)
+  socket.off("call:webrtc:answer", onCallWebrtcAnswer)
+  socket.off("call:webrtc:ice", onCallWebrtcIce)
+  socket.off("call:ended", onCallEnded)
+  socket.off("call:error", onCallError)
+  socket.off("call:busy", onCallBusy)
+  socket.off("call:rejected", onCallRejected)
 }
 
 async function getIceServers() {
@@ -691,124 +737,130 @@ async function applySenderParameters() {
 }
 
 async function createPeerConnection() {
-  if (pc.value) return pc.value
+  if (pc.value || pcCreating.value) return pc.value
+  pcCreating.value = true
 
-  const iceServers = await getIceServers()
-  pc.value = new RTCPeerConnection({ iceServers, iceCandidatePoolSize: 10 })
+  try {
+    const iceServers = await getIceServers()
+    const newPc = new RTCPeerConnection({ iceServers, iceCandidatePoolSize: 10 })
 
-  if (localStream.value) {
-    const senders = pc.value.getSenders()
-    localStream.value.getTracks().forEach((track) => {
-      const exists = senders.some((s) => s.track && s.track.kind === track.kind)
-      if (!exists) pc.value.addTrack(track, localStream.value)
-    })
-  }
-
-  pc.value.onicecandidate = (event) => {
-    if (event.candidate && roomId.value) {
-      socket.emit("call:webrtc:ice", { roomId: roomId.value, candidate: event.candidate })
+    if (localStream.value) {
+      const senders = newPc.getSenders()
+      localStream.value.getTracks().forEach((track) => {
+        const exists = senders.some((s) => s.track && s.track.kind === track.kind)
+        if (!exists) newPc.addTrack(track, localStream.value)
+      })
     }
-  }
 
-  pc.value.ontrack = (event) => {
-    const stream = event.streams?.[0]
-    if (!stream) return
-
-    remoteStream.value = stream
-    stopMonitor(remoteAudioMonitor)
-    remoteAudioMonitor = createSpeakingMonitor(stream, "remote")
-
-    const remoteVideoTrack = stream.getVideoTracks?.()[0]
-    const remoteAudioTrack = stream.getAudioTracks?.()[0]
-
-    remoteAudioOnly.value = !remoteVideoTrack
-    remoteVideoOff.value = remoteVideoTrack ? !remoteVideoTrack.enabled : true
-
-    if (remoteVideoTrack) {
-      remoteVideoTrack.onmute = () => { remoteVideoOff.value = true }
-      remoteVideoTrack.onunmute = () => { remoteVideoOff.value = false }
-      remoteVideoTrack.onended = () => {
-        remoteVideoOff.value = true
-        queueRecover("remote video ended")
+    newPc.onicecandidate = (event) => {
+      if (event.candidate && roomId.value) {
+        socket.emit("call:webrtc:ice", { roomId: roomId.value, candidate: event.candidate })
       }
     }
 
-    if (remoteAudioTrack) {
-      remoteAudioTrack.onended = () => {
-        queueRecover("remote audio ended")
+    newPc.ontrack = (event) => {
+      const stream = event.streams?.[0]
+      if (!stream) return
+
+      remoteStream.value = stream
+      stopMonitor(remoteAudioMonitor)
+      remoteAudioMonitor = createSpeakingMonitor(stream, "remote")
+
+      const remoteVideoTrack = stream.getVideoTracks?.()[0]
+      const remoteAudioTrack = stream.getAudioTracks?.()[0]
+
+      remoteAudioOnly.value = !remoteVideoTrack
+      remoteVideoOff.value = remoteVideoTrack ? !remoteVideoTrack.enabled : true
+
+      if (remoteVideoTrack) {
+        remoteVideoTrack.onmute = () => { remoteVideoOff.value = true }
+        remoteVideoTrack.onunmute = () => { remoteVideoOff.value = false }
+        remoteVideoTrack.onended = () => {
+          remoteVideoOff.value = true
+          queueRecover("remote video ended")
+        }
       }
-    }
 
-    if (remoteVideo.value) {
-      remoteVideo.value.srcObject = stream
-      remoteVideo.value.muted = false
-      remoteVideo.value.volume = speakerEnabled.value ? 1 : 0.25
-      safePlay(remoteVideo.value)
-    }
+      if (remoteAudioTrack) {
+        remoteAudioTrack.onended = () => {
+          queueRecover("remote audio ended")
+        }
+      }
 
-    setStatus("Connected")
-    markCallStarted()
-  }
+      if (remoteVideo.value) {
+        remoteVideo.value.srcObject = stream
+        remoteVideo.value.muted = false
+        remoteVideo.value.volume = speakerEnabled.value ? 1 : 0.25
+        safePlay(remoteVideo.value)
+      }
 
-  pc.value.onconnectionstatechange = async () => {
-    const state = pc.value?.connectionState
-
-    if (state === "connected") {
-      reconnectAttempted.value = false
       setStatus("Connected")
       markCallStarted()
-      await applySenderParameters()
-      return
     }
 
-    if (state === "connecting") {
-      setStatus("Connecting...")
-      return
+    newPc.onconnectionstatechange = async () => {
+      const state = newPc.connectionState
+
+      if (state === "connected") {
+        reconnectAttempted.value = false
+        setStatus("Connected")
+        markCallStarted()
+        await applySenderParameters()
+        return
+      }
+
+      if (state === "connecting") {
+        setStatus("Connecting...")
+        return
+      }
+
+      if (state === "disconnected") {
+        setStatus("Reconnecting...")
+        queueRecover("connection disconnected")
+        return
+      }
+
+      if (state === "failed" && !reconnectAttempted.value) {
+        reconnectAttempted.value = true
+        setStatus("Recovering...")
+        await maybeRecoverConnection("connection failed")
+        return
+      }
+
+      if (state === "closed") setStatus("Closed")
     }
 
-    if (state === "disconnected") {
-      setStatus("Reconnecting...")
-      queueRecover("connection disconnected")
-      return
+    newPc.oniceconnectionstatechange = async () => {
+      const state = newPc.iceConnectionState
+      if (state === "failed") {
+        setStatus("Recovering...")
+        await maybeRecoverConnection("ice failed")
+      } else if (state === "disconnected") {
+        setStatus("Reconnecting...")
+        queueRecover("ice disconnected")
+      }
     }
 
-    if (state === "failed" && !reconnectAttempted.value) {
-      reconnectAttempted.value = true
-      setStatus("Recovering...")
-      await maybeRecoverConnection("connection failed")
-      return
+    newPc.onnegotiationneeded = async () => {
+      if (!roomId.value || !isOfferOwner()) return
+      if (negotiationBusy.value) return
+
+      try {
+        negotiationBusy.value = true
+        await createAndSendOffer(false)
+      } catch (err) {
+        console.error("onnegotiationneeded error", err)
+      } finally {
+        negotiationBusy.value = false
+      }
     }
 
-    if (state === "closed") setStatus("Closed")
+    pc.value = newPc
+    await applySenderParameters()
+    return newPc
+  } finally {
+    pcCreating.value = false
   }
-
-  pc.value.oniceconnectionstatechange = async () => {
-    const state = pc.value?.iceConnectionState
-    if (state === "failed") {
-      setStatus("Recovering...")
-      await maybeRecoverConnection("ice failed")
-    } else if (state === "disconnected") {
-      setStatus("Reconnecting...")
-      queueRecover("ice disconnected")
-    }
-  }
-
-  pc.value.onnegotiationneeded = async () => {
-    if (!roomId.value || !isOfferOwner()) return
-    if (negotiationBusy.value) return
-
-    try {
-      negotiationBusy.value = true
-      await createAndSendOffer(false)
-    } catch (err) {
-      console.error("onnegotiationneeded error", err)
-    } finally {
-      negotiationBusy.value = false
-    }
-  }
-
-  await applySenderParameters()
-  return pc.value
 }
 
 async function createAndSendOffer(iceRestart = false) {
@@ -868,6 +920,7 @@ async function enhanceLocalTracks(stream) {
 async function ensureLocalMedia(force = false) {
   if (localStream.value && !force) return localStream.value
 
+  // Stop old tracks BEFORE getting new ones
   if (force && localStream.value) {
     stopStream(localStream.value)
     localStream.value = null
@@ -928,7 +981,11 @@ async function switchCamera() {
     const newVideoTrack = newStream.getVideoTracks()[0]
     if (!newVideoTrack) return
 
-    const videoSender = pc.value.getSenders().find((sender) => sender.track && sender.track.kind === "video")
+    // Use PC from ref (may have changed during await)
+    const currentPc = pc.value
+    if (!currentPc) return
+
+    const videoSender = currentPc.getSenders().find((sender) => sender.track && sender.track.kind === "video")
     if (videoSender) await videoSender.replaceTrack(newVideoTrack)
 
     const audioTracks = localStream.value.getAudioTracks()
@@ -959,8 +1016,8 @@ async function switchCamera() {
 async function flushPendingIceCandidates() {
   if (!pc.value || !hasRemoteDescription.value) return
 
-  while (pendingCandidates.length) {
-    const candidate = pendingCandidates.shift()
+  while (pendingCandidates.value.length) {
+    const candidate = pendingCandidates.value.shift()
     try {
       await pc.value.addIceCandidate(new RTCIceCandidate(candidate))
     } catch (err) {
@@ -1134,13 +1191,19 @@ function toggleMic() {
   audioTracks.forEach((track) => { track.enabled = !micMuted.value })
 }
 
+let cameraToggleDebounce = null
 async function toggleCamera() {
   if (!localStream.value) return
   const videoTracks = localStream.value.getVideoTracks()
   if (!videoTracks.length) return
   cameraOff.value = !cameraOff.value
   videoTracks.forEach((track) => { track.enabled = !cameraOff.value })
-  if (pc.value && isOfferOwner()) await createAndSendOffer(false)
+
+  // Debounce renegotiation
+  if (cameraToggleDebounce) clearTimeout(cameraToggleDebounce)
+  cameraToggleDebounce = setTimeout(async () => {
+    if (pc.value && isOfferOwner()) await createAndSendOffer(false)
+  }, 300)
 }
 
 function toggleSpeaker() {
@@ -1229,7 +1292,7 @@ function cleanupPeer() {
   }
 
   hasRemoteDescription.value = false
-  pendingCandidates.length = 0
+  pendingCandidates.value = []
 }
 
 function cleanupAll() {
@@ -1239,6 +1302,7 @@ function cleanupAll() {
   stopStatsWatcher()
   stopHealthChecks()
   if (reconnectDebounce) clearTimeout(reconnectDebounce)
+  if (cameraToggleDebounce) clearTimeout(cameraToggleDebounce)
 
   if (callTimer) {
     clearInterval(callTimer)
@@ -1276,6 +1340,7 @@ function cleanupAll() {
   makingOffer.value = false
   localSpeaking.value = false
   remoteSpeaking.value = false
+  pcCreating.value = false
 
   cleaningUp.value = false
 }
@@ -1291,7 +1356,11 @@ async function onVisibilityChange() {
         remoteVideo.value.srcObject = remoteStream.value
         safePlay(remoteVideo.value)
       }
-      await maybeRecoverConnection()
+      // Only recover if actually disconnected/failed
+      const state = pc.value?.connectionState
+      if (state === "failed" || state === "disconnected") {
+        await maybeRecoverConnection()
+      }
     } catch (err) {
       console.error("visibility recovery error", err)
     }
@@ -1312,26 +1381,9 @@ function onNetworkOffline() {
   if (inCall.value) setStatus("Reconnecting...")
 }
 
-function unbindSocketEvents() {
-  socket.off("connect")
-  socket.off("disconnect")
-  socket.off("call:ringing")
-  socket.off("call:status")
-  socket.off("call:incoming")
-  socket.off("call:accepted")
-  socket.off("call:peer-joined")
-  socket.off("call:ready")
-  socket.off("call:webrtc:offer")
-  socket.off("call:webrtc:answer")
-  socket.off("call:webrtc:ice")
-  socket.off("call:ended")
-  socket.off("call:error")
-  socket.off("call:busy")
-}
-
 watch(() => socket.connected, (v) => { socketConnected.value = v }, { immediate: true })
 watch(() => route.query.kind, (v) => {
-  if (v) kind.value = String(v)
+  if (v) kind.value = v === "audio" ? "audio" : "video"
 })
 
 onMounted(async () => {
