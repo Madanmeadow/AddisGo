@@ -1,16 +1,51 @@
 import { defineConfig } from "vite";
 import vue from "@vitejs/plugin-vue";
 import { VitePWA } from "vite-plugin-pwa";
+import { resolve } from "path";
 
 export default defineConfig({
   base: "/",
+  resolve: {
+    alias: {
+      "@": resolve(__dirname, "src"),
+    },
+  },
+
+  server: {
+    port: 5173,
+    host: true,
+  },
+
+  preview: {
+    port: 4173,
+    host: true,
+  },
+
+  css: {
+    devSourcemap: true,
+  },
+
+  build: {
+    target: "esnext",
+    minify: "terser",
+    sourcemap: true,
+    chunkSizeWarningLimit: 600,
+    rollupOptions: {
+      output: {
+        manualChunks: {
+          vue: ["vue", "vue-router"],
+          vendor: ["socket.io-client"],
+        },
+      },
+    },
+  },
+
   plugins: [
     vue(),
+
     VitePWA({
       registerType: "autoUpdate",
-      devOptions: { enabled: false },
-
-      // ✅ Make sure these exist in /public
+      injectRegister: "auto",
       includeAssets: [
         "favicon.ico",
         "apple-touch-icon.png",
@@ -22,9 +57,10 @@ export default defineConfig({
         name: "Pulse",
         short_name: "Pulse",
         description: "Your Social Universe",
-        theme_color: "#0b1220",
-        background_color: "#0b1220",
+        theme_color: "#060913",
+        background_color: "#060913",
         display: "standalone",
+        orientation: "portrait",
         start_url: "/",
         scope: "/",
         icons: [
@@ -39,13 +75,27 @@ export default defineConfig({
         ],
       },
 
-      // ✅ THE IMPORTANT PART (fix 416 + keep PWA stable)
       workbox: {
-        // Don’t precache mp3 files (Range requests + SW cache can cause 416)
+        cleanupOutdatedCaches: true,
+        skipWaiting: true,
+        clientsClaim: true,
+
+        // SPA fallback — critical for direct route access (/dashboard, /room-call, etc.)
+        navigateFallback: "index.html",
+        navigateFallbackDenylist: [
+          /^\/api\//,
+          /^\/posts/,
+          /^\/users/,
+          /^\/messages/,
+          /^\/conversations/,
+          /^\/reels/,
+          /^\/upload/,
+          /^\/likes/,
+        ],
+
         globIgnores: ["**/*.mp3", "**/*.ogg", "**/*.wav"],
 
         runtimeCaching: [
-          // ✅ API calls: Network first (so you always get fresh server data)
           {
             urlPattern: ({ url }) =>
               url.pathname.startsWith("/posts") ||
@@ -64,8 +114,6 @@ export default defineConfig({
               cacheableResponse: { statuses: [0, 200] },
             },
           },
-
-          // ✅ MP3: Network only (prevents 416 issues)
           {
             urlPattern: ({ url }) =>
               url.pathname.endsWith(".mp3") ||
@@ -73,19 +121,15 @@ export default defineConfig({
               url.pathname.endsWith(".wav"),
             handler: "NetworkOnly",
           },
-
-          // ✅ Images: Cache first
           {
             urlPattern: ({ request }) => request.destination === "image",
             handler: "CacheFirst",
             options: {
               cacheName: "pulse-images",
-              expiration: { maxEntries: 100, maxAgeSeconds: 60 * 60 * 24 * 7 },
+              expiration: { maxEntries: 120, maxAgeSeconds: 60 * 60 * 24 * 14 },
               cacheableResponse: { statuses: [0, 200] },
             },
           },
-
-          // ✅ JS/CSS/fonts: Stale-while-revalidate
           {
             urlPattern: ({ request }) =>
               request.destination === "script" ||
@@ -95,6 +139,20 @@ export default defineConfig({
             options: {
               cacheName: "pulse-assets",
               cacheableResponse: { statuses: [0, 200] },
+            },
+          },
+          // Cache video chunks with Range support
+          {
+            urlPattern: ({ url }) =>
+              url.pathname.endsWith(".mp4") ||
+              url.pathname.endsWith(".webm") ||
+              url.pathname.endsWith(".m3u8"),
+            handler: "CacheFirst",
+            options: {
+              cacheName: "pulse-video",
+              expiration: { maxEntries: 30, maxAgeSeconds: 60 * 60 * 24 * 3 },
+              rangeRequests: true,
+              cacheableResponse: { statuses: [0, 200, 206] },
             },
           },
         ],
