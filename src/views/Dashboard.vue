@@ -3078,7 +3078,9 @@ onBeforeUnmount(() => {
   window.removeEventListener("keydown", handleKeydown)
   window.removeEventListener("online", handleNetworkOnline)
   window.removeEventListener("offline", handleNetworkOffline)
-
+     try {
+    socket?.off("location:nearby")
+  } catch {}
   try { socket?.off("call:ringing") } catch {}
   try { socket?.off("call:incoming") } catch {}
   try { socket?.off("call:accepted") } catch {}
