@@ -518,7 +518,14 @@
                         </span>
                         <span class="sep">•</span>
                         <span class="id">ID {{ u.id }}</span>
-                      </div>
+
+                        <span
+                          v-if="u.distance !== null"
+                          class="distance"
+                        >
+                          • 📍 {{ u.distance }} mi away
+                        </span>
+                                              </div>
                     </div>
 
                     <div class="person-actions">
@@ -1227,6 +1234,7 @@ import Layout from "../components/Layout.vue"
 import TikTokFeed from "../components/TikTokFeed.vue"
 import CommentsPanel from "../components/Comments.vue"
 import { createSocket } from "../api/socket"
+import socket from "../socket"
 import { startLocation } from "../composables/useLocation"
 
 const router = useRouter()
@@ -2874,9 +2882,23 @@ function handleKeydown(e) {
 /* =========================
    LIFECYCLE
 ========================= */
-onMounted(async () => {
-  updateDailyStreak()
-  startLocation()
+  onMounted(async () => {
+   updateDailyStreak()
+   startLocation()
+
+  socket.on("location:nearby", (nearby) => {
+    people.value = people.value.map((u) => {
+      const match = nearby.find((p) => p.userId === u.id)
+
+      return {
+        ...u,
+        distance: match?.distance ?? null,
+      }
+    })
+
+    console.log("📍 Nearby users:", nearby)
+  })
+
   try {
     const savedDraft = JSON.parse(localStorage.getItem(DASH_DRAFT_KEY) || "{}")
     if (savedDraft?.caption) {
@@ -3073,7 +3095,7 @@ onBeforeUnmount(() => {
   window.removeEventListener("keydown", handleKeydown)
   window.removeEventListener("online", handleNetworkOnline)
   window.removeEventListener("offline", handleNetworkOffline)
-
+  try { socket.off("location:nearby") } catch {}
   try { socket?.off("call:ringing") } catch {}
   try { socket?.off("call:incoming") } catch {}
   try { socket?.off("call:accepted") } catch {}
