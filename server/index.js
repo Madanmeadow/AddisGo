@@ -23,6 +23,7 @@ import uploadRoutes from "./routes/upload.routes.js";
 import likesRoutes from "./routes/likes.routes.js";
 import { initMediasoupWorker } from "./mediasoup/workers.js";
 import { registerLiveSfuHandlers } from "./mediasoup/socketLiveSfu.js";
+import { registerLocationHandlers } from "./location/socketLocation.js";
 
 await initMediasoupWorker();
 dotenv.config();
@@ -776,6 +777,7 @@ io.on("connection", (socket) => {
   // ✅ ADD THIS (merge point)
   registerLiveSfuHandlers(io, socket);
   registerCallSfuHandlers(io, socket);
+  registerLocationHandlers(io, socket);
 
   /* ✅ Auto-register if JWT auth succeeded */
   if (socket.userId) {
