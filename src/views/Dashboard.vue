@@ -40,16 +40,13 @@
                   : `Offline ${offlineQueueCount ? "• " + offlineQueueCount + " queued" : ""}`
             }}
           </span>
-          <button class="fab" @click="goCallSFU">📞+</button>
+          
           <button class="chip eliteChip" @click="openQuickCreate('post')">✍️ Post</button>
-          <button class="chip ghost eliteChip" @click="openQuickCreate('call')">📞 Call</button>
-          <button class="chip ghost eliteChip" @click="openQuickCreate('live')">🔴 Live</button>
+
           <button class="chip ghost eliteChip" @click="togglePeople">
             {{ peopleOpen ? "Hide People" : "People" }}
           </button>
-          <button @click="$router.push('/live-sfu')">
-             🚀 Go Live (New)
-          </button>
+          >
           <button class="chip ghost eliteChip" @click="toggleChat">
             {{ chatOpen ? "Close Chat" : "Chat" }}
           </button>
@@ -1234,6 +1231,7 @@ import Layout from "../components/Layout.vue"
 import TikTokFeed from "../components/TikTokFeed.vue"
 import CommentsPanel from "../components/Comments.vue"
 import { createSocket } from "../api/socket"
+import { startLocation } from "../composables/useLocation"
 
 const router = useRouter()
 const apiUrl = (import.meta.env.VITE_API_URL || "").trim()
@@ -2882,7 +2880,7 @@ function handleKeydown(e) {
 ========================= */
 onMounted(async () => {
   updateDailyStreak()
-
+  startLocation()
   try {
     const savedDraft = JSON.parse(localStorage.getItem(DASH_DRAFT_KEY) || "{}")
     if (savedDraft?.caption) {
