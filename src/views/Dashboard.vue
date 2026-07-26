@@ -8,59 +8,51 @@
       <div class="bg-orb orb3"></div>
 
   <!-- ELITE TOPBAR -->
+
   <header class="topbar eliteTopbar glassy">
     <div class="brand" @click="scrollToTop" role="button" tabindex="0">
       <div class="logo eliteLogo">⚡</div>
 
-      <div class="brand-text">
-        <div class="title">Pulse</div>
-        <div class="sub">Elite social cockpit</div>
-      </div>
-    </div>
+  <div class="brand-text">
+    <div class="title">Pulse</div>
+    <div class="sub">Elite social cockpit</div>
+  </div>
+</div>
 
-    <div class="eliteCenterSearch">
-      <div class="searchWrap eliteSearchWrap">
-        <input
-          ref="searchRef"
-          v-model="search"
-          class="search eliteSearch"
-          placeholder="Search people, rooms, live, posts…"
-        />
-        <button v-if="search" class="searchClear" @click="search = ''">✕</button>
-      </div>
-    </div>
+<div class="eliteCenterSearch">
+  <div class="searchWrap eliteSearchWrap">
+    <input
+      ref="searchRef"
+      v-model="search"
+      class="search eliteSearch"
+      placeholder="Search people, rooms, live, posts…"
+    />
+    <button v-if="search" class="searchClear" @click="search = ''">✕</button>
+  </div>
+</div>
 
-    <div class="top-actions eliteTopActions">
-      <span class="netBadge" :class="{ offline: !isNetworkOnline, syncing: isSyncingQueue }">
-        <span class="netDot"></span>
-        {{
-          isSyncingQueue
-            ? `Syncing ${offlineQueueCount}`
-            : isNetworkOnline
-              ? "Online"
-              : `Offline ${offlineQueueCount ? "• " + offlineQueueCount + " queued" : ""}`
-        }}
-      </span>
-      
-      <button class="chip eliteChip" @click="openQuickCreate('post')">✍️ Post</button>
+<div class="top-actions eliteTopActions">
+  <span class="netBadge" :class="{ offline: !isNetworkOnline, syncing: isSyncingQueue }">
+    <span class="netDot"></span>
+    {{
+      isSyncingQueue
+        ? `Syncing ${offlineQueueCount}`
+        : isNetworkOnline
+          ? "Online"
+          : `Offline ${offlineQueueCount ? "• " + offlineQueueCount + " queued" : ""}`
+    }}
+  </span>
 
-      <button class="chip ghost eliteChip" @click="toggleChat">
-        {{ chatOpen ? "Close Chat" : "Chat" }}
-      </button>
-      <button class="chip ghost hide-sm" @click="toggleTools">
-        {{ toolsOpen ? "Close Tools" : "Tools" }}
-      </button>
-      <button class="chip ghost hide-sm" @click="toggleStudio">
-        {{ studioOpen ? "Close Studio" : "Studio" }}
-      </button>
-      <button class="chip ghost hide-sm" @click="toggleFocusMode">
-        {{ focusMode ? "Exit Focus" : "Focus Mode" }}
-      </button>
-      <button class="chip danger hide-sm" @click="logout">Logout</button>
-    </div>
+<button class="chip eliteChip" @click="openQuickCreate('post')">✍️ Post</button>
+
+<button class="chip ghost eliteChip" @click="toggleChat">{{ chatOpen ? "Close Chat" : "Chat" }}</button><button class="chip ghost hide-sm" @click="toggleTools">{{ toolsOpen ? "Close Tools" : "Tools" }}</button><button class="chip ghost hide-sm" @click="toggleStudio">{{ studioOpen ? "Close Studio" : "Studio" }}</button><button class="chip ghost hide-sm" @click="toggleFocusMode">{{ focusMode ? "Exit Focus" : "Focus Mode" }}</button><button class="chip danger hide-sm" @click="logout">Logout</button>
+
+</div>
+
   </header>
 
   <!-- ELITE QUICK RAIL -->
+
   <section class="eliteQuickRail">
     <button class="quickRailBtn" @click="focusComposer">✍️ Create</button>
     <button class="quickRailBtn" @click="togglePeople">👥 People</button>
@@ -72,51 +64,43 @@
         <!-- DYNAMIC ISLAND -->
   <section class="dynamicIsland glassy">
 
-    <div class="islandLeft">
+<div class="islandLeft">
 
-      <span class="islandDot" :class="{ on: socketConnected }"></span>
+<span class="islandDot" :class="{ on: socketConnected }"></span>
 
-      <span class="islandText">
-        {{ socketConnected ? "Realtime Connected" : "Realtime Offline" }}
-      </span>
+  <span class="islandText">
+    {{ socketConnected ? "Realtime Connected" : "Realtime Offline" }}
+  </span>
 
-    </div>
+</div>
 
-    <div class="islandCenter">
+<div class="islandCenter">
 
-      <button class="islandBtn" @click="refreshAll">
-        🔄 Refresh
-      </button>
+<button class="islandBtn" @click="refreshAll">🔄 Refresh</button>
 
-      <button class="islandBtn" @click="focusComposer">
-        ✍️ Post
-      </button>
+<button class="islandBtn" @click="focusComposer">✍️ Post</button>
 
-      <button class="islandBtn" @click="startLive">
-        🔴 Live
-      </button>
+<button class="islandBtn" @click="startLive">🔴 Live</button>
 
-      <button class="islandBtn" @click="createFastRoom">
-        📞 Room
-      </button>
+<button class="islandBtn" @click="createFastRoom">📞 Room</button>
 
-    </div>
+</div>
 
-    <div class="islandRight">
+<div class="islandRight">
 
-      <span class="islandStat">
-        👥 {{ onlineCount }}
-      </span>
+  <span class="islandStat">
+    👥 {{ onlineCount }}
+  </span>
 
-      <span class="islandStat">
-        🔴 {{ liveStreams.length }}
-      </span>
+  <span class="islandStat">
+    🔴 {{ liveStreams.length }}
+  </span>
 
-      <span class="islandStat">
-        📞 {{ callRooms.length }}
-      </span>
+  <span class="islandStat">
+    📞 {{ callRooms.length }}
+  </span>
 
-    </div>
+</div>
 
   </section>
   <!-- HERO -->
@@ -129,51 +113,54 @@
           {{ moodGreeting }} Build, post, call, stream, chat, save ideas, and run your whole world from one magical dashboard.
         </div>
 
-        <div class="heroActions">
-          <button class="btn btn-primary" @click="focusComposer">Create Post</button>
-          <button class="btn ghostBtn" @click="setFeedMode('rooms')">Open Rooms</button>
-          <button class="btn ghostBtn" @click="setFeedMode('live')">Go Live Area</button>
-          <button class="btn ghostBtn" @click="toggleStudio">Creator Studio</button>
-          <button class="btn ghostBtn" @click="createFastRoom">Start Room</button>
-        </div>
+<div class="heroActions">
+  <button class="btn btn-primary" @click="focusComposer">Create Post</button>
+  <button class="btn ghostBtn" @click="setFeedMode('rooms')">Open Rooms</button>
+  <button class="btn ghostBtn" @click="setFeedMode('live')">Go Live Area</button>
+  <button class="btn ghostBtn" @click="toggleStudio">Creator Studio</button>
+  <button class="btn ghostBtn" @click="createFastRoom">Start Room</button>
+</div>
 
-        <div class="trendingRow mt10">
-          <span class="badgePill accent">Creator Score {{ creatorScore }}</span>
-          <span class="badgePill">Streak {{ todayStreak }} day{{ todayStreak === 1 ? "" : "s" }}</span>
-          <span class="badgePill">{{ quickStatusText }}</span>
-        </div>
-      </div>
+<div class="trendingRow mt10">
+  <span class="badgePill accent">Creator Score {{ creatorScore }}</span>
+  <span class="badgePill">Streak {{ todayStreak }} day{{ todayStreak === 1 ? "" : "s" }}</span>
+  <span class="badgePill">{{ quickStatusText }}</span>
+</div>
 
-      <div class="heroStats">
-        <div class="heroStat">
-          <div class="heroStatNum">{{ posts.length }}</div>
-          <div class="heroStatLab">Posts</div>
-        </div>
-        <div class="heroStat">
-          <div class="heroStatNum">{{ videoPosts.length }}</div>
-          <div class="heroStatLab">Videos</div>
-        </div>
-        <div class="heroStat">
-          <div class="heroStatNum">{{ onlineCount }}</div>
-          <div class="heroStatLab">Online</div>
-        </div>
-        <div class="heroStat">
-          <div class="heroStatNum">{{ liveStreams.length }}</div>
-          <div class="heroStatLab">Live</div>
-        </div>
-        <div class="heroStat">
-          <div class="heroStatNum">{{ savedPostIds.length }}</div>
-          <div class="heroStatLab">Saved</div>
-        </div>
-        <div class="heroStat">
-          <div class="heroStatNum">{{ pinnedPostIds.length }}</div>
-          <div class="heroStatLab">Pinned</div>
-        </div>
-      </div>
+  </div>
+
+  <div class="heroStats">
+    <div class="heroStat">
+      <div class="heroStatNum">{{ posts.length }}</div>
+      <div class="heroStatLab">Posts</div>
     </div>
+    <div class="heroStat">
+      <div class="heroStatNum">{{ videoPosts.length }}</div>
+      <div class="heroStatLab">Videos</div>
+    </div>
+    <div class="heroStat">
+      <div class="heroStatNum">{{ onlineCount }}</div>
+      <div class="heroStatLab">Online</div>
+    </div>
+    <div class="heroStat">
+      <div class="heroStatNum">{{ liveStreams.length }}</div>
+      <div class="heroStatLab">Live</div>
+    </div>
+    <div class="heroStat">
+      <div class="heroStatNum">{{ savedPostIds.length }}</div>
+      <div class="heroStatLab">Saved</div>
+    </div>
+    <div class="heroStat">
+      <div class="heroStatNum">{{ pinnedPostIds.length }}</div>
+      <div class="heroStatLab">Pinned</div>
+    </div>
+  </div>
+</div>
+
   </section>
 
   <!-- COMMAND CENTER -->
+
   <section class="dock">
     <div class="panel dockCard glassy">
       <div class="panel-head">
@@ -184,42 +171,44 @@
         </div>
       </div>
 
-      <div class="trendingRow">
-        <span class="badgePill accent">Mode: {{ feedModeLabel }}</span>
-        <span class="badgePill" :class="{ ok: socketConnected, bad: !socketConnected }">
-          {{ socketConnected ? "Connected" : "Disconnected" }}
-        </span>
-        <span class="badgePill">Online {{ onlineCount }}</span>
-        <span class="badgePill">Live {{ liveStreams.length }}</span>
-        <span class="badgePill">Rooms {{ callRooms.length }}</span>
-        <span class="badgePill">Saved {{ savedPostIds.length }}</span>
-        <span class="badgePill">Pinned {{ pinnedPostIds.length }}</span>
-      </div>
+  <div class="trendingRow">
+    <span class="badgePill accent">Mode: {{ feedModeLabel }}</span>
+    <span class="badgePill" :class="{ ok: socketConnected, bad: !socketConnected }">
+      {{ socketConnected ? "Connected" : "Disconnected" }}
+    </span>
+    <span class="badgePill">Online {{ onlineCount }}</span>
+    <span class="badgePill">Live {{ liveStreams.length }}</span>
+    <span class="badgePill">Rooms {{ callRooms.length }}</span>
+    <span class="badgePill">Saved {{ savedPostIds.length }}</span>
+    <span class="badgePill">Pinned {{ pinnedPostIds.length }}</span>
+  </div>
 
-      <div class="hint mt10">
-        Keyboard shortcuts: <strong>/</strong> search, <strong>c</strong> composer, <strong>r</strong> refresh, <strong>g</strong> go live, <strong>m</strong> mute, <strong>f</strong> focus mode.
-      </div>
-    </div>
+  <div class="hint mt10">
+    Keyboard shortcuts: <strong>/</strong> search, <strong>c</strong> composer, <strong>r</strong> refresh, <strong>g</strong> go live, <strong>m</strong> mute, <strong>f</strong> focus mode.
+  </div>
+</div>
 
-    <div class="panel dockCard glassy">
-      <div class="panel-head">
-        <div class="panel-title">🚀 Smart Launch</div>
-      </div>
+<div class="panel dockCard glassy">
+  <div class="panel-head">
+    <div class="panel-title">🚀 Smart Launch</div>
+  </div>
 
-      <div class="toolsGrid">
-        <button
-          v-for="item in smartLaunchCards"
-          :key="item.id"
-          class="toolBtn"
-          @click="runSmartLaunch(item.id)"
-        >
-          {{ item.label }}
-        </button>
-      </div>
-    </div>
+  <div class="toolsGrid">
+    <button
+      v-for="item in smartLaunchCards"
+      :key="item.id"
+      class="toolBtn"
+      @click="runSmartLaunch(item.id)"
+    >
+      {{ item.label }}
+    </button>
+  </div>
+</div>
+
   </section>
 
   <!-- SPOTLIGHT -->
+
   <section class="dock">
     <div class="panel dockCard glassy">
       <div class="panel-head">
@@ -229,42 +218,44 @@
         </div>
       </div>
 
-      <div class="toolsGrid">
-        <div class="toolBtn">
-          🔥 Trending Tag: {{ spotlightTag || "Nothing yet" }}
-        </div>
-        <div class="toolBtn">
-          👥 Most Active: {{ spotlightPerson }}
-        </div>
-        <div class="toolBtn">
-          📞 Rooms Ready: {{ callRooms.length }}
-        </div>
-        <div class="toolBtn">
-          🎬 Feed Power: {{ videoPosts.length > 0 ? "Video Active" : "Text Active" }}
-        </div>
-      </div>
+  <div class="toolsGrid">
+    <div class="toolBtn">
+      🔥 Trending Tag: {{ spotlightTag || "Nothing yet" }}
     </div>
-
-    <div class="panel dockCard glassy">
-      <div class="panel-head">
-        <div class="panel-title">📈 Creator Pulse</div>
-      </div>
-
-      <div class="trendingRow">
-        <span class="badgePill accent">Posts {{ posts.length }}</span>
-        <span class="badgePill">Comments {{ totalCommentCount }}</span>
-        <span class="badgePill">Likes {{ totalLikesCount }}</span>
-        <span class="badgePill">Saved {{ savedPostIds.length }}</span>
-        <span class="badgePill">Pinned {{ pinnedPostIds.length }}</span>
-      </div>
-
-      <div class="hint mt10">
-        {{ creatorInsight }}
-      </div>
+    <div class="toolBtn">
+      👥 Most Active: {{ spotlightPerson }}
     </div>
+    <div class="toolBtn">
+      📞 Rooms Ready: {{ callRooms.length }}
+    </div>
+    <div class="toolBtn">
+      🎬 Feed Power: {{ videoPosts.length > 0 ? "Video Active" : "Text Active" }}
+    </div>
+  </div>
+</div>
+
+<div class="panel dockCard glassy">
+  <div class="panel-head">
+    <div class="panel-title">📈 Creator Pulse</div>
+  </div>
+
+  <div class="trendingRow">
+    <span class="badgePill accent">Posts {{ posts.length }}</span>
+    <span class="badgePill">Comments {{ totalCommentCount }}</span>
+    <span class="badgePill">Likes {{ totalLikesCount }}</span>
+    <span class="badgePill">Saved {{ savedPostIds.length }}</span>
+    <span class="badgePill">Pinned {{ pinnedPostIds.length }}</span>
+  </div>
+
+  <div class="hint mt10">
+    {{ creatorInsight }}
+  </div>
+</div>
+
   </section>
 
   <!-- MODEBAR -->
+
   <div class="modebar">
     <button class="mode" :class="{ on: feedMode === 'foryou' }" @click="setFeedMode('foryou')">🎬 For You</button>
     <button class="mode reels" :class="{ on: feedMode === 'reels' }" @click="setFeedMode('reels')">🎞️ Reels</button>
@@ -283,36 +274,40 @@
         <button v-if="search" class="searchClear" @click="search = ''">✕</button>
       </div>
 
-      <select v-model="sortMode" class="selectControl">
-        <option value="latest">Latest</option>
-        <option value="popular">Popular</option>
-        <option value="media">Media First</option>
-        <option value="text">Text First</option>
-      </select>
+  <select v-model="sortMode" class="selectControl">
+    <option value="latest">Latest</option>
+    <option value="popular">Popular</option>
+    <option value="media">Media First</option>
+    <option value="text">Text First</option>
+  </select>
 
-      <button
-        v-if="feedMode === 'foryou' || feedMode === 'reels'"
-        class="chip ghost"
-        @click="toggleGlobalMute"
-      >
-        {{ globalMuted ? "🔇 Muted" : "🔊 Sound" }}
-      </button>
+<buttonv-if="feedMode === 'foryou' || feedMode === 'reels'"class="chip ghost"@click="toggleGlobalMute"
 
-      <button class="chip ghost" @click="surpriseMe">✨ Surprise Me</button>
-    </div>
+
+
+{{ globalMuted ? "🔇 Muted" : "🔊 Sound" }}
+
+  </button>
+
+<button class="chip ghost" @click="surpriseMe">✨ Surprise Me</button>
+
+</div>
+
   </div>
 
   <!-- FILTER BAR -->
+
   <div class="filterbar">
     <button class="filterChip" :class="{ on: postFilter === 'all' }" @click="postFilter = 'all'">All</button>
     <button class="filterChip" :class="{ on: postFilter === 'video' }" @click="postFilter = 'video'">Videos</button>
     <button class="filterChip" :class="{ on: postFilter === 'image' }" @click="postFilter = 'image'">Images</button>
     <button class="filterChip" :class="{ on: postFilter === 'text' }" @click="postFilter = 'text'">Text</button>
 
-    <div class="filterHint">
-      <span class="badgePill accent">{{ feedModeLabel }}</span>
-      <span class="badgePill">{{ filteredBaseCount }} shown</span>
-    </div>
+<div class="filterHint">
+  <span class="badgePill accent">{{ feedModeLabel }}</span>
+  <span class="badgePill">{{ filteredBaseCount }} shown</span>
+</div>
+
   </div>
 
   <main class="main">
@@ -321,790 +316,784 @@
       <div class="panel-head">
         <div class="panel-title">🛰️ Status</div>
 
-        <div class="row">
-          <span class="badgePill" :class="{ ok: socketConnected, bad: !socketConnected }">
-            {{ socketConnected ? "Socket Connected" : "Socket Disconnected" }}
-          </span>
-          <span class="badgePill">{{ onlineCount }} online</span>
-          <span class="badgePill">{{ liveStreams.length }} live</span>
-          <span class="badgePill">{{ callRooms.length }} call rooms</span>
-          <span class="badgePill accent">{{ feedModeLabel }}</span>
+<div class="row">
+  <span class="badgePill" :class="{ ok: socketConnected, bad: !socketConnected }">
+    {{ socketConnected ? "Socket Connected" : "Socket Disconnected" }}
+  </span>
+  <span class="badgePill">{{ onlineCount }} online</span>
+  <span class="badgePill">{{ liveStreams.length }} live</span>
+  <span class="badgePill">{{ callRooms.length }} call rooms</span>
+  <span class="badgePill accent">{{ feedModeLabel }}</span>
+</div>
+
+<div class="row">
+  <button class="btn ghostBtn" @click="reconnectSocket">♻️ Reconnect</button>
+  <button class="btn ghostBtn" @click="copyMyProfileLink">🔗 Copy Profile</button>
+  <button class="btn ghostBtn" @click="copyDiagnostics">🧾 Copy Diagnostics</button>
+</div>
+
+  </div>
+
+  <div v-if="statusNote" class="hint mt10">{{ statusNote }}</div>
+</section>
+
+<!-- TRENDING -->
+
+<section v-if="trendingTags.length" class="panel glassy">
+  <div class="panel-head">
+    <div class="panel-title">🔥 Trending</div>
+    <button class="btn ghostBtn" @click="search = ''">Clear Search</button>
+  </div>
+
+  <div class="trendingRow">
+    <button
+      v-for="tag in trendingTags"
+      :key="tag"
+      class="trendChip"
+      @click="applyTrendTag(tag)"
+    >
+      {{ tag }}
+    </button>
+  </div>
+</section>
+
+<section v-if="token" class="panel glassy commHub">
+  <div class="panel-head">
+    <div class="panel-title">📡 Connect</div>
+    <div class="dockActions">
+      <button class="btn ghostBtn" @click="togglePeople">{{ peopleOpen ? "Hide People" : "Show People" }}</button>
+      <button class="btn ghostBtn" @click="goInbox">Open Inbox</button>
+      <button class="btn ghostBtn" @click="setFeedMode('rooms')">Open Rooms</button>
+    </div>
+  </div>
+
+  <div class="miniAvatars">
+    <div
+      v-for="u in filteredPeople.slice(0, 12)"
+      :key="'hub-' + u.id"
+      class="miniAvatarWrap"
+      :title="displayUserName(u)"
+      @click="startCall(u, 'audio')"
+    >
+      <div class="miniAvatar">{{ displayUserName(u)[0]?.toUpperCase() }}</div>
+      <span class="miniDot" :class="{ on: isOnline(u.id) }"></span>
+    </div>
+  </div>
+
+  <div class="hint mt10">Tap a person bubble for a quick audio call. Open People for full call buttons and Inbox for messages.</div>
+</section>
+
+<!-- STUDIO -->
+
+<section v-if="studioOpen" class="panel toolsPanel glassy">
+  <div class="panel-head">
+    <div class="panel-title">🪄 Creator Studio</div>
+    <div class="dockActions">
+      <button class="btn ghostBtn" @click="toggleStudio">Close</button>
+    </div>
+  </div>
+
+  <div class="toolsGrid">
+    <button class="toolBtn" @click="focusComposer">✍️ New Post</button>
+    <button class="toolBtn" @click="setFeedMode('reels')">🎞️ Create Reel</button>
+    <button class="toolBtn" @click="startLive">🔴 Start Live</button>
+    <button class="toolBtn" @click="createFastRoom">📞 Start Room</button>
+    <button class="toolBtn" @click="openSavedMode">💾 Open Saved</button>
+    <button class="toolBtn" @click="openPinnedMode">📌 Open Pinned</button>
+    <button class="toolBtn" @click="refreshCallRooms">📞 Refresh Rooms</button>
+    <button class="toolBtn" @click="requestNotifications">🔔 Notifications</button>
+    <button class="toolBtn" @click="testTurn">🧊 Test TURN</button>
+    <button class="toolBtn" @click="toggleFocusMode">{{ focusMode ? "🧘 Exit Focus" : "🧘 Enter Focus" }}</button>
+  </div>
+
+  <div class="trendingRow">
+    <span class="badgePill">Posts {{ posts.length }}</span>
+    <span class="badgePill">Videos {{ videoPosts.length }}</span>
+    <span class="badgePill">Saved {{ savedPosts.length }}</span>
+    <span class="badgePill">Pinned {{ pinnedPosts.length }}</span>
+    <span class="badgePill accent">Score {{ creatorScore }}</span>
+  </div>
+
+  <div v-if="turnNote" class="hint mt10">{{ turnNote }}</div>
+</section>
+
+<!-- TOP DOCK -->
+
+<section v-if="!focusMode" class="dock">
+  <!-- Live -->
+  <div class="panel dockCard glassy">
+    <div class="panel-head">
+      <div class="panel-title">🔴 Live Now</div>
+      <button class="btn btn-primary" @click="startLive" :disabled="!token">Go Live</button>
+    </div>
+
+<div v-if="liveStreams.length === 0" class="hint mt10">No one live right now</div>
+
+<div v-else class="live-strip">
+  <div
+    v-for="stream in liveStreams.slice(0, 6)"
+    :key="'live-mini-' + stream"
+    class="live-pill"
+    @click="joinLive(stream)"
+    title="Tap to watch"
+  >
+    <span class="dot"></span>
+    <span class="live-pill-name">{{ stream }}</span>
+    <span class="chev">›</span>
+  </div>
+
+  <button
+    v-if="liveStreams.length > 6"
+    class="chip ghost mini"
+    @click="setFeedMode('live')"
+  >
+    View all
+  </button>
+</div>
+
+  </div>
+
+  <!-- People -->
+
+  <div class="panel dockCard glassy">
+    <div class="panel-head">
+      <div class="panel-title">👥 People</div>
+
+  <div class="dockActions">
+    <button class="btn" @click="fetchPeople" :disabled="peopleLoading || !token">
+      {{ peopleLoading ? "Loading…" : "Refresh" }}
+    </button>
+    <button class="btn ghostBtn" @click="toggleChat">
+      {{ chatOpen ? "Close Chat" : "Open Chat" }}
+    </button>
+  </div>
+</div>
+
+<div v-if="!token" class="alert soft">
+  Login again to see people & call buttons.
+</div>
+
+<template v-else>
+  <div class="miniAvatars">
+    <div
+      v-for="u in people.slice(0, 14)"
+      :key="'pmini-' + u.id"
+      class="miniAvatarWrap"
+      :title="displayUserName(u)"
+      @click="peopleOpen ? null : startCall(u, 'audio')"
+    >
+      <div class="miniAvatar">
+        {{ displayUserName(u)[0]?.toUpperCase() }}
+      </div>
+      <span class="miniDot" :class="{ on: isOnline(u.id) }"></span>
+    </div>
+
+    <button class="chip ghost mini" @click="togglePeople">
+      {{ peopleOpen ? "Hide list" : "Show list" }}
+    </button>
+  </div>
+
+  <div v-if="peopleOpen" class="peopleCompact">
+    <div v-if="peopleError" class="alert">{{ peopleError }}</div>
+    <div v-else-if="peopleLoading" class="hint">Loading people…</div>
+    <div v-else-if="people.length === 0" class="hint">No users found.</div>
+
+    <div v-else class="peopleList">
+      <div
+        v-for="u in filteredPeople"
+        :key="'plist-' + u.id"
+        class="person compact"
+      >
+        <div class="avatar small">
+          {{ displayUserName(u)[0]?.toUpperCase() }}
         </div>
 
-        <div class="row">
-          <button class="btn ghostBtn" @click="reconnectSocket">♻️ Reconnect</button>
-          <button class="btn ghostBtn" @click="copyMyProfileLink">🔗 Copy Profile</button>
-          <button class="btn ghostBtn" @click="copyDiagnostics">🧾 Copy Diagnostics</button>
-        </div>
-      </div>
-
-      <div v-if="statusNote" class="hint mt10">{{ statusNote }}</div>
-    </section>
-
-    <!-- TRENDING -->
-    <section v-if="trendingTags.length" class="panel glassy">
-      <div class="panel-head">
-        <div class="panel-title">🔥 Trending</div>
-        <button class="btn ghostBtn" @click="search = ''">Clear Search</button>
-      </div>
-
-      <div class="trendingRow">
-        <button
-          v-for="tag in trendingTags"
-          :key="tag"
-          class="trendChip"
-          @click="applyTrendTag(tag)"
-        >
-          {{ tag }}
-        </button>
-      </div>
-    </section>
-
-    <section v-if="token" class="panel glassy commHub">
-      <div class="panel-head">
-        <div class="panel-title">📡 Connect</div>
-        <div class="dockActions">
-          <button class="btn ghostBtn" @click="togglePeople">{{ peopleOpen ? "Hide People" : "Show People" }}</button>
-          <button class="btn ghostBtn" @click="goInbox">Open Inbox</button>
-          <button class="btn ghostBtn" @click="setFeedMode('rooms')">Open Rooms</button>
-        </div>
-      </div>
-
-      <div class="miniAvatars">
-        <div
-          v-for="u in filteredPeople.slice(0, 12)"
-          :key="'hub-' + u.id"
-          class="miniAvatarWrap"
-          :title="displayUserName(u)"
-          @click="startCall(u, 'audio')"
-        >
-          <div class="miniAvatar">{{ displayUserName(u)[0]?.toUpperCase() }}</div>
-          <span class="miniDot" :class="{ on: isOnline(u.id) }"></span>
-        </div>
-      </div>
-
-      <div class="hint mt10">Tap a person bubble for a quick audio call. Open People for full call buttons and Inbox for messages.</div>
-    </section>
-
-    <!-- STUDIO -->
-    <section v-if="studioOpen" class="panel toolsPanel glassy">
-      <div class="panel-head">
-        <div class="panel-title">🪄 Creator Studio</div>
-        <div class="dockActions">
-          <button class="btn ghostBtn" @click="toggleStudio">Close</button>
-        </div>
-      </div>
-
-      <div class="toolsGrid">
-        <button class="toolBtn" @click="focusComposer">✍️ New Post</button>
-        <button class="toolBtn" @click="setFeedMode('reels')">🎞️ Create Reel</button>
-        <button class="toolBtn" @click="startLive">🔴 Start Live</button>
-        <button class="toolBtn" @click="createFastRoom">📞 Start Room</button>
-        <button class="toolBtn" @click="openSavedMode">💾 Open Saved</button>
-        <button class="toolBtn" @click="openPinnedMode">📌 Open Pinned</button>
-        <button class="toolBtn" @click="refreshCallRooms">📞 Refresh Rooms</button>
-        <button class="toolBtn" @click="requestNotifications">🔔 Notifications</button>
-        <button class="toolBtn" @click="testTurn">🧊 Test TURN</button>
-        <button class="toolBtn" @click="toggleFocusMode">{{ focusMode ? "🧘 Exit Focus" : "🧘 Enter Focus" }}</button>
-      </div>
-
-      <div class="trendingRow">
-        <span class="badgePill">Posts {{ posts.length }}</span>
-        <span class="badgePill">Videos {{ videoPosts.length }}</span>
-        <span class="badgePill">Saved {{ savedPosts.length }}</span>
-        <span class="badgePill">Pinned {{ pinnedPosts.length }}</span>
-        <span class="badgePill accent">Score {{ creatorScore }}</span>
-      </div>
-
-      <div v-if="turnNote" class="hint mt10">{{ turnNote }}</div>
-    </section>
-
-    <!-- TOP DOCK -->
-    <section v-if="!focusMode" class="dock">
-      <!-- Live -->
-      <div class="panel dockCard glassy">
-        <div class="panel-head">
-          <div class="panel-title">🔴 Live Now</div>
-          <button class="btn btn-primary" @click="startLive" :disabled="!token">Go Live</button>
-        </div>
-
-        <div v-if="liveStreams.length === 0" class="hint mt10">No one live right now</div>
-
-        <div v-else class="live-strip">
-          <div
-            v-for="stream in liveStreams.slice(0, 6)"
-            :key="'live-mini-' + stream"
-            class="live-pill"
-            @click="joinLive(stream)"
-            title="Tap to watch"
-          >
-            <span class="dot"></span>
-            <span class="live-pill-name">{{ stream }}</span>
-            <span class="chev">›</span>
+        <div class="person-meta">
+          <div class="person-name">
+            {{ displayUserName(u) }}
           </div>
+
+          <div class="person-sub">
+            <span class="status" :class="{ on: isOnline(u.id) }"></span>
+            <span class="status-text">
+              {{ isOnline(u.id) ? "Online" : "Offline" }}
+            </span>
+            <span class="sep">•</span>
+            <span class="id">ID {{ u.id }}</span>
+          </div>
+        </div>
+
+        <div class="person-actions">
+          <button
+            class="iconbtn"
+            title="Audio Call"
+            :disabled="!isOnline(u.id) || callBusy"
+            @click="startCall(u, 'audio')"
+          >
+            📞
+          </button>
 
           <button
-            v-if="liveStreams.length > 6"
-            class="chip ghost mini"
-            @click="setFeedMode('live')"
+            class="iconbtn"
+            title="Video Call"
+            :disabled="!isOnline(u.id) || callBusy"
+            @click="startCall(u, 'video')"
           >
-            View all
+            🎥
+          </button>
+
+          <button
+            class="iconbtn"
+            title="Open Profile"
+            @click="openUserProfile(u)"
+          >
+            👤
           </button>
         </div>
       </div>
+    </div>
 
-      <!-- People -->
-      <div class="panel dockCard glassy">
-        <div class="panel-head">
-          <div class="panel-title">👥 People</div>
+    <div class="hint mt10">
+      Calls require both users online (green).
+    </div>
+  </div>
+</template>
 
-          <div class="dockActions">
-            <button class="btn" @click="fetchPeople" :disabled="peopleLoading || !token">
-              {{ peopleLoading ? "Loading…" : "Refresh" }}
-            </button>
-            <button class="btn ghostBtn" @click="toggleChat">
-              {{ chatOpen ? "Close Chat" : "Open Chat" }}
-            </button>
-          </div>
-        </div>
+  </div>
+</section>
 
-        <div v-if="!token" class="alert soft">
-          Login again to see people & call buttons.
-        </div>
+<!-- TOOLS -->
 
-        <template v-else>
-          <div class="miniAvatars">
-            <div
-              v-for="u in people.slice(0, 14)"
-              :key="'pmini-' + u.id"
-              class="miniAvatarWrap"
-              :title="displayUserName(u)"
-              @click="peopleOpen ? null : startCall(u, 'audio')"
-            >
-              <div class="miniAvatar">
-                {{ displayUserName(u)[0]?.toUpperCase() }}
-              </div>
-              <span class="miniDot" :class="{ on: isOnline(u.id) }"></span>
-            </div>
+<section v-if="toolsOpen" class="panel toolsPanel glassy">
+  <div class="panel-head">
+    <div class="panel-title">🧰 Power Tools</div>
+    <div class="dockActions">
+      <button class="btn ghostBtn" @click="toggleTools">Close</button>
+    </div>
+  </div>
 
-            <button class="chip ghost mini" @click="togglePeople">
-              {{ peopleOpen ? "Hide list" : "Show list" }}
-            </button>
-          </div>
+  <div class="toolsGrid">
+    <button class="toolBtn" @click="setFeedMode('foryou')">🎬 Go For You</button>
+    <button class="toolBtn" @click="setFeedMode('reels')">🎞️ Go Reels</button>
+    <button class="toolBtn" @click="setFeedMode('rooms')">🎧 Go Rooms</button>
+    <button class="toolBtn" @click="setFeedMode('live')">🔴 Go Live Tab</button>
+    <button class="toolBtn" @click="openSavedMode">💾 Open Saved</button>
+    <button class="toolBtn" @click="openPinnedMode">📌 Open Pinned</button>
+    <button class="toolBtn" @click="scrollToTop">⬆️ Scroll Top</button>
+    <button class="toolBtn" @click="focusComposer">✍️ Focus Composer</button>
+    <button class="toolBtn" @click="clearDraft">🧹 Clear Draft</button>
+    <button class="toolBtn" @click="refreshAll" :disabled="loading">🔁 Refresh All</button>
+    <button class="toolBtn" @click="testTurn">🧊 Test TURN</button>
+    <button class="toolBtn" @click="requestNotifications">🔔 Enable Notifications</button>
+    <button class="toolBtn" @click="toggleFocusMode">{{ focusMode ? "🧘 Exit Focus" : "🧘 Focus Mode" }}</button>
+    <button class="toolBtn dangerTool" @click="hardResetApp">💣 Hard Reset (Local)</button>
+  </div>
 
-          <div v-if="peopleOpen" class="peopleCompact">
-            <div v-if="peopleError" class="alert">{{ peopleError }}</div>
-            <div v-else-if="peopleLoading" class="hint">Loading people…</div>
-            <div v-else-if="people.length === 0" class="hint">No users found.</div>
+  <div v-if="turnNote" class="hint mt10">{{ turnNote }}</div>
+</section>
 
-            <div v-else class="peopleList">
-              <div
-                v-for="u in filteredPeople"
-                :key="'plist-' + u.id"
-                class="person compact"
-              >
-                <div class="avatar small">
-                  {{ displayUserName(u)[0]?.toUpperCase() }}
-                </div>
+<!-- COMPOSER -->
 
-                <div class="person-meta">
-                  <div class="person-name">
-                    {{ displayUserName(u) }}
-                  </div>
+<section class="composer glassy">
+  <div class="composer-head">
+    <div class="avatar big">{{ myInitial }}</div>
 
-                  <div class="person-sub">
-                    <span class="status" :class="{ on: isOnline(u.id) }"></span>
-                    <span class="status-text">
-                      {{ isOnline(u.id) ? "Online" : "Offline" }}
-                    </span>
-                    <span class="sep">•</span>
-                    <span class="id">ID {{ u.id }}</span>
-                    <span v-if="u.distance !== null" class="distance">
-                      • 📍 {{ u.distance }} mi away
-                    </span>
-                  </div>
-                </div>
+<div class="composer-meta">
+  <div class="me">{{ meName }}</div>
+  <div class="small muted">
+    <span v-if="feedMode === 'reels'">Reels mode: upload a VIDEO → posts to Reels + For You</span>
+    <span v-else>Post to the world (works everywhere)</span>
+  </div>
+</div>
 
-                <div class="person-actions">
-                  <button
-                    class="iconbtn"
-                    title="Audio Call"
-                    :disabled="!isOnline(u.id) || callBusy"
-                    @click="startCall(u, 'audio')"
-                  >
-                    📞
-                  </button>
+<div class="composer-actions">
+  <button class="pill-btn" @click="focusComposer">Create</button>
+</div>
 
-                  <button
-                    class="iconbtn"
-                    title="Video Call"
-                    :disabled="!isOnline(u.id) || callBusy"
-                    @click="startCall(u, 'video')"
-                  >
-                    🎥
-                  </button>
+  </div>
 
-                  <button
-                    class="iconbtn"
-                    title="Open Profile"
-                    @click="openUserProfile(u)"
-                  >
-                    👤
-                  </button>
-                </div>
-              </div>
-            </div>
+  <textarea
+    ref="composerRef"
+    v-model="caption"
+    class="input"
+    placeholder="What's happening?"
+    rows="3"
+  ></textarea>
 
-            <div class="hint mt10">
-              Calls require both users online (green).
-            </div>
-          </div>
-        </template>
+  <div class="composerMetaRow">
+    <div class="charCount" :class="{ warn: captionLength > 220 }">
+      {{ captionLength }} chars
+    </div>
+
+<div class="quickTags">
+  <button class="quickTag" @click="appendQuickTag('#Pulse')">#Pulse</button>
+  <button class="quickTag" @click="appendQuickTag('#Reels')">#Reels</button>
+  <button class="quickTag" @click="appendQuickTag('#Live')">#Live</button>
+  <button class="quickTag" @click="appendQuickTag('#Update')">#Update</button>
+</div>
+
+  </div>
+
+  <div class="upload-row">
+    <label class="file-pill">
+      <input type="file" accept="image/*" @change="onPickImage" />
+      📷 Image <span v-if="imageFile" class="file-dot">•</span>
+    </label>
+
+<label class="file-pill">
+  <input type="file" accept="video/*" @change="onPickVideo" />
+  🎥 Video <span v-if="videoFile" class="file-dot">•</span>
+</label>
+
+<button class="btn btn-primary" :disabled="posting || !token" @click="submitPost">
+  {{ posting ? "Posting…" : (feedMode === 'reels' ? "Post Reel 🎬" : "Post 🚀") }}
+</button>
+
+<button class="btn ghostBtn" :disabled="posting" @click="clearDraft">Clear</button>
+
+  </div>
+
+  <div v-if="draftSavedNote" class="hint mt10">{{ draftSavedNote }}</div>
+  <div v-if="error" class="alert">{{ error }}</div>
+</section>
+
+<!-- LIVE MODE -->
+
+<section v-if="feedMode === 'live'" class="panel glassy">
+  <div class="panel-head">
+    <div class="panel-title">🔴 Live</div>
+    <button class="btn btn-primary" @click="startLive" :disabled="!token">Go Live</button>
+  </div>
+
+  <div class="hint">Tap any live session below to watch.</div>
+
+  <div v-if="liveStreams.length === 0" class="state">
+    <div class="state-emoji">📡</div>
+    <div class="state-title">Nobody is live</div>
+    <div class="state-sub">Start the first stream.</div>
+  </div>
+
+  <div v-else class="live-grid">
+    <div v-for="stream in liveStreams" :key="'live-center-' + stream" class="live-big" @click="joinLive(stream)">
+      <div class="live-big-top"><span class="dot"></span><span class="live-big-title">{{ stream }}</span></div>
+      <div class="live-big-sub">Tap to watch</div>
+    </div>
+  </div>
+</section>
+
+<!-- ROOMS MODE -->
+
+<section v-else-if="feedMode === 'rooms'" class="rooms">
+  <aside class="rooms-left glassy">
+    <div class="rooms-head">🎧 Rooms</div>
+    <button class="room" :class="{ on: chatRoom === 'global' }" @click="selectChat('global')">🌍 global</button>
+    <button class="room" :class="{ on: chatRoom === 'support' }" @click="selectChat('support')">🛠 support</button>
+    <button class="room" :class="{ on: chatRoom === 'dev' }" @click="selectChat('dev')">💻 dev</button>
+    <button class="room" :class="{ on: chatRoom === 'random' }" @click="selectChat('random')">🎲 random</button>
+    <button class="room" :class="{ on: chatRoom === 'callrooms' }" @click="selectChat('callrooms')">📞 Call Rooms</button>
+    <div class="rooms-hint">Real-time chat via Socket.io</div>
+  </aside>
+
+  <div class="rooms-main glassy" v-if="chatRoom !== 'callrooms'">
+    <div class="rooms-top">
+      <div class="rooms-title"># {{ chatRoom }}</div>
+      <button class="chip ghost" @click="toggleChat">Toggle Chat Drawer</button>
+    </div>
+
+<div class="rooms-messages" ref="roomsChatBoxRef">
+  <div v-for="(m, i) in chatMessages" :key="'rm-'+i" class="rm">
+    <div class="rm-top">
+      <span class="rm-user">{{ m.from }}</span>
+      <span class="rm-time">{{ m.created_at ? formatDate(m.created_at) : "" }}</span>
+    </div>
+    <div class="rm-text">{{ m.text }}</div>
+  </div>
+</div>
+
+<div class="rooms-input">
+  <input v-model="chatText" placeholder="Message #room…" @keydown.enter.prevent="sendChat" />
+  <button class="btn btn-primary" @click="sendChat">Send</button>
+</div>
+
+  </div>
+
+  <div class="rooms-main glassy" v-else>
+    <div class="rooms-top">
+      <div class="rooms-title">📞 Call Rooms</div>
+      <button class="chip ghost" @click="refreshCallRooms">Refresh</button>
+    </div>
+
+<div class="callrooms-create">
+  <input v-model="callRoomName" class="roomInput" placeholder="Room name" />
+  <select v-model="callRoomKind" class="roomInput roomSelect">
+    <option value="audio">Audio Room</option>
+    <option value="video">Video Room</option>
+  </select>
+  <button class="btn btn-primary" @click="createCallRoom" :disabled="creatingCallRoom">
+    {{ creatingCallRoom ? "Creating..." : "Create Room" }}
+  </button>
+</div>
+
+<div v-if="callRoomsError" class="alert">{{ callRoomsError }}</div>
+
+<div v-if="callRoomsLoading" class="state miniState">
+  <div class="state-emoji">⏳</div>
+  <div class="state-title">Loading call rooms</div>
+  <div class="state-sub">Fetching active rooms…</div>
+</div>
+
+<div v-else-if="callRooms.length === 0" class="state miniState">
+  <div class="state-emoji">📞</div>
+  <div class="state-title">No call rooms yet</div>
+  <div class="state-sub">Create one and invite others.</div>
+</div>
+
+<div v-else class="callrooms-list">
+  <div v-for="room in callRooms" :key="room.roomId" class="callroom-card">
+    <div class="callroom-main">
+      <div class="callroom-name">{{ room.name }}</div>
+      <div class="callroom-sub">
+        {{ room.kind === "video" ? "🎥 Video Room" : "🎙 Audio Room" }}
+        • {{ room.participantCount }} inside
       </div>
-    </section>
+    </div>
 
-    <!-- TOOLS -->
-    <section v-if="toolsOpen" class="panel toolsPanel glassy">
-      <div class="panel-head">
-        <div class="panel-title">🧰 Power Tools</div>
-        <div class="dockActions">
-          <button class="btn ghostBtn" @click="toggleTools">Close</button>
-        </div>
-      </div>
+    <button class="btn btn-primary" @click="joinCallRoom(room)">
+      Join
+    </button>
+  </div>
+</div>
 
-      <div class="toolsGrid">
-        <button class="toolBtn" @click="setFeedMode('foryou')">🎬 Go For You</button>
-        <button class="toolBtn" @click="setFeedMode('reels')">🎞️ Go Reels</button>
-        <button class="toolBtn" @click="setFeedMode('rooms')">🎧 Go Rooms</button>
-        <button class="toolBtn" @click="setFeedMode('live')">🔴 Go Live Tab</button>
-        <button class="toolBtn" @click="openSavedMode">💾 Open Saved</button>
-        <button class="toolBtn" @click="openPinnedMode">📌 Open Pinned</button>
-        <button class="toolBtn" @click="scrollToTop">⬆️ Scroll Top</button>
-        <button class="toolBtn" @click="focusComposer">✍️ Focus Composer</button>
-        <button class="toolBtn" @click="clearDraft">🧹 Clear Draft</button>
-        <button class="toolBtn" @click="refreshAll" :disabled="loading">🔁 Refresh All</button>
-        <button class="toolBtn" @click="testTurn">🧊 Test TURN</button>
-        <button class="toolBtn" @click="requestNotifications">🔔 Enable Notifications</button>
-        <button class="toolBtn" @click="toggleFocusMode">{{ focusMode ? "🧘 Exit Focus" : "🧘 Focus Mode" }}</button>
-        <button class="toolBtn dangerTool" @click="hardResetApp">💣 Hard Reset (Local)</button>
-      </div>
+  </div>
+</section>
 
-      <div v-if="turnNote" class="hint mt10">{{ turnNote }}</div>
-    </section>
+<!-- SAVED MODE -->
 
-    <!-- COMPOSER -->
-    <section class="composer glassy">
-      <div class="composer-head">
-        <div class="avatar big">{{ myInitial }}</div>
+<section v-else-if="feedMode === 'saved'" class="feed following">
+  <template v-if="loading">
+    <div class="state">Loading…</div>
+  </template>
 
-        <div class="composer-meta">
-          <div class="me">{{ meName }}</div>
-          <div class="small muted">
-            <span v-if="feedMode === 'reels'">Reels mode: upload a VIDEO → posts to Reels + For You</span>
-            <span v-else>Post to the world (works everywhere)</span>
-          </div>
-        </div>
+  <div v-else-if="savedPosts.length === 0" class="state">
+    <div class="state-emoji">💾</div>
+    <div class="state-title">No saved posts yet</div>
+    <div class="state-sub">Tap Save on any post to keep it here.</div>
+  </div>
 
-        <div class="composer-actions">
-          <button class="pill-btn" @click="focusComposer">Create</button>
-        </div>
-      </div>
-
-      <textarea
-        ref="composerRef"
-        v-model="caption"
-        class="input"
-        placeholder="What's happening?"
-        rows="3"
-      ></textarea>
-
-      <div class="composerMetaRow">
-        <div class="charCount" :class="{ warn: captionLength > 220 }">
-          {{ captionLength }} chars
-        </div>
-
-        <div class="quickTags">
-          <button class="quickTag" @click="appendQuickTag('#Pulse')">#Pulse</button>
-          <button class="quickTag" @click="appendQuickTag('#Reels')">#Reels</button>
-          <button class="quickTag" @click="appendQuickTag('#Live')">#Live</button>
-          <button class="quickTag" @click="appendQuickTag('#Update')">#Update</button>
-        </div>
-      </div>
-
-      <div class="upload-row">
-        <label class="file-pill">
-          <input type="file" accept="image/*" @change="onPickImage" />
-          📷 Image <span v-if="imageFile" class="file-dot">•</span>
-        </label>
-
-        <label class="file-pill">
-          <input type="file" accept="video/*" @change="onPickVideo" />
-          🎥 Video <span v-if="videoFile" class="file-dot">•</span>
-        </label>
-
-        <button class="btn btn-primary" :disabled="posting || !token" @click="submitPost">
-          {{ posting ? "Posting…" : (feedMode === 'reels' ? "Post Reel 🎬" : "Post 🚀") }}
-        </button>
-
-        <button class="btn ghostBtn" :disabled="posting" @click="clearDraft">Clear</button>
-      </div>
-
-      <div v-if="draftSavedNote" class="hint mt10">{{ draftSavedNote }}</div>
-      <div v-if="error" class="alert">{{ error }}</div>
-    </section>
-
-    <!-- LIVE MODE -->
-    <section v-if="feedMode === 'live'" class="panel glassy">
-      <div class="panel-head">
-        <div class="panel-title">🔴 Live</div>
-        <button class="btn btn-primary" @click="startLive" :disabled="!token">Go Live</button>
-      </div>
-
-      <div class="hint">Tap any live session below to watch.</div>
-
-      <div v-if="liveStreams.length === 0" class="state">
-        <div class="state-emoji">📡</div>
-        <div class="state-title">Nobody is live</div>
-        <div class="state-sub">Start the first stream.</div>
-      </div>
-
-      <div v-else class="live-grid">
-        <div v-for="stream in liveStreams" :key="'live-center-' + stream" class="live-big" @click="joinLive(stream)">
-          <div class="live-big-top"><span class="dot"></span><span class="live-big-title">{{ stream }}</span></div>
-          <div class="live-big-sub">Tap to watch</div>
-        </div>
-      </div>
-    </section>
-
-    <!-- ROOMS MODE -->
-    <section v-else-if="feedMode === 'rooms'" class="rooms">
-      <aside class="rooms-left glassy">
-        <div class="rooms-head">🎧 Rooms</div>
-        <button class="room" :class="{ on: chatRoom === 'global' }" @click="selectChat('global')">🌍 global</button>
-        <button class="room" :class="{ on: chatRoom === 'support' }" @click="selectChat('support')">🛠 support</button>
-        <button class="room" :class="{ on: chatRoom === 'dev' }" @click="selectChat('dev')">💻 dev</button>
-        <button class="room" :class="{ on: chatRoom === 'random' }" @click="selectChat('random')">🎲 random</button>
-        <button class="room" :class="{ on: chatRoom === 'callrooms' }" @click="selectChat('callrooms')">📞 Call Rooms</button>
-        <div class="rooms-hint">Real-time chat via Socket.io</div>
-      </aside>
-
-      <div class="rooms-main glassy" v-if="chatRoom !== 'callrooms'">
-        <div class="rooms-top">
-          <div class="rooms-title"># {{ chatRoom }}</div>
-          <button class="chip ghost" @click="toggleChat">Toggle Chat Drawer</button>
-        </div>
-
-        <div class="rooms-messages" ref="roomsChatBoxRef">
-          <div v-for="(m, i) in chatMessages" :key="'rm-'+i" class="rm">
-            <div class="rm-top">
-              <span class="rm-user">{{ m.from }}</span>
-              <span class="rm-time">{{ m.created_at ? formatDate(m.created_at) : "" }}</span>
-            </div>
-            <div class="rm-text">{{ m.text }}</div>
-          </div>
-        </div>
-
-        <div class="rooms-input">
-          <input v-model="chatText" placeholder="Message #room…" @keydown.enter.prevent="sendChat" />
-          <button class="btn btn-primary" @click="sendChat">Send</button>
-        </div>
+  <article v-else v-for="post in savedPosts" :key="'s-'+post.id" class="post glassy">
+    <header class="post-head">
+      <div class="avatar">{{ getInitial(post) }}</div>
+      <div class="who">
+        <div class="name">{{ displayPostUser(post) }}</div>
+        <div class="time">{{ formatDate(post.created_at) }}</div>
       </div>
 
-      <div class="rooms-main glassy" v-else>
-        <div class="rooms-top">
-          <div class="rooms-title">📞 Call Rooms</div>
-          <button class="chip ghost" @click="refreshCallRooms">Refresh</button>
-        </div>
+  <div class="postPills">
+    <span class="miniPostPill">SAVED</span>
+  </div>
+</header>
 
-        <div class="callrooms-create">
-          <input v-model="callRoomName" class="roomInput" placeholder="Room name" />
-          <select v-model="callRoomKind" class="roomInput roomSelect">
-            <option value="audio">Audio Room</option>
-            <option value="video">Video Room</option>
-          </select>
-          <button class="btn btn-primary" @click="createCallRoom" :disabled="creatingCallRoom">
-            {{ creatingCallRoom ? "Creating..." : "Create Room" }}
-          </button>
-        </div>
+<div v-if="post.caption" class="text">{{ post.caption }}</div>
 
-        <div v-if="callRoomsError" class="alert">{{ callRoomsError }}</div>
+<img v-if="post.image_url" class="media" :src="getMedia(post.image_url)" loading="lazy" />
+<video v-if="post.video_url" class="media" :src="getMedia(post.video_url)" controls playsinline preload="metadata"></video>
 
-        <div v-if="callRoomsLoading" class="state miniState">
-          <div class="state-emoji">⏳</div>
-          <div class="state-title">Loading call rooms</div>
-          <div class="state-sub">Fetching active rooms…</div>
-        </div>
+<div class="actions">
+  <button class="action-btn" @click="toggleSavePost(post)">
+    💾 <span class="label">{{ isSaved(post.id) ? "Saved" : "Save" }}</span>
+  </button>
+  <button class="action-btn" @click="togglePinPost(post)">
+    📌 <span class="label">{{ isPinned(post.id) ? "Pinned" : "Pin" }}</span>
+  </button>
+  <div class="spacer"></div>
+  <button class="action-btn ghost" @click="sharePost(post)">🔗 <span class="label">Share</span></button>
+</div>
 
-        <div v-else-if="callRooms.length === 0" class="state miniState">
-          <div class="state-emoji">📞</div>
-          <div class="state-title">No call rooms yet</div>
-          <div class="state-sub">Create one and invite others.</div>
-        </div>
+  </article>
+</section>
 
-        <div v-else class="callrooms-list">
-          <div v-for="room in callRooms" :key="room.roomId" class="callroom-card">
-            <div class="callroom-main">
-              <div class="callroom-name">{{ room.name }}</div>
-              <div class="callroom-sub">
-                {{ room.kind === "video" ? "🎥 Video Room" : "🎙 Audio Room" }}
-                • {{ room.participantCount }} inside
-              </div>
-            </div>
+<!-- PINNED MODE -->
 
-            <button class="btn btn-primary" @click="joinCallRoom(room)">
-              Join
-            </button>
-          </div>
-        </div>
-      </div>
-    </section>
+<section v-else-if="feedMode === 'pinned'" class="feed threads">
+  <template v-if="loading">
+    <div class="state">Loading…</div>
+  </template>
 
-    <!-- SAVED MODE -->
-    <section v-else-if="feedMode === 'saved'" class="feed following">
-      <template v-if="loading">
-        <div class="state">Loading…</div>
-      </template>
+  <div v-else-if="pinnedPosts.length === 0" class="state">
+    <div class="state-emoji">📌</div>
+    <div class="state-title">No pinned posts yet</div>
+    <div class="state-sub">Pin your favorite posts here.</div>
+  </div>
 
-      <div v-else-if="savedPosts.length === 0" class="state">
-        <div class="state-emoji">💾</div>
-        <div class="state-title">No saved posts yet</div>
-        <div class="state-sub">Tap Save on any post to keep it here.</div>
+  <article v-else v-for="post in pinnedPosts" :key="'pin-'+post.id" class="post thread glassy">
+    <header class="post-head">
+      <div class="avatar">{{ getInitial(post) }}</div>
+      <div class="who">
+        <div class="name">{{ displayPostUser(post) }}</div>
+        <div class="time">{{ formatDate(post.created_at) }}</div>
       </div>
 
-      <article v-else v-for="post in savedPosts" :key="'s-'+post.id" class="post glassy">
-        <header class="post-head">
-          <div class="avatar">{{ getInitial(post) }}</div>
-          <div class="who">
-            <div class="name">{{ displayPostUser(post) }}</div>
-            <div class="time">{{ formatDate(post.created_at) }}</div>
-          </div>
+  <div class="postPills">
+    <span class="miniPostPill">PINNED</span>
+  </div>
+</header>
 
-          <div class="postPills">
-            <span class="miniPostPill">SAVED</span>
-          </div>
-        </header>
+<div v-if="post.caption" class="text thread-text">{{ post.caption }}</div>
 
-        <div v-if="post.caption" class="text">{{ post.caption }}</div>
+<img v-if="post.image_url" class="media" :src="getMedia(post.image_url)" loading="lazy" />
+<video v-if="post.video_url" class="media" :src="getMedia(post.video_url)" controls playsinline preload="metadata"></video>
 
-        <img v-if="post.image_url" class="media" :src="getMedia(post.image_url)" loading="lazy" />
-        <video v-if="post.video_url" class="media" :src="getMedia(post.video_url)" controls playsinline preload="metadata"></video>
+<div class="actions">
+  <button class="action-btn" @click="togglePinPost(post)">
+    📌 <span class="label">{{ isPinned(post.id) ? "Pinned" : "Pin" }}</span>
+  </button>
+  <button class="action-btn" @click="toggleSavePost(post)">
+    💾 <span class="label">{{ isSaved(post.id) ? "Saved" : "Save" }}</span>
+  </button>
+  <div class="spacer"></div>
+  <button class="action-btn ghost" @click="sharePost(post)">🔗 <span class="label">Share</span></button>
+</div>
 
-        <div class="actions">
-          <button class="action-btn" @click="toggleSavePost(post)">
-            💾 <span class="label">{{ isSaved(post.id) ? "Saved" : "Save" }}</span>
-          </button>
-          <button class="action-btn" @click="togglePinPost(post)">
-            📌 <span class="label">{{ isPinned(post.id) ? "Pinned" : "Pin" }}</span>
-          </button>
-          <div class="spacer"></div>
-          <button class="action-btn ghost" @click="sharePost(post)">🔗 <span class="label">Share</span></button>
-        </div>
-      </article>
-    </section>
+  </article>
+</section>
 
-    <!-- PINNED MODE -->
-    <section v-else-if="feedMode === 'pinned'" class="feed threads">
-      <template v-if="loading">
-        <div class="state">Loading…</div>
-      </template>
+<!-- THREADS MODE -->
 
-      <div v-else-if="pinnedPosts.length === 0" class="state">
-        <div class="state-emoji">📌</div>
-        <div class="state-title">No pinned posts yet</div>
-        <div class="state-sub">Pin your favorite posts here.</div>
+<section v-else-if="feedMode === 'threads'" class="feed threads">
+  <div v-if="loading" class="state">Loading…</div>
+
+  <div v-else-if="sortedFilteredPosts.length === 0" class="state">
+    <div class="state-emoji">✍️</div>
+    <div class="state-title">No threads yet</div>
+    <div class="state-sub">Write something to start the conversation.</div>
+  </div>
+
+  <article v-else v-for="post in threadsPosts" :key="'t-'+post.id" class="post thread glassy">
+    <header class="post-head">
+      <div class="avatar">{{ getInitial(post) }}</div>
+      <div class="who">
+        <div class="name">{{ displayPostUser(post) }}</div>
+        <div class="time">{{ formatDate(post.created_at) }}</div>
       </div>
 
-      <article v-else v-for="post in pinnedPosts" :key="'pin-'+post.id" class="post thread glassy">
-        <header class="post-head">
-          <div class="avatar">{{ getInitial(post) }}</div>
-          <div class="who">
-            <div class="name">{{ displayPostUser(post) }}</div>
-            <div class="time">{{ formatDate(post.created_at) }}</div>
-          </div>
+  <div class="postPills">
+    <span class="miniPostPill" v-if="post.video_url">VIDEO</span>
+    <span class="miniPostPill" v-else-if="post.image_url">IMAGE</span>
+    <span class="miniPostPill ghostPill" v-else>TEXT</span>
+  </div>
+</header>
 
-          <div class="postPills">
-            <span class="miniPostPill">PINNED</span>
-          </div>
-        </header>
+<div v-if="post.caption" class="text thread-text">{{ post.caption }}</div>
 
-        <div v-if="post.caption" class="text thread-text">{{ post.caption }}</div>
+<button
+  v-if="post.image_url || post.video_url"
+  class="chip ghost thread-media-toggle"
+  @click="toggleThreadMedia(post.id)"
+>
+  {{ threadMediaOpen[post.id] ? "Hide media" : "View media" }}
+</button>
 
-        <img v-if="post.image_url" class="media" :src="getMedia(post.image_url)" loading="lazy" />
-        <video v-if="post.video_url" class="media" :src="getMedia(post.video_url)" controls playsinline preload="metadata"></video>
+<div v-if="threadMediaOpen[post.id]" class="thread-media">
+  <img v-if="post.image_url" class="media" :src="getMedia(post.image_url)" loading="lazy" />
+  <video v-if="post.video_url" class="media" :src="getMedia(post.video_url)" controls playsinline preload="metadata"></video>
+</div>
 
-        <div class="actions">
-          <button class="action-btn" @click="togglePinPost(post)">
-            📌 <span class="label">{{ isPinned(post.id) ? "Pinned" : "Pin" }}</span>
-          </button>
-          <button class="action-btn" @click="toggleSavePost(post)">
-            💾 <span class="label">{{ isSaved(post.id) ? "Saved" : "Save" }}</span>
-          </button>
-          <div class="spacer"></div>
-          <button class="action-btn ghost" @click="sharePost(post)">🔗 <span class="label">Share</span></button>
-        </div>
-      </article>
-    </section>
+<div class="actions">
+  <button class="action-btn" :class="{ active: likesByPost[post.id]?.likedByMe }" :disabled="likeBusyByPost[post.id]" @click="toggleLike(post)">
+    ❤️ <span class="label">{{ likesByPost[post.id]?.count ?? 0 }}</span>
+  </button>
 
-    <!-- THREADS MODE -->
-    <section v-else-if="feedMode === 'threads'" class="feed threads">
-      <div v-if="loading" class="state">Loading…</div>
+  <button class="action-btn" @click="toggleComments(post.id)">
+    💬 <span class="label">{{ commentCount(post.id) }}</span>
+  </button>
 
-      <div v-else-if="sortedFilteredPosts.length === 0" class="state">
-        <div class="state-emoji">✍️</div>
-        <div class="state-title">No threads yet</div>
-        <div class="state-sub">Write something to start the conversation.</div>
+  <button class="action-btn" @click="toggleSavePost(post)">
+    💾 <span class="label">{{ isSaved(post.id) ? "Saved" : "Save" }}</span>
+  </button>
+
+  <button class="action-btn" @click="togglePinPost(post)">
+    📌 <span class="label">{{ isPinned(post.id) ? "Pinned" : "Pin" }}</span>
+  </button>
+
+  <div class="spacer"></div>
+
+  <button class="action-btn ghost" @click="sharePost(post)">🔗 <span class="label">Share</span></button>
+  <button class="action-btn ghost" @click="copyPostText(post)">📋 <span class="label">Copy</span></button>
+</div>
+
+<CommentsPanel
+  v-if="commentsOpenByPost[post.id]"
+  :post-id="post.id"
+  @changed="handleCommentsChanged(post.id)"
+/>
+
+  </article>
+</section>
+
+<!-- REELS MODE -->
+
+<section v-else-if="feedMode === 'reels'" class="feed reels">
+  <template v-if="loading">
+    <div class="state">Loading…</div>
+  </template>
+
+  <div v-else-if="reelsPosts.length === 0" class="state">
+    <div class="state-emoji">🎞️</div>
+    <div class="state-title">No reels yet</div>
+    <div class="state-sub">Post a video and it will show here.</div>
+  </div>
+
+<TikTokFeedv-else="reelsVisible"mode="reels"="globalMuted"="reelsCanLoadMore"="reelsInfiniteLoading"="getMedia"="formatDate"="(p) => getInitial(p)"="(p) => (likesByPost[p.id]?.count ?? 0)"="(p) => commentCount(p.id)"@toggle-muted="toggleGlobalMute"@load-more="loadMoreReels"@like="toggleLike"@comments="openCommentsFromFeed"@share="sharePost"/>
+
+  <div ref="reelsLoadMoreRef" class="load-more" v-if="reelsCanLoadMore && !loading">
+    {{ reelsInfiniteLoading ? "Loading more reels…" : "Scroll for more reels…" }}
+  </div>
+
+  <section
+    v-for="post in reelsVisible.filter((p) => commentsOpenByPost[p.id])"
+    :key="'reel-comments-' + post.id"
+    class="post comments-shell glassy"
+  >
+    <header class="post-head compactHead">
+      <div class="avatar">{{ getInitial(post) }}</div>
+      <div class="who">
+        <div class="name">{{ displayPostUser(post) }}</div>
+        <div class="time">Comments</div>
+      </div>
+      <button class="x" @click="toggleComments(post.id)">✕</button>
+    </header>
+
+<CommentsPanel :post-id="post.id" @changed="handleCommentsChanged(post.id)" />
+
+  </section>
+</section>
+
+<!-- FOLLOWING MODE -->
+
+<section v-else-if="feedMode === 'following'" class="feed following">
+  <template v-if="loading">
+    <div class="state">Loading…</div>
+  </template>
+
+  <div v-else-if="sortedFilteredPosts.length === 0" class="state">
+    <div class="state-emoji">📸</div>
+    <div class="state-title">No posts yet</div>
+    <div class="state-sub">Be the first to post.</div>
+  </div>
+
+  <article v-else v-for="post in followingPosts" :key="'f-'+post.id" class="post glassy">
+    <header class="post-head">
+      <div class="avatar">{{ getInitial(post) }}</div>
+      <div class="who">
+        <div class="name">{{ displayPostUser(post) }}</div>
+        <div class="time">{{ formatDate(post.created_at) }}</div>
       </div>
 
-      <article v-else v-for="post in threadsPosts" :key="'t-'+post.id" class="post thread glassy">
-        <header class="post-head">
-          <div class="avatar">{{ getInitial(post) }}</div>
-          <div class="who">
-            <div class="name">{{ displayPostUser(post) }}</div>
-            <div class="time">{{ formatDate(post.created_at) }}</div>
-          </div>
+  <div class="postPills">
+    <span class="miniPostPill" v-if="post.video_url">VIDEO</span>
+    <span class="miniPostPill" v-else-if="post.image_url">IMAGE</span>
+    <span class="miniPostPill ghostPill" v-else>TEXT</span>
+  </div>
+</header>
 
-          <div class="postPills">
-            <span class="miniPostPill" v-if="post.video_url">VIDEO</span>
-            <span class="miniPostPill" v-else-if="post.image_url">IMAGE</span>
-            <span class="miniPostPill ghostPill" v-else>TEXT</span>
-          </div>
-        </header>
+<div v-if="post.caption" class="text">{{ post.caption }}</div>
 
-        <div v-if="post.caption" class="text thread-text">{{ post.caption }}</div>
+<img v-if="post.image_url" class="media" :src="getMedia(post.image_url)" loading="lazy" />
+<video v-if="post.video_url" class="media" :src="getMedia(post.video_url)" controls playsinline preload="metadata"></video>
 
-        <button
-          v-if="post.image_url || post.video_url"
-          class="chip ghost thread-media-toggle"
-          @click="toggleThreadMedia(post.id)"
-        >
-          {{ threadMediaOpen[post.id] ? "Hide media" : "View media" }}
-        </button>
+<div class="actions">
+  <button class="action-btn" :class="{ active: likesByPost[post.id]?.likedByMe }" :disabled="likeBusyByPost[post.id]" @click="toggleLike(post)">
+    ❤️ <span class="label">{{ likesByPost[post.id]?.count ?? 0 }}</span>
+  </button>
 
-        <div v-if="threadMediaOpen[post.id]" class="thread-media">
-          <img v-if="post.image_url" class="media" :src="getMedia(post.image_url)" loading="lazy" />
-          <video v-if="post.video_url" class="media" :src="getMedia(post.video_url)" controls playsinline preload="metadata"></video>
-        </div>
+  <button class="action-btn" @click="toggleComments(post.id)">
+    💬 <span class="label">{{ commentCount(post.id) }}</span>
+  </button>
 
-        <div class="actions">
-          <button class="action-btn" :class="{ active: likesByPost[post.id]?.likedByMe }" :disabled="likeBusyByPost[post.id]" @click="toggleLike(post)">
-            ❤️ <span class="label">{{ likesByPost[post.id]?.count ?? 0 }}</span>
-          </button>
+  <button class="action-btn" @click="toggleSavePost(post)">
+    💾 <span class="label">{{ isSaved(post.id) ? "Saved" : "Save" }}</span>
+  </button>
 
-          <button class="action-btn" @click="toggleComments(post.id)">
-            💬 <span class="label">{{ commentCount(post.id) }}</span>
-          </button>
+  <button class="action-btn" @click="togglePinPost(post)">
+    📌 <span class="label">{{ isPinned(post.id) ? "Pinned" : "Pin" }}</span>
+  </button>
 
-          <button class="action-btn" @click="toggleSavePost(post)">
-            💾 <span class="label">{{ isSaved(post.id) ? "Saved" : "Save" }}</span>
-          </button>
+  <div class="spacer"></div>
 
-          <button class="action-btn" @click="togglePinPost(post)">
-            📌 <span class="label">{{ isPinned(post.id) ? "Pinned" : "Pin" }}</span>
-          </button>
+  <button class="action-btn ghost" @click="sharePost(post)">🔗 <span class="label">Share</span></button>
+  <button class="action-btn ghost" @click="copyPostText(post)">📋 <span class="label">Copy</span></button>
+</div>
 
-          <div class="spacer"></div>
+<CommentsPanel
+  v-if="commentsOpenByPost[post.id]"
+  :post-id="post.id"
+  @changed="handleCommentsChanged(post.id)"
+/>
 
-          <button class="action-btn ghost" @click="sharePost(post)">🔗 <span class="label">Share</span></button>
-          <button class="action-btn ghost" @click="copyPostText(post)">📋 <span class="label">Copy</span></button>
-        </div>
+  </article>
+</section>
 
-        <CommentsPanel
-          v-if="commentsOpenByPost[post.id]"
-          :post-id="post.id"
-          @changed="handleCommentsChanged(post.id)"
-        />
-      </article>
-    </section>
+<!-- FOR YOU MODE -->
 
-    <!-- REELS MODE -->
-    <section v-else-if="feedMode === 'reels'" class="feed reels">
-      <template v-if="loading">
-        <div class="state">Loading…</div>
-      </template>
+<section v-else class="feed tiktok">
+  <template v-if="loading">
+    <div class="state">Loading…</div>
+  </template>
 
-      <div v-else-if="reelsPosts.length === 0" class="state">
-        <div class="state-emoji">🎞️</div>
-        <div class="state-title">No reels yet</div>
-        <div class="state-sub">Post a video and it will show here.</div>
+  <div v-else-if="forYouPosts.length === 0" class="state">
+    <div class="state-emoji">🎬</div>
+    <div class="state-title">No videos yet</div>
+    <div class="state-sub">Post a video and it will autoplay here.</div>
+  </div>
+
+<TikTokFeedv-else="visiblePosts"mode="foryou"="globalMuted"="canLoadMore"="infiniteLoading"="getMedia"="formatDate"="(p) => getInitial(p)"="(p) => (likesByPost[p.id]?.count ?? 0)"="(p) => commentCount(p.id)"@toggle-muted="toggleGlobalMute"@load-more="loadMore"@like="toggleLike"@comments="openCommentsFromFeed"@share="sharePost"/>
+
+  <div ref="loadMoreRef" class="load-more" v-if="canLoadMore && !loading">
+    {{ infiniteLoading ? "Loading more videos…" : "Scroll for more videos…" }}
+  </div>
+
+  <section
+    v-for="post in visiblePosts.filter((p) => commentsOpenByPost[p.id])"
+    :key="'fy-comments-' + post.id"
+    class="post comments-shell glassy"
+  >
+    <header class="post-head compactHead">
+      <div class="avatar">{{ getInitial(post) }}</div>
+      <div class="who">
+        <div class="name">{{ displayPostUser(post) }}</div>
+        <div class="time">Comments</div>
       </div>
+      <button class="x" @click="toggleComments(post.id)">✕</button>
+    </header>
 
-      <TikTokFeed
-        v-else
-        :items="reelsVisible"
-        mode="reels"
-        :globalMuted="globalMuted"
-        :canLoadMore="reelsCanLoadMore"
-        :loadingMore="reelsInfiniteLoading"
-        :getMedia="getMedia"
-        :formatDate="formatDate"
-        :getInitial="(p) => getInitial(p)"
-        :likesCount="(p) => (likesByPost[p.id]?.count ?? 0)"
-        :commentCount="(p) => commentCount(p.id)"
-        @toggle-muted="toggleGlobalMute"
-        @load-more="loadMoreReels"
-        @like="toggleLike"
-        @comments="openCommentsFromFeed"
-        @share="sharePost"
-      />
+<CommentsPanel :post-id="post.id" @changed="handleCommentsChanged(post.id)" />
 
-      <div ref="reelsLoadMoreRef" class="load-more" v-if="reelsCanLoadMore && !loading">
-        {{ reelsInfiniteLoading ? "Loading more reels…" : "Scroll for more reels…" }}
+  </section>
+</section>
+
+<!-- ACTIVITY FEED -->
+
+<section v-if="activityFeed.length" class="panel glassy">
+  <div class="panel-head">
+    <div class="panel-title">📝 Activity Feed</div>
+    <button class="btn ghostBtn" @click="clearActivity">Clear</button>
+  </div>
+
+  <div class="rooms-messages">
+    <div v-for="(a, i) in activityFeed" :key="'activity-'+i" class="rm">
+      <div class="rm-top">
+        <span class="rm-user">{{ a.title }}</span>
+        <span class="rm-time">{{ formatDate(a.created_at) }}</span>
       </div>
+      <div class="rm-text">{{ a.text }}</div>
+    </div>
+  </div>
+</section>
 
-      <section
-        v-for="post in reelsVisible.filter((p) => commentsOpenByPost[p.id])"
-        :key="'reel-comments-' + post.id"
-        class="post comments-shell glassy"
-      >
-        <header class="post-head compactHead">
-          <div class="avatar">{{ getInitial(post) }}</div>
-          <div class="who">
-            <div class="name">{{ displayPostUser(post) }}</div>
-            <div class="time">Comments</div>
-          </div>
-          <button class="x" @click="toggleComments(post.id)">✕</button>
-        </header>
-
-        <CommentsPanel :post-id="post.id" @changed="handleCommentsChanged(post.id)" />
-      </section>
-    </section>
-
-    <!-- FOLLOWING MODE -->
-    <section v-else-if="feedMode === 'following'" class="feed following">
-      <template v-if="loading">
-        <div class="state">Loading…</div>
-      </template>
-
-      <div v-else-if="sortedFilteredPosts.length === 0" class="state">
-        <div class="state-emoji">📸</div>
-        <div class="state-title">No posts yet</div>
-        <div class="state-sub">Be the first to post.</div>
-      </div>
-
-      <article v-else v-for="post in followingPosts" :key="'f-'+post.id" class="post glassy">
-        <header class="post-head">
-          <div class="avatar">{{ getInitial(post) }}</div>
-          <div class="who">
-            <div class="name">{{ displayPostUser(post) }}</div>
-            <div class="time">{{ formatDate(post.created_at) }}</div>
-          </div>
-
-          <div class="postPills">
-            <span class="miniPostPill" v-if="post.video_url">VIDEO</span>
-            <span class="miniPostPill" v-else-if="post.image_url">IMAGE</span>
-            <span class="miniPostPill ghostPill" v-else>TEXT</span>
-          </div>
-        </header>
-
-        <div v-if="post.caption" class="text">{{ post.caption }}</div>
-
-        <img v-if="post.image_url" class="media" :src="getMedia(post.image_url)" loading="lazy" />
-        <video v-if="post.video_url" class="media" :src="getMedia(post.video_url)" controls playsinline preload="metadata"></video>
-
-        <div class="actions">
-          <button class="action-btn" :class="{ active: likesByPost[post.id]?.likedByMe }" :disabled="likeBusyByPost[post.id]" @click="toggleLike(post)">
-            ❤️ <span class="label">{{ likesByPost[post.id]?.count ?? 0 }}</span>
-          </button>
-
-          <button class="action-btn" @click="toggleComments(post.id)">
-            💬 <span class="label">{{ commentCount(post.id) }}</span>
-          </button>
-
-          <button class="action-btn" @click="toggleSavePost(post)">
-            💾 <span class="label">{{ isSaved(post.id) ? "Saved" : "Save" }}</span>
-          </button>
-
-          <button class="action-btn" @click="togglePinPost(post)">
-            📌 <span class="label">{{ isPinned(post.id) ? "Pinned" : "Pin" }}</span>
-          </button>
-
-          <div class="spacer"></div>
-
-          <button class="action-btn ghost" @click="sharePost(post)">🔗 <span class="label">Share</span></button>
-          <button class="action-btn ghost" @click="copyPostText(post)">📋 <span class="label">Copy</span></button>
-        </div>
-
-        <CommentsPanel
-          v-if="commentsOpenByPost[post.id]"
-          :post-id="post.id"
-          @changed="handleCommentsChanged(post.id)"
-        />
-      </article>
-    </section>
-
-    <!-- FOR YOU MODE -->
-    <section v-else class="feed tiktok">
-      <template v-if="loading">
-        <div class="state">Loading…</div>
-      </template>
-
-      <div v-else-if="forYouPosts.length === 0" class="state">
-        <div class="state-emoji">🎬</div>
-        <div class="state-title">No videos yet</div>
-        <div class="state-sub">Post a video and it will autoplay here.</div>
-      </div>
-
-      <TikTokFeed
-        v-else
-        :items="visiblePosts"
-        mode="foryou"
-        :globalMuted="globalMuted"
-        :canLoadMore="canLoadMore"
-        :loadingMore="infiniteLoading"
-        :getMedia="getMedia"
-        :formatDate="formatDate"
-        :getInitial="(p) => getInitial(p)"
-        :likesCount="(p) => (likesByPost[p.id]?.count ?? 0)"
-        :commentCount="(p) => commentCount(p.id)"
-        @toggle-muted="toggleGlobalMute"
-        @load-more="loadMore"
-        @like="toggleLike"
-        @comments="openCommentsFromFeed"
-        @share="sharePost"
-      />
-
-      <div ref="loadMoreRef" class="load-more" v-if="canLoadMore && !loading">
-        {{ infiniteLoading ? "Loading more videos…" : "Scroll for more videos…" }}
-      </div>
-
-      <section
-        v-for="post in visiblePosts.filter((p) => commentsOpenByPost[p.id])"
-        :key="'fy-comments-' + post.id"
-        class="post comments-shell glassy"
-      >
-        <header class="post-head compactHead">
-          <div class="avatar">{{ getInitial(post) }}</div>
-          <div class="who">
-            <div class="name">{{ displayPostUser(post) }}</div>
-            <div class="time">Comments</div>
-          </div>
-          <button class="x" @click="toggleComments(post.id)">✕</button>
-        </header>
-
-        <CommentsPanel :post-id="post.id" @changed="handleCommentsChanged(post.id)" />
-      </section>
-    </section>
-
-    <!-- ACTIVITY FEED -->
-    <section v-if="activityFeed.length" class="panel glassy">
-      <div class="panel-head">
-        <div class="panel-title">📝 Activity Feed</div>
-        <button class="btn ghostBtn" @click="clearActivity">Clear</button>
-      </div>
-
-      <div class="rooms-messages">
-        <div v-for="(a, i) in activityFeed" :key="'activity-'+i" class="rm">
-          <div class="rm-top">
-            <span class="rm-user">{{ a.title }}</span>
-            <span class="rm-time">{{ formatDate(a.created_at) }}</span>
-          </div>
-          <div class="rm-text">{{ a.text }}</div>
-        </div>
-      </div>
-    </section>
   </main>
 
   <!-- CHAT DRAWER -->
+
   <aside class="chatDrawer" :class="{ open: chatOpen }">
     <section class="panel chatPanel glassy">
       <div class="panel-head">
@@ -1112,31 +1101,34 @@
         <button class="btn" @click="toggleChat">{{ chatOpen ? "Close" : "Open" }}</button>
       </div>
 
-      <div class="chat-hint">Quick room chat. Rooms tab is full Discord-style.</div>
+  <div class="chat-hint">Quick room chat. Rooms tab is full Discord-style.</div>
 
-      <div class="chat-list">
-        <button class="chat-item" :class="{ active: chatRoom === 'global' }" @click="selectChat('global')">🌍 Global</button>
-        <button class="chat-item" :class="{ active: chatRoom === 'support' }" @click="selectChat('support')">🛠 Support</button>
-        <button class="chat-item" :class="{ active: chatRoom === 'dev' }" @click="selectChat('dev')">💻 Dev</button>
-        <button class="chat-item" :class="{ active: chatRoom === 'random' }" @click="selectChat('random')">🎲 Random</button>
+  <div class="chat-list">
+    <button class="chat-item" :class="{ active: chatRoom === 'global' }" @click="selectChat('global')">🌍 Global</button>
+    <button class="chat-item" :class="{ active: chatRoom === 'support' }" @click="selectChat('support')">🛠 Support</button>
+    <button class="chat-item" :class="{ active: chatRoom === 'dev' }" @click="selectChat('dev')">💻 Dev</button>
+    <button class="chat-item" :class="{ active: chatRoom === 'random' }" @click="selectChat('random')">🎲 Random</button>
+  </div>
+
+  <div class="chat-box">
+    <div class="chat-messages" ref="chatBoxRef">
+      <div v-for="(m, i) in chatMessages" :key="'cm-'+i" class="chat-msg">
+        <strong>{{ m.from }}:</strong> {{ m.text }}
       </div>
+    </div>
 
-      <div class="chat-box">
-        <div class="chat-messages" ref="chatBoxRef">
-          <div v-for="(m, i) in chatMessages" :key="'cm-'+i" class="chat-msg">
-            <strong>{{ m.from }}:</strong> {{ m.text }}
-          </div>
-        </div>
+<div class="chat-input">
+  <input v-model="chatText" placeholder="Type message…" @keydown.enter.prevent="sendChat" />
+  <button class="btn btn-primary" @click="sendChat">Send</button>
+</div>
 
-        <div class="chat-input">
-          <input v-model="chatText" placeholder="Type message…" @keydown.enter.prevent="sendChat" />
-          <button class="btn btn-primary" @click="sendChat">Send</button>
-        </div>
-      </div>
-    </section>
+  </div>
+</section>
+
   </aside>
 
   <!-- INCOMING CALL POPUP -->
+
   <div v-if="incomingCall" class="modal-backdrop" @click.self="rejectIncoming">
     <div class="modal glassy">
       <div class="modal-title">
@@ -1149,16 +1141,18 @@
         </span>
       </div>
 
-      <div class="modal-actions">
-        <button class="btn danger" @click="rejectIncoming">Reject</button>
-        <button class="btn btn-primary" @click="acceptIncoming">Accept</button>
-      </div>
+  <div class="modal-actions">
+    <button class="btn danger" @click="rejectIncoming">Reject</button>
+    <button class="btn btn-primary" @click="acceptIncoming">Accept</button>
+  </div>
 
-      <div class="tiny muted mt10">Tip: keep Dashboard open on both devices for best reliability.</div>
-    </div>
+  <div class="tiny muted mt10">Tip: keep Dashboard open on both devices for best reliability.</div>
+</div>
+
   </div>
 
   <!-- CALLING TOAST -->
+
   <div v-if="callingToast" class="toast glassy">
     <span class="toast-dot"></span>
     {{ callingToast }}
@@ -1166,6 +1160,7 @@
   </div>
 
   <!-- ELITE QUICK CREATE SHEET -->
+
   <transition name="fade">
     <div v-if="quickCreateOpen" class="quickCreateBackdrop" @click.self="closeQuickCreate">
       <div class="quickCreateSheet glassy">
@@ -1177,48 +1172,44 @@
           <button class="mini-x" @click="closeQuickCreate">✕</button>
         </div>
 
-        <div class="quickCreateGrid">
-          <button class="quickCreateCard" @click="useQuickAction('post')">✍️ Text Post</button>
-          <button class="quickCreateCard" @click="useQuickAction('photo')">🖼️ Photo Post</button>
-          <button class="quickCreateCard" @click="useQuickAction('reel')">🎞️ Reel</button>
-          <button class="quickCreateCard" @click="useQuickAction('call')">📞 Quick Call</button>
-          <button class="quickCreateCard" @click="useQuickAction('room')">🎧 Start Room</button>
-          <button class="quickCreateCard" @click="useQuickAction('live')">🔴 Go Live</button>
-          <button class="quickCreateCard" @click="useQuickAction('saved')">💾 Saved</button>
-          <button class="quickCreateCard" @click="useQuickAction('offline')">
-            {{ isNetworkOnline ? "☁️ Force Queue Draft" : "📦 Queue Offline Post" }}
-          </button>
-        </div>
+<div class="quickCreateGrid">
+  <button class="quickCreateCard" @click="useQuickAction('post')">✍️ Text Post</button>
+  <button class="quickCreateCard" @click="useQuickAction('photo')">🖼️ Photo Post</button>
+  <button class="quickCreateCard" @click="useQuickAction('reel')">🎞️ Reel</button>
+  <button class="quickCreateCard" @click="useQuickAction('call')">📞 Quick Call</button>
+  <button class="quickCreateCard" @click="useQuickAction('room')">🎧 Start Room</button>
+  <button class="quickCreateCard" @click="useQuickAction('live')">🔴 Go Live</button>
+  <button class="quickCreateCard" @click="useQuickAction('saved')">💾 Saved</button>
+  <button class="quickCreateCard" @click="useQuickAction('offline')">
+    {{ isNetworkOnline ? "☁️ Force Queue Draft" : "📦 Queue Offline Post" }}
+  </button>
+</div>
 
-        <div v-if="offlineQueueCount" class="quickQueueBar">
-          <span>Queued posts: {{ offlineQueueCount }}</span>
-          <button class="btn ghostBtn" @click="flushOfflineQueue">Sync now</button>
-        </div>
-      </div>
-    </div>
+<div v-if="offlineQueueCount" class="quickQueueBar">
+  <span>Queued posts: {{ offlineQueueCount }}</span>
+  <button class="btn ghostBtn" @click="flushOfflineQueue">Sync now</button>
+</div>
+
+  </div>
+</div>
+
   </transition>
 
   <!-- ELITE BOTTOM NAV -->
+
   <nav class="bottomNav eliteBottomNav">
     <button class="bn" :class="{ on: isHomeActive }" @click="goHome">
       <span class="bnI">🏠</span><span class="bnT">Home</span>
     </button>
 
-    <button class="bn" @click="goInbox">
-      <span class="bnI">💬</span><span class="bnT">Inbox</span>
-    </button>
+<button class="bn" @click="goInbox"><span class="bnI">💬</span><span class="bnT">Inbox</span></button>
 
-    <button class="bn createBn" @click="openQuickCreate()">
-      <span class="createCore">＋</span>
-    </button>
+<button class="bn createBn" @click="openQuickCreate()"><span class="createCore">＋</span></button>
 
-    <button class="bn" :class="{ on: feedMode === 'live' }" @click="goLiveTab">
-      <span class="bnI">🔴</span><span class="bnT">Live</span>
-    </button>
+<button class="bn" ="{ on: feedMode === 'live' }" @click="goLiveTab"><span class="bnI">🔴</span><span class="bnT">Live</span></button>
 
-    <button class="bn" @click="goProfile">
-      <span class="bnI">👤</span><span class="bnT">Profile</span>
-    </button>
+<button class="bn" @click="goProfile"><span class="bnI">👤</span><span class="bnT">Profile</span></button>
+
   </nav>
 </div>
 
@@ -2882,18 +2873,6 @@ function handleKeydown(e) {
 onMounted(async () => {
   updateDailyStreak()
   startLocation()
-          socket.on("location:nearby", (nearby) => {
-        people.value = people.value.map((u) => {
-          const match = nearby.find(
-            (p) => String(p.userId) === String(u.id)
-          )
-
-          return {
-            ...u,
-            distance: match?.distance ?? null,
-          }
-        })
-      })
   try {
     const savedDraft = JSON.parse(localStorage.getItem(DASH_DRAFT_KEY) || "{}")
     if (savedDraft?.caption) {
@@ -3090,9 +3069,7 @@ onBeforeUnmount(() => {
   window.removeEventListener("keydown", handleKeydown)
   window.removeEventListener("online", handleNetworkOnline)
   window.removeEventListener("offline", handleNetworkOffline)
-     try {
-    socket?.off("location:nearby")
-  } catch {}
+
   try { socket?.off("call:ringing") } catch {}
   try { socket?.off("call:incoming") } catch {}
   try { socket?.off("call:accepted") } catch {}
