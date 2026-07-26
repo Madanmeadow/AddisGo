@@ -519,6 +519,9 @@
                     </span>
                     <span class="sep">•</span>
                     <span class="id">ID {{ u.id }}</span>
+                    <span v-if="u.distance !== null" class="distance">
+                      • 📍 {{ u.distance }} mi away
+                    </span>
                   </div>
                 </div>
 
