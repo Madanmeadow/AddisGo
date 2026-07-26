@@ -1573,7 +1573,7 @@ const feedModeLabel = computed(() => {
 /* =========================
    SOCKET
 ========================= */
-
+let socket = null
 const socketConnected = ref(false)
 const onlinePairs = ref([])
 const liveStreams = ref([])
