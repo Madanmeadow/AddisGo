@@ -105,7 +105,12 @@
                   <span class="presence-label" :class="{ on: isOnline(person.id) }">
                     {{ isOnline(person.id) ? 'Online' : lastSeen(person) }}
                   </span>
-
+                  <div
+                    v-if="distanceFor(person) !== null"
+                    style="font-size:13px;color:#8ef0ae;margin-top:4px;"
+                  >
+                    📍 {{ distanceFor(person).toFixed(1) }} mi away
+                  </div>
                   <span v-if="person.bio" class="bio-line" :title="person.bio">
                     {{ person.bio }}
                   </span>
@@ -200,7 +205,7 @@ const onlineUserIds = ref([])
 const currentPage = ref(1)
 const itemsPerPage = ref(20)
 const lastSeenMap = ref(new Map()) // userId -> timestamp
-
+const nearbyUsers = ref([])
 // Abort controllers
 const abortControllers = new Set()
 
@@ -286,7 +291,13 @@ function lastSeen(person) {
   if (diffDays < 7) return `${diffDays}d ago`
   return d.toLocaleDateString([], { month: 'short', day: 'numeric' })
 }
+function distanceFor(person) {
+  const found = nearbyUsers.value.find(
+    (u) => String(u.userId) === String(person.id)
+  )
 
+  return found?.distance ?? null
+}
 function onAvatarError(event, person) {
   // Replace broken image with fallback
   const img = event.target
@@ -500,7 +511,9 @@ function onOnlineUsersLegacy(entries) {
     .filter(Boolean)
   onlineUserIds.value = Array.from(new Set(ids))
 }
-
+function onNearbyUsers(users) {
+  nearbyUsers.value = Array.isArray(users) ? users : []
+}
 function onSocketConnect() {
   socketConnected.value = true
   const username = me.value?.username || me.value?.name || 'User'
@@ -542,6 +555,7 @@ onMounted(async () => {
   socket.on('connect', onSocketConnect)
   socket.on('disconnect', onSocketDisconnect)
   socket.on('presence:list', onPresenceList)
+  socket.on("location:nearby", onNearbyUsers)
   socket.on('presence:update', onPresenceUpdate)
   socket.on('online-users', onOnlineUsersLegacy)
 
@@ -569,6 +583,7 @@ onBeforeUnmount(() => {
   socket.off('presence:list', onPresenceList)
   socket.off('presence:update', onPresenceUpdate)
   socket.off('online-users', onOnlineUsersLegacy)
+  socket.off("location:nearby", onNearbyUsers)
 })
 </script>
 
