@@ -2882,6 +2882,18 @@ function handleKeydown(e) {
 onMounted(async () => {
   updateDailyStreak()
   startLocation()
+          socket.on("location:nearby", (nearby) => {
+        people.value = people.value.map((u) => {
+          const match = nearby.find(
+            (p) => String(p.userId) === String(u.id)
+          )
+
+          return {
+            ...u,
+            distance: match?.distance ?? null,
+          }
+        })
+      })
   try {
     const savedDraft = JSON.parse(localStorage.getItem(DASH_DRAFT_KEY) || "{}")
     if (savedDraft?.caption) {
