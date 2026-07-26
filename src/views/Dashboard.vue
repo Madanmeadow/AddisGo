@@ -2886,15 +2886,14 @@ function handleKeydown(e) {
 onMounted(async () => {
   updateDailyStreak()
   startLocation()
-    socket.on("location:nearby", (nearby) => {
-    people.value = people.value.map((u) => {
-    const match = nearby.find(
-      (p) => String(p.userId) === String(u.id)
+  socket.on("location:nearby", (nearby) => {
+  nearby.forEach((p) => {
+    const person = people.value.find(
+      (u) => String(u.id) === String(p.userId)
     )
 
-    return {
-      ...u,
-      distance: match?.distance ?? null,
+    if (person) {
+      person.distance = p.distance
     }
   })
 
