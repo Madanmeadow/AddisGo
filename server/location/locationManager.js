@@ -1,20 +1,6 @@
-// server/location/locationManager.js
+import { distanceMiles } from "./distance.js";
 
 const locations = new Map();
-
-/*
-Map structure
-
-userId =>
-{
-    userId,
-    username,
-    latitude,
-    longitude,
-    accuracy,
-    updatedAt
-}
-*/
 
 export function updateLocation(user) {
     if (!user?.userId) return;
@@ -25,26 +11,36 @@ export function updateLocation(user) {
     });
 }
 
-export function getLocation(userId) {
-    return locations.get(userId) || null;
-}
-
 export function removeLocation(userId) {
     locations.delete(userId);
+}
+
+export function getLocation(userId) {
+    return locations.get(userId) || null;
 }
 
 export function getAllLocations() {
     return [...locations.values()];
 }
 
-export function getNearbyLocations(latitude, longitude, radiusMiles = 25) {
-    return [...locations.values()].filter((u) => {
-        if (u.latitude == null || u.longitude == null) return false;
+export function getNearbyLocations(userId, maxMiles = 50) {
+    const me = locations.get(userId);
 
-        const dx = latitude - u.latitude;
-        const dy = longitude - u.longitude;
+    if (!me) return [];
 
-        // quick filter before exact calculation
-        return Math.sqrt(dx * dx + dy * dy) < 1;
-    });
+    return [...locations.values()]
+        .filter(u => u.userId !== userId)
+        .map(u => ({
+            ...u,
+            distance: Number(
+                distanceMiles(
+                    me.latitude,
+                    me.longitude,
+                    u.latitude,
+                    u.longitude
+                ).toFixed(1)
+            ),
+        }))
+        .filter(u => u.distance <= maxMiles)
+        .sort((a, b) => a.distance - b.distance);
 }
