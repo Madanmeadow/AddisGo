@@ -43,10 +43,6 @@
           
           <button class="chip eliteChip" @click="openQuickCreate('post')">✍️ Post</button>
 
-          <button class="chip ghost eliteChip" @click="togglePeople">
-            {{ peopleOpen ? "Hide People" : "People" }}
-          </button>
-          >
           <button class="chip ghost eliteChip" @click="toggleChat">
             {{ chatOpen ? "Close Chat" : "Chat" }}
           </button>
