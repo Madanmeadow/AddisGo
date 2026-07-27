@@ -9,9 +9,6 @@ import {
 
 export function registerLocationHandlers(io, socket) {
   socket.on("location:update", (data = {}) => {
-    console.log("📍 location:update received");
-    console.log("📍 socket.data.user =", socket.data.user);
-
     const user = socket.data.user;
     if (!user) {
       console.log("❌ No user on socket");
@@ -26,17 +23,16 @@ export function registerLocationHandlers(io, socket) {
       accuracy: Number(data.accuracy || 0),
     });
 
-    console.log("📍 All locations:", getAllLocations());
-
-    // Send back ALL users with distances so the UI can show "mi away" for everyone
+    // Send distances back immediately so UI updates
     const withDistances = getAllWithDistances(user.id);
     socket.emit("location:nearby", withDistances);
   });
 
-  // NEW: let the frontend explicitly ask for distances
+  // NEW: frontend asks for distances explicitly
   socket.on("presence:get", () => {
     const user = socket.data.user;
     if (!user) return;
+
     const withDistances = getAllWithDistances(user.id);
     socket.emit("location:nearby", withDistances);
   });

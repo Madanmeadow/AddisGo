@@ -5,10 +5,7 @@ const locations = new Map();
 
 export function updateLocation(user) {
   if (!user?.userId) return;
-  locations.set(user.userId, {
-    ...user,
-    updatedAt: Date.now(),
-  });
+  locations.set(user.userId, { ...user, updatedAt: Date.now() });
 }
 
 export function removeLocation(userId) {
@@ -23,7 +20,7 @@ export function getAllLocations() {
   return [...locations.values()];
 }
 
-export function getNearbyLocations(userId, maxMiles = 500000) {
+export function getNearbyLocations(userId, maxMiles = 50) {
   const me = locations.get(userId);
   if (!me) return [];
 
@@ -46,7 +43,7 @@ export function getNearbyLocations(userId, maxMiles = 500000) {
     .sort((a, b) => a.distance - b.distance);
 }
 
-// NEW: return every tracked user with distance from me (no max filter)
+// NEW: return every user with a distance from me
 export function getAllWithDistances(userId) {
   const me = locations.get(userId);
   if (!me) return [];
