@@ -24,6 +24,7 @@ import likesRoutes from "./routes/likes.routes.js";
 import { initMediasoupWorker } from "./mediasoup/workers.js";
 import { registerLiveSfuHandlers } from "./mediasoup/socketLiveSfu.js";
 import { registerLocationHandlers } from "./location/socketLocation.js";
+import socketAuth from "./middleware/socketAuth.js";
 
 await initMediasoupWorker();
 dotenv.config();
