@@ -2930,17 +2930,20 @@ onMounted(async () => {
     onlinePairs.value = Array.isArray(pairs) ? pairs : []
   })
   socket.on("location:nearby", (nearby) => {
+  console.log("📍 Nearby from server:", nearby)
+  console.log("👥 People list:", people.value)
+
   nearby.forEach((p) => {
     const user = people.value.find(
       (u) => String(u.id) === String(p.userId)
     )
 
+    console.log("Matching:", p.userId, "=>", user)
+
     if (user) {
       user.distance = p.distance
     }
-  })
-
-  console.log("📍 Nearby:", nearby)
+    })
   })
   socket.on("call:ringing", ({ roomId, kind } = {}) => {
     pendingRoomId.value = String(roomId || "")
