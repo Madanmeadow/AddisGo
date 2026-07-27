@@ -1,707 +1,436 @@
 <template>
-  <Layout>
-    <div class="chat-page">
-      <!-- Header -->
-      <div class="chat-header">
-        <button class="back-btn" @click="router.back()">←</button>
-        <div class="header-info">
-          <div class="chat-name">{{ chatName }}</div>
-          <div class="chat-status">
-            <span class="status-dot" :class="{ online: socketConnected }"></span>
-            {{ socketConnected ? 'Online' : 'Connecting...' }}
-            <span v-if="otherUserTyping" class="typing-indicator"> • typing...</span>
-          </div>
+  <div class="message-view">
+    <!-- Header -->
+    <div class="msg-header">
+      <button class="back-btn" @click="$emit('back')">←</button>
+      <div class="user-info">
+        <div class="avatar">{{ otherUserName?.[0] || '?' }}</div>
+        <div class="name">{{ otherUserName || 'Chat' }}</div>
+      </div>
+      <div class="spacer"></div>
+    </div>
+
+    <!-- Messages -->
+    <div ref="messagesContainer" class="messages-list" @scroll="handleScroll">
+      <div v-if="loadingHistory" class="loading-history">Loading messages...</div>
+
+      <div
+        v-for="msg in messages"
+        :key="msg.id || msg.tempId"
+        :class="['msg-bubble', msg.senderId === myUserId ? 'mine' : 'theirs']"
+      >
+        <div class="msg-content">{{ msg.content || msg.text || msg.body || '' }}</div>
+        <div class="msg-meta">
+          <span class="msg-time">{{ formatTime(msg.createdAt || msg.timestamp) }}</span>
+          <span v-if="msg.senderId === myUserId" class="msg-status">
+            {{ msg.failed ? '⚠️' : msg.sending ? '...' : '✓' }}
+          </span>
         </div>
       </div>
 
-      <!-- Error Banner -->
-      <div v-if="error" class="error-banner">
-        {{ error }}
-        <button class="close-error" @click="error = ''">×</button>
+      <div v-if="messages.length === 0 && !loadingHistory" class="empty-state">
+        No messages yet. Say hello!
       </div>
+    </div>
 
-      <!-- Messages -->
-      <div ref="listEl" class="messages" @scroll="onScroll">
-        <div v-if="loadingHistory" class="loading-more">
-          <span>Loading history...</span>
-        </div>
+    <!-- Typing indicator -->
+    <div v-if="otherIsTyping" class="typing-indicator">
+      <span></span><span></span><span></span>
+    </div>
 
-        <div v-if="messages.length === 0 && !loadingHistory" class="empty-state">
-          <div class="empty-icon">💬</div>
-          <div>No messages yet</div>
-          <div class="empty-sub">Say hi to start the conversation!</div>
-        </div>
-
-        <div
-          v-for="(msg, index) in messages"
-          :key="msg.localKey"
-          :class="['message-row', isMyMessage(msg) ? 'my-row' : 'their-row']"
-        >
-          <div class="message-bubble">
-            <div class="message-text">{{ msg.text }}</div>
-            <div class="message-meta">
-              <span class="sender">{{ msg.from }}</span>
-              <span class="time">{{ formatTime(msg.createdAt) }}</span>
-              <span v-if="isMyMessage(msg) && msg.id && !msg.id.toString().startsWith('local-')" class="read-status">
-                {{ msg.read ? '✓✓' : '✓' }}
-              </span>
-            </div>
-          </div>
-        </div>
-
-        <div ref="messagesEnd" class="messages-end"></div>
-      </div>
-
-      <!-- Input -->
-      <div class="input-area">
-        <div v-if="sending" class="sending-overlay">Sending...</div>
+    <!-- Input -->
+    <div class="msg-input-area">
+      <div v-if="error" class="input-error">{{ error }}</div>
+      <div class="input-row">
         <input
-          v-model="text"
+          ref="inputRef"
+          v-model="newMessage"
+          type="text"
           placeholder="Type a message..."
-          :disabled="sending || !socketConnected"
-          @keydown.enter="sendMessage"
-          @input="onTyping"
+          :disabled="sending || !conversationId"
+          @keydown.enter.prevent="sendMessage"
         />
         <button
+          class="send-btn"
+          :disabled="!newMessage.trim() || sending || !conversationId"
           @click="sendMessage"
-          :disabled="!text.trim() || sending || !socketConnected"
         >
-          {{ sending ? '...' : 'Send' }}
+          {{ sending ? '...' : '➤' }}
         </button>
       </div>
     </div>
-  </Layout>
+  </div>
 </template>
 
 <script setup>
-import {
-  nextTick,
-  onBeforeUnmount,
-  onMounted,
-  ref,
-  watch,
-  computed,
-} from "vue";
-import { useRoute, useRouter } from "vue-router";
-import Layout from "../components/Layout.vue";
-import socket, { refreshSocketAuth, ensurePulseSocket } from "../socket";
+import { ref, computed, onMounted, onUnmounted, nextTick, watch } from 'vue'
 
-const route = useRoute();
-const router = useRouter();
-
-const API_URL = (
-  import.meta.env.VITE_API_URL ||
-  "https://addisgo-production-63ae.up.railway.app"
-).replace(/\/$/, "");
-
-// Abort controllers for pending requests
-const abortControllers = new Set();
-
-function getToken() {
-  return localStorage.getItem("token") || "";
-}
-
-function getMe() {
-  try {
-    return JSON.parse(localStorage.getItem("user") || "{}");
-  } catch {
-    return {};
-  }
-}
-
-// State
-const me = ref(getMe());
-const myUserId = ref(String(me.value?.id || "").trim());
-const otherUserId = ref(String(route.query.userId || "").trim());
-const chatName = ref(route.query.name || `User ${otherUserId.value || ""}`);
-
-const conversationId = ref(
-  route.query.conversationId ? String(route.query.conversationId) : ""
-);
-
-const roomId = ref("");
-const text = ref("");
-const messages = ref([]);
-const listEl = ref(null);
-const messagesEnd = ref(null);
-const error = ref("");
-const loadingHistory = ref(false);
-const creatingConversation = ref(false);
-const sending = ref(false);
-const socketConnected = ref(socket.connected);
-const otherUserTyping = ref(false);
-const shouldScrollToBottom = ref(true);
-
-// Pagination
-const hasMoreMessages = ref(true);
-const oldestMessageId = ref(null);
-
-function authHeaders() {
-  const token = getToken();
-  return {
-    "Content-Type": "application/json",
-    ...(token ? { Authorization: `Bearer ${token}` } : {}),
-  };
-}
+// ==================== CONFIG ====================
+const API_URL = import.meta.env.VITE_API_URL || 'https://api.example.com'
+const abortControllers = new Set()
 
 function createAbortController() {
-  const controller = new AbortController();
-  abortControllers.add(controller);
-  return controller;
+  const c = new AbortController()
+  abortControllers.add(c)
+  return c
 }
 
-function cleanupAbortControllers() {
-  for (const controller of abortControllers) {
-    controller.abort();
+function authHeaders() {
+  const token = localStorage.getItem('token') || ''
+  return {
+    'Content-Type': 'application/json',
+    ...(token && { Authorization: `Bearer ${token}` })
   }
-  abortControllers.clear();
 }
 
+// ==================== PROPS / EMITS ====================
+const props = defineProps({
+  myUserId: { type: String, required: true },
+  otherUserId: { type: String, required: true },
+  otherUserName: { type: String, default: '' }
+})
+
+const emit = defineEmits(['back', 'conversation-ready'])
+
+// ==================== STATE ====================
+const conversationId = ref('')
+const messages = ref([])
+const newMessage = ref('')
+const loadingHistory = ref(false)
+const sending = ref(false)
+const creatingConversation = ref(false)
+const error = ref('')
+const otherIsTyping = ref(false)
+const messagesContainer = ref(null)
+const inputRef = ref(null)
+const pollInterval = ref(null)
+const typingTimeout = ref(null)
+
+// ==================== API HELPERS (your code) ====================
 async function apiGet(path, options = {}) {
-  const controller = createAbortController();
+  const controller = createAbortController()
   try {
     const res = await fetch(`${API_URL}${path}`, {
       headers: authHeaders(),
       signal: controller.signal,
       ...options,
-    });
-    abortControllers.delete(controller);
-    const data = await res.json().catch(() => ({}));
-    if (!res.ok) throw new Error(data?.error || `HTTP ${res.status}`);
-    return data;
+    })
+    abortControllers.delete(controller)
+    const data = await res.json().catch(() => ({}))
+    if (!res.ok) {
+      const msg = data?.error || data?.message || `HTTP ${res.status}`
+      throw new Error(msg)
+    }
+    return data
   } catch (err) {
-    abortControllers.delete(controller);
-    if (err.name === "AbortError") throw new Error("Request cancelled");
-    throw err;
+    abortControllers.delete(controller)
+    if (err.name === 'AbortError') throw new Error('Request cancelled')
+    throw err
   }
 }
 
 async function apiPost(path, body, options = {}) {
-  const controller = createAbortController();
+  const controller = createAbortController()
   try {
     const res = await fetch(`${API_URL}${path}`, {
-      method: "POST",
+      method: 'POST',
       headers: authHeaders(),
       body: JSON.stringify(body),
       signal: controller.signal,
       ...options,
-    });
-    abortControllers.delete(controller);
-    const data = await res.json().catch(() => ({}));
-    if (!res.ok) throw new Error(data?.error || "Request failed");
-    return data;
+    })
+    abortControllers.delete(controller)
+    const data = await res.json().catch(() => ({}))
+    if (!res.ok) {
+      const msg = data?.error || data?.message || `HTTP ${res.status}`
+      throw new Error(msg)
+    }
+    return data
   } catch (err) {
-    abortControllers.delete(controller);
-    if (err.name === "AbortError") throw new Error("Request cancelled");
-    throw err;
+    abortControllers.delete(controller)
+    if (err.name === 'AbortError') throw new Error('Request cancelled')
+    throw err
   }
 }
 
-function buildRoomId() {
-  if (!myUserId.value || !otherUserId.value) return "";
-  return [String(myUserId.value), String(otherUserId.value)].sort().join("-");
-}
-
-function normalizeDbMessage(msg) {
-  return {
-    localKey: `db-${msg.id}-${msg.created_at || Date.now()}`,
-    id: msg.id,
-    room: roomId.value,
-    conversationId: String(msg.conversation_id || conversationId.value || ""),
-    from: msg.sender_name || msg.from || "User",
-    senderId: String(msg.sender_id || ""),
-    text: String(msg.text || ""),
-    createdAt: msg.created_at || new Date().toISOString(),
-    read: msg.read || false,
-  };
-}
-
-function normalizeSocketMessage(payload) {
-  return {
-    localKey: `sock-${payload?.messageId || Date.now()}-${Math.random()
-      .toString(36)
-      .slice(2, 8)}`,
-    id: payload?.messageId || null,
-    room: String(payload?.room || ""),
-    conversationId: String(payload?.conversationId || ""),
-    from: payload?.from || "User",
-    senderId: String(payload?.senderId || ""),
-    text: String(payload?.text || ""),
-    createdAt: payload?.createdAt || payload?.created_at || new Date().toISOString(),
-    read: false,
-  };
-}
-
-function formatTime(v) {
-  if (!v) return "";
-  const d = new Date(v);
-  if (Number.isNaN(d.getTime())) return "";
-  return d.toLocaleTimeString([], { hour: "2-digit", minute: "2-digit" });
-}
-
-function isMyMessage(msg) {
-  return String(msg.senderId) === String(myUserId.value);
-}
-
-function scrollToBottom(force = false) {
-  if (!shouldScrollToBottom.value && !force) return;
-  
-  nextTick(() => {
-    if (messagesEnd.value) {
-      messagesEnd.value.scrollIntoView({ behavior: "smooth" });
-    } else if (listEl.value) {
-      listEl.value.scrollTop = listEl.value.scrollHeight;
-    }
-  });
-}
-
-function onScroll() {
-  if (!listEl.value) return;
-  const { scrollTop, scrollHeight, clientHeight } = listEl.value;
-  const isNearBottom = scrollHeight - scrollTop - clientHeight < 100;
-  shouldScrollToBottom.value = isNearBottom;
-}
-
-// Debounced typing indicator
-let typingTimeout = null;
-function onTyping() {
-  if (!socketConnected.value || !roomId.value) return;
-  
-  socket.emit("typing", { room: roomId.value, userId: myUserId.value });
-  
-  clearTimeout(typingTimeout);
-  typingTimeout = setTimeout(() => {
-    socket.emit("stop-typing", { room: roomId.value, userId: myUserId.value });
-  }, 2000);
-}
-
-function hasMessage(msg) {
-  if (!msg.id) return false;
-  return messages.value.some((m) => {
-    if (m.id && msg.id && String(m.id) === String(msg.id)) return true;
-    return false;
-  });
-}
-
+// ==================== CONVERSATION LOGIC (your code) ====================
 async function ensureConversation() {
-  if (conversationId.value) return conversationId.value;
-  if (!myUserId.value || !otherUserId.value) {
-    throw new Error("Missing user info for conversation");
+  if (conversationId.value) return conversationId.value
+  if (!props.myUserId || !props.otherUserId) {
+    throw new Error('otherUserId required')
   }
 
-  creatingConversation.value = true;
-  error.value = "";
+  creatingConversation.value = true
+  error.value = ''
 
   try {
-    // 1) Try to find an existing conversation first
+    // 1) Try to list all conversations and find one with this user
     try {
-      const existing = await apiGet(
-        `/conversations?userId=${encodeURIComponent(otherUserId.value)}`
-      );
-      if (Array.isArray(existing) && existing.length > 0) {
-        conversationId.value = String(existing[0].id);
-        return conversationId.value;
+      const list = await apiGet('/conversations')
+      const all = Array.isArray(list) ? list : list?.items || list?.conversations || []
+      const found = all.find((c) => {
+        const pids = c.participantIds || c.participants || c.userIds || []
+        return pids.includes(String(props.otherUserId))
+      })
+      if (found?.id) {
+        conversationId.value = String(found.id)
+        return conversationId.value
       }
-      if (existing?.id) {
-        conversationId.value = String(existing.id);
-        return conversationId.value;
-      }
-    } catch {
-      // ignore — we'll create one
+    } catch (e) {
+      console.log('GET /conversations list failed:', e.message)
     }
 
-    // 2) Create new conversation
-    const data = await apiPost("/conversations", {
-      userId1: String(myUserId.value),
-      userId2: String(otherUserId.value),
-    });
+    // 2) Try common POST body formats until one succeeds
+    const attempts = [
+      { body: { participantId: String(props.otherUserId) },   desc: 'participantId' },
+      { body: { userId: String(props.otherUserId) },          desc: 'userId' },
+      { body: { userId1: String(props.myUserId), userId2: String(props.otherUserId) }, desc: 'userId1+userId2' },
+      { body: { participants: [String(props.myUserId), String(props.otherUserId)] }, desc: 'participants[]' },
+      { body: { toUserId: String(props.otherUserId) },        desc: 'toUserId' },
+    ]
 
-    conversationId.value = String(data?.id || data?.conversation?.id || "");
-    return conversationId.value;
+    let lastErr = null
+    for (const attempt of attempts) {
+      try {
+        console.log(`Trying POST /conversations with ${attempt.desc}:`, attempt.body)
+        const data = await apiPost('/conversations', attempt.body)
+        conversationId.value = String(data?.id || data?.conversation?.id || data?.conversationId || '')
+        if (conversationId.value) {
+          console.log(`✅ Success with format: ${attempt.desc}`)
+          return conversationId.value
+        }
+      } catch (e) {
+        lastErr = e
+        console.log(`❌ Failed with ${attempt.desc}:`, e.message)
+      }
+    }
+
+    throw lastErr || new Error('Backend rejected all conversation formats')
   } finally {
-    creatingConversation.value = false;
+    creatingConversation.value = false
   }
 }
 
-async function loadMessages(loadMore = false) {
-  if (!conversationId.value) return;
-  if (loadingHistory.value) return;
-
-  loadingHistory.value = true;
-  error.value = "";
-
+// ==================== MESSAGES ====================
+async function fetchMessages() {
+  if (!conversationId.value) return
+  loadingHistory.value = true
+  error.value = ''
   try {
-    let url = `/messages?conversationId=${encodeURIComponent(conversationId.value)}`;
-    if (loadMore && oldestMessageId.value) {
-      url += `&beforeId=${encodeURIComponent(oldestMessageId.value)}&limit=50`;
-    } else {
-      url += `&limit=50`;
-    }
-
-    const data = await apiGet(url);
-    const newMessages = Array.isArray(data) ? data.map(normalizeDbMessage) : [];
-
-    if (newMessages.length > 0) {
-      oldestMessageId.value = newMessages[0].id;
-    }
-    hasMoreMessages.value = newMessages.length === 50;
-
-    if (loadMore) {
-      messages.value.unshift(...newMessages);
-    } else {
-      messages.value = newMessages;
-      scrollToBottom(true);
-    }
+    const data = await apiGet(`/conversations/${conversationId.value}/messages`)
+    const fetched = Array.isArray(data) ? data : data?.items || data?.messages || []
+    // Merge with pending messages to avoid flicker
+    const pending = messages.value.filter(m => m.sending || m.failed)
+    const existingIds = new Set(fetched.map(m => String(m.id)))
+    messages.value = [
+      ...fetched,
+      ...pending.filter(m => !existingIds.has(String(m.id)))
+    ]
+    await nextTick(() => scrollToBottom(false))
   } catch (e) {
-    if (e.message !== "Request cancelled") {
-      error.value = e?.message || "Failed to load messages";
-    }
+    error.value = e.message
   } finally {
-    loadingHistory.value = false;
+    loadingHistory.value = false
   }
 }
-
-async function reloadMessages() {
-  oldestMessageId.value = null;
-  hasMoreMessages.value = true;
-  await loadMessages(false);
-}
-
-// Queue for offline messages
-const pendingMessages = ref([]);
 
 async function sendMessage() {
-  const value = text.value.trim();
-  if (!value || !myUserId.value || sending.value) return;
+  const text = newMessage.value.trim()
+  if (!text || sending.value) return
 
-  sending.value = true;
-  error.value = "";
+  // Ensure conversation exists
+  try {
+    await ensureConversation()
+  } catch (e) {
+    error.value = e.message
+    return
+  }
 
-  const tempId = `local-${Date.now()}-${Math.random().toString(36).slice(2, 8)}`;
-  
+  const tempId = `temp-${Date.now()}`
   const optimisticMsg = {
-    localKey: tempId,
-    id: tempId,
-    room: roomId.value,
-    conversationId: conversationId.value,
-    from: me.value?.username || "You",
-    senderId: myUserId.value,
-    text: value,
+    tempId,
+    content: text,
+    senderId: props.myUserId,
     createdAt: new Date().toISOString(),
-    read: false,
-    pending: true,
-  };
+    sending: true,
+    failed: false
+  }
 
-  // Optimistic UI
-  messages.value.push(optimisticMsg);
-  text.value = "";
-  scrollToBottom(true);
+  messages.value.push(optimisticMsg)
+  newMessage.value = ''
+  sending.value = true
+  await nextTick(() => scrollToBottom(true))
 
   try {
-    const convoId = await ensureConversation();
-
-    const saved = await apiPost("/messages", {
-      conversationId: convoId,
-      senderId: myUserId.value,
-      text: value,
-    });
-
-    // Update optimistic message with real data
-    const idx = messages.value.findIndex((m) => m.localKey === tempId);
+    const data = await apiPost(`/conversations/${conversationId.value}/messages`, {
+      content: text,
+      text: text,
+      body: text
+    })
+    // Replace optimistic with real
+    const idx = messages.value.findIndex(m => m.tempId === tempId)
     if (idx !== -1) {
       messages.value[idx] = {
         ...messages.value[idx],
-        localKey: `db-${saved.id}-${saved.created_at || Date.now()}`,
-        id: saved.id,
-        conversationId: String(saved.conversation_id || convoId),
-        from: saved.sender_name || me.value?.username || "You",
-        text: saved.text || value,
-        createdAt: saved.created_at || new Date().toISOString(),
-        pending: false,
-      };
+        ...data,
+        id: data?.id || tempId,
+        sending: false
+      }
     }
-
-    // Emit via socket
-    socket.emit("send-message", {
-      room: roomId.value,
-      conversationId: convoId,
-      messageId: saved.id,
-      from: me.value?.username || "You",
-      senderId: myUserId.value,
-      text: value,
-      createdAt: saved.created_at || new Date().toISOString(),
-      toUserId: otherUserId.value,
-    });
-
-    // Mark as read for self
-    socket.emit("message-read", {
-      room: roomId.value,
-      messageId: saved.id,
-      userId: myUserId.value,
-    });
   } catch (e) {
-    // Mark as failed
-    const idx = messages.value.findIndex((m) => m.localKey === tempId);
+    const idx = messages.value.findIndex(m => m.tempId === tempId)
     if (idx !== -1) {
-      messages.value[idx] = { ...messages.value[idx], failed: true, pending: false };
+      messages.value[idx].failed = true
+      messages.value[idx].sending = false
     }
-    error.value = e?.message || "Failed to send message";
+    error.value = e.message
   } finally {
-    sending.value = false;
+    sending.value = false
+    inputRef.value?.focus()
   }
 }
 
-function retryFailedMessage(msg) {
-  if (!msg.failed) return;
-  text.value = msg.text;
-  // Remove failed message
-  const idx = messages.value.findIndex((m) => m.localKey === msg.localKey);
-  if (idx !== -1) messages.value.splice(idx, 1);
-  sendMessage();
+function retryFailed(msg) {
+  if (!msg.failed) return
+  const idx = messages.value.findIndex(m => m.tempId === msg.tempId)
+  if (idx !== -1) {
+    messages.value.splice(idx, 1)
+    newMessage.value = msg.content
+    sendMessage()
+  }
 }
 
-function joinActiveRoom() {
-  if (!roomId.value) return;
-  socket.emit("join-room", roomId.value);
-}
-
-function leaveActiveRoom() {
-  if (!roomId.value) return;
-  socket.emit("leave-room", roomId.value);
-}
-
-// Socket handlers
-function onReceiveMessage(payload) {
-  const incoming = normalizeSocketMessage(payload);
-  if (!incoming.text) return;
-  if (incoming.room !== roomId.value) return;
-
-  const isMine = String(incoming.senderId) === String(myUserId.value);
-  if (isMine) {
-    // Update our optimistic message if it exists
-    const idx = messages.value.findIndex(
-      (m) => m.pending && String(m.text) === String(incoming.text)
-    );
-    if (idx !== -1) {
-      messages.value[idx] = { ...messages.value[idx], id: incoming.id, pending: false };
+// ==================== POLLING & TYPING ====================
+function startPolling() {
+  pollInterval.value = setInterval(() => {
+    if (conversationId.value && !loadingHistory.value) {
+      fetchMessages()
     }
-    return;
-  }
+  }, 3000)
+}
 
-  if (!hasMessage(incoming)) {
-    messages.value.push(incoming);
-    scrollToBottom();
-    
-    // Mark as read immediately if we're active
-    if (document.visibilityState === "visible") {
-      socket.emit("message-read", {
-        room: roomId.value,
-        messageId: incoming.id,
-        userId: myUserId.value,
-      });
-    }
+function stopPolling() {
+  if (pollInterval.value) {
+    clearInterval(pollInterval.value)
+    pollInterval.value = null
   }
 }
 
-function onTypingEvent(payload) {
-  if (payload.room !== roomId.value) return;
-  if (String(payload.userId) === String(myUserId.value)) return;
-  otherUserTyping.value = true;
-  
-  clearTimeout(typingTimeout);
-  typingTimeout = setTimeout(() => {
-    otherUserTyping.value = false;
-  }, 3000);
+function onTyping() {
+  // Debounced typing indicator to backend (optional)
+  if (typingTimeout.value) clearTimeout(typingTimeout.value)
+  // apiPost(`/conversations/${conversationId.value}/typing`, {}).catch(() => {})
+  typingTimeout.value = setTimeout(() => {}, 2000)
 }
 
-function onStopTypingEvent(payload) {
-  if (payload.room !== roomId.value) return;
-  if (String(payload.userId) === String(myUserId.value)) return;
-  otherUserTyping.value = false;
+// ==================== UTILS ====================
+function scrollToBottom(smooth = true) {
+  const el = messagesContainer.value
+  if (!el) return
+  el.scrollTo({
+    top: el.scrollHeight,
+    behavior: smooth ? 'smooth' : 'auto'
+  })
 }
 
-function onMessageRead(payload) {
-  if (payload.room !== roomId.value) return;
-  const msg = messages.value.find((m) => String(m.id) === String(payload.messageId));
-  if (msg && isMyMessage(msg)) {
-    msg.read = true;
-  }
+function handleScroll() {
+  // Could implement infinite scroll here
 }
 
-function onSocketConnect() {
-  socketConnected.value = true;
-  joinActiveRoom();
-  
-  // Resend pending messages
-  for (const msg of pendingMessages.value) {
-    socket.emit("send-message", msg);
-  }
-  pendingMessages.value = [];
+function formatTime(iso) {
+  if (!iso) return ''
+  const d = new Date(iso)
+  return d.toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })
 }
 
-function onSocketDisconnect() {
-  socketConnected.value = false;
-}
-
+// ==================== LIFECYCLE ====================
 onMounted(async () => {
-  me.value = getMe();
-  myUserId.value = String(me.value?.id || "").trim();
-  roomId.value = buildRoomId();
-
-  ensurePulseSocket();
-  refreshSocketAuth(true);
-
-  socket.on("connect", onSocketConnect);
-  socket.on("disconnect", onSocketDisconnect);
-  socket.on("receive-message", onReceiveMessage);
-  socket.on("typing", onTypingEvent);
-  socket.on("stop-typing", onStopTypingEvent);
-  socket.on("message-read", onMessageRead);
-
   try {
-    await ensureConversation();
-  } catch {}
-
-  joinActiveRoom();
-
-  if (conversationId.value) {
-    await loadMessages();
+    await ensureConversation()
+    emit('conversation-ready', conversationId.value)
+    await fetchMessages()
+    startPolling()
+    inputRef.value?.focus()
+  } catch (e) {
+    error.value = e.message
   }
-});
+})
 
-const stopWatchUserId = watch(
-  () => route.query.userId,
-  async (newUserId) => {
-    if (!newUserId) return;
-    
-    // Cancel pending requests
-    cleanupAbortControllers();
-    
-    otherUserId.value = String(newUserId).trim();
-    roomId.value = buildRoomId();
-    messages.value = [];
-    conversationId.value = route.query.conversationId
-      ? String(route.query.conversationId)
-      : "";
-    oldestMessageId.value = null;
-    hasMoreMessages.value = true;
-    error.value = "";
-    
-    joinActiveRoom();
+onUnmounted(() => {
+  stopPolling()
+  abortControllers.forEach(c => c.abort())
+  abortControllers.clear()
+  if (typingTimeout.value) clearTimeout(typingTimeout.value)
+})
 
-    try {
-      await ensureConversation();
-    } catch {}
-
-    if (conversationId.value) {
-      await loadMessages();
-    }
-  }
-);
-
-onBeforeUnmount(() => {
-  leaveActiveRoom();
-  cleanupAbortControllers();
-  
-  socket.off("connect", onSocketConnect);
-  socket.off("disconnect", onSocketDisconnect);
-  socket.off("receive-message", onReceiveMessage);
-  socket.off("typing", onTypingEvent);
-  socket.off("stop-typing", onStopTypingEvent);
-  socket.off("message-read", onMessageRead);
-  
-  stopWatchUserId();
-  
-  clearTimeout(typingTimeout);
-});
+// Watch for conversation changes
+watch(conversationId, (id) => {
+  if (id) fetchMessages()
+})
 </script>
 
 <style scoped>
-.chat-page {
+.message-view {
   display: flex;
   flex-direction: column;
   height: 100vh;
-  max-width: 800px;
+  max-width: 600px;
   margin: 0 auto;
-  background: #0f172a;
-  color: white;
+  background: #f5f5f5;
+  font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif;
 }
 
-.chat-header {
+/* Header */
+.msg-header {
   display: flex;
   align-items: center;
   gap: 12px;
-  padding: 16px;
-  border-bottom: 1px solid rgba(255, 255, 255, 0.1);
-  background: rgba(15, 23, 42, 0.95);
-  backdrop-filter: blur(10px);
+  padding: 12px 16px;
+  background: #fff;
+  border-bottom: 1px solid #e0e0e0;
+  position: sticky;
+  top: 0;
+  z-index: 10;
 }
 
 .back-btn {
+  background: none;
+  border: none;
+  font-size: 20px;
+  cursor: pointer;
+  padding: 4px;
+}
+
+.user-info {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+}
+
+.avatar {
   width: 36px;
   height: 36px;
   border-radius: 50%;
-  border: none;
-  background: rgba(255, 255, 255, 0.1);
+  background: #6366f1;
   color: white;
-  cursor: pointer;
-  display: grid;
-  place-items: center;
-  font-size: 18px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  font-weight: 600;
+  font-size: 14px;
 }
 
-.header-info {
-  flex: 1;
-}
-
-.chat-name {
-  font-weight: 800;
+.name {
+  font-weight: 600;
   font-size: 16px;
 }
 
-.chat-status {
-  font-size: 13px;
-  opacity: 0.7;
-  display: flex;
-  align-items: center;
-  gap: 6px;
+.spacer {
+  width: 32px;
 }
 
-.status-dot {
-  width: 8px;
-  height: 8px;
-  border-radius: 50%;
-  background: #ef4444;
-}
-
-.status-dot.online {
-  background: #22c55e;
-}
-
-.typing-indicator {
-  color: #22c55e;
-  font-style: italic;
-}
-
-.error-banner {
-  display: flex;
-  justify-content: space-between;
-  align-items: center;
-  padding: 12px 16px;
-  background: rgba(239, 68, 68, 0.15);
-  border-bottom: 1px solid rgba(239, 68, 68, 0.2);
-  font-size: 13px;
-}
-
-.close-error {
-  background: none;
-  border: none;
-  color: white;
-  font-size: 18px;
-  cursor: pointer;
-}
-
-.messages {
+/* Messages */
+.messages-list {
   flex: 1;
   overflow-y: auto;
   padding: 16px;
@@ -710,63 +439,44 @@ onBeforeUnmount(() => {
   gap: 8px;
 }
 
-.loading-more {
+.loading-history {
   text-align: center;
-  padding: 12px;
-  opacity: 0.6;
+  color: #888;
   font-size: 13px;
+  padding: 8px;
 }
 
 .empty-state {
   text-align: center;
-  padding: 60px 20px;
-  opacity: 0.5;
-}
-
-.empty-icon {
-  font-size: 48px;
-  margin-bottom: 12px;
-}
-
-.empty-sub {
+  color: #888;
+  margin-top: 40px;
   font-size: 14px;
-  margin-top: 8px;
 }
 
-.message-row {
-  display: flex;
-}
-
-.my-row {
-  justify-content: flex-end;
-}
-
-.their-row {
-  justify-content: flex-start;
-}
-
-.message-bubble {
+.msg-bubble {
   max-width: 75%;
   padding: 10px 14px;
-  border-radius: 16px;
-  word-break: break-word;
+  border-radius: 18px;
+  font-size: 14px;
+  line-height: 1.4;
+  word-wrap: break-word;
 }
 
-.my-row .message-bubble {
-  background: linear-gradient(135deg, #667eea, #764ba2);
+.msg-bubble.mine {
+  align-self: flex-end;
+  background: #6366f1;
+  color: white;
   border-bottom-right-radius: 4px;
 }
 
-.their-row .message-bubble {
-  background: rgba(255, 255, 255, 0.1);
+.msg-bubble.theirs {
+  align-self: flex-start;
+  background: white;
+  color: #333;
   border-bottom-left-radius: 4px;
 }
 
-.message-text {
-  line-height: 1.4;
-}
-
-.message-meta {
+.msg-meta {
   display: flex;
   align-items: center;
   gap: 6px;
@@ -775,64 +485,85 @@ onBeforeUnmount(() => {
   opacity: 0.7;
 }
 
-.sender {
-  font-weight: 600;
+.mine .msg-meta {
+  justify-content: flex-end;
 }
 
-.read-status {
-  color: #60a5fa;
+/* Typing */
+.typing-indicator {
+  display: flex;
+  gap: 4px;
+  padding: 8px 16px;
+  align-self: flex-start;
 }
 
-.input-area {
+.typing-indicator span {
+  width: 8px;
+  height: 8px;
+  background: #999;
+  border-radius: 50%;
+  animation: bounce 1.4s infinite ease-in-out both;
+}
+
+.typing-indicator span:nth-child(1) { animation-delay: -0.32s; }
+.typing-indicator span:nth-child(2) { animation-delay: -0.16s; }
+
+@keyframes bounce {
+  0%, 80%, 100% { transform: scale(0); }
+  40% { transform: scale(1); }
+}
+
+/* Input */
+.msg-input-area {
+  padding: 12px 16px;
+  background: white;
+  border-top: 1px solid #e0e0e0;
+}
+
+.input-error {
+  color: #ef4444;
+  font-size: 12px;
+  margin-bottom: 8px;
+  text-align: center;
+}
+
+.input-row {
   display: flex;
   gap: 10px;
-  padding: 12px 16px;
-  border-top: 1px solid rgba(255, 255, 255, 0.1);
-  background: rgba(15, 23, 42, 0.95);
-  position: relative;
+  align-items: center;
 }
 
-.sending-overlay {
-  position: absolute;
-  inset: 0;
-  display: grid;
-  place-items: center;
-  background: rgba(15, 23, 42, 0.8);
-  font-size: 13px;
-  z-index: 2;
-}
-
-.input-area input {
+.input-row input {
   flex: 1;
   padding: 12px 16px;
-  border-radius: 14px;
-  border: 1px solid rgba(255, 255, 255, 0.15);
-  background: rgba(255, 255, 255, 0.08);
-  color: white;
+  border: 1px solid #ddd;
+  border-radius: 24px;
   font-size: 14px;
   outline: none;
+  transition: border-color 0.2s;
 }
 
-.input-area input:focus {
-  border-color: rgba(255, 255, 255, 0.3);
+.input-row input:focus {
+  border-color: #6366f1;
 }
 
-.input-area input::placeholder {
-  color: rgba(255, 255, 255, 0.4);
-}
-
-.input-area button {
-  padding: 12px 20px;
-  border-radius: 14px;
+.send-btn {
+  width: 44px;
+  height: 44px;
+  border-radius: 50%;
   border: none;
-  background: linear-gradient(135deg, #667eea, #764ba2);
+  background: #6366f1;
   color: white;
-  font-weight: 700;
+  font-size: 18px;
   cursor: pointer;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  transition: opacity 0.2s;
 }
 
-.input-area button:disabled {
-  opacity: 0.4;
+.send-btn:disabled {
+  opacity: 0.5;
   cursor: not-allowed;
 }
 </style>
