@@ -2929,7 +2929,19 @@ onMounted(async () => {
   socket.on("online-users", (pairs) => {
     onlinePairs.value = Array.isArray(pairs) ? pairs : []
   })
+  socket.on("location:nearby", (nearby) => {
+  nearby.forEach((p) => {
+    const user = people.value.find(
+      (u) => String(u.id) === String(p.userId)
+    )
 
+    if (user) {
+      user.distance = p.distance
+    }
+  })
+
+  console.log("📍 Nearby:", nearby)
+  })
   socket.on("call:ringing", ({ roomId, kind } = {}) => {
     pendingRoomId.value = String(roomId || "")
     pendingKind.value = kind === "video" ? "video" : (kind || pendingKind.value || "audio")
