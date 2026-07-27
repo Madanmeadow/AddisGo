@@ -1236,7 +1236,7 @@ import Layout from "../components/Layout.vue"
 import TikTokFeed from "../components/TikTokFeed.vue"
 import CommentsPanel from "../components/Comments.vue"
 import { createSocket } from "../api/socket"
-import { startLocation, useLocation } from "../composables/useLocation"
+import { startLocation, useLocation, sendLocationNow } from "../composables/useLocation"
 
 const router = useRouter()
 const apiUrl = (import.meta.env.VITE_API_URL || "").trim()
