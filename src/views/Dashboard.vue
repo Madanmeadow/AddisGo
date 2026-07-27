@@ -2926,26 +2926,28 @@ onMounted(async () => {
     onlinePairs.value = onlineUserIds.map((id) => [String(id), ""])
   })
 
-  socket.on("online-users", (pairs) => {
-    onlinePairs.value = Array.isArray(pairs) ? pairs : []
-  })
   socket.on("location:nearby", (nearby) => {
-  console.log("📍 Nearby from server:", nearby)
-  console.log("👥 People list:", people.value)
+    nearby.forEach((p) => {
+      const user = people.value.find(
+        (u) => String(u.id) === String(p.userId)
+      )
 
-  nearby.forEach((p) => {
-    const user = people.value.find(
-      (u) => String(u.id) === String(p.userId)
-    )
+      if (user) {
+        console.log(
+          "Updating",
+          user.username,
+          "distance =",
+          p.distance,
+          typeof p.distance
+        )
 
-    console.log("Matching:", p.userId, "=>", user)
-
-    if (user) {
-      user.distance = p.distance
-    }
+        user.distance = p.distance
+      }
     })
+
+    console.log("People after update:", people.value)
   })
-  socket.on("call:ringing", ({ roomId, kind } = {}) => {
+    socket.on("call:ringing", ({ roomId, kind } = {}) => {
     pendingRoomId.value = String(roomId || "")
     pendingKind.value = kind === "video" ? "video" : (kind || pendingKind.value || "audio")
     callingToast.value = `Calling ${pendingUserName.value || "user"}…`
