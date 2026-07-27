@@ -291,6 +291,7 @@ io.use((socket, next) => {
   try {
     const token =
       socket.handshake.auth?.token ||
+      socket.handshake.query?.token ||                       // ← ADD
       socket.handshake.headers?.authorization?.replace("Bearer ", "");
 
     if (!token) return next();
@@ -301,6 +302,13 @@ io.use((socket, next) => {
 
     socket.userId = userId;
     socket.username = payload?.username || `User${userId}`;
+
+    // ← ADD THIS BLOCK
+    socket.data.user = {
+      id: userId,
+      username: socket.username,
+    };
+
     return next();
   } catch (e) {
     logWARN("Socket auth failed (continuing as guest):", e?.message || e);

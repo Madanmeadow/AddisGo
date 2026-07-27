@@ -2910,24 +2910,25 @@ onMounted(async () => {
 
   connectSocket()
 
-  socket.on("receive-message", (msg) => {
-    chatMessages.value.push(msg)
-    nextTick(() => {
-      scrollChatToBottom()
-      scrollRoomsToBottom()
+    socket.on("receive-message", (msg) => {
+      chatMessages.value.push(msg)
+      nextTick(() => {
+        scrollChatToBottom()
+        scrollRoomsToBottom()
+      })
     })
-  })
 
-  socket.on("live-list", (streams) => {
-    liveStreams.value = Array.isArray(streams) ? streams : []
-  })
+    socket.on("live-list", (streams) => {
+      liveStreams.value = Array.isArray(streams) ? streams : []
+    })
 
-  socket.on("presence:list", ({ onlineUserIds } = {}) => {
+    // ✅ KEEP THIS — it is already in the correct spot
+    socket.on("presence:list", ({ onlineUserIds } = {}) => {
       if (!Array.isArray(onlineUserIds)) return
       onlinePairs.value = onlineUserIds.map((id) => [String(id), ""])
     })
 
-    // ✅ Merge server-calculated distances into the people list
+    // ✅ KEEP THIS — it is already in the correct spot
     socket.on("location:nearby", (nearby) => {
       if (!Array.isArray(nearby)) return
 
