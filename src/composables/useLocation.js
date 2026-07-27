@@ -4,17 +4,14 @@ import { ref, computed } from "vue";
 const coords = ref(null);
 const status = ref("idle");
 const hasLocation = computed(() => !!coords.value);
-const isApproximate = ref(false);
-const locationLabel = ref("");
 
 export function useLocation() {
   return {
     coords,
     status,
     hasLocation,
-    isApproximate,
-    locationLabel,
-    // Keep these stubs so existing Dashboard code doesn't break
+    isApproximate: ref(false),
+    locationLabel: ref(""),
     computeDistances: (users) => users,
     sortByDistance: (users) => users,
   };
@@ -23,6 +20,7 @@ export function useLocation() {
 export function startLocation({ socket, userId, autoWatch = true }) {
   if (!navigator.geolocation) {
     status.value = "unsupported";
+    console.warn("[location] Geolocation not supported");
     return;
   }
 
@@ -38,12 +36,13 @@ export function startLocation({ socket, userId, autoWatch = true }) {
     status.value = "active";
 
     if (socket?.connected) {
+      console.log("[location] emitting location:update", { latitude, longitude });
       socket.emit("location:update", { latitude, longitude, accuracy });
     }
   }
 
   function onErr(err) {
-    console.error("Geolocation error:", err);
+    console.error("[location] Geolocation error:", err.message, err.code);
     status.value = "error";
   }
 
@@ -51,7 +50,6 @@ export function startLocation({ socket, userId, autoWatch = true }) {
 
   if (autoWatch) {
     const watchId = navigator.geolocation.watchPosition(send, onErr, options);
-
     const cleanup = () => {
       navigator.geolocation.clearWatch(watchId);
       socket?.off("disconnect", cleanup);

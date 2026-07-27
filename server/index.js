@@ -291,7 +291,7 @@ io.use((socket, next) => {
   try {
     const token =
       socket.handshake.auth?.token ||
-      socket.handshake.query?.token ||                       // ← ADD
+      socket.handshake.query?.token ||
       socket.handshake.headers?.authorization?.replace("Bearer ", "");
 
     if (!token) return next();
@@ -303,7 +303,7 @@ io.use((socket, next) => {
     socket.userId = userId;
     socket.username = payload?.username || `User${userId}`;
 
-    // ← ADD THIS BLOCK
+    // ✅ ADD THESE 3 LINES
     socket.data.user = {
       id: userId,
       username: socket.username,
