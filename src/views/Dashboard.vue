@@ -1245,7 +1245,7 @@ const token = localStorage.getItem("token") || ""
 const me = (() => {
   try { return JSON.parse(localStorage.getItem("user") || "null") } catch { return null }
 })()
-
+const { coords, status: locStatus, hasLocation, isApproximate, locationLabel, computeDistances, sortByDistance } = useLocation()
 /* =========================
    STORAGE KEYS
 ========================= */
@@ -1619,6 +1619,7 @@ function connectSocket() {
     socketConnected.value = true
     statusNote.value = ""
     safeRegisterOnline()
+    startLocation({ socket, userId: me?.id, autoWatch: true })
     refreshCallRooms()
     addActivity("Socket", "Connected to Pulse realtime service")
   })
@@ -2885,7 +2886,7 @@ function handleKeydown(e) {
 ========================= */
 onMounted(async () => {
   updateDailyStreak()
-  startLocation()
+  
     
   try {
     const savedDraft = JSON.parse(localStorage.getItem(DASH_DRAFT_KEY) || "{}")
