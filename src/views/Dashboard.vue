@@ -2921,32 +2921,20 @@ onMounted(async () => {
     liveStreams.value = Array.isArray(streams) ? streams : []
   })
 
-  socket.on("presence:list", ({ onlineUserIds } = {}) => {
-    if (!Array.isArray(onlineUserIds)) return
-    onlinePairs.value = onlineUserIds.map((id) => [String(id), ""])
-  })
+    socket.on("presence:list", ({ onlineUserIds } = {}) => {
+      if (!Array.isArray(onlineUserIds)) return
+      onlinePairs.value = onlineUserIds.map((id) => [String(id), ""])
 
-  socket.on("location:nearby", (nearby) => {
-    nearby.forEach((p) => {
-      const user = people.value.find(
-        (u) => String(u.id) === String(p.userId)
-      )
-
-      if (user) {
-        console.log(
-          "Updating",
-          user.username,
-          "distance =",
-          p.distance,
-          typeof p.distance
-        )
-
-        user.distance = p.distance
+      // Attach distances if we have location
+      if (hasLocation.value && people.value.length) {
+        const withCoords = people.value.map(u => ({
+          ...u,
+          lat: u.lat ?? u.latitude,
+          lng: u.lng ?? u.longitude,
+        }))
+        people.value = computeDistances(withCoords)
       }
     })
-
-    console.log("People after update:", people.value)
-  })
     socket.on("call:ringing", ({ roomId, kind } = {}) => {
     pendingRoomId.value = String(roomId || "")
     pendingKind.value = kind === "video" ? "video" : (kind || pendingKind.value || "audio")
