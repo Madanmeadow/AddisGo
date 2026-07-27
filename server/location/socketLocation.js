@@ -1,3 +1,5 @@
+// server/location/socketLocation.js
+
 import {
   updateLocation,
   removeLocation,
@@ -7,9 +9,15 @@ import {
 
 export function registerLocationHandlers(io, socket) {
   socket.on("location:update", (data = {}) => {
+    console.log("📍 location:update received");
+    console.log("📍 socket.data.user =", socket.data.user);
+
     const user = socket.data.user;
 
-    if (!user) return;
+    if (!user) {
+      console.log("❌ No user on socket");
+      return;
+    }
 
     updateLocation({
       userId: user.id,
@@ -32,6 +40,8 @@ export function registerLocationHandlers(io, socket) {
     const user = socket.data.user;
 
     if (user) {
+      console.log("📍 Removing location for:", user.username);
+
       removeLocation(user.id);
     }
   });
