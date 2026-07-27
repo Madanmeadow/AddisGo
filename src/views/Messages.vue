@@ -167,7 +167,7 @@ async function apiGet(path, options = {}) {
     });
     abortControllers.delete(controller);
     const data = await res.json().catch(() => ({}));
-    if (!res.ok) throw new Error(data?.error || "Request failed");
+    if (!res.ok) throw new Error(data?.error || `HTTP ${res.status}`);
     return data;
   } catch (err) {
     abortControllers.delete(controller);
@@ -293,25 +293,30 @@ async function ensureConversation() {
   error.value = "";
 
   try {
-    let data;
+    // 1) Try to find an existing conversation first
     try {
-      data = await apiPost("/conversations/conversations", {
-        userId1: myUserId.value,
-        userId2: otherUserId.value,
-      });
-    } catch (firstErr) {
-      // Only retry on 404, not on network errors or 500s
-      if (firstErr.message?.includes("404") || firstErr.message?.includes("not found")) {
-        data = await apiPost("/conversations", {
-          userId1: myUserId.value,
-          userId2: otherUserId.value,
-        });
-      } else {
-        throw firstErr;
+      const existing = await apiGet(
+        `/conversations?userId=${encodeURIComponent(otherUserId.value)}`
+      );
+      if (Array.isArray(existing) && existing.length > 0) {
+        conversationId.value = String(existing[0].id);
+        return conversationId.value;
       }
+      if (existing?.id) {
+        conversationId.value = String(existing.id);
+        return conversationId.value;
+      }
+    } catch {
+      // ignore — we'll create one
     }
 
-    conversationId.value = String(data?.id || "");
+    // 2) Create new conversation
+    const data = await apiPost("/conversations", {
+      userId1: String(myUserId.value),
+      userId2: String(otherUserId.value),
+    });
+
+    conversationId.value = String(data?.id || data?.conversation?.id || "");
     return conversationId.value;
   } finally {
     creatingConversation.value = false;
