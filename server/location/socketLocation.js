@@ -1,10 +1,10 @@
 // server/location/socketLocation.js
-
 import {
   updateLocation,
   removeLocation,
   getNearbyLocations,
   getAllLocations,
+  getAllWithDistances,
 } from "./locationManager.js";
 
 export function registerLocationHandlers(io, socket) {
@@ -13,7 +13,6 @@ export function registerLocationHandlers(io, socket) {
     console.log("📍 socket.data.user =", socket.data.user);
 
     const user = socket.data.user;
-
     if (!user) {
       console.log("❌ No user on socket");
       return;
@@ -29,19 +28,23 @@ export function registerLocationHandlers(io, socket) {
 
     console.log("📍 All locations:", getAllLocations());
 
-    const nearby = getNearbyLocations(user.id);
+    // Send back ALL users with distances so the UI can show "mi away" for everyone
+    const withDistances = getAllWithDistances(user.id);
+    socket.emit("location:nearby", withDistances);
+  });
 
-    console.log("📍 Nearby:", nearby);
-
-    socket.emit("location:nearby", nearby);
+  // NEW: let the frontend explicitly ask for distances
+  socket.on("presence:get", () => {
+    const user = socket.data.user;
+    if (!user) return;
+    const withDistances = getAllWithDistances(user.id);
+    socket.emit("location:nearby", withDistances);
   });
 
   socket.on("disconnect", () => {
     const user = socket.data.user;
-
     if (user) {
       console.log("📍 Removing location for:", user.username);
-
       removeLocation(user.id);
     }
   });

@@ -2922,19 +2922,22 @@ onMounted(async () => {
     liveStreams.value = Array.isArray(streams) ? streams : []
   })
 
-    socket.on("presence:list", ({ onlineUserIds } = {}) => {
+  socket.on("presence:list", ({ onlineUserIds } = {}) => {
       if (!Array.isArray(onlineUserIds)) return
       onlinePairs.value = onlineUserIds.map((id) => [String(id), ""])
+    })
 
-      // Attach distances if we have location
-      if (hasLocation.value && people.value.length) {
-        const withCoords = people.value.map(u => ({
-          ...u,
-          lat: u.lat ?? u.latitude,
-          lng: u.lng ?? u.longitude,
-        }))
-        people.value = computeDistances(withCoords)
-      }
+    // ✅ Merge server-calculated distances into the people list
+    socket.on("location:nearby", (nearby) => {
+      if (!Array.isArray(nearby)) return
+
+      people.value = people.value.map((u) => {
+        const match = nearby.find((n) => String(n.userId) === String(u.id))
+        if (match && Number.isFinite(match.distance)) {
+          return { ...u, distance: match.distance }
+        }
+        return { ...u, distance: null }
+      })
     })
     socket.on("call:ringing", ({ roomId, kind } = {}) => {
     pendingRoomId.value = String(roomId || "")
