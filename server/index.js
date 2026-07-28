@@ -367,16 +367,20 @@ function emitLiveList() {
 
 function emitLivePresence(liveId) {
   const id = String(liveId);
-  const viewers = ensureLiveViewerSet(id);
+  const roomName = `live:${id}`;
+  const room = io.sockets.adapter.rooms.get(roomName);
   const hostSocketId = liveHosts.get(id);
 
-  io.to(`live:${id}`).emit("live:presence", {
+  // Room size includes host, so subtract 1. Math.max prevents negative if host somehow left.
+  const viewerCount = room ? Math.max(0, room.size - 1) : 0;
+
+  // Emit to EVERYONE in the room (host sees it update, viewers see it too if you show it)
+  io.to(roomName).emit("live:presence", {
     liveId: id,
-    viewerCount: viewers.size,
+    viewerCount,
     hostSocketId: hostSocketId || null,
   });
 }
-
 /* ---------- LIVE MIC CONTROL ---------- */
 const liveSpeakers = new Map();     // liveId -> Set<userId>
 const liveMicRequests = new Map();  // liveId -> Map<userId -> payload>
