@@ -1654,7 +1654,59 @@ io.on("connection", (socket) => {
 
     logLIVE("live:mic:deny", { liveId: String(liveId), userId: uid });
   });
+    /* ---------- DIRECT MESSAGES ---------- */
+  function getDmRoomId(u1, u2) {
+    return `dm-${[String(u1), String(u2)].sort().join('-')}`;
+  }
 
+  socket.on('join_room', (roomId) => {
+    if (!roomId || typeof roomId !== 'string') return;
+    socket.join(roomId);
+    console.log(`👥 ${socket.id} joined room ${roomId}`);
+  });
+
+  socket.on('leave_room', (roomId) => {
+    if (!roomId) return;
+    socket.leave(roomId);
+    console.log(`🚪 ${socket.id} left room ${roomId}`);
+  });
+
+  socket.on('send_message', async (data, ack) => {
+    try {
+      const { roomId, sender_id, receiver_id, content, text } = data || {};
+
+      if (!sender_id || !receiver_id) {
+        if (typeof ack === 'function') ack({ error: 'Missing sender_id or receiver_id' });
+        return;
+      }
+
+      const messageText = String(text || content || '').trim();
+      if (!messageText) {
+        if (typeof ack === 'function') ack({ error: 'Message text is empty' });
+        return;
+      }
+
+      const finalRoom = roomId || getDmRoomId(sender_id, receiver_id);
+
+      const message = {
+        id: `${Date.now()}-${Math.random().toString(36).slice(2, 8)}`,
+        roomId: finalRoom,
+        sender_id: String(sender_id),
+        sender_name: data.sender_name || 'User',
+        receiver_id: String(receiver_id),
+        content: messageText,
+        text: messageText,
+        created_at: new Date().toISOString(),
+      };
+
+      io.to(finalRoom).emit('receive_message', message);
+
+      if (typeof ack === 'function') ack({ id: message.id, ok: true });
+    } catch (err) {
+      console.error('send_message error:', err);
+      if (typeof ack === 'function') ack({ error: 'Server error' });
+    }
+  });
   /* =========================
      DISCONNECT CLEANUP
   ========================= */
