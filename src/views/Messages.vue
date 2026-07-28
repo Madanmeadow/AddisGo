@@ -152,7 +152,6 @@
     </div>
   </Layout>
 </template>
-
 <script setup>
 import { ref, computed, onMounted, nextTick, watch } from 'vue'
 import { useRoute, useRouter } from 'vue-router'
@@ -161,15 +160,31 @@ import Layout from '../components/Layout.vue'
 const route = useRoute()
 const router = useRouter()
 
+/* =========================
+   API URL (with fallback)
+========================= */
 const apiUrl = (() => {
   const raw = (import.meta.env.VITE_API_URL || '').trim()
-  return raw.replace(/\/$/, '')
+  // Fallback to production backend if env var is missing
+  return (raw || 'https://addisgo-production-63ae.up.railway.app').replace(/\/$/, '')
 })()
 
-const token = localStorage.getItem('token') || ''
-const me = (() => {
-  try { return JSON.parse(localStorage.getItem('user') || 'null') } catch { return null }
-})()
+/* =========================
+   AUTH (reactive helpers)
+========================= */
+function getToken() {
+  return localStorage.getItem('token') || ''
+}
+function getMe() {
+  try {
+    return JSON.parse(localStorage.getItem('user') || 'null')
+  } catch {
+    return null
+  }
+}
+
+const token = ref(getToken())
+const me = ref(getMe())
 
 /* =========================
    STATE
@@ -200,7 +215,6 @@ function isOnline(userId) {
 const conversations = ref([])
 
 const conversationList = computed(() => {
-  // Merge API conversations + any active query-param user
   const list = [...conversations.value]
   const qId = route.query.userId || route.query.otherUserId
   const qName = route.query.name || route.query.username
@@ -225,11 +239,11 @@ const filteredConversations = computed(() => {
 })
 
 async function fetchConversations() {
-  if (!token) return
+  const t = token.value
+  if (!t) return
   loadingConversations.value = true
   error.value = ''
 
-  // Try common endpoint patterns
   const urls = [
     `${apiUrl}/messages/conversations`,
     `${apiUrl}/conversations`,
@@ -239,17 +253,25 @@ async function fetchConversations() {
   for (const url of urls) {
     try {
       const res = await fetch(url, {
-        headers: { Authorization: `Bearer ${token}` }
+        headers: { Authorization: `Bearer ${t}` }
       })
       if (res.ok) {
         const data = await res.json()
-        conversations.value = Array.isArray(data) ? data : Array.isArray(data?.conversations) ? data.conversations : []
+        conversations.value = Array.isArray(data)
+          ? data
+          : Array.isArray(data?.conversations)
+            ? data.conversations
+            : []
+        loadingConversations.value = false
         return
       }
-    } catch { /* try next */ }
+      console.warn(`[Messages] conversations 404/500 at ${url}: ${res.status}`)
+    } catch (err) {
+      console.error(`[Messages] conversations network error at ${url}:`, err.message)
+    }
   }
 
-  // Graceful fallback: no conversations endpoint — we'll build from query params
+  // Fallback: build from query params only
   conversations.value = []
   loadingConversations.value = false
 }
@@ -258,14 +280,14 @@ async function fetchConversations() {
    MESSAGES
 ========================= */
 async function fetchMessages() {
-  if (!token || !activeOtherId.value) return
+  const t = token.value
+  if (!t || !activeOtherId.value) return
   loadingMessages.value = true
   error.value = ''
   messages.value = []
 
   const id = String(activeOtherId.value)
 
-  // Try multiple URL patterns your backend might use
   const urls = [
     `${apiUrl}/messages?otherUserId=${encodeURIComponent(id)}`,
     `${apiUrl}/messages?userId=${encodeURIComponent(id)}`,
@@ -277,16 +299,29 @@ async function fetchMessages() {
   for (const url of urls) {
     try {
       const res = await fetch(url, {
-        headers: { Authorization: `Bearer ${token}` }
+        headers: { Authorization: `Bearer ${t}` }
       })
       if (res.ok) {
         const data = await res.json()
-        messages.value = Array.isArray(data) ? data : Array.isArray(data?.messages) ? data.messages : []
+        messages.value = Array.isArray(data)
+          ? data
+          : Array.isArray(data?.messages)
+            ? data.messages
+            : []
         nextTick(scrollToBottom)
+        loadingMessages.value = false
         return
       }
-      if (res.status === 404) continue // try next pattern
-    } catch { continue }
+      if (res.status === 404) {
+        console.warn(`[Messages] fetchMessages 404 at ${url}`)
+        continue
+      }
+      // Log non-404 errors
+      const errText = await res.text().catch(() => '')
+      console.error(`[Messages] fetchMessages ${res.status} at ${url}:`, errText)
+    } catch (err) {
+      console.error(`[Messages] fetchMessages network error at ${url}:`, err.message)
+    }
   }
 
   error.value = 'Could not load messages. API endpoint may be unavailable.'
@@ -294,24 +329,25 @@ async function fetchMessages() {
 }
 
 /* =========================
-   SEND (BULLETPROOF)
+   SEND (BULLETPROOF + LOGGED)
 ========================= */
 const canSend = computed(() => {
   const t = text.value || ''
-  return t.trim().length > 0 && !!token && !!activeOtherId.value
+  return t.trim().length > 0 && !!token.value && !!activeOtherId.value
 })
 
 async function send() {
-  // GUARD: never crash on undefined/null
   const rawText = text.value
   if (!rawText || typeof rawText !== 'string') return
   const trimmed = rawText.trim()
-  if (!trimmed || !token || !activeOtherId.value) return
+  if (!trimmed || !token.value || !activeOtherId.value) return
 
   sending.value = true
   error.value = ''
 
   const id = String(activeOtherId.value)
+  const myId = String(me.value?.id || '')
+
   const payloadOptions = [
     { otherUserId: id, text: trimmed },
     { userId: id, text: trimmed },
@@ -325,6 +361,7 @@ async function send() {
   ]
 
   let sent = false
+  let lastErr = ''
 
   for (const url of urls) {
     for (const body of payloadOptions) {
@@ -333,7 +370,7 @@ async function send() {
           method: 'POST',
           headers: {
             'Content-Type': 'application/json',
-            Authorization: `Bearer ${token}`
+            Authorization: `Bearer ${token.value}`
           },
           body: JSON.stringify(body)
         })
@@ -343,30 +380,43 @@ async function send() {
           messages.value.push({
             ...(saved || {}),
             text: trimmed,
-            from: me?.id,
-            fromUserId: me?.id,
-            senderId: me?.id,
+            from: myId,
+            fromUserId: myId,
+            senderId: myId,
             created_at: new Date().toISOString(),
             createdAt: new Date().toISOString()
           })
           text.value = ''
           nextTick(scrollToBottom)
+
+          // Update conversation preview
+          const conv = conversations.value.find(c => String(c.otherUserId) === id)
+          if (conv) conv.lastMessage = trimmed
+
           sent = true
           break
         }
 
-        // If backend says which field it wants, stop trying wrong ones
         const errData = await res.json().catch(() => ({}))
-        const errMsg = (errData?.error || errData?.message || '').toLowerCase()
+        const errMsg = (errData?.error || errData?.message || `HTTP ${res.status}`).toLowerCase()
+        lastErr = errMsg
+        console.error(`[Messages] send failed at ${url} with body`, body, ':', errMsg)
+
+        // Stop trying wrong field shapes if backend tells us
         if (errMsg.includes('otheruserid') && !body.otherUserId) continue
         if (errMsg.includes('userid') && !body.userId) continue
-      } catch { /* try next */ }
+      } catch (err) {
+        lastErr = err.message
+        console.error(`[Messages] send network error at ${url}:`, err.message)
+      }
     }
     if (sent) break
   }
 
   if (!sent) {
-    error.value = 'Send failed. Check console for API details.'
+    error.value = lastErr
+      ? `Send failed: ${lastErr}`
+      : 'Send failed. Check console for API details.'
   }
 
   sending.value = false
@@ -376,9 +426,9 @@ async function send() {
    HELPERS
 ========================= */
 function isMe(msg) {
-  if (!msg || !me?.id) return false
+  if (!msg || !me.value?.id) return false
   const fromId = msg.from || msg.fromUserId || msg.senderId || msg.user_id || msg.userId
-  return String(fromId) === String(me.id)
+  return String(fromId) === String(me.value.id)
 }
 
 function formatDate(d) {
@@ -421,6 +471,8 @@ function callUser(kind) {
 }
 
 async function refreshAll() {
+  token.value = getToken()
+  me.value = getMe()
   await fetchConversations()
   if (activeOtherId.value) await fetchMessages()
 }
@@ -429,9 +481,10 @@ async function refreshAll() {
    LIFECYCLE
 ========================= */
 onMounted(() => {
+  token.value = getToken()
+  me.value = getMe()
   fetchConversations()
 
-  // If opened with ?userId=4&name=Adele
   const qId = route.query.userId || route.query.otherUserId
   const qName = route.query.name || route.query.username
   if (qId) {
