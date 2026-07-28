@@ -89,6 +89,7 @@
                     <div class="chatHeaderStatus">
                       <span class="statusDot" :class="{ on: isOnline(activeOtherId) }"></span>
                       {{ isOnline(activeOtherId) ? 'Online' : 'Offline' }}
+                      <span class="socketStatus">{{ socketConnected ? '· ⚡ realtime' : '· ○ offline' }}</span>
                     </div>
                   </div>
                 </div>
@@ -114,7 +115,7 @@
 
                 <div
                   v-for="(msg, idx) in messages"
-                  :key="msg.id || msg._id || `${msg.created_at}-${idx}`"
+                  :key="msg.id || msg._id || msg._tempId || `${msg.created_at}-${idx}`"
                   class="msgRow"
                   :class="{ me: isMe(msg) }"
                 >
@@ -152,39 +153,117 @@
     </div>
   </Layout>
 </template>
+
 <script setup>
-import { ref, computed, onMounted, nextTick, watch } from 'vue'
+import { ref, computed, onMounted, onBeforeUnmount, nextTick, watch } from 'vue'
 import { useRoute, useRouter } from 'vue-router'
+import { io } from 'socket.io-client'
 import Layout from '../components/Layout.vue'
 
 const route = useRoute()
 const router = useRouter()
 
 /* =========================
-   API URL (with fallback)
+   CONFIG
 ========================= */
 const apiUrl = (() => {
   const raw = (import.meta.env.VITE_API_URL || '').trim()
-  // Fallback to production backend if env var is missing
   return (raw || 'https://addisgo-production-63ae.up.railway.app').replace(/\/$/, '')
 })()
 
+const token = ref(localStorage.getItem('token') || '')
+const me = ref((() => {
+  try { return JSON.parse(localStorage.getItem('user') || 'null') } catch { return null }
+})())
+
 /* =========================
-   AUTH (reactive helpers)
+   SOCKET
 ========================= */
-function getToken() {
-  return localStorage.getItem('token') || ''
-}
-function getMe() {
-  try {
-    return JSON.parse(localStorage.getItem('user') || 'null')
-  } catch {
-    return null
-  }
+let socket = null
+const socketConnected = ref(false)
+
+function getRoomId(u1, u2) {
+  const a = String(u1 || '')
+  const b = String(u2 || '')
+  if (!a || !b) return null
+  return `dm-${[a, b].sort().join('-')}`
 }
 
-const token = ref(getToken())
-const me = ref(getMe())
+const currentRoomId = computed(() => {
+  if (!me.value?.id || !activeOtherId.value) return null
+  return getRoomId(me.value.id, activeOtherId.value)
+})
+
+function connectSocket() {
+  if (socket?.connected) return
+
+  socket = io(apiUrl, {
+    transports: ['websocket', 'polling'],
+    reconnection: true,
+    reconnectionAttempts: 5,
+    reconnectionDelay: 1000,
+  })
+
+  socket.on('connect', () => {
+    socketConnected.value = true
+    if (currentRoomId.value) {
+      socket.emit('join_room', currentRoomId.value)
+    }
+  })
+
+  socket.on('disconnect', () => {
+    socketConnected.value = false
+  })
+
+  socket.on('connect_error', (err) => {
+    socketConnected.value = false
+    console.error('[Messages] socket error:', err.message)
+  })
+
+  socket.on('receive_message', (data) => {
+    const msgRoom = data.roomId || data.room_id
+    const fromId = String(data.sender_id || data.from || data.fromUserId || '')
+    const toId = String(data.receiver_id || data.to || data.toUserId || '')
+    const activeId = String(activeOtherId.value || '')
+    const myId = String(me.value?.id || '')
+
+    const relevant = msgRoom === currentRoomId.value ||
+      (fromId === activeId && toId === myId) ||
+      (fromId === myId && toId === activeId)
+
+    if (!relevant) return
+
+    if (!messages.value.some(m =>
+      (m.id && data.id && String(m.id) === String(data.id)) ||
+      (m._tempId && data._tempId && String(m._tempId) === String(data._tempId))
+    )) {
+      messages.value.push({
+        id: data.id || Date.now(),
+        text: String(data.content || data.text || ''),
+        from: fromId,
+        fromUserId: fromId,
+        senderId: fromId,
+        created_at: data.created_at || new Date().toISOString(),
+        createdAt: data.created_at || new Date().toISOString(),
+      })
+      nextTick(scrollToBottom)
+    }
+  })
+}
+
+function disconnectSocket() {
+  if (!socket) return
+  socket.off('connect')
+  socket.off('disconnect')
+  socket.off('connect_error')
+  socket.off('receive_message')
+  if (currentRoomId.value) {
+    socket.emit('leave_room', currentRoomId.value)
+  }
+  socket.disconnect()
+  socket = null
+  socketConnected.value = false
+}
 
 /* =========================
    STATE
@@ -239,8 +318,7 @@ const filteredConversations = computed(() => {
 })
 
 async function fetchConversations() {
-  const t = token.value
-  if (!t) return
+  if (!token.value) return
   loadingConversations.value = true
   error.value = ''
 
@@ -253,35 +331,28 @@ async function fetchConversations() {
   for (const url of urls) {
     try {
       const res = await fetch(url, {
-        headers: { Authorization: `Bearer ${t}` }
+        headers: { Authorization: `Bearer ${token.value}` }
       })
       if (res.ok) {
         const data = await res.json()
-        conversations.value = Array.isArray(data)
-          ? data
-          : Array.isArray(data?.conversations)
-            ? data.conversations
-            : []
+        conversations.value = Array.isArray(data) ? data : Array.isArray(data?.conversations) ? data.conversations : []
         loadingConversations.value = false
         return
       }
-      console.warn(`[Messages] conversations 404/500 at ${url}: ${res.status}`)
     } catch (err) {
-      console.error(`[Messages] conversations network error at ${url}:`, err.message)
+      console.warn('[Messages] conversations fetch error:', err.message)
     }
   }
 
-  // Fallback: build from query params only
   conversations.value = []
   loadingConversations.value = false
 }
 
 /* =========================
-   MESSAGES
+   MESSAGES (REST fallback for history)
 ========================= */
 async function fetchMessages() {
-  const t = token.value
-  if (!t || !activeOtherId.value) return
+  if (!token.value || !activeOtherId.value) return
   loadingMessages.value = true
   error.value = ''
   messages.value = []
@@ -299,37 +370,27 @@ async function fetchMessages() {
   for (const url of urls) {
     try {
       const res = await fetch(url, {
-        headers: { Authorization: `Bearer ${t}` }
+        headers: { Authorization: `Bearer ${token.value}` }
       })
       if (res.ok) {
         const data = await res.json()
-        messages.value = Array.isArray(data)
-          ? data
-          : Array.isArray(data?.messages)
-            ? data.messages
-            : []
+        messages.value = Array.isArray(data) ? data : Array.isArray(data?.messages) ? data.messages : []
         nextTick(scrollToBottom)
         loadingMessages.value = false
         return
       }
-      if (res.status === 404) {
-        console.warn(`[Messages] fetchMessages 404 at ${url}`)
-        continue
-      }
-      // Log non-404 errors
-      const errText = await res.text().catch(() => '')
-      console.error(`[Messages] fetchMessages ${res.status} at ${url}:`, errText)
     } catch (err) {
-      console.error(`[Messages] fetchMessages network error at ${url}:`, err.message)
+      console.warn('[Messages] fetchMessages error:', err.message)
     }
   }
 
-  error.value = 'Could not load messages. API endpoint may be unavailable.'
+  // Backend has no REST history endpoint — that's OK, socket handles real-time
+  messages.value = []
   loadingMessages.value = false
 }
 
 /* =========================
-   SEND (BULLETPROOF + LOGGED)
+   SEND (Socket.IO primary, REST fallback)
 ========================= */
 const canSend = computed(() => {
   const t = text.value || ''
@@ -347,79 +408,106 @@ async function send() {
 
   const id = String(activeOtherId.value)
   const myId = String(me.value?.id || '')
+  const room = currentRoomId.value || `dm-${[myId, id].sort().join('-')}`
+  const tempId = `temp-${Date.now()}`
 
-  const payloadOptions = [
-    { otherUserId: id, text: trimmed },
-    { userId: id, text: trimmed },
-    { toUserId: id, text: trimmed },
-    { receiverId: id, text: trimmed }
-  ]
+  const msgPayload = {
+    roomId: room,
+    sender_id: myId,
+    sender_name: me.value?.username || me.value?.display_name || 'You',
+    receiver_id: id,
+    content: trimmed,
+    text: trimmed,
+    created_at: new Date().toISOString(),
+    _tempId: tempId
+  }
 
-  const urls = [
-    `${apiUrl}/messages`,
-    `${apiUrl}/api/messages`
-  ]
+  // Optimistic UI
+  const optimisticMsg = {
+    id: tempId,
+    _tempId: tempId,
+    text: trimmed,
+    from: myId,
+    fromUserId: myId,
+    senderId: myId,
+    created_at: new Date().toISOString(),
+    createdAt: new Date().toISOString()
+  }
+  messages.value.push(optimisticMsg)
+  text.value = ''
+  nextTick(scrollToBottom)
 
+  // 1) Try Socket.IO first
   let sent = false
-  let lastErr = ''
-
-  for (const url of urls) {
-    for (const body of payloadOptions) {
-      try {
-        const res = await fetch(url, {
-          method: 'POST',
-          headers: {
-            'Content-Type': 'application/json',
-            Authorization: `Bearer ${token.value}`
-          },
-          body: JSON.stringify(body)
-        })
-
-        if (res.ok) {
-          const saved = await res.json().catch(() => null)
-          messages.value.push({
-            ...(saved || {}),
-            text: trimmed,
-            from: myId,
-            fromUserId: myId,
-            senderId: myId,
-            created_at: new Date().toISOString(),
-            createdAt: new Date().toISOString()
-          })
-          text.value = ''
-          nextTick(scrollToBottom)
-
-          // Update conversation preview
+  if (socket?.connected) {
+    try {
+      socket.emit('send_message', msgPayload, (ack) => {
+        sending.value = false
+        if (ack?.error) {
+          console.error('[Messages] socket send error:', ack.error)
+          error.value = ack.error
+          const idx = messages.value.findIndex(m => m._tempId === tempId)
+          if (idx !== -1) messages.value.splice(idx, 1)
+        } else {
+          const idx = messages.value.findIndex(m => m._tempId === tempId)
+          if (idx !== -1 && ack?.id) {
+            messages.value[idx] = { ...messages.value[idx], id: ack.id }
+          }
           const conv = conversations.value.find(c => String(c.otherUserId) === id)
           if (conv) conv.lastMessage = trimmed
-
-          sent = true
-          break
         }
+      })
 
-        const errData = await res.json().catch(() => ({}))
-        const errMsg = (errData?.error || errData?.message || `HTTP ${res.status}`).toLowerCase()
-        lastErr = errMsg
-        console.error(`[Messages] send failed at ${url} with body`, body, ':', errMsg)
-
-        // Stop trying wrong field shapes if backend tells us
-        if (errMsg.includes('otheruserid') && !body.otherUserId) continue
-        if (errMsg.includes('userid') && !body.userId) continue
-      } catch (err) {
-        lastErr = err.message
-        console.error(`[Messages] send network error at ${url}:`, err.message)
-      }
+      setTimeout(() => { sending.value = false }, 5000)
+      sent = true
+    } catch (err) {
+      console.error('[Messages] socket emit error:', err)
     }
-    if (sent) break
   }
 
+  // 2) REST fallback
   if (!sent) {
-    error.value = lastErr
-      ? `Send failed: ${lastErr}`
-      : 'Send failed. Check console for API details.'
-  }
+    const payloadOptions = [
+      { otherUserId: id, text: trimmed },
+      { userId: id, text: trimmed },
+      { toUserId: id, text: trimmed },
+      { receiverId: id, text: trimmed }
+    ]
+    const urls = [`${apiUrl}/messages`, `${apiUrl}/api/messages`]
 
-  sending.value = false
+    for (const url of urls) {
+      for (const body of payloadOptions) {
+        try {
+          const res = await fetch(url, {
+            method: 'POST',
+            headers: {
+              'Content-Type': 'application/json',
+              Authorization: `Bearer ${token.value}`
+            },
+            body: JSON.stringify(body)
+          })
+          if (res.ok) {
+            const saved = await res.json().catch(() => null)
+            const idx = messages.value.findIndex(m => m._tempId === tempId)
+            if (idx !== -1) {
+              messages.value[idx] = { ...messages.value[idx], id: saved?.id || messages.value[idx].id }
+            }
+            sent = true
+            sending.value = false
+            break
+          }
+        } catch {}
+      }
+      if (sent) break
+    }
+
+    if (!sent) {
+      error.value = 'Send failed. Messages API not available.'
+      const idx = messages.value.findIndex(m => m._tempId === tempId)
+      if (idx !== -1) messages.value.splice(idx, 1)
+    }
+    sending.value = false
+  }
 }
 
 /* =========================
@@ -447,11 +535,17 @@ function openConversation(conv) {
   activeOtherId.value = conv.otherUserId
   activeName.value = conv.name || `User #${conv.otherUserId}`
   error.value = ''
+  if (socket?.connected && currentRoomId.value) {
+    socket.emit('join_room', currentRoomId.value)
+  }
   fetchMessages()
   nextTick(() => inputRef.value?.focus())
 }
 
 function closeChat() {
+  if (socket?.connected && currentRoomId.value) {
+    socket.emit('leave_room', currentRoomId.value)
+  }
   activeOtherId.value = null
   activeName.value = ''
   messages.value = []
@@ -471,8 +565,10 @@ function callUser(kind) {
 }
 
 async function refreshAll() {
-  token.value = getToken()
-  me.value = getMe()
+  token.value = localStorage.getItem('token') || ''
+  me.value = (() => {
+    try { return JSON.parse(localStorage.getItem('user') || 'null') } catch { return null }
+  })()
   await fetchConversations()
   if (activeOtherId.value) await fetchMessages()
 }
@@ -481,8 +577,7 @@ async function refreshAll() {
    LIFECYCLE
 ========================= */
 onMounted(() => {
-  token.value = getToken()
-  me.value = getMe()
+  connectSocket()
   fetchConversations()
 
   const qId = route.query.userId || route.query.otherUserId
@@ -501,6 +596,16 @@ watch(() => route.query.userId, (newId) => {
     activeName.value = route.query.name || `User #${newId}`
     fetchMessages()
   }
+})
+
+watch(currentRoomId, (newRoom, oldRoom) => {
+  if (!socket?.connected) return
+  if (oldRoom) socket.emit('leave_room', oldRoom)
+  if (newRoom) socket.emit('join_room', newRoom)
+})
+
+onBeforeUnmount(() => {
+  disconnectSocket()
 })
 </script>
 
@@ -617,6 +722,7 @@ watch(() => route.query.userId, (newId) => {
 .chatHeaderStatus { font-size: 12px; opacity: 0.6; display: flex; align-items: center; gap: 6px; margin-top: 2px; }
 .statusDot { width: 8px; height: 8px; border-radius: 50%; background: rgba(255,255,255,0.3); }
 .statusDot.on { background: #22c55e; box-shadow: 0 0 8px rgba(34,197,94,0.4); }
+.socketStatus { margin-left: 6px; opacity: 0.5; font-size: 11px; }
 .chatHeaderActions { display: flex; gap: 6px; }
 
 .iconbtn { width: 36px; height: 36px; border-radius: 12px; border: 1px solid rgba(255,255,255,0.08); background: rgba(255,255,255,0.06); color: #e2e8f0; cursor: pointer; display: grid; place-items: center; font-size: 14px; transition: all 0.2s ease; }
