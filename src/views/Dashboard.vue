@@ -61,7 +61,7 @@
   </header>
 
   <!-- ELITE QUICK RAIL -->
-  <section class="eliteQuickRail">
+  <section v-if="!token" class="eliteQuickRail">
     <button class="quickRailBtn" @click="focusComposer">✍️ Create</button>
     <button class="quickRailBtn" @click="togglePeople">👥 People</button>
     <button class="quickRailBtn" @click="goInbox">💬 Inbox</button>
@@ -121,7 +121,7 @@
   </section>
   <!-- HERO -->
   <section class="heroStrip">
-    <div class="heroCard glassy">
+    <div class="heroCard glassy" :class="{ 'heroCard--solo': token }">
       <div class="heroLeft">
         <div class="heroEyebrow">WELCOME BACK</div>
         <div class="heroTitle">{{ meName }}</div>
@@ -144,7 +144,7 @@
         </div>
       </div>
 
-      <div class="heroStats">
+      <div v-if="!token" class="heroStats">
         <div class="heroStat">
           <div class="heroStatNum">{{ posts.length }}</div>
           <div class="heroStatLab">Posts</div>
@@ -174,7 +174,7 @@
   </section>
 
   <!-- COMMAND CENTER -->
-  <section class="dock">
+  <section v-if="!token" class="dock">
     <div class="panel dockCard glassy">
       <div class="panel-head">
         <div class="panel-title">✨ Command Center</div>
@@ -220,7 +220,7 @@
   </section>
 
   <!-- SPOTLIGHT -->
-  <section class="dock">
+  <section v-if="!token" class="dock">
     <div class="panel dockCard glassy">
       <div class="panel-head">
         <div class="panel-title">🌟 Spotlight</div>
@@ -317,7 +317,7 @@
 
   <main class="main">
     <!-- STATUS -->
-    <section v-if="token" class="panel miniPanel glassy">
+    <section v-if="false" class="panel miniPanel glassy">
       <div class="panel-head">
         <div class="panel-title">🛰️ Status</div>
 
@@ -1090,7 +1090,7 @@
     </section>
 
     <!-- ACTIVITY FEED -->
-    <section v-if="activityFeed.length" class="panel glassy">
+    <section v-if="false" class="panel glassy">
       <div class="panel-head">
         <div class="panel-title">📝 Activity Feed</div>
         <button class="btn ghostBtn" @click="clearActivity">Clear</button>
@@ -3391,6 +3391,10 @@ onBeforeUnmount(() => {
   font-weight: 600;
   letter-spacing: 0.04em;
   text-transform: uppercase;
+}
+
+.heroCard--solo {
+  grid-template-columns: 1fr;
 }
 
 /* =========================================================
