@@ -249,7 +249,6 @@ function connectSocket() {
       nextTick(scrollToBottom)
     }
   })
-}
 
 function disconnectSocket() {
   if (!socket) return
