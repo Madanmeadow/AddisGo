@@ -119,6 +119,17 @@
             </div>
 
             <div class="person-actions" @click.stop>
+              <!-- Message (always available) -->
+              <button
+                type="button"
+                class="mini-action msg-btn"
+                title="Message"
+                @click.stop.prevent="openChat(person)"
+              >
+                💬
+              </button>
+
+              <!-- Audio Call (online only) -->
               <button
                 type="button"
                 class="mini-action"
@@ -129,6 +140,7 @@
                 📞
               </button>
 
+              <!-- Video Call (online only) -->
               <button
                 type="button"
                 class="mini-action"
@@ -139,15 +151,7 @@
                 🎥
               </button>
 
-              <button
-                type="button"
-                class="mini-action"
-                title="Message"
-                @click.stop.prevent="openChat(person)"
-              >
-                💬
-              </button>
-
+              <!-- Profile -->
               <button
                 type="button"
                 class="mini-action"
@@ -204,9 +208,8 @@ const socketConnected = ref(socket.connected)
 const onlineUserIds = ref([])
 const currentPage = ref(1)
 const itemsPerPage = ref(20)
-const lastSeenMap = ref(new Map()) // userId -> timestamp
+const lastSeenMap = ref(new Map())
 const nearbyUsers = ref([])
-// Abort controllers
 const abortControllers = new Set()
 
 function getToken() {
@@ -291,15 +294,15 @@ function lastSeen(person) {
   if (diffDays < 7) return `${diffDays}d ago`
   return d.toLocaleDateString([], { month: 'short', day: 'numeric' })
 }
+
 function distanceFor(person) {
   const found = nearbyUsers.value.find(
     (u) => String(u.userId) === String(person.id)
   )
-
   return found?.distance ?? null
 }
+
 function onAvatarError(event, person) {
-  // Replace broken image with fallback
   const img = event.target
   img.style.display = 'none'
   const fallback = document.createElement('div')
@@ -310,18 +313,16 @@ function onAvatarError(event, person) {
 
 const onlineCount = computed(() => onlineUserIds.value.length)
 
-// Debounced search
 let searchDebounce = null
 function onSearchInput() {
   clearTimeout(searchDebounce)
   searchDebounce = setTimeout(() => {
-    currentPage.value = 1 // Reset to first page on search
+    currentPage.value = 1
   }, 150)
 }
 
 const filteredPeople = computed(() => {
   const q = search.value.toLowerCase().trim()
-
   let list = people.value.filter((p) => p.id && p.id !== myUserId.value)
 
   if (!showOffline.value) {
@@ -333,7 +334,6 @@ const filteredPeople = computed(() => {
       const aOn = isOnline(a.id) ? 1 : 0
       const bOn = isOnline(b.id) ? 1 : 0
       if (aOn !== bOn) return bOn - aOn
-      // Secondary sort by name
       return displayName(a).localeCompare(displayName(b))
     })
   }
@@ -358,7 +358,6 @@ const paginatedPeople = computed(() => {
   return filteredPeople.value.slice(start, start + itemsPerPage.value)
 })
 
-// Reset page when filters change
 watch([showOffline, search], () => {
   currentPage.value = 1
 })
@@ -384,7 +383,6 @@ async function fetchPeople() {
     const list = Array.isArray(data) ? data : Array.isArray(data?.users) ? data.users : []
     people.value = list.map(normalizeUser).filter((u) => u.id)
 
-    // Populate lastSeenMap from user data
     for (const user of people.value) {
       if (user.lastSeenAt) {
         lastSeenMap.value.set(user.id, user.lastSeenAt)
@@ -399,6 +397,9 @@ async function fetchPeople() {
   }
 }
 
+/* =========================
+   MESSAGE → INBOX
+========================= */
 function openChat(person) {
   const targetId = String(person?.id || person?.userId || '').trim()
   const targetName = displayName(person)
@@ -479,7 +480,6 @@ async function refreshAll() {
   }
 }
 
-// Socket handlers
 function onPresenceList(payload) {
   const ids = Array.isArray(payload?.onlineUserIds) ? payload.onlineUserIds : []
   onlineUserIds.value = ids.map((id) => String(id))
@@ -511,9 +511,11 @@ function onOnlineUsersLegacy(entries) {
     .filter(Boolean)
   onlineUserIds.value = Array.from(new Set(ids))
 }
+
 function onNearbyUsers(users) {
   nearbyUsers.value = Array.isArray(users) ? users : []
 }
+
 function onSocketConnect() {
   socketConnected.value = true
   const username = me.value?.username || me.value?.name || 'User'
@@ -527,7 +529,6 @@ function onSocketDisconnect() {
   socketConnected.value = false
 }
 
-// Auto-refresh interval
 let refreshInterval = null
 
 function startAutoRefresh() {
@@ -536,7 +537,7 @@ function startAutoRefresh() {
     if (!loading.value) {
       fetchPeople().catch(() => {})
     }
-  }, 60000) // Refresh every minute
+  }, 60000)
 }
 
 function stopAutoRefresh() {
@@ -555,7 +556,7 @@ onMounted(async () => {
   socket.on('connect', onSocketConnect)
   socket.on('disconnect', onSocketDisconnect)
   socket.on('presence:list', onPresenceList)
-  socket.on("location:nearby", onNearbyUsers)
+  socket.on('location:nearby', onNearbyUsers)
   socket.on('presence:update', onPresenceUpdate)
   socket.on('online-users', onOnlineUsersLegacy)
 
@@ -573,7 +574,6 @@ onBeforeUnmount(() => {
   stopAutoRefresh()
   clearTimeout(searchDebounce)
 
-  // Mark self as offline
   if (myUserId.value) {
     socket.emit('user:offline', { userId: myUserId.value })
   }
@@ -583,7 +583,7 @@ onBeforeUnmount(() => {
   socket.off('presence:list', onPresenceList)
   socket.off('presence:update', onPresenceUpdate)
   socket.off('online-users', onOnlineUsersLegacy)
-  socket.off("location:nearby", onNearbyUsers)
+  socket.off('location:nearby', onNearbyUsers)
 })
 </script>
 
@@ -804,7 +804,6 @@ onBeforeUnmount(() => {
   border: 1px solid rgba(255,255,255,0.06);
 }
 
-/* Skeleton Loading */
 .skeleton-list {
   display: flex;
   flex-direction: column;
@@ -997,6 +996,24 @@ onBeforeUnmount(() => {
   color: #eef2ff;
   background: rgba(255,255,255,0.07);
   font-size: 18px;
+  display: grid;
+  place-items: center;
+}
+
+.mini-action:hover {
+  background: rgba(255,255,255,0.14);
+}
+
+/* Message button stands out */
+.mini-action.msg-btn {
+  background: linear-gradient(135deg, rgba(236,72,153,0.25), rgba(139,92,246,0.2));
+  border: 1px solid rgba(139,92,246,0.25);
+}
+
+.mini-action.msg-btn:hover {
+  background: linear-gradient(135deg, rgba(236,72,153,0.35), rgba(139,92,246,0.3));
+  transform: translateY(-2px);
+  box-shadow: 0 8px 20px rgba(139,92,246,0.15);
 }
 
 .mini-action:disabled {
@@ -1005,7 +1022,6 @@ onBeforeUnmount(() => {
   transform: none;
 }
 
-/* Pagination */
 .pagination {
   display: flex;
   justify-content: center;
