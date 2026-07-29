@@ -360,31 +360,7 @@
       </div>
     </section>
 
-    <section v-if="token" class="panel glassy commHub">
-      <div class="panel-head">
-        <div class="panel-title">📡 Connect</div>
-        <div class="dockActions">
-          <button class="btn ghostBtn" @click="togglePeople">{{ peopleOpen ? "Hide People" : "Show People" }}</button>
-          <button class="btn ghostBtn" @click="goInbox">Open Inbox</button>
-          <button class="btn ghostBtn" @click="setFeedMode('rooms')">Open Rooms</button>
-        </div>
-      </div>
-
-      <div class="miniAvatars">
-        <div
-          v-for="u in filteredPeople.slice(0, 12)"
-          :key="'hub-' + u.id"
-          class="miniAvatarWrap"
-          :title="displayUserName(u)"
-          @click="startCall(u, 'audio')"
-        >
-          <div class="miniAvatar">{{ displayUserName(u)[0]?.toUpperCase() }}</div>
-          <span class="miniDot" :class="{ on: isOnline(u.id) }"></span>
-        </div>
-      </div>
-
-      <div class="hint mt10">Tap a person bubble for a quick audio call. Open People for full call buttons and Inbox for messages.</div>
-    </section>
+    
 
     <!-- STUDIO -->
     <section v-if="studioOpen" class="panel toolsPanel glassy">
@@ -3205,8 +3181,6 @@ onBeforeUnmount(() => {
   videoObserver = null
 })
 </script>
-
-
 
 <style scoped>
 /* =========================================================
