@@ -2614,7 +2614,7 @@ function openChat(user) {
 
 /* =========================
    FOR YOU INFINITE
-========================= *//
+========================= */
 const pageSize = ref(8)
 const infiniteLoading = ref(false)
 const loadMoreRef = ref(null)
