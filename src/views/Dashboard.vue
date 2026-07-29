@@ -531,6 +531,13 @@
 
                 <div class="person-actions">
                   <button
+                    class="iconbtn msg-btn"
+                    title="Message"
+                    @click="openChat(u)"
+                  >
+                    💬
+                  </button>
+                  <button
                     class="iconbtn"
                     title="Audio Call"
                     :disabled="!isOnline(u.id) || callBusy"
@@ -2592,9 +2599,22 @@ function goProfile() {
   router.push(id ? `/profile/${id}` : "/profile")
 }
 
+function openChat(user) {
+  const targetId = String(user?.id || user?.userId || "").trim()
+  const targetName = displayUserName(user)
+  if (!targetId) return
+  router.push({
+    path: "/messages",
+    query: {
+      userId: targetId,
+      name: targetName,
+    },
+  })
+}
+
 /* =========================
    FOR YOU INFINITE
-========================= */
+========================= *//
 const pageSize = ref(8)
 const infiniteLoading = ref(false)
 const loadMoreRef = ref(null)
@@ -4082,6 +4102,16 @@ onBeforeUnmount(() => {
 .iconbtn:disabled {
   opacity: 0.35;
   cursor: not-allowed;
+}
+
+.iconbtn.msg-btn {
+  background: linear-gradient(135deg, rgba(236, 72, 153, 0.25), rgba(139, 92, 246, 0.2));
+  border: 1px solid rgba(139, 92, 246, 0.25);
+}
+.iconbtn.msg-btn:hover {
+  background: linear-gradient(135deg, rgba(236, 72, 153, 0.35), rgba(139, 92, 246, 0.3));
+  transform: translateY(-2px);
+  box-shadow: 0 8px 20px rgba(139, 92, 246, 0.15);
 }
 
 /* =========================================================
