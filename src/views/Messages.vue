@@ -119,9 +119,12 @@
                   class="msgRow"
                   :class="{ me: isMe(msg) }"
                 >
-                  <div class="msgBubble">
+                  <div class="msgBubble" :class="{ pending: msg.pending }">
                     <div class="msgText">{{ msg.text || msg.content || msg.message || '' }}</div>
-                    <div class="msgTime">{{ formatDate(msg.created_at || msg.createdAt) }}</div>
+                    <div class="msgTime">
+                      <span v-if="msg.pending" style="opacity:0.7">Sending… · </span>
+                      {{ formatDate(msg.created_at || msg.createdAt) }}
+                    </div>
                   </div>
                 </div>
               </div>
@@ -177,6 +180,55 @@ const me = ref((() => {
 })())
 
 /* =========================
+   DM PERSISTENCE
+========================= */
+const DM_QUEUE_KEY = 'pulse_dm_offline_queue_v1'
+
+function getDmKey(otherId) {
+  const myId = me.value?.id || 'unknown'
+  return `pulse_dm_${myId}_${otherId}`
+}
+
+function loadMessages(otherId) {
+  if (!otherId) return
+  try {
+    const saved = JSON.parse(localStorage.getItem(getDmKey(otherId)) || '[]')
+    messages.value = Array.isArray(saved) ? saved : []
+  } catch { messages.value = [] }
+}
+
+function saveMessages(otherId) {
+  if (!otherId) return
+  try { localStorage.setItem(getDmKey(otherId), JSON.stringify(messages.value.slice(-300))) } catch {}
+}
+
+function getMessageQueue() {
+  try { return JSON.parse(localStorage.getItem(DM_QUEUE_KEY) || '[]') } catch { return [] }
+}
+
+function setMessageQueue(q) {
+  try { localStorage.setItem(DM_QUEUE_KEY, JSON.stringify(q.slice(-50))) } catch {}
+}
+
+function queueMessage(payload) {
+  const q = getMessageQueue()
+  q.push(payload)
+  setMessageQueue(q)
+}
+
+function flushMessageQueue() {
+  if (!socket?.connected) return
+  const q = getMessageQueue()
+  if (!q.length) return
+  setMessageQueue([])
+  for (const payload of q) {
+    socket.emit('send_message', payload, (ack) => {
+      if (ack?.error) console.error('[DM] queued send failed:', ack.error)
+    })
+  }
+}
+
+/* =========================
    SOCKET
 ========================= */
 let socket = null
@@ -209,6 +261,7 @@ function connectSocket() {
     if (currentRoomId.value) {
       socket.emit('join_room', currentRoomId.value)
     }
+    flushMessageQueue()
   })
 
   socket.on('disconnect', () => {
@@ -249,6 +302,7 @@ function connectSocket() {
       nextTick(scrollToBottom)
     }
   })
+}
 
 function disconnectSocket() {
   if (!socket) return
@@ -280,18 +334,8 @@ const messagesRef = ref(null)
 const inputRef = ref(null)
 
 /* =========================
-   ONLINE STATUS
+   COMPUTED
 ========================= */
-const onlineIds = ref(new Set())
-function isOnline(userId) {
-  return onlineIds.value.has(String(userId))
-}
-
-/* =========================
-   CONVERSATIONS
-========================= */
-const conversations = ref([])
-
 const conversationList = computed(() => {
   const list = [...conversations.value]
   const qId = route.query.userId || route.query.otherUserId
@@ -315,6 +359,46 @@ const filteredConversations = computed(() => {
     String(c.otherUserId).includes(q)
   )
 })
+
+const canSend = computed(() => {
+  const t = text.value || ''
+  return t.trim().length > 0 && !!token.value && !!activeOtherId.value
+})
+
+/* =========================
+   WATCHERS
+========================= */
+watch(messages, () => {
+  if (activeOtherId.value) saveMessages(activeOtherId.value)
+}, { deep: true })
+
+watch(() => route.query.userId, (newId) => {
+  if (newId) {
+    activeOtherId.value = String(newId)
+    activeName.value = route.query.name || `User #${newId}`
+    loadMessages(String(newId))
+    fetchMessages()
+  }
+})
+
+watch(currentRoomId, (newRoom, oldRoom) => {
+  if (!socket?.connected) return
+  if (oldRoom) socket.emit('leave_room', oldRoom)
+  if (newRoom) socket.emit('join_room', newRoom)
+})
+
+/* =========================
+   ONLINE STATUS
+========================= */
+const onlineIds = ref(new Set())
+function isOnline(userId) {
+  return onlineIds.value.has(String(userId))
+}
+
+/* =========================
+   CONVERSATIONS
+========================= */
+const conversations = ref([])
 
 async function fetchConversations() {
   if (!token.value) return
@@ -391,11 +475,6 @@ async function fetchMessages() {
 /* =========================
    SEND (Socket.IO primary, REST fallback)
 ========================= */
-const canSend = computed(() => {
-  const t = text.value || ''
-  return t.trim().length > 0 && !!token.value && !!activeOtherId.value
-})
-
 async function send() {
   const rawText = text.value
   if (!rawText || typeof rawText !== 'string') return
@@ -407,7 +486,7 @@ async function send() {
 
   const id = String(activeOtherId.value)
   const myId = String(me.value?.id || '')
-  const room = currentRoomId.value || `dm-${[myId, id].sort().join('-')}`
+  const room = currentRoomId.value || getRoomId(myId, id)
   const tempId = `temp-${Date.now()}`
 
   const msgPayload = {
@@ -430,7 +509,8 @@ async function send() {
     fromUserId: myId,
     senderId: myId,
     created_at: new Date().toISOString(),
-    createdAt: new Date().toISOString()
+    createdAt: new Date().toISOString(),
+    pending: true
   }
   messages.value.push(optimisticMsg)
   text.value = ''
@@ -442,15 +522,18 @@ async function send() {
     try {
       socket.emit('send_message', msgPayload, (ack) => {
         sending.value = false
+        const idx = messages.value.findIndex(m => m._tempId === tempId)
         if (ack?.error) {
           console.error('[Messages] socket send error:', ack.error)
           error.value = ack.error
-          const idx = messages.value.findIndex(m => m._tempId === tempId)
           if (idx !== -1) messages.value.splice(idx, 1)
         } else {
-          const idx = messages.value.findIndex(m => m._tempId === tempId)
-          if (idx !== -1 && ack?.id) {
-            messages.value[idx] = { ...messages.value[idx], id: ack.id }
+          if (idx !== -1) {
+            messages.value[idx] = { 
+              ...messages.value[idx], 
+              id: ack?.id || messages.value[idx].id,
+              pending: false 
+            }
           }
           const conv = conversations.value.find(c => String(c.otherUserId) === id)
           if (conv) conv.lastMessage = trimmed
@@ -466,6 +549,9 @@ async function send() {
 
   // 2) REST fallback
   if (!sent) {
+    // Queue for later if offline
+    queueMessage(msgPayload)
+
     const payloadOptions = [
       { otherUserId: id, text: trimmed },
       { userId: id, text: trimmed },
@@ -489,7 +575,11 @@ async function send() {
             const saved = await res.json().catch(() => null)
             const idx = messages.value.findIndex(m => m._tempId === tempId)
             if (idx !== -1) {
-              messages.value[idx] = { ...messages.value[idx], id: saved?.id || messages.value[idx].id }
+              messages.value[idx] = { 
+                ...messages.value[idx], 
+                id: saved?.id || messages.value[idx].id,
+                pending: false
+              }
             }
             sent = true
             sending.value = false
@@ -501,9 +591,9 @@ async function send() {
     }
 
     if (!sent) {
-      error.value = 'Send failed. Messages API not available.'
+      error.value = 'Send failed. Message queued for retry when online.'
       const idx = messages.value.findIndex(m => m._tempId === tempId)
-      if (idx !== -1) messages.value.splice(idx, 1)
+      if (idx !== -1) messages.value[idx].pending = false
     }
     sending.value = false
   }
@@ -534,6 +624,7 @@ function openConversation(conv) {
   activeOtherId.value = conv.otherUserId
   activeName.value = conv.name || `User #${conv.otherUserId}`
   error.value = ''
+  loadMessages(conv.otherUserId)
   if (socket?.connected && currentRoomId.value) {
     socket.emit('join_room', currentRoomId.value)
   }
@@ -584,23 +675,10 @@ onMounted(() => {
   if (qId) {
     activeOtherId.value = String(qId)
     activeName.value = qName || `User #${qId}`
+    loadMessages(String(qId))
     fetchMessages()
     nextTick(() => inputRef.value?.focus())
   }
-})
-
-watch(() => route.query.userId, (newId) => {
-  if (newId) {
-    activeOtherId.value = String(newId)
-    activeName.value = route.query.name || `User #${newId}`
-    fetchMessages()
-  }
-})
-
-watch(currentRoomId, (newRoom, oldRoom) => {
-  if (!socket?.connected) return
-  if (oldRoom) socket.emit('leave_room', oldRoom)
-  if (newRoom) socket.emit('join_room', newRoom)
 })
 
 onBeforeUnmount(() => {
@@ -736,6 +814,7 @@ onBeforeUnmount(() => {
 
 .msgBubble { max-width: 70%; padding: 10px 14px; border-radius: 18px; font-size: 14px; line-height: 1.5; word-break: break-word; background: rgba(255,255,255,0.06); border: 1px solid rgba(255,255,255,0.08); color: #e2e8f0; }
 .msgRow.me .msgBubble { background: linear-gradient(135deg, rgba(236,72,153,0.25), rgba(139,92,246,0.2)); border-color: rgba(139,92,246,0.25); color: #fff; }
+.msgBubble.pending { opacity: 0.7; }
 .msgTime { font-size: 10px; opacity: 0.45; margin-top: 4px; text-align: right; }
 
 /* ===== INPUT ===== */
