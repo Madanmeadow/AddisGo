@@ -1264,6 +1264,8 @@ const DASH_ACTIVITY_KEY = "pulse_dashboard_activity_v2"
 const DASH_STREAK_KEY = "pulse_dashboard_streak_v1"
 const DASH_FOCUS_KEY = "pulse_dashboard_focus_v1"
 const DASH_OFFLINE_QUEUE_KEY = "pulse_dashboard_offline_queue_v1"
+const DASH_CHAT_KEY = "pulse_dashboard_chat_v1"
+const DASH_CHAT_QUEUE_KEY = "pulse_dashboard_chat_queue_v1"
 
 /* =========================
    READ HELPERS
@@ -1426,7 +1428,20 @@ function persistOfflineQueue() {
     localStorage.setItem(DASH_OFFLINE_QUEUE_KEY, JSON.stringify(offlineQueue.value.slice(0, 30)))
   } catch {}
 }
+function persistChatMessages() {
+  try {
+    localStorage.setItem(DASH_CHAT_KEY, JSON.stringify(chatMessages.value.slice(-300)))
+  } catch {}
+}
 
+function loadChatMessages() {
+  try {
+    const saved = JSON.parse(localStorage.getItem(DASH_CHAT_KEY) || "[]")
+    chatMessages.value = Array.isArray(saved) ? saved : []
+  } catch {
+    chatMessages.value = []
+  }
+}
 function openQuickCreate(intent = "post") {
   quickCreateIntent.value = intent
   quickCreateOpen.value = true
@@ -2538,11 +2553,29 @@ function sendChat() {
   if (chatRoom.value === "callrooms") return
   if (!chatText.value.trim()) return
 
-  socket?.emit("send-room-message", {
+  const msg = {
     room: chatRoom.value,
     from: me?.username || me?.display_name || "me",
     text: chatText.value,
+    created_at: new Date().toISOString(),
+    tempId: `tmp_${Date.now()}_${Math.random().toString(36).slice(2, 7)}`,
+    pending: !socketConnected.value
+  }
+
+  // 1) Show immediately so sender doesn't wait
+  chatMessages.value.push(msg)
+  persistChatMessages()
+  nextTick(() => {
+    scrollChatToBottom()
+    scrollRoomsToBottom()
   })
+
+  // 2) Send if online, queue if offline
+  if (socketConnected.value && socket) {
+    socket.emit("send-room-message", msg)
+  } else {
+    queueChatMessage(msg)
+  }
 
   addActivity("Chat", `Sent message in #${chatRoom.value}`)
   chatText.value = ""
@@ -2906,6 +2939,7 @@ function handleKeydown(e) {
 ========================= */
 onMounted(async () => {
   updateDailyStreak()
+  loadChatMessages()
   
     
   try {
@@ -2931,11 +2965,36 @@ onMounted(async () => {
   connectSocket()
 
     socket.on("receive-message", (msg) => {
-      chatMessages.value.push(msg)
-      nextTick(() => {
-        scrollChatToBottom()
-        scrollRoomsToBottom()
-      })
+      // If it's our own message coming back, swap the pending one
+      if (msg.tempId && msg.from === (me?.username || me?.display_name || "me")) {
+        const idx = chatMessages.value.findIndex(m => m.tempId === msg.tempId)
+        if (idx !== -1) {
+          chatMessages.value[idx] = { ...msg, pending: false }
+          chatMessages.value = [...chatMessages.value] // trigger Vue reactivity
+          persistChatMessages()
+          nextTick(() => {
+            scrollChatToBottom()
+            scrollRoomsToBottom()
+          })
+          return
+        }
+      }
+
+      // For other people's messages, block raw duplicates
+      const isDup = chatMessages.value.some(m =>
+        m.text === msg.text &&
+        m.from === msg.from &&
+        Math.abs(new Date(m.created_at || 0) - new Date(msg.created_at || Date.now())) < 3000
+      )
+
+      if (!isDup) {
+        chatMessages.value.push(msg)
+        persistChatMessages()
+        nextTick(() => {
+          scrollChatToBottom()
+          scrollRoomsToBottom()
+        })
+      }
     })
 
     socket.on("live-list", (streams) => {
