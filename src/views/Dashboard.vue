@@ -1,5 +1,4 @@
 <!-- src/views/Dashboard.vue -->
-
 <template>
   <Layout>
     <div class="wrap">
@@ -7,1338 +6,1292 @@
       <div class="bg-orb orb2"></div>
       <div class="bg-orb orb3"></div>
 
-  <!-- ELITE TOPBAR -->
-  <header class="topbar eliteTopbar glassy">
-    <div class="brand" @click="scrollToTop" role="button" tabindex="0">
-      <div class="logo eliteLogo">⚡</div>
+      <!-- ELITE TOPBAR -->
+      <header class="topbar eliteTopbar glassy">
+        <div class="brand" @click="scrollToTop" role="button" tabindex="0">
+          <div class="logo eliteLogo">⚡</div>
 
-      <div class="brand-text">
-        <div class="title">Pulse</div>
-        <div class="sub">Elite social cockpit</div>
-      </div>
-    </div>
-
-    <div class="eliteCenterSearch">
-      <div class="searchWrap eliteSearchWrap">
-        <input
-          ref="searchRef"
-          v-model="search"
-          class="search eliteSearch"
-          placeholder="Search people, rooms, live, posts…"
-        />
-        <button v-if="search" class="searchClear" @click="search = ''">✕</button>
-      </div>
-    </div>
-
-    <div class="top-actions eliteTopActions">
-      <span class="netBadge" :class="{ offline: !isNetworkOnline, syncing: isSyncingQueue }">
-        <span class="netDot"></span>
-        {{
-          isSyncingQueue
-            ? `Syncing ${offlineQueueCount}`
-            : isNetworkOnline
-              ? "Online"
-              : `Offline ${offlineQueueCount ? "• " + offlineQueueCount + " queued" : ""}`
-        }}
-      </span>
-      
-      <button class="chip eliteChip" @click="openQuickCreate('post')">✍️ Post</button>
-
-      <button class="chip ghost eliteChip" @click="toggleChat">
-        {{ chatOpen ? "Close Chat" : "Chat" }}
-      </button>
-      <button class="chip ghost hide-sm" @click="toggleTools">
-        {{ toolsOpen ? "Close Tools" : "Tools" }}
-      </button>
-      <button class="chip ghost hide-sm" @click="toggleStudio">
-        {{ studioOpen ? "Close Studio" : "Studio" }}
-      </button>
-      <button class="chip ghost hide-sm" @click="toggleFocusMode">
-        {{ focusMode ? "Exit Focus" : "Focus Mode" }}
-      </button>
-      <button class="chip danger hide-sm" @click="logout">Logout</button>
-    </div>
-  </header>
-
-  <!-- ELITE QUICK RAIL -->
-  <section v-if="!token" class="eliteQuickRail">
-    <button class="quickRailBtn" @click="focusComposer">✍️ Create</button>
-    <button class="quickRailBtn" @click="togglePeople">👥 People</button>
-    <button class="quickRailBtn" @click="goInbox">💬 Inbox</button>
-    <button class="quickRailBtn" @click="createFastRoom">🎧 Room</button>
-    <button class="quickRailBtn" @click="startLive">🔴 Live</button>
-    <button class="quickRailBtn" @click="goProfile">👤 Profile</button>
-  </section>
-        <!-- DYNAMIC ISLAND -->
-  <section class="dynamicIsland glassy">
-
-    <div class="islandLeft">
-
-      <span class="islandDot" :class="{ on: socketConnected }"></span>
-
-      <span class="islandText">
-        {{ socketConnected ? "Realtime Connected" : "Realtime Offline" }}
-      </span>
-
-    </div>
-
-    <div class="islandCenter">
-
-      <button class="islandBtn" @click="refreshAll">
-        🔄 Refresh
-      </button>
-
-      <button class="islandBtn" @click="focusComposer">
-        ✍️ Post
-      </button>
-
-      <button class="islandBtn" @click="startLive">
-        🔴 Live
-      </button>
-
-      <button class="islandBtn" @click="createFastRoom">
-        📞 Room
-      </button>
-
-    </div>
-
-    <div class="islandRight">
-
-      <span class="islandStat">
-        👥 {{ onlineCount }}
-      </span>
-
-      <span class="islandStat">
-        🔴 {{ liveStreams.length }}
-      </span>
-
-      <span class="islandStat">
-        📞 {{ callRooms.length }}
-      </span>
-
-    </div>
-
-  </section>
-  <!-- HERO -->
-  <section class="heroStrip">
-    <div class="heroCard glassy" :class="{ 'heroCard--solo': token }">
-      <div class="heroLeft">
-        <div class="heroEyebrow">WELCOME BACK</div>
-        <div class="heroTitle">{{ meName }}</div>
-        <div class="heroSub">
-          {{ moodGreeting }} Build, post, call, stream, chat, save ideas, and run your whole world from one magical dashboard.
+          <div class="brand-text">
+            <div class="title">Pulse</div>
+            <div class="sub">Elite social cockpit</div>
+          </div>
         </div>
 
-        <div class="heroActions">
-          <button class="btn btn-primary" @click="focusComposer">Create Post</button>
-          <button class="btn ghostBtn" @click="setFeedMode('rooms')">Open Rooms</button>
-          <button class="btn ghostBtn" @click="setFeedMode('live')">Go Live Area</button>
-          <button class="btn ghostBtn" @click="toggleStudio">Creator Studio</button>
-          <button class="btn ghostBtn" @click="createFastRoom">Start Room</button>
+        <div class="eliteCenterSearch">
+          <div class="searchWrap eliteSearchWrap">
+            <input
+              ref="searchRef"
+              v-model="search"
+              class="search eliteSearch"
+              placeholder="Search people, rooms, live, posts…"
+            />
+            <button v-if="search" class="searchClear" @click="search = ''">✕</button>
+          </div>
         </div>
 
-        <div class="trendingRow mt10">
-          <span class="badgePill accent">Creator Score {{ creatorScore }}</span>
-          <span class="badgePill">Streak {{ todayStreak }} day{{ todayStreak === 1 ? "" : "s" }}</span>
-          <span class="badgePill">{{ quickStatusText }}</span>
+        <div class="top-actions eliteTopActions">
+          <span class="netBadge" :class="{ offline: !isNetworkOnline, syncing: isSyncingQueue }">
+            <span class="netDot"></span>
+            {{
+              isSyncingQueue
+                ? `Syncing ${offlineQueueCount}`
+                : isNetworkOnline
+                  ? "Online"
+                  : `Offline ${offlineQueueCount ? "• " + offlineQueueCount + " queued" : ""}`
+            }}
+          </span>
+          <button class="fab" @click="goCallSFU">📞+</button>
+          <button class="chip eliteChip" @click="openQuickCreate('post')">✍️ Post</button>
+          <button class="chip ghost eliteChip" @click="openQuickCreate('call')">📞 Call</button>
+          <button class="chip ghost eliteChip" @click="openQuickCreate('live')">🔴 Live</button>
+          <button class="chip ghost eliteChip" @click="togglePeople">
+            {{ peopleOpen ? "Hide People" : "People" }}
+          </button>
+          <button @click="$router.push('/live-sfu')">
+             🚀 Go Live (New)
+          </button>
+          <button class="chip ghost eliteChip" @click="toggleChat">
+            {{ chatOpen ? "Close Chat" : "Chat" }}
+          </button>
+          <button class="chip ghost hide-sm" @click="toggleTools">
+            {{ toolsOpen ? "Close Tools" : "Tools" }}
+          </button>
+          <button class="chip ghost hide-sm" @click="toggleStudio">
+            {{ studioOpen ? "Close Studio" : "Studio" }}
+          </button>
+          <button class="chip ghost hide-sm" @click="toggleFocusMode">
+            {{ focusMode ? "Exit Focus" : "Focus Mode" }}
+          </button>
+          <button class="chip danger hide-sm" @click="logout">Logout</button>
         </div>
-      </div>
+      </header>
 
-      <div v-if="!token" class="heroStats">
-        <div class="heroStat">
-          <div class="heroStatNum">{{ posts.length }}</div>
-          <div class="heroStatLab">Posts</div>
-        </div>
-        <div class="heroStat">
-          <div class="heroStatNum">{{ videoPosts.length }}</div>
-          <div class="heroStatLab">Videos</div>
-        </div>
-        <div class="heroStat">
-          <div class="heroStatNum">{{ onlineCount }}</div>
-          <div class="heroStatLab">Online</div>
-        </div>
-        <div class="heroStat">
-          <div class="heroStatNum">{{ liveStreams.length }}</div>
-          <div class="heroStatLab">Live</div>
-        </div>
-        <div class="heroStat">
-          <div class="heroStatNum">{{ savedPostIds.length }}</div>
-          <div class="heroStatLab">Saved</div>
-        </div>
-        <div class="heroStat">
-          <div class="heroStatNum">{{ pinnedPostIds.length }}</div>
-          <div class="heroStatLab">Pinned</div>
-        </div>
-      </div>
-    </div>
-  </section>
+      <!-- ELITE QUICK RAIL -->
+      <section class="eliteQuickRail">
+        <button class="quickRailBtn" @click="focusComposer">✍️ Create</button>
+        <button class="quickRailBtn" @click="togglePeople">👥 People</button>
+        <button class="quickRailBtn" @click="goInbox">💬 Inbox</button>
+        <button class="quickRailBtn" @click="createFastRoom">🎧 Room</button>
+        <button class="quickRailBtn" @click="startLive">🔴 Live</button>
+        <button class="quickRailBtn" @click="goProfile">👤 Profile</button>
+      </section>
+            <!-- DYNAMIC ISLAND -->
+      <section class="dynamicIsland glassy">
 
-  <!-- COMMAND CENTER -->
-  <section v-if="!token" class="dock">
-    <div class="panel dockCard glassy">
-      <div class="panel-head">
-        <div class="panel-title">✨ Command Center</div>
-        <div class="dockActions">
-          <button class="btn ghostBtn" @click="copyDiagnostics">Copy Diagnostics</button>
-          <button class="btn ghostBtn" @click="surpriseMe">Surprise Me</button>
+        <div class="islandLeft">
+
+          <span class="islandDot" :class="{ on: socketConnected }"></span>
+
+          <span class="islandText">
+            {{ socketConnected ? "Realtime Connected" : "Realtime Offline" }}
+          </span>
+
         </div>
-      </div>
 
-      <div class="trendingRow">
-        <span class="badgePill accent">Mode: {{ feedModeLabel }}</span>
-        <span class="badgePill" :class="{ ok: socketConnected, bad: !socketConnected }">
-          {{ socketConnected ? "Connected" : "Disconnected" }}
-        </span>
-        <span class="badgePill">Online {{ onlineCount }}</span>
-        <span class="badgePill">Live {{ liveStreams.length }}</span>
-        <span class="badgePill">Rooms {{ callRooms.length }}</span>
-        <span class="badgePill">Saved {{ savedPostIds.length }}</span>
-        <span class="badgePill">Pinned {{ pinnedPostIds.length }}</span>
-      </div>
+        <div class="islandCenter">
 
-      <div class="hint mt10">
-        Keyboard shortcuts: <strong>/</strong> search, <strong>c</strong> composer, <strong>r</strong> refresh, <strong>g</strong> go live, <strong>m</strong> mute, <strong>f</strong> focus mode.
-      </div>
-    </div>
+          <button class="islandBtn" @click="refreshAll">
+            🔄 Refresh
+          </button>
 
-    <div class="panel dockCard glassy">
-      <div class="panel-head">
-        <div class="panel-title">🚀 Smart Launch</div>
-      </div>
+          <button class="islandBtn" @click="focusComposer">
+            ✍️ Post
+          </button>
 
-      <div class="toolsGrid">
-        <button
-          v-for="item in smartLaunchCards"
-          :key="item.id"
-          class="toolBtn"
-          @click="runSmartLaunch(item.id)"
-        >
-          {{ item.label }}
+          <button class="islandBtn" @click="startLive">
+            🔴 Live
+          </button>
+
+          <button class="islandBtn" @click="createFastRoom">
+            📞 Room
+          </button>
+
+        </div>
+
+        <div class="islandRight">
+
+          <span class="islandStat">
+            👥 {{ onlineCount }}
+          </span>
+
+          <span class="islandStat">
+            🔴 {{ liveStreams.length }}
+          </span>
+
+          <span class="islandStat">
+            📞 {{ callRooms.length }}
+          </span>
+
+        </div>
+
+      </section>
+      <!-- HERO -->
+      <section class="heroStrip">
+        <div class="heroCard glassy">
+          <div class="heroLeft">
+            <div class="heroEyebrow">WELCOME BACK</div>
+            <div class="heroTitle">{{ meName }}</div>
+            <div class="heroSub">
+              {{ moodGreeting }} Build, post, call, stream, chat, save ideas, and run your whole world from one magical dashboard.
+            </div>
+
+            <div class="heroActions">
+              <button class="btn btn-primary" @click="focusComposer">Create Post</button>
+              <button class="btn ghostBtn" @click="setFeedMode('rooms')">Open Rooms</button>
+              <button class="btn ghostBtn" @click="setFeedMode('live')">Go Live Area</button>
+              <button class="btn ghostBtn" @click="toggleStudio">Creator Studio</button>
+              <button class="btn ghostBtn" @click="createFastRoom">Start Room</button>
+            </div>
+
+            <div class="trendingRow mt10">
+              <span class="badgePill accent">Creator Score {{ creatorScore }}</span>
+              <span class="badgePill">Streak {{ todayStreak }} day{{ todayStreak === 1 ? "" : "s" }}</span>
+              <span class="badgePill">{{ quickStatusText }}</span>
+            </div>
+          </div>
+
+          <div class="heroStats">
+            <div class="heroStat">
+              <div class="heroStatNum">{{ posts.length }}</div>
+              <div class="heroStatLab">Posts</div>
+            </div>
+            <div class="heroStat">
+              <div class="heroStatNum">{{ videoPosts.length }}</div>
+              <div class="heroStatLab">Videos</div>
+            </div>
+            <div class="heroStat">
+              <div class="heroStatNum">{{ onlineCount }}</div>
+              <div class="heroStatLab">Online</div>
+            </div>
+            <div class="heroStat">
+              <div class="heroStatNum">{{ liveStreams.length }}</div>
+              <div class="heroStatLab">Live</div>
+            </div>
+            <div class="heroStat">
+              <div class="heroStatNum">{{ savedPostIds.length }}</div>
+              <div class="heroStatLab">Saved</div>
+            </div>
+            <div class="heroStat">
+              <div class="heroStatNum">{{ pinnedPostIds.length }}</div>
+              <div class="heroStatLab">Pinned</div>
+            </div>
+          </div>
+        </div>
+      </section>
+
+      <!-- COMMAND CENTER -->
+      <section class="dock">
+        <div class="panel dockCard glassy">
+          <div class="panel-head">
+            <div class="panel-title">✨ Command Center</div>
+            <div class="dockActions">
+              <button class="btn ghostBtn" @click="copyDiagnostics">Copy Diagnostics</button>
+              <button class="btn ghostBtn" @click="surpriseMe">Surprise Me</button>
+            </div>
+          </div>
+
+          <div class="trendingRow">
+            <span class="badgePill accent">Mode: {{ feedModeLabel }}</span>
+            <span class="badgePill" :class="{ ok: socketConnected, bad: !socketConnected }">
+              {{ socketConnected ? "Connected" : "Disconnected" }}
+            </span>
+            <span class="badgePill">Online {{ onlineCount }}</span>
+            <span class="badgePill">Live {{ liveStreams.length }}</span>
+            <span class="badgePill">Rooms {{ callRooms.length }}</span>
+            <span class="badgePill">Saved {{ savedPostIds.length }}</span>
+            <span class="badgePill">Pinned {{ pinnedPostIds.length }}</span>
+          </div>
+
+          <div class="hint mt10">
+            Keyboard shortcuts: <strong>/</strong> search, <strong>c</strong> composer, <strong>r</strong> refresh, <strong>g</strong> go live, <strong>m</strong> mute, <strong>f</strong> focus mode.
+          </div>
+        </div>
+
+        <div class="panel dockCard glassy">
+          <div class="panel-head">
+            <div class="panel-title">🚀 Smart Launch</div>
+          </div>
+
+          <div class="toolsGrid">
+            <button
+              v-for="item in smartLaunchCards"
+              :key="item.id"
+              class="toolBtn"
+              @click="runSmartLaunch(item.id)"
+            >
+              {{ item.label }}
+            </button>
+          </div>
+        </div>
+      </section>
+
+      <!-- SPOTLIGHT -->
+      <section class="dock">
+        <div class="panel dockCard glassy">
+          <div class="panel-head">
+            <div class="panel-title">🌟 Spotlight</div>
+            <div class="dockActions">
+              <button class="btn ghostBtn" @click="refreshAll">Refresh</button>
+            </div>
+          </div>
+
+          <div class="toolsGrid">
+            <div class="toolBtn">
+              🔥 Trending Tag: {{ spotlightTag || "Nothing yet" }}
+            </div>
+            <div class="toolBtn">
+              👥 Most Active: {{ spotlightPerson }}
+            </div>
+            <div class="toolBtn">
+              📞 Rooms Ready: {{ callRooms.length }}
+            </div>
+            <div class="toolBtn">
+              🎬 Feed Power: {{ videoPosts.length > 0 ? "Video Active" : "Text Active" }}
+            </div>
+          </div>
+        </div>
+
+        <div class="panel dockCard glassy">
+          <div class="panel-head">
+            <div class="panel-title">📈 Creator Pulse</div>
+          </div>
+
+          <div class="trendingRow">
+            <span class="badgePill accent">Posts {{ posts.length }}</span>
+            <span class="badgePill">Comments {{ totalCommentCount }}</span>
+            <span class="badgePill">Likes {{ totalLikesCount }}</span>
+            <span class="badgePill">Saved {{ savedPostIds.length }}</span>
+            <span class="badgePill">Pinned {{ pinnedPostIds.length }}</span>
+          </div>
+
+          <div class="hint mt10">
+            {{ creatorInsight }}
+          </div>
+        </div>
+      </section>
+
+      <!-- MODEBAR -->
+      <div class="modebar">
+        <button class="mode" :class="{ on: feedMode === 'foryou' }" @click="setFeedMode('foryou')">🎬 For You</button>
+        <button class="mode reels" :class="{ on: feedMode === 'reels' }" @click="setFeedMode('reels')">🎞️ Reels</button>
+        <button class="mode" :class="{ on: feedMode === 'following' }" @click="setFeedMode('following')">📸 Following</button>
+        <button class="mode" :class="{ on: feedMode === 'threads' }" @click="setFeedMode('threads')">✍️ Threads</button>
+        <button class="mode" :class="{ on: feedMode === 'rooms' }" @click="setFeedMode('rooms')">🎧 Rooms</button>
+        <button class="mode" :class="{ on: feedMode === 'live' }" @click="setFeedMode('live')">🔴 Live</button>
+        <button class="mode" :class="{ on: feedMode === 'saved' }" @click="setFeedMode('saved')">💾 Saved</button>
+        <button class="mode" :class="{ on: feedMode === 'pinned' }" @click="setFeedMode('pinned')">📌 Pinned</button>
+        <button class="chip primary" @click="goCallSFU">
+          🚀 SFU Call
         </button>
-      </div>
-    </div>
-  </section>
+        <div class="mode-right">
+          <div class="searchWrap">
+            <input ref="searchRef" v-model="search" class="search" placeholder="Search…" />
+            <button v-if="search" class="searchClear" @click="search = ''">✕</button>
+          </div>
 
-  <!-- SPOTLIGHT -->
-  <section v-if="!token" class="dock">
-    <div class="panel dockCard glassy">
-      <div class="panel-head">
-        <div class="panel-title">🌟 Spotlight</div>
-        <div class="dockActions">
-          <button class="btn ghostBtn" @click="refreshAll">Refresh</button>
+          <select v-model="sortMode" class="selectControl">
+            <option value="latest">Latest</option>
+            <option value="popular">Popular</option>
+            <option value="media">Media First</option>
+            <option value="text">Text First</option>
+          </select>
+
+          <button
+            v-if="feedMode === 'foryou' || feedMode === 'reels'"
+            class="chip ghost"
+            @click="toggleGlobalMute"
+          >
+            {{ globalMuted ? "🔇 Muted" : "🔊 Sound" }}
+          </button>
+
+          <button class="chip ghost" @click="surpriseMe">✨ Surprise Me</button>
         </div>
       </div>
 
-      <div class="toolsGrid">
-        <div class="toolBtn">
-          🔥 Trending Tag: {{ spotlightTag || "Nothing yet" }}
-        </div>
-        <div class="toolBtn">
-          👥 Most Active: {{ spotlightPerson }}
-        </div>
-        <div class="toolBtn">
-          📞 Rooms Ready: {{ callRooms.length }}
-        </div>
-        <div class="toolBtn">
-          🎬 Feed Power: {{ videoPosts.length > 0 ? "Video Active" : "Text Active" }}
+      <!-- FILTER BAR -->
+      <div class="filterbar">
+        <button class="filterChip" :class="{ on: postFilter === 'all' }" @click="postFilter = 'all'">All</button>
+        <button class="filterChip" :class="{ on: postFilter === 'video' }" @click="postFilter = 'video'">Videos</button>
+        <button class="filterChip" :class="{ on: postFilter === 'image' }" @click="postFilter = 'image'">Images</button>
+        <button class="filterChip" :class="{ on: postFilter === 'text' }" @click="postFilter = 'text'">Text</button>
+
+        <div class="filterHint">
+          <span class="badgePill accent">{{ feedModeLabel }}</span>
+          <span class="badgePill">{{ filteredBaseCount }} shown</span>
         </div>
       </div>
-    </div>
-
-    <div class="panel dockCard glassy">
-      <div class="panel-head">
-        <div class="panel-title">📈 Creator Pulse</div>
-      </div>
-
-      <div class="trendingRow">
-        <span class="badgePill accent">Posts {{ posts.length }}</span>
-        <span class="badgePill">Comments {{ totalCommentCount }}</span>
-        <span class="badgePill">Likes {{ totalLikesCount }}</span>
-        <span class="badgePill">Saved {{ savedPostIds.length }}</span>
-        <span class="badgePill">Pinned {{ pinnedPostIds.length }}</span>
-      </div>
-
-      <div class="hint mt10">
-        {{ creatorInsight }}
-      </div>
-    </div>
-  </section>
-
-  <!-- MODEBAR -->
-  <div class="modebar">
-    <button class="mode" :class="{ on: feedMode === 'foryou' }" @click="setFeedMode('foryou')">🎬 For You</button>
-    <button class="mode reels" :class="{ on: feedMode === 'reels' }" @click="setFeedMode('reels')">🎞️ Reels</button>
-    <button class="mode" :class="{ on: feedMode === 'following' }" @click="setFeedMode('following')">📸 Following</button>
-    <button class="mode" :class="{ on: feedMode === 'threads' }" @click="setFeedMode('threads')">✍️ Threads</button>
-    <button class="mode" :class="{ on: feedMode === 'rooms' }" @click="setFeedMode('rooms')">🎧 Rooms</button>
-    <button class="mode" :class="{ on: feedMode === 'live' }" @click="setFeedMode('live')">🔴 Live</button>
-    <button class="mode" :class="{ on: feedMode === 'saved' }" @click="setFeedMode('saved')">💾 Saved</button>
-    <button class="mode" :class="{ on: feedMode === 'pinned' }" @click="setFeedMode('pinned')">📌 Pinned</button>
-    <button class="chip primary" @click="goCallSFU">
-      🚀 SFU Call
-    </button>
-    <div class="mode-right">
-      <div class="searchWrap">
-        <input ref="searchRef" v-model="search" class="search" placeholder="Search…" />
-        <button v-if="search" class="searchClear" @click="search = ''">✕</button>
-      </div>
-
-      <select v-model="sortMode" class="selectControl">
-        <option value="latest">Latest</option>
-        <option value="popular">Popular</option>
-        <option value="media">Media First</option>
-        <option value="text">Text First</option>
-      </select>
-
-      <button
-        v-if="feedMode === 'foryou' || feedMode === 'reels'"
-        class="chip ghost"
-        @click="toggleGlobalMute"
-      >
-        {{ globalMuted ? "🔇 Muted" : "🔊 Sound" }}
-      </button>
-
-      <button class="chip ghost" @click="surpriseMe">✨ Surprise Me</button>
-    </div>
-  </div>
-
-  <!-- FILTER BAR -->
-  <div class="filterbar">
-    <button class="filterChip" :class="{ on: postFilter === 'all' }" @click="postFilter = 'all'">All</button>
-    <button class="filterChip" :class="{ on: postFilter === 'video' }" @click="postFilter = 'video'">Videos</button>
-    <button class="filterChip" :class="{ on: postFilter === 'image' }" @click="postFilter = 'image'">Images</button>
-    <button class="filterChip" :class="{ on: postFilter === 'text' }" @click="postFilter = 'text'">Text</button>
-
-    <div class="filterHint">
-      <span class="badgePill accent">{{ feedModeLabel }}</span>
-      <span class="badgePill">{{ filteredBaseCount }} shown</span>
-    </div>
-  </div>
 
       <main class="main">
+      <!-- ═══════ MOBILE ABOVE-FOLD REDESIGN ═══════ -->
+      <section class="mobileOnly mobileHeader">
+        <div class="mhLeft">
+          <div class="mhAvatar">{{ myInitial }}</div>
+          <div class="mhMeta">
+            <div class="mhName">{{ meName }}</div>
+            <div class="mhStatus">{{ quickStatusText }}</div>
+          </div>
+        </div>
+        <div class="mhPills">
+          <span class="mhPill score">⚡ {{ creatorScore }}</span>
+          <span class="mhPill streak">🔥 {{ todayStreak }}d</span>
+        </div>
+      </section>
+
+      <section class="mobileOnly mobileStories">
+        <div class="storyWrap" @click="openMobileComposer">
+          <div class="storyRing myStory"><div class="storyAvatar">{{ myInitial }}</div></div>
+          <span class="storyLabel">You</span>
+        </div>
+        <div
+          v-for="u in filteredPeople.slice(0, 8)"
+          :key="'story-'+u.id"
+          class="storyWrap"
+          @click="startCall(u, 'audio')"
+        >
+          <div class="storyRing" :class="{ online: isOnline(u.id) }">
+            <div class="storyAvatar">{{ displayUserName(u)[0]?.toUpperCase() }}</div>
+          </div>
+          <span class="storyLabel">{{ displayUserName(u).slice(0,8) }}</span>
+        </div>
+        <div class="storyWrap" @click="togglePeople">
+          <div class="storyRing more"><div class="storyAvatar">+</div></div>
+          <span class="storyLabel">More</span>
+        </div>
+      </section>
+
+      <section class="mobileOnly mobileActionsGrid">
+        <button class="maCard live" @click="startLive">
+          <span class="maIcon">🔴</span>
+          <span class="maTitle">Go Live</span>
+          <span class="maSub">{{ liveStreams.length ? liveStreams.length + ' watching' : 'No one live' }}</span>
+          <span v-if="liveStreams.length" class="maDot"></span>
+        </button>
+        <button class="maCard meet" @click="goCallSFU">
+          <span class="maIcon">📹</span>
+          <span class="maTitle">Video Meet</span>
+          <span class="maSub">SFU Call</span>
+        </button>
+        <button class="maCard post" @click="openMobileComposer">
+          <span class="maIcon">✨</span>
+          <span class="maTitle">Create Post</span>
+          <span class="maSub">Share update</span>
+        </button>
+        <button class="maCard room" @click="createFastRoom">
+          <span class="maIcon">🎧</span>
+          <span class="maTitle">Start Room</span>
+          <span class="maSub">Audio room</span>
+        </button>
+      </section>
+
+      <section class="mobileOnly mobileComposerBar" @click="openMobileComposer" v-if="!showMobileComposer">
+        <div class="mcAvatar">{{ myInitial }}</div>
+        <div class="mcPlaceholder">What's happening?</div>
+        <div class="mcBtn">⚡</div>
+      </section>
+
+
         <!-- STATUS -->
         <section v-if="token" class="panel miniPanel glassy">
           <div class="panel-head">
             <div class="panel-title">🛰️ Status</div>
 
-        <div class="row">
-          <span class="badgePill" :class="{ ok: socketConnected, bad: !socketConnected }">
-            {{ socketConnected ? "Socket Connected" : "Socket Disconnected" }}
-          </span>
-          <span class="badgePill">{{ onlineCount }} online</span>
-          <span class="badgePill">{{ liveStreams.length }} live</span>
-          <span class="badgePill">{{ callRooms.length }} call rooms</span>
-          <span class="badgePill accent">{{ feedModeLabel }}</span>
-        </div>
-
-        <div class="row">
-          <button class="btn ghostBtn" @click="reconnectSocket">♻️ Reconnect</button>
-          <button class="btn ghostBtn" @click="copyMyProfileLink">🔗 Copy Profile</button>
-          <button class="btn ghostBtn" @click="copyDiagnostics">🧾 Copy Diagnostics</button>
-        </div>
-      </div>
-
-      <div v-if="statusNote" class="hint mt10">{{ statusNote }}</div>
-    </section>
-
-    <!-- TRENDING -->
-    <section v-if="trendingTags.length" class="panel glassy">
-      <div class="panel-head">
-        <div class="panel-title">🔥 Trending</div>
-        <button class="btn ghostBtn" @click="search = ''">Clear Search</button>
-      </div>
-
-      <div class="trendingRow">
-        <button
-          v-for="tag in trendingTags"
-          :key="tag"
-          class="trendChip"
-          @click="applyTrendTag(tag)"
-        >
-          {{ tag }}
-        </button>
-      </div>
-    </section>
-
-    
-
-    <!-- STUDIO -->
-    <section v-if="studioOpen" class="panel toolsPanel glassy">
-      <div class="panel-head">
-        <div class="panel-title">🪄 Creator Studio</div>
-        <div class="dockActions">
-          <button class="btn ghostBtn" @click="toggleStudio">Close</button>
-        </div>
-      </div>
-
-      <div class="toolsGrid">
-        <button class="toolBtn" @click="focusComposer">✍️ New Post</button>
-        <button class="toolBtn" @click="setFeedMode('reels')">🎞️ Create Reel</button>
-        <button class="toolBtn" @click="startLive">🔴 Start Live</button>
-        <button class="toolBtn" @click="createFastRoom">📞 Start Room</button>
-        <button class="toolBtn" @click="openSavedMode">💾 Open Saved</button>
-        <button class="toolBtn" @click="openPinnedMode">📌 Open Pinned</button>
-        <button class="toolBtn" @click="refreshCallRooms">📞 Refresh Rooms</button>
-        <button class="toolBtn" @click="requestNotifications">🔔 Notifications</button>
-        <button class="toolBtn" @click="testTurn">🧊 Test TURN</button>
-        <button class="toolBtn" @click="toggleFocusMode">{{ focusMode ? "🧘 Exit Focus" : "🧘 Enter Focus" }}</button>
-      </div>
-
-      <div class="trendingRow">
-        <span class="badgePill">Posts {{ posts.length }}</span>
-        <span class="badgePill">Videos {{ videoPosts.length }}</span>
-        <span class="badgePill">Saved {{ savedPosts.length }}</span>
-        <span class="badgePill">Pinned {{ pinnedPosts.length }}</span>
-        <span class="badgePill accent">Score {{ creatorScore }}</span>
-      </div>
-
-      <div v-if="turnNote" class="hint mt10">{{ turnNote }}</div>
-    </section>
-
-    <!-- TOP DOCK -->
-    <section v-if="!focusMode" class="dock">
-      <!-- Live -->
-      <div class="panel dockCard glassy">
-        <div class="panel-head">
-          <div class="panel-title">🔴 Live Now</div>
-          <button class="btn btn-primary" @click="startLive" :disabled="!token">Go Live</button>
-        </div>
-
-        <div v-if="liveStreams.length === 0" class="hint mt10">No one live right now</div>
-
-        <div v-else class="live-strip">
-          <div
-            v-for="stream in liveStreams.slice(0, 6)"
-            :key="'live-mini-' + stream"
-            class="live-pill"
-            @click="joinLive(stream)"
-            title="Tap to watch"
-          >
-            <span class="dot"></span>
-            <span class="live-pill-name">{{ stream }}</span>
-            <span class="chev">›</span>
-          </div>
-
-          <button
-            v-if="liveStreams.length > 6"
-            class="chip ghost mini"
-            @click="setFeedMode('live')"
-          >
-            View all
-          </button>
-        </div>
-      </div>
-            <!-- Video Meet -->
-      <div class="panel dockCard glassy">
-        <div class="panel-head">
-          <div class="panel-title">🎥 Video Meet</div>
-          <button class="btn btn-primary" @click="createZoomRoom" :disabled="zoomCreating || !token">
-            {{ zoomCreating ? "Starting…" : "New Meet" }}
-          </button>
-        </div>
-
-        <div v-if="!token" class="alert soft mt10">
-          Login to start or join video meetings.
-        </div>
-
-        <template v-else>
-          <div class="zoom-create compact">
-            <input
-              v-model="zoomRoomName"
-              class="roomInput"
-              placeholder="Class / meeting name…"
-            />
-            <button class="btn btn-primary" @click="createZoomRoom" :disabled="zoomCreating">
-              {{ zoomCreating ? "…" : "Start" }}
-            </button>
-          </div>
-
-          <div v-if="zoomError" class="alert soft mt10">{{ zoomError }}</div>
-
-          <div v-if="zoomRooms.length === 0" class="hint mt10">
-            No active meetings. Start a class or team call.
-          </div>
-
-          <div v-else class="meet-strip">
-            <div
-              v-for="room in zoomRooms.slice(0, 4)"
-              :key="'zoom-mini-' + room.roomId"
-              class="meet-pill"
-              @click="joinZoomRoom(room)"
-            >
-              <span class="meet-dot video"></span>
-              <span class="meet-pill-name">{{ room.name }}</span>
-              <span class="meet-count">{{ room.participantCount || 0 }} in</span>
-              <span class="chev">›</span>
+            <div class="row">
+              <span class="badgePill" :class="{ ok: socketConnected, bad: !socketConnected }">
+                {{ socketConnected ? "Socket Connected" : "Socket Disconnected" }}
+              </span>
+              <span class="badgePill">{{ onlineCount }} online</span>
+              <span class="badgePill">{{ liveStreams.length }} live</span>
+              <span class="badgePill">{{ callRooms.length }} call rooms</span>
+              <span class="badgePill accent">{{ feedModeLabel }}</span>
             </div>
+
+            <div class="row">
+              <button class="btn ghostBtn" @click="reconnectSocket">♻️ Reconnect</button>
+              <button class="btn ghostBtn" @click="copyMyProfileLink">🔗 Copy Profile</button>
+              <button class="btn ghostBtn" @click="copyDiagnostics">🧾 Copy Diagnostics</button>
+            </div>
+          </div>
+
+          <div v-if="statusNote" class="hint mt10">{{ statusNote }}</div>
+        </section>
+
+        <!-- TRENDING -->
+        <section v-if="trendingTags.length" class="panel glassy">
+          <div class="panel-head">
+            <div class="panel-title">🔥 Trending</div>
+            <button class="btn ghostBtn" @click="search = ''">Clear Search</button>
+          </div>
+
+          <div class="trendingRow">
             <button
-              v-if="zoomRooms.length > 4"
-              class="chip ghost mini"
-              @click="refreshZoomRooms"
+              v-for="tag in trendingTags"
+              :key="tag"
+              class="trendChip"
+              @click="applyTrendTag(tag)"
             >
-              View all
+              {{ tag }}
             </button>
           </div>
-        </template>
-      </div>
-      <!-- People -->
-      <div class="panel dockCard glassy">
-        <div class="panel-head">
-          <div class="panel-title">👥 People</div>
+        </section>
 
-          <div class="dockActions">
-            <button class="btn" @click="fetchPeople" :disabled="peopleLoading || !token">
-              {{ peopleLoading ? "Loading…" : "Refresh" }}
-            </button>
-            <button class="btn ghostBtn" @click="toggleChat">
-              {{ chatOpen ? "Close Chat" : "Open Chat" }}
-            </button>
+        <section v-if="token" class="panel glassy commHub">
+          <div class="panel-head">
+            <div class="panel-title">📡 Connect</div>
+            <div class="dockActions">
+              <button class="btn ghostBtn" @click="togglePeople">{{ peopleOpen ? "Hide People" : "Show People" }}</button>
+              <button class="btn ghostBtn" @click="goInbox">Open Inbox</button>
+              <button class="btn ghostBtn" @click="setFeedMode('rooms')">Open Rooms</button>
+            </div>
           </div>
-        </div>
 
-        <div v-if="!token" class="alert soft">
-          Login again to see people & call buttons.
-        </div>
-
-        <template v-else>
           <div class="miniAvatars">
             <div
-              v-for="u in people.slice(0, 14)"
-              :key="'pmini-' + u.id"
+              v-for="u in filteredPeople.slice(0, 12)"
+              :key="'hub-' + u.id"
               class="miniAvatarWrap"
               :title="displayUserName(u)"
-              @click="peopleOpen ? null : startCall(u, 'audio')"
+              @click="startCall(u, 'audio')"
             >
-              <div class="miniAvatar">
-                {{ displayUserName(u)[0]?.toUpperCase() }}
-              </div>
+              <div class="miniAvatar">{{ displayUserName(u)[0]?.toUpperCase() }}</div>
               <span class="miniDot" :class="{ on: isOnline(u.id) }"></span>
             </div>
-
-            <button class="chip ghost mini" @click="togglePeople">
-              {{ peopleOpen ? "Hide list" : "Show list" }}
-            </button>
           </div>
 
-          <div v-if="peopleOpen" class="peopleCompact">
-            <div v-if="peopleError" class="alert">{{ peopleError }}</div>
-            <div v-else-if="peopleLoading" class="hint">Loading people…</div>
-            <div v-else-if="people.length === 0" class="hint">No users found.</div>
+          <div class="hint mt10">Tap a person bubble for a quick audio call. Open People for full call buttons and Inbox for messages.</div>
+        </section>
 
-            <div v-else class="peopleList">
+        <!-- STUDIO -->
+        <section v-if="studioOpen" class="panel toolsPanel glassy">
+          <div class="panel-head">
+            <div class="panel-title">🪄 Creator Studio</div>
+            <div class="dockActions">
+              <button class="btn ghostBtn" @click="toggleStudio">Close</button>
+            </div>
+          </div>
+
+          <div class="toolsGrid">
+            <button class="toolBtn" @click="focusComposer">✍️ New Post</button>
+            <button class="toolBtn" @click="setFeedMode('reels')">🎞️ Create Reel</button>
+            <button class="toolBtn" @click="startLive">🔴 Start Live</button>
+            <button class="toolBtn" @click="createFastRoom">📞 Start Room</button>
+            <button class="toolBtn" @click="openSavedMode">💾 Open Saved</button>
+            <button class="toolBtn" @click="openPinnedMode">📌 Open Pinned</button>
+            <button class="toolBtn" @click="refreshCallRooms">📞 Refresh Rooms</button>
+            <button class="toolBtn" @click="requestNotifications">🔔 Notifications</button>
+            <button class="toolBtn" @click="testTurn">🧊 Test TURN</button>
+            <button class="toolBtn" @click="toggleFocusMode">{{ focusMode ? "🧘 Exit Focus" : "🧘 Enter Focus" }}</button>
+          </div>
+
+          <div class="trendingRow">
+            <span class="badgePill">Posts {{ posts.length }}</span>
+            <span class="badgePill">Videos {{ videoPosts.length }}</span>
+            <span class="badgePill">Saved {{ savedPosts.length }}</span>
+            <span class="badgePill">Pinned {{ pinnedPosts.length }}</span>
+            <span class="badgePill accent">Score {{ creatorScore }}</span>
+          </div>
+
+          <div v-if="turnNote" class="hint mt10">{{ turnNote }}</div>
+        </section>
+
+        <!-- TOP DOCK -->
+        <section v-if="!focusMode" class="dock">
+          <!-- Live -->
+          <div class="panel dockCard glassy">
+            <div class="panel-head">
+              <div class="panel-title">🔴 Live Now</div>
+              <button class="btn btn-primary" @click="startLive" :disabled="!token">Go Live</button>
+            </div>
+
+            <div v-if="liveStreams.length === 0" class="hint mt10">No one live right now</div>
+
+            <div v-else class="live-strip">
               <div
-                v-for="u in filteredPeople"
-                :key="'plist-' + u.id"
-                class="person compact"
+                v-for="stream in liveStreams.slice(0, 6)"
+                :key="'live-mini-' + stream"
+                class="live-pill"
+                @click="joinLive(stream)"
+                title="Tap to watch"
               >
-                <div class="avatar small">
-                  {{ displayUserName(u)[0]?.toUpperCase() }}
-                </div>
+                <span class="dot"></span>
+                <span class="live-pill-name">{{ stream }}</span>
+                <span class="chev">›</span>
+              </div>
 
-                <div class="person-meta">
-                  <div class="person-name">
-                    {{ displayUserName(u) }}
-                  </div>
+              <button
+                v-if="liveStreams.length > 6"
+                class="chip ghost mini"
+                @click="setFeedMode('live')"
+              >
+                View all
+              </button>
+            </div>
+          </div>
 
-                  <div class="person-sub">
-                    <span class="status" :class="{ on: isOnline(u.id) }"></span>
+          <!-- People -->
+          <div class="panel dockCard glassy">
+            <div class="panel-head">
+              <div class="panel-title">👥 People</div>
 
-                    <span class="status-text">
-                      {{ isOnline(u.id) ? "Online" : "Offline" }}
-                    </span>
-
-                    <span class="sep">•</span>
-
-                    <span class="id">ID {{ u.id }}</span>
-
-                    <span v-if="u.distance !== null" class="distance">
-                      • 📍 {{ u.distance }} mi away
-                    </span>
-                  </div>
-                </div>
-
-                <div class="person-actions">
-                  <button
-                    class="iconbtn msg-btn"
-                    title="Message"
-                    @click="openChat(u)"
-                  >
-                    💬
-                  </button>
-                  <button
-                    class="iconbtn"
-                    title="Audio Call"
-                    :disabled="!isOnline(u.id) || callBusy"
-                    @click="startCall(u, 'audio')"
-                  >
-                    📞
-                  </button>
-
-                  <button
-                    class="iconbtn"
-                    title="Video Call"
-                    :disabled="!isOnline(u.id) || callBusy"
-                    @click="startCall(u, 'video')"
-                  >
-                    🎥
-                  </button>
-
-                  <button
-                    class="iconbtn"
-                    title="Open Profile"
-                    @click="openUserProfile(u)"
-                  >
-                    👤
-                  </button>
-                </div>
+              <div class="dockActions">
+                <button class="btn" @click="fetchPeople" :disabled="peopleLoading || !token">
+                  {{ peopleLoading ? "Loading…" : "Refresh" }}
+                </button>
+                <button class="btn ghostBtn" @click="toggleChat">
+                  {{ chatOpen ? "Close Chat" : "Open Chat" }}
+                </button>
               </div>
             </div>
 
-            <div class="hint mt10">
-              Calls require both users online (green).
+            <div v-if="!token" class="alert soft">
+              Login again to see people & call buttons.
+            </div>
+
+            <template v-else>
+              <div class="miniAvatars">
+                <div
+                  v-for="u in people.slice(0, 14)"
+                  :key="'pmini-' + u.id"
+                  class="miniAvatarWrap"
+                  :title="displayUserName(u)"
+                  @click="peopleOpen ? null : startCall(u, 'audio')"
+                >
+                  <div class="miniAvatar">
+                    {{ displayUserName(u)[0]?.toUpperCase() }}
+                  </div>
+                  <span class="miniDot" :class="{ on: isOnline(u.id) }"></span>
+                </div>
+
+                <button class="chip ghost mini" @click="togglePeople">
+                  {{ peopleOpen ? "Hide list" : "Show list" }}
+                </button>
+              </div>
+
+              <div v-if="peopleOpen" class="peopleCompact">
+                <div v-if="peopleError" class="alert">{{ peopleError }}</div>
+                <div v-else-if="peopleLoading" class="hint">Loading people…</div>
+                <div v-else-if="people.length === 0" class="hint">No users found.</div>
+
+                <div v-else class="peopleList">
+                  <div
+                    v-for="u in filteredPeople"
+                    :key="'plist-' + u.id"
+                    class="person compact"
+                  >
+                    <div class="avatar small">
+                      {{ displayUserName(u)[0]?.toUpperCase() }}
+                    </div>
+
+                    <div class="person-meta">
+                      <div class="person-name">
+                        {{ displayUserName(u) }}
+                      </div>
+
+                      <div class="person-sub">
+                        <span class="status" :class="{ on: isOnline(u.id) }"></span>
+                        <span class="status-text">
+                          {{ isOnline(u.id) ? "Online" : "Offline" }}
+                        </span>
+                        <span class="sep">•</span>
+                        <span class="id">ID {{ u.id }}</span>
+                      </div>
+                    </div>
+
+                    <div class="person-actions">
+                      <button
+                        class="iconbtn"
+                        title="Audio Call"
+                        :disabled="!isOnline(u.id) || callBusy"
+                        @click="startCall(u, 'audio')"
+                      >
+                        📞
+                      </button>
+
+                      <button
+                        class="iconbtn"
+                        title="Video Call"
+                        :disabled="!isOnline(u.id) || callBusy"
+                        @click="startCall(u, 'video')"
+                      >
+                        🎥
+                      </button>
+
+                      <button
+                        class="iconbtn"
+                        title="Open Profile"
+                        @click="openUserProfile(u)"
+                      >
+                        👤
+                      </button>
+                    </div>
+                  </div>
+                </div>
+
+                <div class="hint mt10">
+                  Calls require both users online (green).
+                </div>
+              </div>
+            </template>
+          </div>
+        </section>
+
+        <!-- TOOLS -->
+        <section v-if="toolsOpen" class="panel toolsPanel glassy">
+          <div class="panel-head">
+            <div class="panel-title">🧰 Power Tools</div>
+            <div class="dockActions">
+              <button class="btn ghostBtn" @click="toggleTools">Close</button>
             </div>
           </div>
-        </template>
-      </div>
-    </section>
 
-    <!-- TOOLS -->
-    <section v-if="toolsOpen" class="panel toolsPanel glassy">
-      <div class="panel-head">
-        <div class="panel-title">🧰 Power Tools</div>
-        <div class="dockActions">
-          <button class="btn ghostBtn" @click="toggleTools">Close</button>
-        </div>
-      </div>
+          <div class="toolsGrid">
+            <button class="toolBtn" @click="setFeedMode('foryou')">🎬 Go For You</button>
+            <button class="toolBtn" @click="setFeedMode('reels')">🎞️ Go Reels</button>
+            <button class="toolBtn" @click="setFeedMode('rooms')">🎧 Go Rooms</button>
+            <button class="toolBtn" @click="setFeedMode('live')">🔴 Go Live Tab</button>
+            <button class="toolBtn" @click="openSavedMode">💾 Open Saved</button>
+            <button class="toolBtn" @click="openPinnedMode">📌 Open Pinned</button>
+            <button class="toolBtn" @click="scrollToTop">⬆️ Scroll Top</button>
+            <button class="toolBtn" @click="focusComposer">✍️ Focus Composer</button>
+            <button class="toolBtn" @click="clearDraft">🧹 Clear Draft</button>
+            <button class="toolBtn" @click="refreshAll" :disabled="loading">🔁 Refresh All</button>
+            <button class="toolBtn" @click="testTurn">🧊 Test TURN</button>
+            <button class="toolBtn" @click="requestNotifications">🔔 Enable Notifications</button>
+            <button class="toolBtn" @click="toggleFocusMode">{{ focusMode ? "🧘 Exit Focus" : "🧘 Focus Mode" }}</button>
+            <button class="toolBtn dangerTool" @click="hardResetApp">💣 Hard Reset (Local)</button>
+          </div>
 
-      <div class="toolsGrid">
-        <button class="toolBtn" @click="setFeedMode('foryou')">🎬 Go For You</button>
-        <button class="toolBtn" @click="setFeedMode('reels')">🎞️ Go Reels</button>
-        <button class="toolBtn" @click="setFeedMode('rooms')">🎧 Go Rooms</button>
-        <button class="toolBtn" @click="setFeedMode('live')">🔴 Go Live Tab</button>
-        <button class="toolBtn" @click="openSavedMode">💾 Open Saved</button>
-        <button class="toolBtn" @click="openPinnedMode">📌 Open Pinned</button>
-        <button class="toolBtn" @click="scrollToTop">⬆️ Scroll Top</button>
-        <button class="toolBtn" @click="focusComposer">✍️ Focus Composer</button>
-        <button class="toolBtn" @click="clearDraft">🧹 Clear Draft</button>
-        <button class="toolBtn" @click="refreshAll" :disabled="loading">🔁 Refresh All</button>
-        <button class="toolBtn" @click="testTurn">🧊 Test TURN</button>
-        <button class="toolBtn" @click="requestNotifications">🔔 Enable Notifications</button>
-        <button class="toolBtn" @click="toggleFocusMode">{{ focusMode ? "🧘 Exit Focus" : "🧘 Focus Mode" }}</button>
-        <button class="toolBtn dangerTool" @click="hardResetApp">💣 Hard Reset (Local)</button>
-      </div>
-
-      <div v-if="turnNote" class="hint mt10">{{ turnNote }}</div>
-    </section>
+          <div v-if="turnNote" class="hint mt10">{{ turnNote }}</div>
+        </section>
 
         <!-- COMPOSER -->
-        <section class="composer glassy">
+        <section class="composer glassy" :class="{ mobileOpen: showMobileComposer }">
           <div class="composer-head">
             <div class="avatar big">{{ myInitial }}</div>
 
-        <div class="composer-meta">
-          <div class="me">{{ meName }}</div>
-          <div class="small muted">
-            <span v-if="feedMode === 'reels'">Reels mode: upload a VIDEO → posts to Reels + For You</span>
-            <span v-else>Post to the world (works everywhere)</span>
-          </div>
-        </div>
-
-        <div class="composer-actions">
-          <button class="pill-btn" @click="focusComposer">Create</button>
-        </div>
-      </div>
-
-      <textarea
-        ref="composerRef"
-        v-model="caption"
-        class="input"
-        placeholder="What's happening?"
-        rows="3"
-      ></textarea>
-
-      <div class="composerMetaRow">
-        <div class="charCount" :class="{ warn: captionLength > 220 }">
-          {{ captionLength }} chars
-        </div>
-
-        <div class="quickTags">
-          <button class="quickTag" @click="appendQuickTag('#Pulse')">#Pulse</button>
-          <button class="quickTag" @click="appendQuickTag('#Reels')">#Reels</button>
-          <button class="quickTag" @click="appendQuickTag('#Live')">#Live</button>
-          <button class="quickTag" @click="appendQuickTag('#Update')">#Update</button>
-        </div>
-      </div>
-
-      <div class="upload-row">
-        <label class="file-pill">
-          <input type="file" accept="image/*" @change="onPickImage" />
-          📷 Image <span v-if="imageFile" class="file-dot">•</span>
-        </label>
-
-        <label class="file-pill">
-          <input type="file" accept="video/*" @change="onPickVideo" />
-          🎥 Video <span v-if="videoFile" class="file-dot">•</span>
-        </label>
-
-        <button class="btn btn-primary" :disabled="posting || !token" @click="submitPost">
-          {{ posting ? "Posting…" : (feedMode === 'reels' ? "Post Reel 🎬" : "Post 🚀") }}
-        </button>
-
-        <button class="btn ghostBtn" :disabled="posting" @click="clearDraft">Clear</button>
-      </div>
-
-      <div v-if="draftSavedNote" class="hint mt10">{{ draftSavedNote }}</div>
-      <div v-if="error" class="alert">{{ error }}</div>
-    </section>
-
-    <!-- LIVE MODE -->
-    <section v-if="feedMode === 'live'" class="panel glassy">
-      <div class="panel-head">
-        <div class="panel-title">🔴 Live</div>
-        <button class="btn btn-primary" @click="startLive" :disabled="!token">Go Live</button>
-      </div>
-
-      <div class="hint">Tap any live session below to watch.</div>
-
-      <div v-if="liveStreams.length === 0" class="state">
-        <div class="state-emoji">📡</div>
-        <div class="state-title">Nobody is live</div>
-        <div class="state-sub">Start the first stream.</div>
-      </div>
-
-      <div v-else class="live-grid">
-        <div v-for="stream in liveStreams" :key="'live-center-' + stream" class="live-big" @click="joinLive(stream)">
-          <div class="live-big-top"><span class="dot"></span><span class="live-big-title">{{ stream }}</span></div>
-          <div class="live-big-sub">Tap to watch</div>
-        </div>
-      </div>
-    </section>
-
-    <!-- ROOMS MODE -->
-    <section v-else-if="feedMode === 'rooms'" class="rooms">
-      <aside class="rooms-left glassy">
-        <div class="rooms-head">🎧 Rooms</div>
-        <button class="room" :class="{ on: chatRoom === 'global' }" @click="selectChat('global')">🌍 global</button>
-        <button class="room" :class="{ on: chatRoom === 'support' }" @click="selectChat('support')">🛠 support</button>
-        <button class="room" :class="{ on: chatRoom === 'dev' }" @click="selectChat('dev')">💻 dev</button>
-        <button class="room" :class="{ on: chatRoom === 'random' }" @click="selectChat('random')">🎲 random</button>
-        <button class="room" :class="{ on: chatRoom === 'callrooms' }" @click="selectChat('callrooms')">📞 Call Rooms</button>
-        <div class="rooms-hint">Real-time chat via Socket.io</div>
-      </aside>
-
-      <div class="rooms-main glassy" v-if="chatRoom !== 'callrooms'">
-        <div class="rooms-top">
-          <div class="rooms-title"># {{ chatRoom }}</div>
-          <button class="chip ghost" @click="toggleChat">Toggle Chat Drawer</button>
-        </div>
-
-        <div class="rooms-messages" ref="roomsChatBoxRef">
-          <div v-for="(m, i) in chatMessages" :key="'rm-'+i" class="rm">
-            <div class="rm-top">
-              <span class="rm-user">{{ m.from }}</span>
-              <span class="rm-time">{{ m.created_at ? formatDate(m.created_at) : "" }}</span>
-            </div>
-            <div class="rm-text">{{ m.text }}</div>
-          </div>
-        </div>
-
-        <div class="rooms-input">
-          <input v-model="chatText" placeholder="Message #room…" @keydown.enter.prevent="sendChat" />
-          <button class="btn btn-primary" @click="sendChat">Send</button>
-        </div>
-      </div>
-
-      <div class="rooms-main glassy" v-else>
-        <div class="rooms-top">
-          <div class="rooms-title">📞 Call Rooms</div>
-          <button class="chip ghost" @click="refreshCallRooms">Refresh</button>
-        </div>
-
-        <div class="callrooms-create">
-          <input v-model="callRoomName" class="roomInput" placeholder="Room name" />
-          <select v-model="callRoomKind" class="roomInput roomSelect">
-            <option value="audio">Audio Room</option>
-            <option value="video">Video Room</option>
-          </select>
-          <button class="btn btn-primary" @click="createCallRoom" :disabled="creatingCallRoom">
-            {{ creatingCallRoom ? "Creating..." : "Create Room" }}
-          </button>
-        </div>
-
-        <div v-if="callRoomsError" class="alert">{{ callRoomsError }}</div>
-
-        <div v-if="callRoomsLoading" class="state miniState">
-          <div class="state-emoji">⏳</div>
-          <div class="state-title">Loading call rooms</div>
-          <div class="state-sub">Fetching active rooms…</div>
-        </div>
-
-        <div v-else-if="callRooms.length === 0" class="state miniState">
-          <div class="state-emoji">📞</div>
-          <div class="state-title">No call rooms yet</div>
-          <div class="state-sub">Create one and invite others.</div>
-        </div>
-
-        <div v-else class="callrooms-list">
-          <div v-for="room in callRooms" :key="room.roomId" class="callroom-card">
-            <div class="callroom-main">
-              <div class="callroom-name">{{ room.name }}</div>
-              <div class="callroom-sub">
-                {{ room.kind === "video" ? "🎥 Video Room" : "🎙 Audio Room" }}
-                • {{ room.participantCount }} inside
+            <div class="composer-meta">
+              <div class="me">{{ meName }}</div>
+              <div class="small muted">
+                <span v-if="feedMode === 'reels'">Reels mode: upload a VIDEO → posts to Reels + For You</span>
+                <span v-else>Post to the world (works everywhere)</span>
               </div>
             </div>
 
-            <button class="btn btn-primary" @click="joinCallRoom(room)">
-              Join
+            <div class="composer-actions">
+              <button class="pill-btn" @click="focusComposer">Create</button>
+            </div>
+          </div>
+
+          <textarea
+            ref="composerRef"
+            v-model="caption"
+            class="input"
+            placeholder="What's happening?"
+            rows="3"
+          ></textarea>
+
+          <div class="composerMetaRow">
+            <div class="charCount" :class="{ warn: captionLength > 220 }">
+              {{ captionLength }} chars
+            </div>
+
+            <div class="quickTags">
+              <button class="quickTag" @click="appendQuickTag('#Pulse')">#Pulse</button>
+              <button class="quickTag" @click="appendQuickTag('#Reels')">#Reels</button>
+              <button class="quickTag" @click="appendQuickTag('#Live')">#Live</button>
+              <button class="quickTag" @click="appendQuickTag('#Update')">#Update</button>
+            </div>
+          </div>
+
+          <div class="upload-row">
+            <label class="file-pill">
+              <input type="file" accept="image/*" @change="onPickImage" />
+              📷 Image <span v-if="imageFile" class="file-dot">•</span>
+            </label>
+
+            <label class="file-pill">
+              <input type="file" accept="video/*" @change="onPickVideo" />
+              🎥 Video <span v-if="videoFile" class="file-dot">•</span>
+            </label>
+
+            <button class="btn btn-primary" :disabled="posting || !token" @click="submitPost">
+              {{ posting ? "Posting…" : (feedMode === 'reels' ? "Post Reel 🎬" : "Post 🚀") }}
             </button>
-          </div>
-        </div>
-      </div>
-    </section>
 
-    <!-- SAVED MODE -->
-    <section v-else-if="feedMode === 'saved'" class="feed following">
-      <template v-if="loading">
-        <div class="state">Loading…</div>
-      </template>
-
-      <div v-else-if="savedPosts.length === 0" class="state">
-        <div class="state-emoji">💾</div>
-        <div class="state-title">No saved posts yet</div>
-        <div class="state-sub">Tap Save on any post to keep it here.</div>
-      </div>
-
-      <article v-else v-for="post in savedPosts" :key="'s-'+post.id" class="post glassy">
-        <header class="post-head">
-          <div class="avatar">{{ getInitial(post) }}</div>
-          <div class="who">
-            <div class="name">{{ displayPostUser(post) }}</div>
-            <div class="time">{{ formatDate(post.created_at) }}</div>
+            <button class="btn ghostBtn" :disabled="posting" @click="clearDraft">Clear</button>
           </div>
 
-          <div class="postPills">
-            <span class="miniPostPill">SAVED</span>
-          </div>
-        </header>
+          <div v-if="draftSavedNote" class="hint mt10">{{ draftSavedNote }}</div>
+          <div v-if="error" class="alert">{{ error }}</div>
+        </section>
 
-        <div v-if="post.caption" class="text">{{ post.caption }}</div>
-
-        <img v-if="post.image_url" class="media" :src="getMedia(post.image_url)" loading="lazy" />
-        <video v-if="post.video_url" class="media" :src="getMedia(post.video_url)" controls playsinline preload="metadata"></video>
-
-        <div class="actions">
-          <button class="action-btn" @click="toggleSavePost(post)">
-            💾 <span class="label">{{ isSaved(post.id) ? "Saved" : "Save" }}</span>
-          </button>
-          <button class="action-btn" @click="togglePinPost(post)">
-            📌 <span class="label">{{ isPinned(post.id) ? "Pinned" : "Pin" }}</span>
-          </button>
-          <div class="spacer"></div>
-          <button class="action-btn ghost" @click="sharePost(post)">🔗 <span class="label">Share</span></button>
-        </div>
-      </article>
-    </section>
-
-    <!-- PINNED MODE -->
-    <section v-else-if="feedMode === 'pinned'" class="feed threads">
-      <template v-if="loading">
-        <div class="state">Loading…</div>
-      </template>
-
-      <div v-else-if="pinnedPosts.length === 0" class="state">
-        <div class="state-emoji">📌</div>
-        <div class="state-title">No pinned posts yet</div>
-        <div class="state-sub">Pin your favorite posts here.</div>
-      </div>
-
-      <article v-else v-for="post in pinnedPosts" :key="'pin-'+post.id" class="post thread glassy">
-        <header class="post-head">
-          <div class="avatar">{{ getInitial(post) }}</div>
-          <div class="who">
-            <div class="name">{{ displayPostUser(post) }}</div>
-            <div class="time">{{ formatDate(post.created_at) }}</div>
+        <!-- LIVE MODE -->
+        <section v-if="feedMode === 'live'" class="panel glassy">
+          <div class="panel-head">
+            <div class="panel-title">🔴 Live</div>
+            <button class="btn btn-primary" @click="startLive" :disabled="!token">Go Live</button>
           </div>
 
-          <div class="postPills">
-            <span class="miniPostPill">PINNED</span>
-          </div>
-        </header>
+          <div class="hint">Tap any live session below to watch.</div>
 
-        <div v-if="post.caption" class="text thread-text">{{ post.caption }}</div>
-
-        <img v-if="post.image_url" class="media" :src="getMedia(post.image_url)" loading="lazy" />
-        <video v-if="post.video_url" class="media" :src="getMedia(post.video_url)" controls playsinline preload="metadata"></video>
-
-        <div class="actions">
-          <button class="action-btn" @click="togglePinPost(post)">
-            📌 <span class="label">{{ isPinned(post.id) ? "Pinned" : "Pin" }}</span>
-          </button>
-          <button class="action-btn" @click="toggleSavePost(post)">
-            💾 <span class="label">{{ isSaved(post.id) ? "Saved" : "Save" }}</span>
-          </button>
-          <div class="spacer"></div>
-          <button class="action-btn ghost" @click="sharePost(post)">🔗 <span class="label">Share</span></button>
-        </div>
-      </article>
-    </section>
-
-    <!-- THREADS MODE -->
-    <section v-else-if="feedMode === 'threads'" class="feed threads">
-      <div v-if="loading" class="state">Loading…</div>
-
-      <div v-else-if="sortedFilteredPosts.length === 0" class="state">
-        <div class="state-emoji">✍️</div>
-        <div class="state-title">No threads yet</div>
-        <div class="state-sub">Write something to start the conversation.</div>
-      </div>
-
-      <article v-else v-for="post in threadsPosts" :key="'t-'+post.id" class="post thread glassy">
-        <header class="post-head">
-          <div class="avatar">{{ getInitial(post) }}</div>
-          <div class="who">
-            <div class="name">{{ displayPostUser(post) }}</div>
-            <div class="time">{{ formatDate(post.created_at) }}</div>
+          <div v-if="liveStreams.length === 0" class="state">
+            <div class="state-emoji">📡</div>
+            <div class="state-title">Nobody is live</div>
+            <div class="state-sub">Start the first stream.</div>
           </div>
 
-          <div class="postPills">
-            <span class="miniPostPill" v-if="post.video_url">VIDEO</span>
-            <span class="miniPostPill" v-else-if="post.image_url">IMAGE</span>
-            <span class="miniPostPill ghostPill" v-else>TEXT</span>
-          </div>
-        </header>
-
-        <div v-if="post.caption" class="text thread-text">{{ post.caption }}</div>
-
-        <button
-          v-if="post.image_url || post.video_url"
-          class="chip ghost thread-media-toggle"
-          @click="toggleThreadMedia(post.id)"
-        >
-          {{ threadMediaOpen[post.id] ? "Hide media" : "View media" }}
-        </button>
-
-        <div v-if="threadMediaOpen[post.id]" class="thread-media">
-          <img v-if="post.image_url" class="media" :src="getMedia(post.image_url)" loading="lazy" />
-          <video v-if="post.video_url" class="media" :src="getMedia(post.video_url)" controls playsinline preload="metadata"></video>
-        </div>
-
-        <div class="actions">
-          <button class="action-btn" :class="{ active: likesByPost[post.id]?.likedByMe }" :disabled="likeBusyByPost[post.id]" @click="toggleLike(post)">
-            ❤️ <span class="label">{{ likesByPost[post.id]?.count ?? 0 }}</span>
-          </button>
-
-          <button class="action-btn" @click="toggleComments(post.id)">
-            💬 <span class="label">{{ commentCount(post.id) }}</span>
-          </button>
-
-          <button class="action-btn" @click="toggleSavePost(post)">
-            💾 <span class="label">{{ isSaved(post.id) ? "Saved" : "Save" }}</span>
-          </button>
-
-          <button class="action-btn" @click="togglePinPost(post)">
-            📌 <span class="label">{{ isPinned(post.id) ? "Pinned" : "Pin" }}</span>
-          </button>
-
-          <div class="spacer"></div>
-
-          <button class="action-btn ghost" @click="sharePost(post)">🔗 <span class="label">Share</span></button>
-          <button class="action-btn ghost" @click="copyPostText(post)">📋 <span class="label">Copy</span></button>
-        </div>
-
-        <CommentsPanel
-          v-if="commentsOpenByPost[post.id]"
-          :post-id="post.id"
-          @changed="handleCommentsChanged(post.id)"
-        />
-      </article>
-    </section>
-
-    <!-- REELS MODE -->
-    <section v-else-if="feedMode === 'reels'" class="feed reels">
-      <template v-if="loading">
-        <div class="state">Loading…</div>
-      </template>
-
-      <div v-else-if="reelsPosts.length === 0" class="state">
-        <div class="state-emoji">🎞️</div>
-        <div class="state-title">No reels yet</div>
-        <div class="state-sub">Post a video and it will show here.</div>
-      </div>
-
-      <TikTokFeed
-        v-else
-        :items="reelsVisible"
-        mode="reels"
-        :globalMuted="globalMuted"
-        :canLoadMore="reelsCanLoadMore"
-        :loadingMore="reelsInfiniteLoading"
-        :getMedia="getMedia"
-        :formatDate="formatDate"
-        :getInitial="(p) => getInitial(p)"
-        :likesCount="(p) => (likesByPost[p.id]?.count ?? 0)"
-        :commentCount="(p) => commentCount(p.id)"
-        @toggle-muted="toggleGlobalMute"
-        @load-more="loadMoreReels"
-        @like="toggleLike"
-        @comments="openCommentsFromFeed"
-        @share="sharePost"
-      />
-
-      <div ref="reelsLoadMoreRef" class="load-more" v-if="reelsCanLoadMore && !loading">
-        {{ reelsInfiniteLoading ? "Loading more reels…" : "Scroll for more reels…" }}
-      </div>
-
-      <section
-        v-for="post in reelsVisible.filter((p) => commentsOpenByPost[p.id])"
-        :key="'reel-comments-' + post.id"
-        class="post comments-shell glassy"
-      >
-        <header class="post-head compactHead">
-          <div class="avatar">{{ getInitial(post) }}</div>
-          <div class="who">
-            <div class="name">{{ displayPostUser(post) }}</div>
-            <div class="time">Comments</div>
-          </div>
-          <button class="x" @click="toggleComments(post.id)">✕</button>
-        </header>
-
-        <CommentsPanel :post-id="post.id" @changed="handleCommentsChanged(post.id)" />
-      </section>
-    </section>
-
-    <!-- FOLLOWING MODE -->
-    <section v-else-if="feedMode === 'following'" class="feed following">
-      <template v-if="loading">
-        <div class="state">Loading…</div>
-      </template>
-
-      <div v-else-if="sortedFilteredPosts.length === 0" class="state">
-        <div class="state-emoji">📸</div>
-        <div class="state-title">No posts yet</div>
-        <div class="state-sub">Be the first to post.</div>
-      </div>
-
-      <article v-else v-for="post in followingPosts" :key="'f-'+post.id" class="post glassy">
-        <header class="post-head">
-          <div class="avatar">{{ getInitial(post) }}</div>
-          <div class="who">
-            <div class="name">{{ displayPostUser(post) }}</div>
-            <div class="time">{{ formatDate(post.created_at) }}</div>
-          </div>
-
-          <div class="postPills">
-            <span class="miniPostPill" v-if="post.video_url">VIDEO</span>
-            <span class="miniPostPill" v-else-if="post.image_url">IMAGE</span>
-            <span class="miniPostPill ghostPill" v-else>TEXT</span>
-          </div>
-        </header>
-
-        <div v-if="post.caption" class="text">{{ post.caption }}</div>
-
-        <img v-if="post.image_url" class="media" :src="getMedia(post.image_url)" loading="lazy" />
-        <video v-if="post.video_url" class="media" :src="getMedia(post.video_url)" controls playsinline preload="metadata"></video>
-
-        <div class="actions">
-          <button class="action-btn" :class="{ active: likesByPost[post.id]?.likedByMe }" :disabled="likeBusyByPost[post.id]" @click="toggleLike(post)">
-            ❤️ <span class="label">{{ likesByPost[post.id]?.count ?? 0 }}</span>
-          </button>
-
-          <button class="action-btn" @click="toggleComments(post.id)">
-            💬 <span class="label">{{ commentCount(post.id) }}</span>
-          </button>
-
-          <button class="action-btn" @click="toggleSavePost(post)">
-            💾 <span class="label">{{ isSaved(post.id) ? "Saved" : "Save" }}</span>
-          </button>
-
-          <button class="action-btn" @click="togglePinPost(post)">
-            📌 <span class="label">{{ isPinned(post.id) ? "Pinned" : "Pin" }}</span>
-          </button>
-
-          <div class="spacer"></div>
-
-          <button class="action-btn ghost" @click="sharePost(post)">🔗 <span class="label">Share</span></button>
-          <button class="action-btn ghost" @click="copyPostText(post)">📋 <span class="label">Copy</span></button>
-        </div>
-
-        <CommentsPanel
-          v-if="commentsOpenByPost[post.id]"
-          :post-id="post.id"
-          @changed="handleCommentsChanged(post.id)"
-        />
-      </article>
-    </section>
-
-    <!-- FOR YOU MODE -->
-    <section v-else class="feed tiktok">
-      <template v-if="loading">
-        <div class="state">Loading…</div>
-      </template>
-
-      <div v-else-if="forYouPosts.length === 0" class="state">
-        <div class="state-emoji">🎬</div>
-        <div class="state-title">No videos yet</div>
-        <div class="state-sub">Post a video and it will autoplay here.</div>
-      </div>
-
-      <TikTokFeed
-        v-else
-        :items="visiblePosts"
-        mode="foryou"
-        :globalMuted="globalMuted"
-        :canLoadMore="canLoadMore"
-        :loadingMore="infiniteLoading"
-        :getMedia="getMedia"
-        :formatDate="formatDate"
-        :getInitial="(p) => getInitial(p)"
-        :likesCount="(p) => (likesByPost[p.id]?.count ?? 0)"
-        :commentCount="(p) => commentCount(p.id)"
-        @toggle-muted="toggleGlobalMute"
-        @load-more="loadMore"
-        @like="toggleLike"
-        @comments="openCommentsFromFeed"
-        @share="sharePost"
-      />
-
-      <div ref="loadMoreRef" class="load-more" v-if="canLoadMore && !loading">
-        {{ infiniteLoading ? "Loading more videos…" : "Scroll for more videos…" }}
-      </div>
-
-      <section
-        v-for="post in visiblePosts.filter((p) => commentsOpenByPost[p.id])"
-        :key="'fy-comments-' + post.id"
-        class="post comments-shell glassy"
-      >
-        <header class="post-head compactHead">
-          <div class="avatar">{{ getInitial(post) }}</div>
-          <div class="who">
-            <div class="name">{{ displayPostUser(post) }}</div>
-            <div class="time">Comments</div>
-          </div>
-          <button class="x" @click="toggleComments(post.id)">✕</button>
-        </header>
-
-        <CommentsPanel :post-id="post.id" @changed="handleCommentsChanged(post.id)" />
-      </section>
-    </section>
-
-    <!-- ACTIVITY FEED -->
-    <section v-if="false" class="panel glassy">
-      <div class="panel-head">
-        <div class="panel-title">📝 Activity Feed</div>
-        <button class="btn ghostBtn" @click="clearActivity">Clear</button>
-      </div>
-
-      <div class="rooms-messages">
-        <div v-for="(a, i) in activityFeed" :key="'activity-'+i" class="rm">
-          <div class="rm-top">
-            <span class="rm-user">{{ a.title }}</span>
-            <span class="rm-time">{{ formatDate(a.created_at) }}</span>
-          </div>
-          <div class="rm-text">{{ a.text }}</div>
-        </div>
-      </div>
-    </section>
-  </main>
-
-  <!-- CHAT DRAWER -->
-  <aside class="chatDrawer" :class="{ open: chatOpen }">
-    <section class="panel chatPanel glassy">
-      <div class="panel-head">
-        <div class="panel-title">💬 Chat</div>
-        <button class="btn" @click="toggleChat">{{ chatOpen ? "Close" : "Open" }}</button>
-      </div>
-
-      <div class="chat-hint">Quick room chat. Rooms tab is full Discord-style.</div>
-
-      <div class="chat-list">
-        <button class="chat-item" :class="{ active: chatRoom === 'global' }" @click="selectChat('global')">🌍 Global</button>
-        <button class="chat-item" :class="{ active: chatRoom === 'support' }" @click="selectChat('support')">🛠 Support</button>
-        <button class="chat-item" :class="{ active: chatRoom === 'dev' }" @click="selectChat('dev')">💻 Dev</button>
-        <button class="chat-item" :class="{ active: chatRoom === 'random' }" @click="selectChat('random')">🎲 Random</button>
-      </div>
-
-      <div class="chat-box">
-        <div class="chat-messages" ref="chatBoxRef">
-          <div v-for="(m, i) in chatMessages" :key="'cm-'+i" class="chat-msg">
-            <strong>{{ m.from }}:</strong> {{ m.text }}
-          </div>
-        </div>
-
-        <div class="chat-input">
-          <input v-model="chatText" placeholder="Type message…" @keydown.enter.prevent="sendChat" />
-          <button class="btn btn-primary" @click="sendChat">Send</button>
-        </div>
-      </div>
-    </section>
-  </aside>
-
-  <!-- INCOMING CALL POPUP -->
-  <div v-if="incomingCall" class="modal-backdrop" @click.self="rejectIncoming">
-    <div class="modal glassy">
-      <div class="modal-title">
-        Incoming {{ incomingCall.kind === "video" ? "Video" : "Audio" }} Call
-      </div>
-      <div class="modal-sub">
-        From
-        <span class="pill">
-          {{ incomingCall.from?.username || incomingCall.fromName || ("User #" + incomingCall.fromUserId) }}
-        </span>
-      </div>
-
-      <div class="modal-actions">
-        <button class="btn danger" @click="rejectIncoming">Reject</button>
-        <button class="btn btn-primary" @click="acceptIncoming">Accept</button>
-      </div>
-
-      <div class="tiny muted mt10">Tip: keep Dashboard open on both devices for best reliability.</div>
-    </div>
-  </div>
-
-  <!-- CALLING TOAST -->
-  <div v-if="callingToast" class="toast glassy">
-    <span class="toast-dot"></span>
-    {{ callingToast }}
-    <button class="mini-x" @click="cancelCall">✕</button>
-  </div>
-
-  <!-- ELITE QUICK CREATE SHEET -->
-  <transition name="fade">
-    <div v-if="quickCreateOpen" class="quickCreateBackdrop" @click.self="closeQuickCreate">
-      <div class="quickCreateSheet glassy">
-        <div class="quickCreateHead">
-          <div>
-            <div class="panel-title">⚡ Create instantly</div>
-            <div class="tiny muted">Post, call, room, live, and sync even when offline.</div>
-          </div>
-          <button class="mini-x" @click="closeQuickCreate">✕</button>
-        </div>
-
-        <div class="quickCreateGrid">
-          <button class="quickCreateCard" @click="useQuickAction('post')">✍️ Text Post</button>
-          <button class="quickCreateCard" @click="useQuickAction('photo')">🖼️ Photo Post</button>
-          <button class="quickCreateCard" @click="useQuickAction('reel')">🎞️ Reel</button>
-          <button class="quickCreateCard" @click="useQuickAction('call')">📞 Quick Call</button>
-          <button class="quickCreateCard" @click="useQuickAction('room')">🎧 Start Room</button>
-          <button class="quickCreateCard" @click="useQuickAction('live')">🔴 Go Live</button>
-          <button class="quickCreateCard" @click="useQuickAction('saved')">💾 Saved</button>
-          <button class="quickCreateCard" @click="useQuickAction('offline')">
-            {{ isNetworkOnline ? "☁️ Force Queue Draft" : "📦 Queue Offline Post" }}
-          </button>
-        </div>
-
-        <div v-if="offlineQueueCount" class="quickQueueBar">
-          <span>Queued posts: {{ offlineQueueCount }}</span>
-          <button class="btn ghostBtn" @click="flushOfflineQueue">Sync now</button>
-        </div>
-      </div>
-    </div>
-  </transition>
-
-  <!-- ELITE BOTTOM NAV -->
-  <nav class="bottomNav eliteBottomNav">
-    <button class="bn" :class="{ on: isHomeActive }" @click="goHome">
-      <span class="bnI">🏠</span><span class="bnT">Home</span>
-    </button>
-
-    <button class="bn" @click="goInbox">
-      <span class="bnI">💬</span><span class="bnT">Inbox</span>
-    </button>
-
-    <button class="bn createBn" @click="openQuickCreate()">
-      <span class="createCore">＋</span>
-    </button>
-
-    <button class="bn" :class="{ on: feedMode === 'live' }" @click="goLiveTab">
-      <span class="bnI">🔴</span><span class="bnT">Live</span>
-    </button>
-
-    <button class="bn" @click="goProfile">
-      <span class="bnI">👤</span><span class="bnT">Profile</span>
-    </button>
-  </nav>
-      <!-- ZOOM MEETING OVERLAY -->
-    <div v-if="inZoomMeeting" class="zoom-overlay">
-      <div class="zoom-header">
-        <div class="zoom-title">{{ zoomCurrentRoom?.name }}</div>
-        <div class="zoom-header-actions">
-          <button class="chip ghost" @click="zoomShowParticipants = !zoomShowParticipants">
-            👥 {{ zoomParticipants.length + 1 }}
-          </button>
-          <button class="chip danger" @click="leaveZoomRoom">Leave</button>
-        </div>
-      </div>
-
-      <div class="zoom-stage" :class="{ sidebarOpen: zoomShowParticipants }">
-        <div class="zoom-grid">
-          <!-- Local -->
-          <div class="zoom-tile" :class="{ muted: zoomAudioMuted }">
-            <video
-              autoplay
-              playsinline
-              muted
-              :srcObject="zoomLocalStream"
-              class="zoom-video"
-              :class="{ off: !zoomVideoEnabled }"
-            ></video>
-            <div v-if="!zoomVideoEnabled" class="zoom-avatar-tile">
-              {{ myInitial }}
+          <div v-else class="live-grid">
+            <div v-for="stream in liveStreams" :key="'live-center-' + stream" class="live-big" @click="joinLive(stream)">
+              <div class="live-big-top"><span class="dot"></span><span class="live-big-title">{{ stream }}</span></div>
+              <div class="live-big-sub">Tap to watch</div>
             </div>
-            <div class="zoom-tile-label">
-              You {{ zoomAudioMuted ? "🔇" : "" }}
+          </div>
+        </section>
+
+        <!-- ROOMS MODE -->
+        <section v-else-if="feedMode === 'rooms'" class="rooms">
+          <aside class="rooms-left glassy">
+            <div class="rooms-head">🎧 Rooms</div>
+            <button class="room" :class="{ on: chatRoom === 'global' }" @click="selectChat('global')">🌍 global</button>
+            <button class="room" :class="{ on: chatRoom === 'support' }" @click="selectChat('support')">🛠 support</button>
+            <button class="room" :class="{ on: chatRoom === 'dev' }" @click="selectChat('dev')">💻 dev</button>
+            <button class="room" :class="{ on: chatRoom === 'random' }" @click="selectChat('random')">🎲 random</button>
+            <button class="room" :class="{ on: chatRoom === 'callrooms' }" @click="selectChat('callrooms')">📞 Call Rooms</button>
+            <div class="rooms-hint">Real-time chat via Socket.io</div>
+          </aside>
+
+          <div class="rooms-main glassy" v-if="chatRoom !== 'callrooms'">
+            <div class="rooms-top">
+              <div class="rooms-title"># {{ chatRoom }}</div>
+              <button class="chip ghost" @click="toggleChat">Toggle Chat Drawer</button>
+            </div>
+
+            <div class="rooms-messages" ref="roomsChatBoxRef">
+              <div v-for="(m, i) in chatMessages" :key="'rm-'+i" class="rm">
+                <div class="rm-top">
+                  <span class="rm-user">{{ m.from }}</span>
+                  <span class="rm-time">{{ m.created_at ? formatDate(m.created_at) : "" }}</span>
+                </div>
+                <div class="rm-text">{{ m.text }}</div>
+              </div>
+            </div>
+
+            <div class="rooms-input">
+              <input v-model="chatText" placeholder="Message #room…" @keydown.enter.prevent="sendChat" />
+              <button class="btn btn-primary" @click="sendChat">Send</button>
             </div>
           </div>
 
-          <!-- Remotes -->
-          <div v-for="p in zoomParticipants" :key="p.id" class="zoom-tile">
-            <video
-              v-if="p.stream"
-              autoplay
-              playsinline
-              :srcObject="p.stream"
-              class="zoom-video"
-            ></video>
-            <div v-else class="zoom-avatar-tile">
-              {{ getInitial(p.username) }}
+          <div class="rooms-main glassy" v-else>
+            <div class="rooms-top">
+              <div class="rooms-title">📞 Call Rooms</div>
+              <button class="chip ghost" @click="refreshCallRooms">Refresh</button>
             </div>
-            <div class="zoom-tile-label">{{ p.username }}</div>
+
+            <div class="callrooms-create">
+              <input v-model="callRoomName" class="roomInput" placeholder="Room name" />
+              <select v-model="callRoomKind" class="roomInput roomSelect">
+                <option value="audio">Audio Room</option>
+                <option value="video">Video Room</option>
+              </select>
+              <button class="btn btn-primary" @click="createCallRoom" :disabled="creatingCallRoom">
+                {{ creatingCallRoom ? "Creating..." : "Create Room" }}
+              </button>
+            </div>
+
+            <div v-if="callRoomsError" class="alert">{{ callRoomsError }}</div>
+
+            <div v-if="callRoomsLoading" class="state miniState">
+              <div class="state-emoji">⏳</div>
+              <div class="state-title">Loading call rooms</div>
+              <div class="state-sub">Fetching active rooms…</div>
+            </div>
+
+            <div v-else-if="callRooms.length === 0" class="state miniState">
+              <div class="state-emoji">📞</div>
+              <div class="state-title">No call rooms yet</div>
+              <div class="state-sub">Create one and invite others.</div>
+            </div>
+
+            <div v-else class="callrooms-list">
+              <div v-for="room in callRooms" :key="room.roomId" class="callroom-card">
+                <div class="callroom-main">
+                  <div class="callroom-name">{{ room.name }}</div>
+                  <div class="callroom-sub">
+                    {{ room.kind === "video" ? "🎥 Video Room" : "🎙 Audio Room" }}
+                    • {{ room.participantCount }} inside
+                  </div>
+                </div>
+
+                <button class="btn btn-primary" @click="joinCallRoom(room)">
+                  Join
+                </button>
+              </div>
+            </div>
           </div>
+        </section>
+
+        <!-- SAVED MODE -->
+        <section v-else-if="feedMode === 'saved'" class="feed following">
+          <template v-if="loading">
+            <div class="state">Loading…</div>
+          </template>
+
+          <div v-else-if="savedPosts.length === 0" class="state">
+            <div class="state-emoji">💾</div>
+            <div class="state-title">No saved posts yet</div>
+            <div class="state-sub">Tap Save on any post to keep it here.</div>
+          </div>
+
+          <article v-else v-for="post in savedPosts" :key="'s-'+post.id" class="post glassy">
+            <header class="post-head">
+              <div class="avatar">{{ getInitial(post) }}</div>
+              <div class="who">
+                <div class="name">{{ displayPostUser(post) }}</div>
+                <div class="time">{{ formatDate(post.created_at) }}</div>
+              </div>
+
+              <div class="postPills">
+                <span class="miniPostPill">SAVED</span>
+              </div>
+            </header>
+
+            <div v-if="post.caption" class="text">{{ post.caption }}</div>
+
+            <img v-if="post.image_url" class="media" :src="getMedia(post.image_url)" loading="lazy" />
+            <video v-if="post.video_url" class="media" :src="getMedia(post.video_url)" controls playsinline preload="metadata"></video>
+
+            <div class="actions">
+              <button class="action-btn" @click="toggleSavePost(post)">
+                💾 <span class="label">{{ isSaved(post.id) ? "Saved" : "Save" }}</span>
+              </button>
+              <button class="action-btn" @click="togglePinPost(post)">
+                📌 <span class="label">{{ isPinned(post.id) ? "Pinned" : "Pin" }}</span>
+              </button>
+              <div class="spacer"></div>
+              <button class="action-btn ghost" @click="sharePost(post)">🔗 <span class="label">Share</span></button>
+            </div>
+          </article>
+        </section>
+
+        <!-- PINNED MODE -->
+        <section v-else-if="feedMode === 'pinned'" class="feed threads">
+          <template v-if="loading">
+            <div class="state">Loading…</div>
+          </template>
+
+          <div v-else-if="pinnedPosts.length === 0" class="state">
+            <div class="state-emoji">📌</div>
+            <div class="state-title">No pinned posts yet</div>
+            <div class="state-sub">Pin your favorite posts here.</div>
+          </div>
+
+          <article v-else v-for="post in pinnedPosts" :key="'pin-'+post.id" class="post thread glassy">
+            <header class="post-head">
+              <div class="avatar">{{ getInitial(post) }}</div>
+              <div class="who">
+                <div class="name">{{ displayPostUser(post) }}</div>
+                <div class="time">{{ formatDate(post.created_at) }}</div>
+              </div>
+
+              <div class="postPills">
+                <span class="miniPostPill">PINNED</span>
+              </div>
+            </header>
+
+            <div v-if="post.caption" class="text thread-text">{{ post.caption }}</div>
+
+            <img v-if="post.image_url" class="media" :src="getMedia(post.image_url)" loading="lazy" />
+            <video v-if="post.video_url" class="media" :src="getMedia(post.video_url)" controls playsinline preload="metadata"></video>
+
+            <div class="actions">
+              <button class="action-btn" @click="togglePinPost(post)">
+                📌 <span class="label">{{ isPinned(post.id) ? "Pinned" : "Pin" }}</span>
+              </button>
+              <button class="action-btn" @click="toggleSavePost(post)">
+                💾 <span class="label">{{ isSaved(post.id) ? "Saved" : "Save" }}</span>
+              </button>
+              <div class="spacer"></div>
+              <button class="action-btn ghost" @click="sharePost(post)">🔗 <span class="label">Share</span></button>
+            </div>
+          </article>
+        </section>
+
+        <!-- THREADS MODE -->
+        <section v-else-if="feedMode === 'threads'" class="feed threads">
+          <div v-if="loading" class="state">Loading…</div>
+
+          <div v-else-if="sortedFilteredPosts.length === 0" class="state">
+            <div class="state-emoji">✍️</div>
+            <div class="state-title">No threads yet</div>
+            <div class="state-sub">Write something to start the conversation.</div>
+          </div>
+
+          <article v-else v-for="post in threadsPosts" :key="'t-'+post.id" class="post thread glassy">
+            <header class="post-head">
+              <div class="avatar">{{ getInitial(post) }}</div>
+              <div class="who">
+                <div class="name">{{ displayPostUser(post) }}</div>
+                <div class="time">{{ formatDate(post.created_at) }}</div>
+              </div>
+
+              <div class="postPills">
+                <span class="miniPostPill" v-if="post.video_url">VIDEO</span>
+                <span class="miniPostPill" v-else-if="post.image_url">IMAGE</span>
+                <span class="miniPostPill ghostPill" v-else>TEXT</span>
+              </div>
+            </header>
+
+            <div v-if="post.caption" class="text thread-text">{{ post.caption }}</div>
+
+            <button
+              v-if="post.image_url || post.video_url"
+              class="chip ghost thread-media-toggle"
+              @click="toggleThreadMedia(post.id)"
+            >
+              {{ threadMediaOpen[post.id] ? "Hide media" : "View media" }}
+            </button>
+
+            <div v-if="threadMediaOpen[post.id]" class="thread-media">
+              <img v-if="post.image_url" class="media" :src="getMedia(post.image_url)" loading="lazy" />
+              <video v-if="post.video_url" class="media" :src="getMedia(post.video_url)" controls playsinline preload="metadata"></video>
+            </div>
+
+            <div class="actions">
+              <button class="action-btn" :class="{ active: likesByPost[post.id]?.likedByMe }" :disabled="likeBusyByPost[post.id]" @click="toggleLike(post)">
+                ❤️ <span class="label">{{ likesByPost[post.id]?.count ?? 0 }}</span>
+              </button>
+
+              <button class="action-btn" @click="toggleComments(post.id)">
+                💬 <span class="label">{{ commentCount(post.id) }}</span>
+              </button>
+
+              <button class="action-btn" @click="toggleSavePost(post)">
+                💾 <span class="label">{{ isSaved(post.id) ? "Saved" : "Save" }}</span>
+              </button>
+
+              <button class="action-btn" @click="togglePinPost(post)">
+                📌 <span class="label">{{ isPinned(post.id) ? "Pinned" : "Pin" }}</span>
+              </button>
+
+              <div class="spacer"></div>
+
+              <button class="action-btn ghost" @click="sharePost(post)">🔗 <span class="label">Share</span></button>
+              <button class="action-btn ghost" @click="copyPostText(post)">📋 <span class="label">Copy</span></button>
+            </div>
+
+            <CommentsPanel
+              v-if="commentsOpenByPost[post.id]"
+              :post-id="post.id"
+              @changed="handleCommentsChanged(post.id)"
+            />
+          </article>
+        </section>
+
+        <!-- REELS MODE -->
+        <section v-else-if="feedMode === 'reels'" class="feed reels">
+          <template v-if="loading">
+            <div class="state">Loading…</div>
+          </template>
+
+          <div v-else-if="reelsPosts.length === 0" class="state">
+            <div class="state-emoji">🎞️</div>
+            <div class="state-title">No reels yet</div>
+            <div class="state-sub">Post a video and it will show here.</div>
+          </div>
+
+          <TikTokFeed
+            v-else
+            :items="reelsVisible"
+            mode="reels"
+            :globalMuted="globalMuted"
+            :canLoadMore="reelsCanLoadMore"
+            :loadingMore="reelsInfiniteLoading"
+            :getMedia="getMedia"
+            :formatDate="formatDate"
+            :getInitial="(p) => getInitial(p)"
+            :likesCount="(p) => (likesByPost[p.id]?.count ?? 0)"
+            :commentCount="(p) => commentCount(p.id)"
+            @toggle-muted="toggleGlobalMute"
+            @load-more="loadMoreReels"
+            @like="toggleLike"
+            @comments="openCommentsFromFeed"
+            @share="sharePost"
+          />
+
+          <div ref="reelsLoadMoreRef" class="load-more" v-if="reelsCanLoadMore && !loading">
+            {{ reelsInfiniteLoading ? "Loading more reels…" : "Scroll for more reels…" }}
+          </div>
+
+          <section
+            v-for="post in reelsVisible.filter((p) => commentsOpenByPost[p.id])"
+            :key="'reel-comments-' + post.id"
+            class="post comments-shell glassy"
+          >
+            <header class="post-head compactHead">
+              <div class="avatar">{{ getInitial(post) }}</div>
+              <div class="who">
+                <div class="name">{{ displayPostUser(post) }}</div>
+                <div class="time">Comments</div>
+              </div>
+              <button class="x" @click="toggleComments(post.id)">✕</button>
+            </header>
+
+            <CommentsPanel :post-id="post.id" @changed="handleCommentsChanged(post.id)" />
+          </section>
+        </section>
+
+        <!-- FOLLOWING MODE -->
+        <section v-else-if="feedMode === 'following'" class="feed following">
+          <template v-if="loading">
+            <div class="state">Loading…</div>
+          </template>
+
+          <div v-else-if="sortedFilteredPosts.length === 0" class="state">
+            <div class="state-emoji">📸</div>
+            <div class="state-title">No posts yet</div>
+            <div class="state-sub">Be the first to post.</div>
+          </div>
+
+          <article v-else v-for="post in followingPosts" :key="'f-'+post.id" class="post glassy">
+            <header class="post-head">
+              <div class="avatar">{{ getInitial(post) }}</div>
+              <div class="who">
+                <div class="name">{{ displayPostUser(post) }}</div>
+                <div class="time">{{ formatDate(post.created_at) }}</div>
+              </div>
+
+              <div class="postPills">
+                <span class="miniPostPill" v-if="post.video_url">VIDEO</span>
+                <span class="miniPostPill" v-else-if="post.image_url">IMAGE</span>
+                <span class="miniPostPill ghostPill" v-else>TEXT</span>
+              </div>
+            </header>
+
+            <div v-if="post.caption" class="text">{{ post.caption }}</div>
+
+            <img v-if="post.image_url" class="media" :src="getMedia(post.image_url)" loading="lazy" />
+            <video v-if="post.video_url" class="media" :src="getMedia(post.video_url)" controls playsinline preload="metadata"></video>
+
+            <div class="actions">
+              <button class="action-btn" :class="{ active: likesByPost[post.id]?.likedByMe }" :disabled="likeBusyByPost[post.id]" @click="toggleLike(post)">
+                ❤️ <span class="label">{{ likesByPost[post.id]?.count ?? 0 }}</span>
+              </button>
+
+              <button class="action-btn" @click="toggleComments(post.id)">
+                💬 <span class="label">{{ commentCount(post.id) }}</span>
+              </button>
+
+              <button class="action-btn" @click="toggleSavePost(post)">
+                💾 <span class="label">{{ isSaved(post.id) ? "Saved" : "Save" }}</span>
+              </button>
+
+              <button class="action-btn" @click="togglePinPost(post)">
+                📌 <span class="label">{{ isPinned(post.id) ? "Pinned" : "Pin" }}</span>
+              </button>
+
+              <div class="spacer"></div>
+
+              <button class="action-btn ghost" @click="sharePost(post)">🔗 <span class="label">Share</span></button>
+              <button class="action-btn ghost" @click="copyPostText(post)">📋 <span class="label">Copy</span></button>
+            </div>
+
+            <CommentsPanel
+              v-if="commentsOpenByPost[post.id]"
+              :post-id="post.id"
+              @changed="handleCommentsChanged(post.id)"
+            />
+          </article>
+        </section>
+
+        <!-- FOR YOU MODE -->
+        <section v-else class="feed tiktok">
+          <template v-if="loading">
+            <div class="state">Loading…</div>
+          </template>
+
+          <div v-else-if="forYouPosts.length === 0" class="state">
+            <div class="state-emoji">🎬</div>
+            <div class="state-title">No videos yet</div>
+            <div class="state-sub">Post a video and it will autoplay here.</div>
+          </div>
+
+          <TikTokFeed
+            v-else
+            :items="visiblePosts"
+            mode="foryou"
+            :globalMuted="globalMuted"
+            :canLoadMore="canLoadMore"
+            :loadingMore="infiniteLoading"
+            :getMedia="getMedia"
+            :formatDate="formatDate"
+            :getInitial="(p) => getInitial(p)"
+            :likesCount="(p) => (likesByPost[p.id]?.count ?? 0)"
+            :commentCount="(p) => commentCount(p.id)"
+            @toggle-muted="toggleGlobalMute"
+            @load-more="loadMore"
+            @like="toggleLike"
+            @comments="openCommentsFromFeed"
+            @share="sharePost"
+          />
+
+          <div ref="loadMoreRef" class="load-more" v-if="canLoadMore && !loading">
+            {{ infiniteLoading ? "Loading more videos…" : "Scroll for more videos…" }}
+          </div>
+
+          <section
+            v-for="post in visiblePosts.filter((p) => commentsOpenByPost[p.id])"
+            :key="'fy-comments-' + post.id"
+            class="post comments-shell glassy"
+          >
+            <header class="post-head compactHead">
+              <div class="avatar">{{ getInitial(post) }}</div>
+              <div class="who">
+                <div class="name">{{ displayPostUser(post) }}</div>
+                <div class="time">Comments</div>
+              </div>
+              <button class="x" @click="toggleComments(post.id)">✕</button>
+            </header>
+
+            <CommentsPanel :post-id="post.id" @changed="handleCommentsChanged(post.id)" />
+          </section>
+        </section>
+
+        <!-- ACTIVITY FEED -->
+        <section v-if="activityFeed.length" class="panel glassy">
+          <div class="panel-head">
+            <div class="panel-title">📝 Activity Feed</div>
+            <button class="btn ghostBtn" @click="clearActivity">Clear</button>
+          </div>
+
+          <div class="rooms-messages">
+            <div v-for="(a, i) in activityFeed" :key="'activity-'+i" class="rm">
+              <div class="rm-top">
+                <span class="rm-user">{{ a.title }}</span>
+                <span class="rm-time">{{ formatDate(a.created_at) }}</span>
+              </div>
+              <div class="rm-text">{{ a.text }}</div>
+            </div>
+          </div>
+        </section>
+      </main>
+
+      <!-- CHAT DRAWER -->
+      <aside class="chatDrawer" :class="{ open: chatOpen }">
+        <section class="panel chatPanel glassy">
+          <div class="panel-head">
+            <div class="panel-title">💬 Chat</div>
+            <button class="btn" @click="toggleChat">{{ chatOpen ? "Close" : "Open" }}</button>
+          </div>
+
+          <div class="chat-hint">Quick room chat. Rooms tab is full Discord-style.</div>
+
+          <div class="chat-list">
+            <button class="chat-item" :class="{ active: chatRoom === 'global' }" @click="selectChat('global')">🌍 Global</button>
+            <button class="chat-item" :class="{ active: chatRoom === 'support' }" @click="selectChat('support')">🛠 Support</button>
+            <button class="chat-item" :class="{ active: chatRoom === 'dev' }" @click="selectChat('dev')">💻 Dev</button>
+            <button class="chat-item" :class="{ active: chatRoom === 'random' }" @click="selectChat('random')">🎲 Random</button>
+          </div>
+
+          <div class="chat-box">
+            <div class="chat-messages" ref="chatBoxRef">
+              <div v-for="(m, i) in chatMessages" :key="'cm-'+i" class="chat-msg">
+                <strong>{{ m.from }}:</strong> {{ m.text }}
+              </div>
+            </div>
+
+            <div class="chat-input">
+              <input v-model="chatText" placeholder="Type message…" @keydown.enter.prevent="sendChat" />
+              <button class="btn btn-primary" @click="sendChat">Send</button>
+            </div>
+          </div>
+        </section>
+      </aside>
+
+      <!-- INCOMING CALL POPUP -->
+      <div v-if="incomingCall" class="modal-backdrop" @click.self="rejectIncoming">
+        <div class="modal glassy">
+          <div class="modal-title">
+            Incoming {{ incomingCall.kind === "video" ? "Video" : "Audio" }} Call
+          </div>
+          <div class="modal-sub">
+            From
+            <span class="pill">
+              {{ incomingCall.from?.username || incomingCall.fromName || ("User #" + incomingCall.fromUserId) }}
+            </span>
+          </div>
+
+          <div class="modal-actions">
+            <button class="btn danger" @click="rejectIncoming">Reject</button>
+            <button class="btn btn-primary" @click="acceptIncoming">Accept</button>
+          </div>
+
+          <div class="tiny muted mt10">Tip: keep Dashboard open on both devices for best reliability.</div>
         </div>
       </div>
 
-      <div class="zoom-controls">
-        <button class="zoom-ctrl" :class="{ off: zoomAudioMuted }" @click="toggleZoomMute">
-          {{ zoomAudioMuted ? "🔇" : "🎤" }}
-        </button>
-        <button class="zoom-ctrl" :class="{ off: !zoomVideoEnabled }" @click="toggleZoomVideo">
-          {{ zoomVideoEnabled ? "📹" : "🚫" }}
-        </button>
-        <button class="zoom-ctrl" :class="{ active: zoomScreenSharing }" @click="toggleZoomScreen">
-          🖥️
-        </button>
-        <button class="zoom-ctrl danger" @click="leaveZoomRoom">📞 End</button>
+      <!-- CALLING TOAST -->
+      <div v-if="callingToast" class="toast glassy">
+        <span class="toast-dot"></span>
+        {{ callingToast }}
+        <button class="mini-x" @click="cancelCall">✕</button>
       </div>
 
-      <!-- Participants Sidebar -->
-      <div v-if="zoomShowParticipants" class="zoom-sidebar">
-        <div class="zoom-sidebar-head">
-          <div class="panel-title">Participants</div>
-          <button class="mini-x" @click="zoomShowParticipants = false">✕</button>
-        </div>
-        <div class="zoom-sidebar-list">
-          <div class="zoom-participant">
-            <span class="status on"></span> You {{ zoomAudioMuted ? "(muted)" : "" }}
+      <!-- ELITE QUICK CREATE SHEET -->
+      <transition name="fade">
+        <div v-if="quickCreateOpen" class="quickCreateBackdrop" @click.self="closeQuickCreate">
+          <div class="quickCreateSheet glassy">
+            <div class="quickCreateHead">
+              <div>
+                <div class="panel-title">⚡ Create instantly</div>
+                <div class="tiny muted">Post, call, room, live, and sync even when offline.</div>
+              </div>
+              <button class="mini-x" @click="closeQuickCreate">✕</button>
+            </div>
+
+            <div class="quickCreateGrid">
+              <button class="quickCreateCard" @click="useQuickAction('post')">✍️ Text Post</button>
+              <button class="quickCreateCard" @click="useQuickAction('photo')">🖼️ Photo Post</button>
+              <button class="quickCreateCard" @click="useQuickAction('reel')">🎞️ Reel</button>
+              <button class="quickCreateCard" @click="useQuickAction('call')">📞 Quick Call</button>
+              <button class="quickCreateCard" @click="useQuickAction('room')">🎧 Start Room</button>
+              <button class="quickCreateCard" @click="useQuickAction('live')">🔴 Go Live</button>
+              <button class="quickCreateCard" @click="useQuickAction('saved')">💾 Saved</button>
+              <button class="quickCreateCard" @click="useQuickAction('offline')">
+                {{ isNetworkOnline ? "☁️ Force Queue Draft" : "📦 Queue Offline Post" }}
+              </button>
+            </div>
+
+            <div v-if="offlineQueueCount" class="quickQueueBar">
+              <span>Queued posts: {{ offlineQueueCount }}</span>
+              <button class="btn ghostBtn" @click="flushOfflineQueue">Sync now</button>
+            </div>
           </div>
-          <div v-for="p in zoomParticipants" :key="p.id" class="zoom-participant">
-            <span class="status on"></span> {{ p.username }}
-          </div>
         </div>
-      </div>
+      </transition>
+
+      <!-- ELITE BOTTOM NAV -->
+      <nav class="bottomNav eliteBottomNav">
+        <button class="bn" :class="{ on: isHomeActive }" @click="goHome">
+          <span class="bnI">🏠</span><span class="bnT">Home</span>
+        </button>
+
+        <button class="bn" @click="goInbox">
+          <span class="bnI">💬</span><span class="bnT">Inbox</span>
+        </button>
+
+        <button class="bn createBn" @click="openQuickCreate()">
+          <span class="createCore">＋</span>
+        </button>
+
+        <button class="bn" :class="{ on: feedMode === 'live' }" @click="goLiveTab">
+          <span class="bnI">🔴</span><span class="bnT">Live</span>
+        </button>
+
+        <button class="bn" @click="goProfile">
+          <span class="bnI">👤</span><span class="bnT">Profile</span>
+        </button>
+      </nav>
     </div>
-</div>
-
   </Layout>
 </template>
 
@@ -1349,7 +1302,6 @@ import Layout from "../components/Layout.vue"
 import TikTokFeed from "../components/TikTokFeed.vue"
 import CommentsPanel from "../components/Comments.vue"
 import { createSocket } from "../api/socket"
-import { startLocation, useLocation, sendLocationNow } from "../composables/useLocation"
 
 const router = useRouter()
 const apiUrl = (import.meta.env.VITE_API_URL || "").trim()
@@ -1358,7 +1310,7 @@ const token = localStorage.getItem("token") || ""
 const me = (() => {
   try { return JSON.parse(localStorage.getItem("user") || "null") } catch { return null }
 })()
-const { coords, status: locStatus, hasLocation, isApproximate, locationLabel, computeDistances, sortByDistance } = useLocation()
+
 /* =========================
    STORAGE KEYS
 ========================= */
@@ -1370,8 +1322,6 @@ const DASH_ACTIVITY_KEY = "pulse_dashboard_activity_v2"
 const DASH_STREAK_KEY = "pulse_dashboard_streak_v1"
 const DASH_FOCUS_KEY = "pulse_dashboard_focus_v1"
 const DASH_OFFLINE_QUEUE_KEY = "pulse_dashboard_offline_queue_v1"
-const DASH_CHAT_KEY = "pulse_dashboard_chat_v1"
-const DASH_CHAT_QUEUE_KEY = "pulse_dashboard_chat_queue_v1"
 
 /* =========================
    READ HELPERS
@@ -1534,20 +1484,7 @@ function persistOfflineQueue() {
     localStorage.setItem(DASH_OFFLINE_QUEUE_KEY, JSON.stringify(offlineQueue.value.slice(0, 30)))
   } catch {}
 }
-function persistChatMessages() {
-  try {
-    localStorage.setItem(DASH_CHAT_KEY, JSON.stringify(chatMessages.value.slice(-300)))
-  } catch {}
-}
 
-function loadChatMessages() {
-  try {
-    const saved = JSON.parse(localStorage.getItem(DASH_CHAT_KEY) || "[]")
-    chatMessages.value = Array.isArray(saved) ? saved : []
-  } catch {
-    chatMessages.value = []
-  }
-}
 function openQuickCreate(intent = "post") {
   quickCreateIntent.value = intent
   quickCreateOpen.value = true
@@ -1747,7 +1684,6 @@ function connectSocket() {
     socketConnected.value = true
     statusNote.value = ""
     safeRegisterOnline()
-    startLocation({ socket, userId: me?.id, autoWatch: true })
     refreshCallRooms()
     addActivity("Socket", "Connected to Pulse realtime service")
   })
@@ -1914,278 +1850,6 @@ const callRoomKind = ref("audio")
 const creatingCallRoom = ref(false)
 const callRoomsError = ref("")
 const callRoomsLoading = ref(false)
-/* =========================
-   ZOOM MEETINGS (SEPARATE)
-========================= */
-const zoomRoomName = ref("")
-const zoomRooms = ref([])
-const zoomCreating = ref(false)
-const zoomError = ref("")
-const inZoomMeeting = ref(false)
-const zoomCurrentRoom = ref(null)
-const zoomParticipants = ref([]) // { id, username, stream, audioMuted, videoOn }
-const zoomLocalStream = ref(null)
-const zoomScreenStream = ref(null)
-const zoomAudioMuted = ref(false)
-const zoomVideoEnabled = ref(true)
-const zoomScreenSharing = ref(false)
-const zoomShowParticipants = ref(false)
-const zoomPeerConnections = ref(new Map()) // userId -> RTCPeerConnection
-
-const ZOOM_ICE = [
-  { urls: "stun:stun.l.google.com:19302" },
-  { urls: "stun:stun1.l.google.com:19302" },
-]
-
-function getZoomMedia(video = true) {
-  return navigator.mediaDevices.getUserMedia({
-    audio: true,
-    video: video ? { width: 1280, height: 720 } : false,
-  })
-}
-
-function makeZoomPC(userId) {
-  const pc = new RTCPeerConnection({ iceServers: ZOOM_ICE })
-
-  // add camera + mic
-  zoomLocalStream.value?.getTracks().forEach((t) => {
-    pc.addTrack(t, zoomLocalStream.value)
-  })
-
-  // add screen if active
-  zoomScreenStream.value?.getTracks().forEach((t) => {
-    pc.addTrack(t, zoomScreenStream.value)
-  })
-
-  pc.onicecandidate = (e) => {
-    if (e.candidate && zoomCurrentRoom.value) {
-      socket.emit("zoom:signal", {
-        roomId: zoomCurrentRoom.value.roomId,
-        toUserId: userId,
-        signal: { type: "ice-candidate", candidate: e.candidate },
-      })
-    }
-  }
-
-  pc.ontrack = (e) => {
-    const p = zoomParticipants.value.find((x) => x.id === userId)
-    if (p) {
-      p.stream = e.streams[0]
-      zoomParticipants.value = [...zoomParticipants.value] // trigger reactivity
-    }
-  }
-
-  pc.onconnectionstatechange = () => {
-    if (pc.connectionState === "disconnected" || pc.connectionState === "failed") {
-      dropZoomPeer(userId)
-    }
-  }
-
-  return pc
-}
-
-async function createZoomRoom() {
-  if (!token) return alert("Login to start a meeting.")
-  if (zoomCreating.value) return
-  zoomCreating.value = true
-  zoomError.value = ""
-
-  try {
-    zoomLocalStream.value = await getZoomMedia(true)
-    const name = zoomRoomName.value.trim() || `${meName.value}'s Meeting`
-
-    socket.emit("zoom:create", { name }, async (res) => {
-      zoomCreating.value = false
-      if (res?.error) {
-        zoomError.value = res.error
-        return
-      }
-
-      const roomId = res.roomId
-      zoomCurrentRoom.value = { roomId, name, isHost: true }
-      inZoomMeeting.value = true
-      zoomParticipants.value = []
-      zoomRoomName.value = ""
-
-      // wire room-specific listeners
-      socket.on(`zoom:user-joined:${roomId}`, async ({ userId, username }) => {
-        if (userId === String(me?.id)) return
-        if (zoomParticipants.value.find((p) => p.id === userId)) return
-
-        zoomParticipants.value.push({
-          id: userId,
-          username: username || "Guest",
-          stream: null,
-          audioMuted: false,
-          videoOn: true,
-        })
-
-        const pc = makeZoomPC(userId)
-        zoomPeerConnections.value.set(userId, pc)
-
-        const offer = await pc.createOffer()
-        await pc.setLocalDescription(offer)
-
-        socket.emit("zoom:signal", {
-          roomId,
-          toUserId: userId,
-          signal: { type: "offer", sdp: offer.sdp },
-        })
-      })
-
-      socket.on(`zoom:signal:${roomId}`, async ({ fromUserId, signal }) => {
-        await handleZoomSignal(fromUserId, signal)
-      })
-
-      socket.on(`zoom:user-left:${roomId}`, ({ userId }) => {
-        dropZoomPeer(userId)
-      })
-    })
-  } catch {
-    zoomError.value = "Camera / microphone access denied."
-    zoomCreating.value = false
-  }
-}
-
-async function joinZoomRoom(room) {
-  if (!token) return alert("Login to join.")
-  zoomError.value = ""
-
-  try {
-    zoomLocalStream.value = await getZoomMedia(true)
-    const roomId = room.roomId || room.id
-
-    socket.emit("zoom:join", { roomId }, async (res) => {
-      if (res?.error) {
-        zoomError.value = res.error
-        return
-      }
-
-      zoomCurrentRoom.value = { roomId, name: room.name, isHost: false }
-      inZoomMeeting.value = true
-      zoomParticipants.value = (res.participants || [])
-        .filter((p) => String(p.userId) !== String(me?.id))
-        .map((p) => ({
-          id: p.userId,
-          username: p.username || "Guest",
-          stream: null,
-          audioMuted: false,
-          videoOn: true,
-        }))
-
-      socket.on(`zoom:signal:${roomId}`, async ({ fromUserId, signal }) => {
-        await handleZoomSignal(fromUserId, signal)
-      })
-
-      socket.on(`zoom:user-left:${roomId}`, ({ userId }) => {
-        dropZoomPeer(userId)
-      })
-    })
-  } catch {
-    zoomError.value = "Camera / microphone access denied."
-  }
-}
-
-async function handleZoomSignal(fromUserId, signal) {
-  let pc = zoomPeerConnections.value.get(fromUserId)
-
-  if (signal.type === "offer") {
-    if (!pc) {
-      pc = makeZoomPC(fromUserId)
-      zoomPeerConnections.value.set(fromUserId, pc)
-    }
-    await pc.setRemoteDescription(new RTCSessionDescription({ type: "offer", sdp: signal.sdp }))
-    const answer = await pc.createAnswer()
-    await pc.setLocalDescription(answer)
-
-    socket.emit("zoom:signal", {
-      roomId: zoomCurrentRoom.value.roomId,
-      toUserId: fromUserId,
-      signal: { type: "answer", sdp: answer.sdp },
-    })
-  } else if (signal.type === "answer") {
-    if (pc) await pc.setRemoteDescription(new RTCSessionDescription({ type: "answer", sdp: signal.sdp }))
-  } else if (signal.type === "ice-candidate") {
-    if (pc) await pc.addIceCandidate(new RTCIceCandidate(signal.candidate))
-  }
-}
-
-function dropZoomPeer(userId) {
-  const pc = zoomPeerConnections.value.get(userId)
-  if (pc) {
-    pc.close()
-    zoomPeerConnections.value.delete(userId)
-  }
-  zoomParticipants.value = zoomParticipants.value.filter((p) => p.id !== userId)
-}
-
-function leaveZoomRoom() {
-  const roomId = zoomCurrentRoom.value?.roomId
-  if (roomId) {
-    socket.emit("zoom:leave", { roomId })
-    socket.off(`zoom:signal:${roomId}`)
-    socket.off(`zoom:user-joined:${roomId}`)
-    socket.off(`zoom:user-left:${roomId}`)
-  }
-
-  zoomPeerConnections.value.forEach((pc) => pc.close())
-  zoomPeerConnections.value.clear()
-
-  zoomLocalStream.value?.getTracks().forEach((t) => t.stop())
-  zoomScreenStream.value?.getTracks().forEach((t) => t.stop())
-
-  zoomLocalStream.value = null
-  zoomScreenStream.value = null
-  inZoomMeeting.value = false
-  zoomCurrentRoom.value = null
-  zoomParticipants.value = []
-  zoomScreenSharing.value = false
-  zoomAudioMuted.value = false
-  zoomVideoEnabled.value = true
-  zoomShowParticipants.value = false
-}
-
-function toggleZoomMute() {
-  if (!zoomLocalStream.value) return
-  zoomLocalStream.value.getAudioTracks().forEach((t) => {
-    t.enabled = !t.enabled
-  })
-  zoomAudioMuted.value = !zoomAudioMuted.value
-}
-
-function toggleZoomVideo() {
-  if (!zoomLocalStream.value) return
-  zoomLocalStream.value.getVideoTracks().forEach((t) => {
-    t.enabled = !t.enabled
-  })
-  zoomVideoEnabled.value = !zoomVideoEnabled.value
-}
-
-async function toggleZoomScreen() {
-  if (zoomScreenSharing.value) {
-    zoomScreenStream.value?.getTracks().forEach((t) => t.stop())
-    zoomScreenStream.value = null
-    zoomScreenSharing.value = false
-    // note: in production you'd renegotiate peers here
-  } else {
-    try {
-      zoomScreenStream.value = await navigator.mediaDevices.getDisplayMedia({ video: true })
-      zoomScreenSharing.value = true
-      zoomScreenStream.value.getVideoTracks()[0].onended = () => {
-        zoomScreenStream.value = null
-        zoomScreenSharing.value = false
-      }
-    } catch {
-      /* user cancelled */
-    }
-  }
-}
-
-function refreshZoomRooms() {
-  socket.emit("zoom:list", {}, (res) => {
-    zoomRooms.value = Array.isArray(res?.rooms) ? res.rooms : []
-  })
-}
 
 function normalizeCallRoom(room) {
   if (!room || typeof room !== "object") return null
@@ -2940,29 +2604,11 @@ function sendChat() {
   if (chatRoom.value === "callrooms") return
   if (!chatText.value.trim()) return
 
-  const msg = {
+  socket?.emit("send-room-message", {
     room: chatRoom.value,
     from: me?.username || me?.display_name || "me",
     text: chatText.value,
-    created_at: new Date().toISOString(),
-    tempId: `tmp_${Date.now()}_${Math.random().toString(36).slice(2, 7)}`,
-    pending: !socketConnected.value
-  }
-
-  // 1) Show immediately so sender doesn't wait
-  chatMessages.value.push(msg)
-  persistChatMessages()
-  nextTick(() => {
-    scrollChatToBottom()
-    scrollRoomsToBottom()
   })
-
-  // 2) Send if online, queue if offline
-  if (socketConnected.value && socket) {
-    socket.emit("send-room-message", msg)
-  } else {
-    queueChatMessage(msg)
-  }
 
   addActivity("Chat", `Sent message in #${chatRoom.value}`)
   chatText.value = ""
@@ -3017,19 +2663,6 @@ function goLiveTab() {
 function goProfile() {
   const id = me?.id ? String(me.id) : ""
   router.push(id ? `/profile/${id}` : "/profile")
-}
-
-function openChat(user) {
-  const targetId = String(user?.id || user?.userId || "").trim()
-  const targetName = displayUserName(user)
-  if (!targetId) return
-  router.push({
-    path: "/messages",
-    query: {
-      userId: targetId,
-      name: targetName,
-    },
-  })
 }
 
 /* =========================
@@ -3326,9 +2959,7 @@ function handleKeydown(e) {
 ========================= */
 onMounted(async () => {
   updateDailyStreak()
-  loadChatMessages()
-  
-    
+
   try {
     const savedDraft = JSON.parse(localStorage.getItem(DASH_DRAFT_KEY) || "{}")
     if (savedDraft?.caption) {
@@ -3351,65 +2982,28 @@ onMounted(async () => {
 
   connectSocket()
 
-    socket.on("receive-message", (msg) => {
-      // If it's our own message coming back, swap the pending one
-      if (msg.tempId && msg.from === (me?.username || me?.display_name || "me")) {
-        const idx = chatMessages.value.findIndex(m => m.tempId === msg.tempId)
-        if (idx !== -1) {
-          chatMessages.value[idx] = { ...msg, pending: false }
-          chatMessages.value = [...chatMessages.value] // trigger Vue reactivity
-          persistChatMessages()
-          nextTick(() => {
-            scrollChatToBottom()
-            scrollRoomsToBottom()
-          })
-          return
-        }
-      }
-
-      // For other people's messages, block raw duplicates
-      const isDup = chatMessages.value.some(m =>
-        m.text === msg.text &&
-        m.from === msg.from &&
-        Math.abs(new Date(m.created_at || 0) - new Date(msg.created_at || Date.now())) < 3000
-      )
-
-      if (!isDup) {
-        chatMessages.value.push(msg)
-        persistChatMessages()
-        nextTick(() => {
-          scrollChatToBottom()
-          scrollRoomsToBottom()
-        })
-      }
+  socket.on("receive-message", (msg) => {
+    chatMessages.value.push(msg)
+    nextTick(() => {
+      scrollChatToBottom()
+      scrollRoomsToBottom()
     })
-     refreshZoomRooms()
-    socket.on("zoom:room-list", (rooms) => {
-      zoomRooms.value = Array.isArray(rooms) ? rooms : []
-    })
-    socket.on("live-list", (streams) => {
-      liveStreams.value = Array.isArray(streams) ? streams : []
-    })
+  })
 
-    // ✅ KEEP THIS — it is already in the correct spot
-    socket.on("presence:list", ({ onlineUserIds } = {}) => {
-      if (!Array.isArray(onlineUserIds)) return
-      onlinePairs.value = onlineUserIds.map((id) => [String(id), ""])
-    })
+  socket.on("live-list", (streams) => {
+    liveStreams.value = Array.isArray(streams) ? streams : []
+  })
 
-    // ✅ KEEP THIS — it is already in the correct spot
-    socket.on("location:nearby", (nearby) => {
-      if (!Array.isArray(nearby)) return
+  socket.on("presence:list", ({ onlineUserIds } = {}) => {
+    if (!Array.isArray(onlineUserIds)) return
+    onlinePairs.value = onlineUserIds.map((id) => [String(id), ""])
+  })
 
-      people.value = people.value.map((u) => {
-        const match = nearby.find((n) => String(n.userId) === String(u.id))
-        if (match && Number.isFinite(match.distance)) {
-          return { ...u, distance: match.distance }
-        }
-        return { ...u, distance: null }
-      })
-    })
-    socket.on("call:ringing", ({ roomId, kind } = {}) => {
+  socket.on("online-users", (pairs) => {
+    onlinePairs.value = Array.isArray(pairs) ? pairs : []
+  })
+
+  socket.on("call:ringing", ({ roomId, kind } = {}) => {
     pendingRoomId.value = String(roomId || "")
     pendingKind.value = kind === "video" ? "video" : (kind || pendingKind.value || "audio")
     callingToast.value = `Calling ${pendingUserName.value || "user"}…`
@@ -3589,18 +3183,15 @@ onBeforeUnmount(() => {
   try { loadMoreObserver?.disconnect() } catch {}
   try { reelsLoadMoreObserver?.disconnect() } catch {}
   try { videoObserver?.disconnect() } catch {}
-  socket?.off("zoom:room-list")
-    leaveZoomRoom()
+
   loadMoreObserver = null
   reelsLoadMoreObserver = null
   videoObserver = null
 })
 </script>
 
+<!-- KEEP YOUR CURRENT <style scoped> BLOCK EXACTLY THE SAME -->
 <style scoped>
-/* =========================================================
-   RESET LAYOUT SIDEBAR
-========================================================= */
 :deep(.sidebar),
 :deep(.layout-sidebar),
 :deep(.left-menu),
@@ -3610,151 +3201,118 @@ onBeforeUnmount(() => {
   display: none !important;
 }
 
-/* =========================================================
-   DESIGN TOKENS & BASE
-========================================================= */
 .wrap {
   position: relative;
   min-height: 100vh;
-  padding-bottom: 100px;
-  color: #f0f2f7;
-  overflow-x: hidden;
+  padding-bottom: 88px;
+  color: white;
+  overflow: hidden;
   background:
-    radial-gradient(1200px 800px at 15% -5%, rgba(99, 102, 241, 0.12), transparent 60%),
-    radial-gradient(1000px 700px at 85% 10%, rgba(236, 72, 153, 0.10), transparent 60%),
-    radial-gradient(900px 600px at 50% 105%, rgba(59, 130, 246, 0.08), transparent 60%),
-    linear-gradient(180deg, #070a14 0%, #0a0e1a 40%, #070b14 100%);
+    radial-gradient(1200px 700px at 20% 0%, rgba(255,75,43,0.16), transparent),
+    radial-gradient(1000px 700px at 80% 20%, rgba(255,65,108,0.16), transparent),
+    radial-gradient(800px 600px at 50% 100%, rgba(124,58,237,0.12), transparent),
+    linear-gradient(180deg, #09111f 0%, #0b1220 45%, #07101d 100%);
 }
 
-/* =========================================================
-   AMBIENT ORBS
-========================================================= */
 .bg-orb {
   position: fixed;
-  border-radius: 50%;
-  filter: blur(100px);
+  border-radius: 999px;
+  filter: blur(80px);
   pointer-events: none;
-  opacity: 0.25;
+  opacity: 0.35;
   z-index: 0;
-  animation: floatOrb 12s ease-in-out infinite;
 }
 
 .orb1 {
-  width: 320px;
-  height: 320px;
-  left: -60px;
-  top: 40px;
-  background: radial-gradient(circle, rgba(236, 72, 153, 0.45), transparent 70%);
-  animation-duration: 14s;
+  width: 280px;
+  height: 280px;
+  left: -40px;
+  top: 60px;
+  background: rgba(255, 90, 120, 0.42);
+  animation: floatOrb 10s ease-in-out infinite;
 }
 
 .orb2 {
-  width: 360px;
-  height: 360px;
-  right: -80px;
-  top: 180px;
-  background: radial-gradient(circle, rgba(99, 102, 241, 0.40), transparent 70%);
-  animation-duration: 18s;
-  animation-direction: reverse;
+  width: 300px;
+  height: 300px;
+  right: -40px;
+  top: 200px;
+  background: rgba(91, 140, 255, 0.34);
+  animation: floatOrb 13s ease-in-out infinite reverse;
 }
 
 .orb3 {
-  width: 260px;
-  height: 260px;
-  left: 35%;
-  bottom: 60px;
-  background: radial-gradient(circle, rgba(59, 130, 246, 0.30), transparent 70%);
-  animation-duration: 16s;
+  width: 220px;
+  height: 220px;
+  left: 30%;
+  bottom: 80px;
+  background: rgba(56, 189, 248, 0.20);
+  animation: floatOrb 14s ease-in-out infinite;
 }
 
 @keyframes floatOrb {
-  0%, 100% { transform: translateY(0) translateX(0) scale(1); }
-  33% { transform: translateY(-24px) translateX(12px) scale(1.03); }
-  66% { transform: translateY(8px) translateX(-8px) scale(0.97); }
+  0% { transform: translateY(0px) translateX(0px); }
+  50% { transform: translateY(-18px) translateX(8px); }
+  100% { transform: translateY(0px) translateX(0px); }
 }
 
-/* =========================================================
-   GLASSMORPHISM SYSTEM
-========================================================= */
 .glassy {
-  background: rgba(255, 255, 255, 0.035);
-  border: 1px solid rgba(255, 255, 255, 0.08);
-  backdrop-filter: blur(20px) saturate(1.4);
-  -webkit-backdrop-filter: blur(20px) saturate(1.4);
+  background: rgba(255, 255, 255, 0.075);
+  border: 1px solid rgba(255, 255, 255, 0.12);
+  backdrop-filter: blur(14px);
   box-shadow:
-    0 8px 32px rgba(0, 0, 0, 0.18),
-    inset 0 1px 0 rgba(255, 255, 255, 0.04);
-  transition: border-color 0.2s ease, box-shadow 0.2s ease, transform 0.2s ease;
+    0 12px 40px rgba(0, 0, 0, 0.26),
+    inset 0 1px 0 rgba(255,255,255,0.04);
 }
 
-.glassy:hover {
-  border-color: rgba(255, 255, 255, 0.12);
-}
-
-/* =========================================================
-   TOPBAR
-========================================================= */
 .topbar {
   position: sticky;
   top: 0;
   z-index: 60;
-  padding: 14px 20px;
+  padding: 14px 14px;
   display: flex;
   justify-content: space-between;
   align-items: center;
-  gap: 16px;
-  background: rgba(7, 10, 20, 0.78);
-  backdrop-filter: blur(24px) saturate(1.3);
-  -webkit-backdrop-filter: blur(24px) saturate(1.3);
-  border-bottom: 1px solid rgba(255, 255, 255, 0.06);
+  gap: 12px;
+  background: rgba(8, 12, 20, 0.72);
+  backdrop-filter: blur(14px);
+  border-bottom: 1px solid rgba(255, 255, 255, 0.10);
 }
 
 .brand {
   display: flex;
   align-items: center;
-  gap: 12px;
+  gap: 10px;
   cursor: pointer;
-  transition: opacity 0.2s ease;
-}
-
-.brand:hover {
-  opacity: 0.85;
 }
 
 .logo {
-  width: 44px;
-  height: 44px;
+  width: 42px;
+  height: 42px;
   border-radius: 14px;
   display: grid;
   place-items: center;
-  background: linear-gradient(135deg, #ec4899 0%, #8b5cf6 50%, #6366f1 100%);
-  border: 1px solid rgba(255, 255, 255, 0.15);
-  font-size: 22px;
-  box-shadow: 0 8px 24px rgba(139, 92, 246, 0.25);
-  animation: floatLogo 5s ease-in-out infinite;
+  background: linear-gradient(135deg, rgba(255,65,108,0.9), rgba(91,140,255,0.9));
+  border: 1px solid rgba(255,255,255,0.18);
+  font-size: 20px;
+  box-shadow: 0 10px 26px rgba(255,65,108,0.22);
+  animation: floatLogo 4s ease-in-out infinite;
 }
 
 @keyframes floatLogo {
-  0%, 100% { transform: translateY(0); }
-  50% { transform: translateY(-4px); }
+  0% { transform: translateY(0) }
+  50% { transform: translateY(-3px) }
+  100% { transform: translateY(0) }
 }
 
 .title {
-  font-weight: 900;
-  font-size: 19px;
-  letter-spacing: -0.02em;
-  background: linear-gradient(135deg, #fff 0%, #c7d2fe 100%);
-  -webkit-background-clip: text;
-  -webkit-text-fill-color: transparent;
-  background-clip: text;
+  font-weight: 950;
+  font-size: 18px;
 }
 
 .sub {
-  opacity: 0.55;
-  font-size: 11px;
-  font-weight: 500;
-  letter-spacing: 0.04em;
-  text-transform: uppercase;
+  opacity: .72;
+  font-size: 12px;
 }
 
 .top-actions {
@@ -3762,235 +3320,185 @@ onBeforeUnmount(() => {
   gap: 8px;
   flex-wrap: wrap;
   justify-content: flex-end;
-  align-items: center;
 }
 
-/* =========================================================
-   HERO SECTION
-========================================================= */
+/* HERO */
 .heroStrip {
   position: relative;
   z-index: 2;
   max-width: 1100px;
-  margin: 16px auto 0;
-  padding: 0 20px;
+  margin: 12px auto 0;
+  padding: 0 16px;
 }
 
 .heroCard {
-  padding: 24px;
-  border-radius: 28px;
+  padding: 18px;
+  border-radius: 24px;
   display: grid;
-  grid-template-columns: 1.6fr 1fr;
-  gap: 24px;
+  grid-template-columns: 1.5fr 1fr;
+  gap: 16px;
   align-items: center;
-  background: rgba(255, 255, 255, 0.04);
-  border: 1px solid rgba(255, 255, 255, 0.08);
 }
 
 .heroEyebrow {
   font-size: 11px;
-  opacity: 0.5;
-  letter-spacing: 0.2em;
-  font-weight: 800;
-  text-transform: uppercase;
-  color: #a5b4fc;
+  opacity: .72;
+  letter-spacing: .18em;
+  font-weight: 900;
 }
 
 .heroTitle {
-  font-size: 32px;
-  font-weight: 900;
-  margin-top: 6px;
-  letter-spacing: -0.03em;
-  background: linear-gradient(135deg, #fff 0%, #e0e7ff 60%, #c7d2fe 100%);
-  -webkit-background-clip: text;
-  -webkit-text-fill-color: transparent;
-  background-clip: text;
+  font-size: 28px;
+  font-weight: 950;
+  margin-top: 4px;
 }
 
 .heroSub {
-  margin-top: 10px;
-  opacity: 0.7;
-  max-width: 520px;
-  line-height: 1.65;
-  font-size: 14px;
-  font-weight: 400;
+  margin-top: 8px;
+  opacity: .8;
+  max-width: 540px;
+  line-height: 1.5;
 }
 
 .heroActions {
   display: flex;
   gap: 10px;
   flex-wrap: wrap;
-  margin-top: 18px;
+  margin-top: 14px;
 }
 
 .heroStats {
   display: grid;
-  grid-template-columns: repeat(3, 1fr);
-  gap: 12px;
-}
-
-.heroStat {
-  padding: 16px 12px;
-  border-radius: 20px;
-  background: rgba(255, 255, 255, 0.04);
-  border: 1px solid rgba(255, 255, 255, 0.06);
-  text-align: center;
-  transition: transform 0.2s ease, background 0.2s ease;
-}
-
-.heroStat:hover {
-  transform: translateY(-2px);
-  background: rgba(255, 255, 255, 0.07);
-}
-
-.heroStatNum {
-  font-size: 26px;
-  font-weight: 900;
-  background: linear-gradient(135deg, #fff, #c7d2fe);
-  -webkit-background-clip: text;
-  -webkit-text-fill-color: transparent;
-  background-clip: text;
-}
-
-.heroStatLab {
-  margin-top: 6px;
-  font-size: 11px;
-  opacity: 0.55;
-  font-weight: 600;
-  letter-spacing: 0.04em;
-  text-transform: uppercase;
-}
-
-.heroCard--solo {
-  grid-template-columns: 1fr;
-}
-
-/* =========================================================
-   DYNAMIC ISLAND
-========================================================= */
-.dynamicIsland {
-  position: sticky;
-  top: 72px;
-  z-index: 55;
-  max-width: 1100px;
-  margin: 14px auto;
-  padding: 10px 18px;
-  border-radius: 999px;
-  display: flex;
-  align-items: center;
-  justify-content: space-between;
-  gap: 14px;
-  background: rgba(10, 14, 28, 0.72);
-  border: 1px solid rgba(255, 255, 255, 0.08);
-  backdrop-filter: blur(24px);
-}
-
-.islandLeft {
-  display: flex;
-  align-items: center;
+  grid-template-columns: repeat(2, 1fr);
   gap: 10px;
 }
 
-.islandDot {
-  width: 8px;
-  height: 8px;
-  border-radius: 50%;
-  background: #ef4444;
-  box-shadow: 0 0 10px rgba(239, 68, 68, 0.5);
-  transition: all 0.3s ease;
+.heroStat {
+  padding: 14px;
+  border-radius: 18px;
+  background: rgba(255,255,255,0.06);
+  border: 1px solid rgba(255,255,255,0.10);
+  text-align: center;
 }
 
-.islandDot.on {
-  background: #22c55e;
-  box-shadow: 0 0 12px rgba(34, 197, 94, 0.5);
+.heroStatNum {
+  font-size: 24px;
+  font-weight: 950;
 }
 
-.islandText {
+.heroStatLab {
+  margin-top: 4px;
   font-size: 12px;
-  opacity: 0.7;
-  font-weight: 600;
+  opacity: .72;
 }
 
-.islandCenter {
-  display: flex;
-  gap: 8px;
-}
-
-.islandBtn {
-  border: 1px solid rgba(255, 255, 255, 0.08);
-  background: rgba(255, 255, 255, 0.06);
-  padding: 8px 14px;
-  border-radius: 999px;
-  cursor: pointer;
-  font-size: 12px;
-  font-weight: 600;
-  color: #e2e8f0;
-  transition: all 0.18s ease;
-}
-
-.islandBtn:hover {
-  background: rgba(255, 255, 255, 0.12);
-  transform: translateY(-1px);
-}
-
-.islandRight {
-  display: flex;
-  gap: 14px;
-  font-weight: 800;
-}
-
-.islandStat {
-  font-size: 12px;
-  opacity: 0.85;
-  letter-spacing: 0.02em;
-}
-
-/* =========================================================
-   MODEBAR
-========================================================= */
 .modebar {
   position: relative;
   z-index: 2;
   max-width: 1100px;
-  margin: 14px auto 0;
-  padding: 0 20px;
+  margin: 10px auto 0;
+  padding: 0 16px;
   display: flex;
-  gap: 8px;
+  gap: 10px;
   flex-wrap: wrap;
   align-items: center;
 }
+/* =============================
+   DYNAMIC ISLAND
+============================= */
 
+.dynamicIsland{
+  position: sticky;
+  top: 64px;
+  z-index: 55;
+
+  max-width:1100px;
+  margin:10px auto;
+  padding:10px 16px;
+
+  border-radius:999px;
+
+  display:flex;
+  align-items:center;
+  justify-content:space-between;
+  gap:12px;
+
+  backdrop-filter:blur(18px);
+}
+
+.islandLeft{
+  display:flex;
+  align-items:center;
+  gap:8px;
+}
+
+.islandDot{
+  width:10px;
+  height:10px;
+  border-radius:50%;
+  background:#ff4444;
+}
+
+.islandDot.on{
+  background:#00e676;
+}
+
+.islandText{
+  font-size:12px;
+  opacity:.8;
+}
+
+.islandCenter{
+  display:flex;
+  gap:8px;
+}
+
+.islandBtn{
+  border:none;
+  background:rgba(255,255,255,0.1);
+  padding:8px 10px;
+  border-radius:999px;
+  cursor:pointer;
+  font-size:12px;
+}
+
+.islandRight{
+  display:flex;
+  gap:10px;
+  font-weight:900;
+}
+
+.islandStat{
+  font-size:12px;
+  opacity:.9;
+}
 .mode {
-  border: 1px solid rgba(255, 255, 255, 0.08);
-  background: rgba(255, 255, 255, 0.04);
-  color: #e2e8f0;
-  padding: 10px 16px;
+  border: 1px solid rgba(255,255,255,0.14);
+  background: rgba(255,255,255,0.10);
+  color: white;
+  padding: 10px 12px;
   border-radius: 999px;
   cursor: pointer;
-  font-weight: 700;
-  font-size: 13px;
-  opacity: 0.85;
-  transition: all 0.2s ease;
-  letter-spacing: -0.01em;
+  font-weight: 950;
+  opacity: .92;
+  transition: all .18s ease;
 }
 
 .mode:hover {
-  background: rgba(255, 255, 255, 0.08);
   transform: translateY(-2px);
-  box-shadow: 0 8px 20px rgba(0, 0, 0, 0.2);
+  box-shadow: 0 6px 18px rgba(255,75,43,0.18);
 }
 
 .mode.on {
-  background: linear-gradient(135deg, #ec4899 0%, #8b5cf6 100%);
-  border-color: rgba(139, 92, 246, 0.4);
+  background: linear-gradient(45deg, #ff416c, #ff4b2b);
+  border-color: rgba(255,75,43,0.6);
   opacity: 1;
-  box-shadow: 0 4px 20px rgba(236, 72, 153, 0.25);
-  color: #fff;
+  box-shadow: 0 0 25px rgba(255,75,43,0.35);
 }
 
 .mode.reels.on {
-  background: linear-gradient(135deg, #8b5cf6 0%, #3b82f6 100%);
-  box-shadow: 0 4px 20px rgba(139, 92, 246, 0.3);
+  background: linear-gradient(45deg, #7c3aed, #22c55e);
+  box-shadow: 0 0 30px rgba(124,58,237,0.45);
 }
 
 .mode-right {
@@ -4006,26 +3514,17 @@ onBeforeUnmount(() => {
 }
 
 .search {
-  background: rgba(0, 0, 0, 0.35);
-  border: 1px solid rgba(255, 255, 255, 0.08);
-  color: #f1f5f9;
-  padding: 10px 40px 10px 16px;
+  background: rgba(0,0,0,0.35);
+  border: 1px solid rgba(255,255,255,0.12);
+  color: white;
+  padding: 10px 40px 10px 12px;
   border-radius: 999px;
   outline: none;
-  font-size: 13px;
-  font-weight: 500;
-  transition: all 0.2s ease;
-  min-width: 200px;
-}
-
-.search::placeholder {
-  color: rgba(255, 255, 255, 0.35);
 }
 
 .search:focus {
-  border-color: rgba(139, 92, 246, 0.4);
-  box-shadow: 0 0 0 3px rgba(139, 92, 246, 0.1), 0 4px 16px rgba(0, 0, 0, 0.15);
-  background: rgba(0, 0, 0, 0.45);
+  border-color: rgba(255,75,43,0.35);
+  box-shadow: 0 0 0 3px rgba(255,75,43,0.12);
 }
 
 .searchClear {
@@ -4034,76 +3533,49 @@ onBeforeUnmount(() => {
   top: 50%;
   transform: translateY(-50%);
   border: none;
-  background: rgba(255, 255, 255, 0.1);
-  color: rgba(255, 255, 255, 0.7);
+  background: rgba(255,255,255,0.12);
+  color: white;
   width: 26px;
   height: 26px;
-  border-radius: 50%;
+  border-radius: 999px;
   cursor: pointer;
-  font-size: 11px;
-  transition: all 0.15s ease;
-  display: grid;
-  place-items: center;
-}
-
-.searchClear:hover {
-  background: rgba(255, 255, 255, 0.18);
-  color: #fff;
 }
 
 .selectControl {
-  background: rgba(0, 0, 0, 0.35);
-  border: 1px solid rgba(255, 255, 255, 0.08);
-  color: #f1f5f9;
-  padding: 10px 14px;
+  background: rgba(0,0,0,0.35);
+  border: 1px solid rgba(255,255,255,0.12);
+  color: white;
+  padding: 10px 12px;
   border-radius: 999px;
   outline: none;
-  font-size: 13px;
-  font-weight: 500;
-  cursor: pointer;
-  transition: all 0.2s ease;
 }
 
-.selectControl:focus {
-  border-color: rgba(139, 92, 246, 0.4);
-}
-
-/* =========================================================
-   FILTER BAR
-========================================================= */
+/* FILTER BAR */
 .filterbar {
   position: relative;
   z-index: 2;
   max-width: 1100px;
-  margin: 12px auto 0;
-  padding: 0 20px;
+  margin: 10px auto 0;
+  padding: 0 16px;
   display: flex;
-  gap: 8px;
+  gap: 10px;
   align-items: center;
   flex-wrap: wrap;
 }
 
 .filterChip {
-  border: 1px solid rgba(255, 255, 255, 0.08);
-  background: rgba(255, 255, 255, 0.04);
-  color: #e2e8f0;
-  padding: 8px 16px;
+  border: 1px solid rgba(255,255,255,0.14);
+  background: rgba(255,255,255,0.08);
+  color: white;
+  padding: 8px 12px;
   border-radius: 999px;
   cursor: pointer;
-  font-weight: 700;
-  font-size: 13px;
-  transition: all 0.2s ease;
-}
-
-.filterChip:hover {
-  background: rgba(255, 255, 255, 0.08);
-  transform: translateY(-1px);
+  font-weight: 800;
 }
 
 .filterChip.on {
-  background: rgba(236, 72, 153, 0.15);
-  border-color: rgba(236, 72, 153, 0.35);
-  color: #f9a8d4;
+  background: rgba(255,75,43,0.18);
+  border-color: rgba(255,75,43,0.35);
 }
 
 .filterHint {
@@ -4113,47 +3585,40 @@ onBeforeUnmount(() => {
   flex-wrap: wrap;
 }
 
-/* =========================================================
-   MAIN LAYOUT
-========================================================= */
+/* MAIN */
 .main {
   position: relative;
   z-index: 2;
   max-width: 1100px;
   margin: 0 auto;
-  padding: 20px;
+  padding: 16px;
 }
 
 .dock {
   display: grid;
   grid-template-columns: 1fr 1fr;
-  gap: 16px;
-  margin-bottom: 16px;
+  gap: 14px;
+  margin-bottom: 14px;
 }
 
 .panel,
 .composer,
 .post {
-  border-radius: 24px;
-  padding: 20px;
-  margin-bottom: 16px;
+  border-radius: 20px;
+  padding: 14px;
+  margin-bottom: 14px;
 }
 
 .panel-head {
   display: flex;
   align-items: center;
   justify-content: space-between;
-  gap: 12px;
-  margin-bottom: 14px;
+  gap: 10px;
+  margin-bottom: 10px;
 }
 
 .panel-title {
-  font-weight: 800;
-  font-size: 15px;
-  letter-spacing: -0.01em;
-  display: flex;
-  align-items: center;
-  gap: 8px;
+  font-weight: 950;
 }
 
 .dockActions {
@@ -4162,133 +3627,65 @@ onBeforeUnmount(() => {
   align-items: center;
 }
 
-/* =========================================================
-   BUTTONS
-========================================================= */
+/* BUTTONS */
 .btn,
 .chip {
   border: none;
   border-radius: 999px;
-  padding: 10px 16px;
+  padding: 10px 14px;
   cursor: pointer;
-  background: rgba(255, 255, 255, 0.08);
-  color: #e2e8f0;
-  transition: all 0.2s ease;
-  font-weight: 600;
-  font-size: 13px;
-  letter-spacing: -0.01em;
-  display: inline-flex;
-  align-items: center;
-  justify-content: center;
-  gap: 6px;
+  background: rgba(255,255,255,0.12);
+  color: white;
+  transition: transform .16s ease, opacity .16s ease, box-shadow .16s ease;
 }
 
 .btn:hover,
 .chip:hover {
   transform: translateY(-1px);
-  background: rgba(255, 255, 255, 0.14);
-  box-shadow: 0 4px 16px rgba(0, 0, 0, 0.15);
 }
 
 .btn-primary {
-  background: linear-gradient(135deg, #ec4899 0%, #8b5cf6 100%);
-  color: #fff;
-  box-shadow: 0 8px 24px rgba(236, 72, 153, 0.25);
-  border: 1px solid rgba(236, 72, 153, 0.2);
-}
-
-.btn-primary:hover {
-  box-shadow: 0 12px 32px rgba(236, 72, 153, 0.35);
-  transform: translateY(-2px);
+  background: linear-gradient(45deg, #ff416c, #ff4b2b);
+  box-shadow: 0 10px 22px rgba(255,65,108,0.24);
 }
 
 .danger {
-  background: rgba(239, 68, 68, 0.12);
-  border: 1px solid rgba(239, 68, 68, 0.2);
-  color: #fca5a5;
-}
-
-.danger:hover {
-  background: rgba(239, 68, 68, 0.2);
+  background: rgba(255,80,80,0.22);
+  border: 1px solid rgba(255,80,80,0.35);
 }
 
 .ghost {
-  opacity: 0.85;
+  opacity: .92;
 }
 
 .ghostBtn {
-  opacity: 0.85;
-  background: rgba(255, 255, 255, 0.06);
-  border: 1px solid rgba(255, 255, 255, 0.08);
+  opacity: .92;
+  background: rgba(255,255,255,0.10);
 }
 
 .chip.mini {
-  padding: 8px 12px;
+  padding: 8px 10px;
   font-size: 12px;
 }
 
-/* =========================================================
-   TRENDING
-========================================================= */
+/* TRENDING */
 .trendingRow {
   display: flex;
   flex-wrap: wrap;
-  gap: 8px;
+  gap: 10px;
 }
 
 .trendChip {
-  border: 1px solid rgba(255, 255, 255, 0.08);
-  background: linear-gradient(135deg, rgba(139, 92, 246, 0.15), rgba(236, 72, 153, 0.1));
-  color: #e2e8f0;
-  padding: 10px 16px;
+  border: 1px solid rgba(255,255,255,0.14);
+  background: linear-gradient(135deg, rgba(124,58,237,0.25), rgba(255,75,43,0.20));
+  color: white;
+  padding: 10px 14px;
   border-radius: 999px;
   cursor: pointer;
-  font-weight: 700;
-  font-size: 13px;
-  transition: all 0.2s ease;
+  font-weight: 900;
 }
 
-.trendChip:hover {
-  transform: translateY(-2px);
-  box-shadow: 0 8px 20px rgba(139, 92, 246, 0.15);
-  border-color: rgba(139, 92, 246, 0.25);
-}
-
-/* =========================================================
-   BADGE PILLS
-========================================================= */
-.badgePill {
-  padding: 6px 12px;
-  border-radius: 999px;
-  background: rgba(255, 255, 255, 0.06);
-  border: 1px solid rgba(255, 255, 255, 0.08);
-  font-weight: 700;
-  font-size: 11px;
-  letter-spacing: 0.02em;
-  color: #cbd5e1;
-}
-
-.badgePill.ok {
-  border-color: rgba(34, 197, 94, 0.25);
-  background: rgba(34, 197, 94, 0.08);
-  color: #86efac;
-}
-
-.badgePill.bad {
-  border-color: rgba(239, 68, 68, 0.25);
-  background: rgba(239, 68, 68, 0.08);
-  color: #fca5a5;
-}
-
-.badgePill.accent {
-  border-color: rgba(139, 92, 246, 0.25);
-  background: rgba(139, 92, 246, 0.08);
-  color: #c4b5fd;
-}
-
-/* =========================================================
-   LIVE SECTIONS
-========================================================= */
+/* LIVE */
 .live-strip {
   display: grid;
   gap: 10px;
@@ -4297,191 +3694,104 @@ onBeforeUnmount(() => {
 .live-pill {
   display: flex;
   align-items: center;
-  gap: 12px;
-  padding: 12px 16px;
-  border-radius: 16px;
-  background: rgba(239, 68, 68, 0.06);
-  border: 1px solid rgba(239, 68, 68, 0.12);
+  gap: 10px;
+  padding: 10px 12px;
+  border-radius: 14px;
+  background: rgba(255, 0, 0, 0.10);
+  border: 1px solid rgba(255, 0, 0, 0.18);
   cursor: pointer;
-  transition: all 0.2s ease;
+  transition: transform .16s ease, box-shadow .16s ease;
 }
 
 .live-pill:hover {
-  transform: translateY(-2px);
-  background: rgba(239, 68, 68, 0.1);
-  box-shadow: 0 8px 24px rgba(239, 68, 68, 0.1);
+  transform: translateY(-1px);
+  box-shadow: 0 10px 24px rgba(255, 40, 40, 0.14);
 }
 
 .dot {
-  width: 8px;
-  height: 8px;
+  width: 10px;
+  height: 10px;
   border-radius: 50%;
-  background: #ef4444;
-  box-shadow: 0 0 12px rgba(239, 68, 68, 0.6);
-  animation: pulseDot 2s ease-in-out infinite;
-}
-
-@keyframes pulseDot {
-  0%, 100% { opacity: 1; transform: scale(1); }
-  50% { opacity: 0.7; transform: scale(1.2); }
+  background: red;
+  box-shadow: 0 0 12px rgba(255,0,0,0.7);
 }
 
 .live-pill-name {
-  font-weight: 800;
+  font-weight: 950;
   overflow: hidden;
   text-overflow: ellipsis;
   white-space: nowrap;
-  font-size: 14px;
 }
 
 .chev {
   margin-left: auto;
-  opacity: 0.5;
-  font-size: 20px;
+  opacity: .7;
+  font-size: 22px;
 }
 
-/* Live Grid */
-.live-grid {
-  display: grid;
-  grid-template-columns: repeat(auto-fit, minmax(220px, 1fr));
-  gap: 14px;
-  margin-top: 16px;
-}
-
-.live-big {
-  padding: 20px;
-  border-radius: 20px;
-  background: rgba(239, 68, 68, 0.05);
-  border: 1px solid rgba(239, 68, 68, 0.1);
-  cursor: pointer;
-  transition: all 0.2s ease;
-}
-
-.live-big:hover {
-  transform: translateY(-3px);
-  background: rgba(239, 68, 68, 0.08);
-  box-shadow: 0 12px 32px rgba(239, 68, 68, 0.1);
-}
-
-.live-big-top {
-  display: flex;
-  align-items: center;
-  gap: 10px;
-}
-
-.live-big-title {
-  font-weight: 800;
-  overflow: hidden;
-  text-overflow: ellipsis;
-  white-space: nowrap;
-  font-size: 15px;
-}
-
-.live-big-sub {
-  margin-top: 10px;
-  opacity: 0.6;
-  font-size: 13px;
-}
-
-/* =========================================================
-   PEOPLE
-========================================================= */
+/* PEOPLE */
 .miniAvatars {
   display: flex;
   gap: 10px;
   align-items: center;
   overflow-x: auto;
-  padding-bottom: 8px;
-  scrollbar-width: thin;
-  scrollbar-color: rgba(255,255,255,0.1) transparent;
-}
-
-.miniAvatars::-webkit-scrollbar {
-  height: 4px;
-}
-
-.miniAvatars::-webkit-scrollbar-thumb {
-  background: rgba(255,255,255,0.15);
-  border-radius: 4px;
+  padding-bottom: 6px;
 }
 
 .miniAvatarWrap {
   position: relative;
   flex: 0 0 auto;
   cursor: pointer;
-  transition: transform 0.2s ease;
-}
-
-.miniAvatarWrap:hover {
-  transform: translateY(-3px);
 }
 
 .miniAvatar {
   width: 48px;
   height: 48px;
   border-radius: 16px;
-  background: linear-gradient(135deg, rgba(139, 92, 246, 0.25), rgba(236, 72, 153, 0.2));
-  border: 1px solid rgba(255, 255, 255, 0.1);
+  background: linear-gradient(135deg, rgba(255,65,108,0.24), rgba(91,140,255,0.24));
+  border: 1px solid rgba(255,255,255,0.14);
   display: grid;
   place-items: center;
-  font-weight: 800;
-  font-size: 15px;
-  transition: all 0.2s ease;
-}
-
-.miniAvatarWrap:hover .miniAvatar {
-  border-color: rgba(139, 92, 246, 0.3);
-  box-shadow: 0 8px 20px rgba(139, 92, 246, 0.15);
+  font-weight: 950;
 }
 
 .miniDot {
   position: absolute;
-  right: 3px;
-  bottom: 3px;
+  right: 4px;
+  bottom: 4px;
   width: 12px;
   height: 12px;
   border-radius: 50%;
-  background: rgba(255, 255, 255, 0.3);
-  border: 2.5px solid #0a0e1a;
-  transition: all 0.2s ease;
+  background: rgba(255,255,255,0.35);
+  border: 2px solid #0b1220;
 }
 
 .miniDot.on {
-  background: #22c55e;
-  box-shadow: 0 0 8px rgba(34, 197, 94, 0.5);
+  background: #00e676;
 }
 
 .peopleCompact {
-  margin-top: 14px;
+  margin-top: 12px;
   display: grid;
   gap: 10px;
 }
 
 .peopleList {
   display: grid;
-  gap: 8px;
-  max-height: 260px;
+  gap: 10px;
+  max-height: 240px;
   overflow: auto;
-  padding-right: 6px;
-  scrollbar-width: thin;
-  scrollbar-color: rgba(255,255,255,0.1) transparent;
+  padding-right: 4px;
 }
 
 .person.compact {
   display: flex;
-  gap: 12px;
+  gap: 10px;
   align-items: center;
-  padding: 12px;
-  border-radius: 18px;
-  background: rgba(0, 0, 0, 0.25);
-  border: 1px solid rgba(255, 255, 255, 0.06);
-  transition: all 0.2s ease;
-}
-
-.person.compact:hover {
-  background: rgba(0, 0, 0, 0.35);
-  border-color: rgba(255, 255, 255, 0.1);
-  transform: translateX(2px);
+  padding: 10px;
+  border-radius: 16px;
+  background: rgba(0,0,0,0.28);
+  border: 1px solid rgba(255,255,255,0.10);
 }
 
 .person-meta {
@@ -4490,100 +3800,73 @@ onBeforeUnmount(() => {
 }
 
 .person-name {
-  font-weight: 800;
+  font-weight: 950;
   overflow: hidden;
   text-overflow: ellipsis;
   white-space: nowrap;
-  font-size: 14px;
 }
 
 .person-sub {
   display: flex;
   align-items: center;
   gap: 8px;
-  opacity: 0.55;
+  opacity: .75;
   font-size: 12px;
-  margin-top: 3px;
-  font-weight: 500;
+  margin-top: 2px;
 }
 
 .status {
-  width: 8px;
-  height: 8px;
+  width: 10px;
+  height: 10px;
   border-radius: 50%;
-  background: rgba(255, 255, 255, 0.3);
+  background: rgba(255,255,255,0.35);
 }
 
 .status.on {
-  background: #22c55e;
-  box-shadow: 0 0 6px rgba(34, 197, 94, 0.4);
+  background: #00e676;
 }
 
 .sep {
-  opacity: 0.4;
+  opacity: .5;
 }
 
 .person-actions {
   display: flex;
-  gap: 6px;
+  gap: 8px;
 }
 
 .iconbtn {
-  width: 38px;
-  height: 38px;
-  border-radius: 12px;
-  border: 1px solid rgba(255, 255, 255, 0.08);
-  background: rgba(255, 255, 255, 0.06);
+  width: 40px;
+  height: 40px;
+  border-radius: 14px;
+  border: 1px solid rgba(255,255,255,0.14);
+  background: rgba(255,255,255,0.10);
   cursor: pointer;
-  display: grid;
-  place-items: center;
-  font-size: 15px;
-  transition: all 0.2s ease;
-}
-
-.iconbtn:hover:not(:disabled) {
-  background: rgba(255, 255, 255, 0.12);
-  transform: translateY(-2px);
-  border-color: rgba(255, 255, 255, 0.15);
 }
 
 .iconbtn:disabled {
-  opacity: 0.35;
+  opacity: .45;
   cursor: not-allowed;
 }
 
-.iconbtn.msg-btn {
-  background: linear-gradient(135deg, rgba(236, 72, 153, 0.25), rgba(139, 92, 246, 0.2));
-  border: 1px solid rgba(139, 92, 246, 0.25);
-}
-.iconbtn.msg-btn:hover {
-  background: linear-gradient(135deg, rgba(236, 72, 153, 0.35), rgba(139, 92, 246, 0.3));
-  transform: translateY(-2px);
-  box-shadow: 0 8px 20px rgba(139, 92, 246, 0.15);
-}
-
-/* =========================================================
-   COMPOSER
-========================================================= */
+/* COMPOSER */
 .composer {
-  transition: all 0.3s ease;
-  background: rgba(255, 255, 255, 0.03);
+  transition: all .25s ease;
 }
 
 .composer:focus-within {
-  border-color: rgba(139, 92, 246, 0.25);
+  border: 1px solid rgba(255,75,43,0.42);
   box-shadow:
-    0 0 40px rgba(139, 92, 246, 0.08),
-    0 12px 40px rgba(0, 0, 0, 0.2);
+    0 0 30px rgba(255,75,43,0.20),
+    0 12px 40px rgba(0,0,0,0.26);
   transform: translateY(-2px);
-  background: rgba(255, 255, 255, 0.05);
 }
 
 .composer-head {
   display: flex;
-  gap: 12px;
+  gap: 10px;
   align-items: center;
-  margin-bottom: 12px;
+  margin-bottom: 10px;
 }
 
 .composer-meta {
@@ -4596,25 +3879,16 @@ onBeforeUnmount(() => {
 }
 
 .pill-btn {
-  border: 1px solid rgba(255, 255, 255, 0.1);
-  background: rgba(255, 255, 255, 0.08);
-  color: #e2e8f0;
-  padding: 10px 16px;
+  border: 1px solid rgba(255,255,255,0.16);
+  background: rgba(255,255,255,0.10);
+  color: white;
+  padding: 10px 12px;
   border-radius: 999px;
   cursor: pointer;
-  font-weight: 600;
-  font-size: 13px;
-  transition: all 0.2s ease;
-}
-
-.pill-btn:hover {
-  background: rgba(255, 255, 255, 0.14);
-  transform: translateY(-1px);
 }
 
 .me {
-  font-weight: 800;
-  font-size: 15px;
+  font-weight: 950;
 }
 
 .small {
@@ -4622,30 +3896,18 @@ onBeforeUnmount(() => {
 }
 
 .muted {
-  opacity: 0.55;
+  opacity: .75;
 }
 
 .input {
   width: 100%;
   border: none;
   outline: none;
-  background: rgba(0, 0, 0, 0.3);
-  color: #f1f5f9;
-  border-radius: 16px;
-  padding: 14px;
+  background: rgba(0, 0, 0, 0.35);
+  color: white;
+  border-radius: 14px;
+  padding: 12px;
   resize: none;
-  font-size: 14px;
-  line-height: 1.6;
-  transition: all 0.2s ease;
-  font-family: inherit;
-}
-
-.input::placeholder {
-  color: rgba(255, 255, 255, 0.3);
-}
-
-.input:focus {
-  background: rgba(0, 0, 0, 0.4);
 }
 
 .composerMetaRow {
@@ -4653,18 +3915,16 @@ onBeforeUnmount(() => {
   justify-content: space-between;
   gap: 12px;
   flex-wrap: wrap;
-  margin-top: 12px;
-  align-items: center;
+  margin-top: 10px;
 }
 
 .charCount {
   font-size: 12px;
-  opacity: 0.5;
-  font-weight: 600;
+  opacity: .75;
 }
 
 .charCount.warn {
-  color: #fbbf24;
+  color: #ffd166;
   opacity: 1;
 }
 
@@ -4675,21 +3935,14 @@ onBeforeUnmount(() => {
 }
 
 .quickTag {
-  border: 1px solid rgba(255, 255, 255, 0.08);
-  background: rgba(255, 255, 255, 0.05);
-  color: #c4b5fd;
-  padding: 6px 12px;
+  border: 1px solid rgba(255,255,255,0.12);
+  background: rgba(255,255,255,0.08);
+  color: white;
+  padding: 6px 10px;
   border-radius: 999px;
   cursor: pointer;
   font-size: 12px;
-  font-weight: 700;
-  transition: all 0.2s ease;
-}
-
-.quickTag:hover {
-  background: rgba(139, 92, 246, 0.15);
-  border-color: rgba(139, 92, 246, 0.25);
-  transform: translateY(-1px);
+  font-weight: 800;
 }
 
 .upload-row {
@@ -4697,26 +3950,14 @@ onBeforeUnmount(() => {
   gap: 10px;
   align-items: center;
   flex-wrap: wrap;
-  margin-top: 12px;
+  margin-top: 10px;
 }
 
 .file-pill {
-  background: rgba(255, 255, 255, 0.06);
-  border: 1px solid rgba(255, 255, 255, 0.08);
+  background: rgba(255, 255, 255, 0.12);
   border-radius: 999px;
-  padding: 10px 16px;
+  padding: 10px 12px;
   cursor: pointer;
-  font-size: 13px;
-  font-weight: 600;
-  transition: all 0.2s ease;
-  display: inline-flex;
-  align-items: center;
-  gap: 6px;
-}
-
-.file-pill:hover {
-  background: rgba(255, 255, 255, 0.1);
-  border-color: rgba(255, 255, 255, 0.14);
 }
 
 .file-pill input {
@@ -4724,35 +3965,25 @@ onBeforeUnmount(() => {
 }
 
 .file-dot {
-  margin-left: 4px;
-  opacity: 0.9;
-  color: #22c55e;
+  margin-left: 6px;
+  opacity: .9;
 }
 
-/* =========================================================
-   FEED & POSTS
-========================================================= */
+/* FEED */
 .feed {
   display: grid;
-  gap: 16px;
+  gap: 14px;
 }
 
 .post {
-  background: rgba(0, 0, 0, 0.25);
-  border: 1px solid rgba(255, 255, 255, 0.06);
-  transition: all 0.2s ease;
-}
-
-.post:hover {
-  border-color: rgba(255, 255, 255, 0.1);
-  box-shadow: 0 8px 32px rgba(0, 0, 0, 0.15);
+  background: rgba(0, 0, 0, 0.42);
 }
 
 .post-head {
   display: flex;
-  gap: 12px;
+  gap: 10px;
   align-items: center;
-  margin-bottom: 12px;
+  margin-bottom: 10px;
 }
 
 .compactHead {
@@ -4760,65 +3991,54 @@ onBeforeUnmount(() => {
 }
 
 .who .name {
-  font-weight: 800;
-  font-size: 14px;
+  font-weight: 950;
 }
 
 .time {
-  opacity: 0.5;
+  opacity: .75;
   font-size: 12px;
-  font-weight: 500;
-  margin-top: 2px;
 }
 
 .text {
-  margin: 8px 0 12px;
-  line-height: 1.65;
-  font-size: 14px;
-  color: #e2e8f0;
+  margin: 6px 0 10px;
+  line-height: 1.55;
 }
 
 .thread-text {
   font-size: 15px;
-  line-height: 1.7;
 }
 
 .media {
   width: 100%;
-  border-radius: 20px;
+  border-radius: 16px;
   background: #000;
-  margin-top: 12px;
+  margin-top: 10px;
   max-height: 720px;
   object-fit: cover;
-  display: block;
 }
 
 .avatar {
   width: 44px;
   height: 44px;
   border-radius: 50%;
-  background: linear-gradient(135deg, #ec4899 0%, #8b5cf6 100%);
+  background: linear-gradient(45deg, #ff416c, #ff4b2b);
   display: grid;
   place-items: center;
-  font-weight: 800;
-  font-size: 15px;
-  box-shadow: 0 8px 20px rgba(236, 72, 153, 0.2);
-  flex-shrink: 0;
+  font-weight: 950;
+  box-shadow: 0 10px 24px rgba(255,65,108,0.20);
 }
 
 .avatar.big {
   width: 52px;
   height: 52px;
-  font-size: 18px;
 }
 
 .avatar.small {
   width: 40px;
   height: 40px;
   border-radius: 14px;
-  background: rgba(255, 255, 255, 0.08);
-  border: 1px solid rgba(255, 255, 255, 0.1);
-  box-shadow: none;
+  background: rgba(255,255,255,0.10);
+  border: 1px solid rgba(255,255,255,0.14);
 }
 
 .postPills {
@@ -4829,56 +4049,43 @@ onBeforeUnmount(() => {
 }
 
 .miniPostPill {
-  font-size: 10px;
-  font-weight: 800;
-  padding: 5px 10px;
+  font-size: 11px;
+  font-weight: 900;
+  padding: 6px 8px;
   border-radius: 999px;
-  background: rgba(236, 72, 153, 0.12);
-  border: 1px solid rgba(236, 72, 153, 0.2);
-  color: #f9a8d4;
-  letter-spacing: 0.04em;
-  text-transform: uppercase;
+  background: rgba(255,75,43,0.16);
+  border: 1px solid rgba(255,75,43,0.28);
 }
 
 .ghostPill {
-  background: rgba(255, 255, 255, 0.06);
-  border-color: rgba(255, 255, 255, 0.1);
-  color: rgba(255, 255, 255, 0.5);
+  background: rgba(255,255,255,0.08);
+  border-color: rgba(255,255,255,0.12);
 }
 
 .actions {
   display: flex;
   align-items: center;
-  gap: 8px;
-  margin-top: 14px;
-  padding-top: 12px;
-  border-top: 1px solid rgba(255, 255, 255, 0.06);
+  gap: 10px;
+  margin-top: 12px;
+  padding-top: 10px;
+  border-top: 1px solid rgba(255, 255, 255, 0.10);
 }
 
 .action-btn {
   display: inline-flex;
   align-items: center;
-  gap: 8px;
-  border: 1px solid rgba(255, 255, 255, 0.08);
-  background: rgba(255, 255, 255, 0.04);
-  color: #e2e8f0;
-  padding: 8px 14px;
+  gap: 10px;
+  border: 1px solid rgba(255, 255, 255, 0.14);
+  background: rgba(255, 255, 255, 0.08);
+  color: white;
+  padding: 10px 12px;
   border-radius: 999px;
   cursor: pointer;
-  font-size: 13px;
-  font-weight: 600;
-  transition: all 0.2s ease;
-}
-
-.action-btn:hover {
-  background: rgba(255, 255, 255, 0.1);
-  transform: translateY(-1px);
 }
 
 .action-btn.active {
-  border-color: rgba(236, 72, 153, 0.35);
-  background: rgba(236, 72, 153, 0.1);
-  color: #f9a8d4;
+  border-color: rgba(255, 75, 43, 0.6);
+  background: rgba(255, 75, 43, 0.18);
 }
 
 .spacer {
@@ -4886,77 +4093,55 @@ onBeforeUnmount(() => {
 }
 
 .comments-shell {
-  margin-top: -6px;
-  border-top: none;
-  border-radius: 0 0 24px 24px;
+  margin-top: -4px;
 }
 
-/* =========================================================
-   ROOMS
-========================================================= */
+/* ROOMS */
 .rooms {
   display: grid;
   grid-template-columns: 220px 1fr;
-  gap: 14px;
+  gap: 12px;
 }
 
 .rooms-left {
-  border-radius: 24px;
-  padding: 16px;
-  background: rgba(255, 255, 255, 0.03);
-  border: 1px solid rgba(255, 255, 255, 0.06);
-  height: fit-content;
+  border-radius: 18px;
+  padding: 12px;
 }
 
 .rooms-head {
-  font-weight: 800;
-  margin-bottom: 14px;
-  font-size: 15px;
-  letter-spacing: -0.01em;
+  font-weight: 950;
+  margin-bottom: 10px;
 }
 
 .room {
   width: 100%;
   text-align: left;
-  border: 1px solid rgba(255, 255, 255, 0.06);
-  background: rgba(0, 0, 0, 0.2);
-  color: #e2e8f0;
-  padding: 12px 14px;
-  border-radius: 16px;
+  border: 1px solid rgba(255,255,255,0.12);
+  background: rgba(0,0,0,0.30);
+  color: white;
+  padding: 10px 12px;
+  border-radius: 14px;
   cursor: pointer;
   margin-bottom: 8px;
-  font-weight: 600;
-  font-size: 13px;
-  transition: all 0.2s ease;
-}
-
-.room:hover {
-  background: rgba(255, 255, 255, 0.05);
-  border-color: rgba(255, 255, 255, 0.1);
-  transform: translateX(2px);
 }
 
 .room.on {
-  background: rgba(139, 92, 246, 0.12);
-  border-color: rgba(139, 92, 246, 0.25);
-  color: #c4b5fd;
+  background: rgba(255,75,43,0.16);
+  border-color: rgba(255,75,43,0.30);
 }
 
 .rooms-hint {
-  opacity: 0.45;
-  font-size: 11px;
-  margin-top: 12px;
-  font-weight: 500;
+  opacity: .75;
+  font-size: 12px;
+  margin-top: 10px;
 }
 
 .rooms-main {
-  border-radius: 24px;
-  padding: 16px;
+  border-radius: 18px;
+  padding: 12px;
   display: flex;
   flex-direction: column;
   min-height: 520px;
-  background: rgba(255, 255, 255, 0.03);
-  border: 1px solid rgba(255, 255, 255, 0.06);
 }
 
 .rooms-top {
@@ -4964,97 +4149,74 @@ onBeforeUnmount(() => {
   align-items: center;
   justify-content: space-between;
   gap: 10px;
-  margin-bottom: 12px;
+  margin-bottom: 10px;
 }
 
 .rooms-title {
-  font-weight: 800;
-  font-size: 15px;
+  font-weight: 950;
 }
 
 .rooms-messages {
   flex: 1;
   overflow: auto;
   display: grid;
-  gap: 8px;
-  padding: 10px;
-  background: rgba(0, 0, 0, 0.2);
-  border-radius: 18px;
-  border: 1px solid rgba(255, 255, 255, 0.05);
-  scrollbar-width: thin;
-  scrollbar-color: rgba(255,255,255,0.1) transparent;
+  gap: 10px;
+  padding: 8px;
+  background: rgba(0,0,0,0.25);
+  border-radius: 14px;
+  border: 1px solid rgba(255,255,255,0.10);
 }
 
 .rm {
-  padding: 12px;
-  border-radius: 16px;
-  background: rgba(255, 255, 255, 0.04);
-  border: 1px solid rgba(255, 255, 255, 0.06);
-  transition: all 0.15s ease;
-}
-
-.rm:hover {
-  background: rgba(255, 255, 255, 0.06);
+  padding: 10px;
+  border-radius: 14px;
+  background: rgba(255,255,255,0.06);
+  border: 1px solid rgba(255,255,255,0.10);
 }
 
 .rm-top {
   display: flex;
   justify-content: space-between;
   gap: 10px;
-  align-items: center;
 }
 
 .rm-user {
-  font-weight: 800;
-  font-size: 13px;
+  font-weight: 950;
 }
 
 .rm-time {
-  opacity: 0.45;
-  font-size: 11px;
-  font-weight: 500;
+  opacity: .7;
+  font-size: 12px;
 }
 
 .rm-text {
   margin-top: 6px;
-  line-height: 1.5;
-  font-size: 13px;
-  color: #cbd5e1;
+  line-height: 1.45;
 }
 
 .rooms-input {
   display: flex;
-  gap: 10px;
-  margin-top: 12px;
+  gap: 8px;
+  margin-top: 10px;
 }
 
 .rooms-input input,
 .chat-input input,
 .roomInput {
   flex: 1;
-  background: rgba(0, 0, 0, 0.3);
-  border: 1px solid rgba(255, 255, 255, 0.08);
-  color: #f1f5f9;
-  padding: 12px 14px;
-  border-radius: 14px;
+  background: rgba(0,0,0,0.35);
+  border: 1px solid rgba(255,255,255,0.12);
+  color: white;
+  padding: 10px 12px;
+  border-radius: 12px;
   outline: none;
-  font-size: 14px;
-  transition: all 0.2s ease;
-  font-family: inherit;
-}
-
-.rooms-input input:focus,
-.chat-input input:focus,
-.roomInput:focus {
-  border-color: rgba(139, 92, 246, 0.3);
-  background: rgba(0, 0, 0, 0.4);
 }
 
 .callrooms-create {
   display: flex;
   gap: 10px;
   flex-wrap: wrap;
-  margin-bottom: 16px;
+  margin-bottom: 14px;
 }
 
 .roomSelect {
@@ -5063,25 +4225,18 @@ onBeforeUnmount(() => {
 
 .callrooms-list {
   display: grid;
-  gap: 10px;
+  gap: 12px;
 }
 
 .callroom-card {
   display: flex;
   justify-content: space-between;
   align-items: center;
-  gap: 14px;
-  padding: 16px;
-  border-radius: 18px;
-  background: rgba(255, 255, 255, 0.04);
-  border: 1px solid rgba(255, 255, 255, 0.06);
-  transition: all 0.2s ease;
-}
-
-.callroom-card:hover {
-  background: rgba(255, 255, 255, 0.06);
-  border-color: rgba(255, 255, 255, 0.1);
-  transform: translateX(2px);
+  gap: 12px;
+  padding: 14px;
+  border-radius: 16px;
+  background: rgba(255,255,255,0.06);
+  border: 1px solid rgba(255,255,255,0.10);
 }
 
 .callroom-main {
@@ -5089,24 +4244,21 @@ onBeforeUnmount(() => {
 }
 
 .callroom-name {
-  font-weight: 800;
-  font-size: 15px;
+  font-weight: 950;
+  font-size: 16px;
 }
 
 .callroom-sub {
   margin-top: 4px;
   font-size: 13px;
-  opacity: 0.6;
-  font-weight: 500;
+  opacity: .72;
 }
 
 .miniState {
-  padding: 24px;
+  padding: 18px;
 }
 
-/* =========================================================
-   CHAT DRAWER
-========================================================= */
+/* CHAT DRAWER */
 .chatDrawer {
   position: fixed;
   right: 16px;
@@ -5114,7 +4266,7 @@ onBeforeUnmount(() => {
   width: min(420px, 92vw);
   z-index: 70;
   transform: translateX(110%);
-  transition: transform 0.3s cubic-bezier(0.4, 0, 0.2, 1);
+  transition: transform .25s ease;
 }
 
 .chatDrawer.open {
@@ -5123,51 +4275,40 @@ onBeforeUnmount(() => {
 
 .chatPanel {
   margin-bottom: 0;
-  border-radius: 24px;
 }
 
 .chat-hint {
-  opacity: 0.5;
+  opacity: .7;
   font-size: 12px;
-  margin-bottom: 12px;
-  font-weight: 500;
+  margin-bottom: 10px;
 }
 
 .chat-list {
   display: grid;
   gap: 8px;
-  margin-bottom: 14px;
+  margin-bottom: 12px;
 }
 
 .chat-item {
-  background: rgba(255, 255, 255, 0.04);
-  border: 1px solid rgba(255, 255, 255, 0.06);
-  padding: 12px 14px;
-  border-radius: 16px;
-  color: #e2e8f0;
+  background: rgba(255, 255, 255, 0.10);
+  border: 1px solid rgba(255, 255, 255, 0.12);
+  padding: 10px 12px;
+  border-radius: 14px;
+  color: white;
   cursor: pointer;
   text-align: left;
-  font-weight: 600;
-  font-size: 13px;
-  transition: all 0.2s ease;
-}
-
-.chat-item:hover {
-  background: rgba(255, 255, 255, 0.08);
-  transform: translateX(2px);
 }
 
 .chat-item.active {
-  border-color: rgba(139, 92, 246, 0.3);
-  background: rgba(139, 92, 246, 0.1);
-  color: #c4b5fd;
+  border-color: rgba(255,75,43,.5);
+  background: rgba(255,75,43,.14);
 }
 
 .chat-box {
-  background: rgba(0, 0, 0, 0.25);
-  border-radius: 20px;
-  padding: 12px;
-  border: 1px solid rgba(255, 255, 255, 0.06);
+  background: rgba(0,0,0,0.35);
+  border-radius: 16px;
+  padding: 10px;
+  border: 1px solid rgba(255,255,255,0.10);
 }
 
 .chat-messages {
@@ -5175,130 +4316,101 @@ onBeforeUnmount(() => {
   overflow: auto;
   display: grid;
   gap: 8px;
-  padding: 8px;
-  scrollbar-width: thin;
-  scrollbar-color: rgba(255,255,255,0.1) transparent;
+  padding: 6px;
 }
 
 .chat-msg {
   font-size: 13px;
-  line-height: 1.5;
-  padding: 6px 0;
-  border-bottom: 1px solid rgba(255, 255, 255, 0.03);
-}
-
-.chat-msg strong {
-  color: #c4b5fd;
-  font-weight: 700;
+  opacity: .95;
 }
 
 .chat-input {
   display: flex;
-  gap: 10px;
+  gap: 8px;
   margin-top: 10px;
 }
 
-/* =========================================================
-   MESSAGES / ALERTS / STATES
-========================================================= */
+/* MESSAGES */
 .alert {
-  margin-top: 12px;
-  padding: 12px 16px;
-  border-radius: 16px;
-  background: rgba(239, 68, 68, 0.1);
-  border: 1px solid rgba(239, 68, 68, 0.2);
-  color: #fca5a5;
-  font-size: 13px;
-  font-weight: 500;
+  margin-top: 10px;
+  padding: 10px;
+  border-radius: 14px;
+  background: rgba(255,80,80,0.18);
+  border: 1px solid rgba(255,80,80,0.35);
 }
 
 .alert.soft {
-  background: rgba(255, 255, 255, 0.05);
-  border: 1px solid rgba(255, 255, 255, 0.08);
-  color: #cbd5e1;
+  background: rgba(255,255,255,0.08);
+  border: 1px solid rgba(255,255,255,0.12);
 }
 
 .state {
   text-align: center;
-  padding: 32px 24px;
-  opacity: 0.9;
-  border-radius: 24px;
-  background: rgba(255, 255, 255, 0.03);
-  border: 1px solid rgba(255, 255, 255, 0.06);
+  padding: 26px;
+  opacity: 0.92;
+  border-radius: 18px;
+  background: rgba(255, 255, 255, 0.06);
 }
 
 .state-emoji {
-  font-size: 32px;
-  margin-bottom: 10px;
+  font-size: 28px;
+  margin-bottom: 8px;
 }
 
 .state-title {
-  font-weight: 800;
+  font-weight: 950;
   font-size: 18px;
-  letter-spacing: -0.01em;
 }
 
 .state-sub {
-  opacity: 0.55;
-  margin-top: 6px;
-  font-size: 14px;
-  font-weight: 500;
+  opacity: .75;
+  margin-top: 4px;
 }
 
 .hint {
-  opacity: 0.55;
+  opacity: .75;
   font-size: 13px;
-  font-weight: 500;
-  line-height: 1.5;
 }
 
 .mt10 {
   margin-top: 10px;
 }
 
-/* =========================================================
-   MODAL
-========================================================= */
+/* MODAL */
 .modal-backdrop {
   position: fixed;
   inset: 0;
   z-index: 80;
-  background: rgba(0, 0, 0, 0.65);
-  backdrop-filter: blur(8px);
+  background: rgba(0,0,0,0.58);
   display: grid;
   place-items: center;
-  padding: 20px;
+  padding: 16px;
 }
 
 .modal {
   width: min(520px, 100%);
-  border-radius: 24px;
-  padding: 24px;
-  background: rgba(10, 14, 30, 0.95);
-  border: 1px solid rgba(255, 255, 255, 0.1);
-  box-shadow: 0 24px 64px rgba(0, 0, 0, 0.4);
+  border-radius: 18px;
+  padding: 16px;
 }
 
 .modal-title {
-  font-weight: 800;
-  font-size: 20px;
-  letter-spacing: -0.02em;
+  font-weight: 950;
+  font-size: 18px;
 }
 
 .modal-sub {
-  margin-top: 10px;
-  opacity: 0.8;
-  font-size: 14px;
+  margin-top: 8px;
+  opacity: .9;
 }
 
 .pill {
   display: inline-block;
   margin-left: 6px;
-  padding: 6px 12px;
+  padding: 6px 10px;
   border-radius: 999px;
-  background: rgba(255, 255, 255, 0.08);
-  border: 1px solid rgba(255, 255, 255, 0.12);
-  font-weight: 700;
+  background: rgba(255,255,255,0.10);
+  border: 1px solid rgba(255,255,255,0.14);
+  font-weight: 950;
   font-size: 12px;
 }
 
@@ -5306,74 +4418,52 @@ onBeforeUnmount(() => {
   display: flex;
   gap: 10px;
   justify-content: flex-end;
-  margin-top: 20px;
+  margin-top: 14px;
 }
 
 .tiny {
   font-size: 12px;
-  opacity: 0.5;
 }
 
-/* =========================================================
-   TOAST
-========================================================= */
+/* TOAST */
 .toast {
   position: fixed;
   left: 50%;
-  bottom: 100px;
+  bottom: 92px;
   transform: translateX(-50%);
   z-index: 90;
-  border: 1px solid rgba(255, 255, 255, 0.1);
-  padding: 12px 18px;
+  border: 1px solid rgba(255,255,255,0.14);
+  padding: 10px 12px;
   border-radius: 999px;
   display: flex;
   align-items: center;
-  gap: 12px;
-  background: rgba(10, 14, 30, 0.95);
-  backdrop-filter: blur(20px);
-  box-shadow: 0 12px 40px rgba(0, 0, 0, 0.3);
-  font-weight: 600;
-  font-size: 14px;
+  gap: 10px;
 }
 
 .toast-dot {
-  width: 8px;
-  height: 8px;
+  width: 10px;
+  height: 10px;
   border-radius: 50%;
-  background: #22c55e;
-  box-shadow: 0 0 10px rgba(34, 197, 94, 0.5);
-  animation: pulseDot 2s ease-in-out infinite;
+  background: #00e676;
 }
 
 .mini-x,
 .x {
   border: none;
   cursor: pointer;
-  background: rgba(255, 255, 255, 0.08);
-  color: rgba(255, 255, 255, 0.7);
+  background: rgba(255,255,255,0.10);
+  color: white;
   border-radius: 10px;
   padding: 6px 10px;
-  font-size: 13px;
-  transition: all 0.15s ease;
-}
-
-.mini-x:hover,
-.x:hover {
-  background: rgba(255, 255, 255, 0.15);
-  color: #fff;
 }
 
 .load-more {
   text-align: center;
-  padding: 20px 14px;
-  opacity: 0.5;
-  font-size: 13px;
-  font-weight: 500;
+  padding: 18px 10px;
+  opacity: .75;
 }
 
-/* =========================================================
-   BOTTOM NAV
-========================================================= */
+/* BOTTOM NAV */
 .bottomNav {
   position: fixed;
   left: 0;
@@ -5384,53 +4474,84 @@ onBeforeUnmount(() => {
   grid-template-columns: repeat(4, 1fr);
   gap: 0;
   padding: 10px 10px calc(14px + env(safe-area-inset-bottom));
-  background: rgba(7, 10, 20, 0.85);
-  backdrop-filter: blur(24px) saturate(1.3);
-  border-top: 1px solid rgba(255, 255, 255, 0.06);
+  background: rgba(8, 12, 20, 0.82);
+  backdrop-filter: blur(12px);
+  border-top: 1px solid rgba(255,255,255,0.10);
 }
 
 .bn {
   border: none;
   background: transparent;
-  color: rgba(255, 255, 255, 0.5);
+  color: rgba(255,255,255,0.80);
   display: grid;
   place-items: center;
   gap: 4px;
   padding: 8px 6px;
   cursor: pointer;
-  transition: all 0.2s ease;
-  position: relative;
-}
-
-.bn:hover {
-  color: rgba(255, 255, 255, 0.8);
 }
 
 .bn.on {
   color: #fff;
+  text-shadow: 0 0 18px rgba(255,75,43,0.55);
 }
 
 .bn.on .bnI {
-  filter: drop-shadow(0 0 10px rgba(139, 92, 246, 0.5));
-  transform: translateY(-2px);
+  filter: drop-shadow(0 0 12px rgba(255,75,43,0.55));
 }
 
 .bnI {
-  font-size: 20px;
-  transition: all 0.2s ease;
+  font-size: 18px;
 }
 
 .bnT {
-  font-size: 11px;
-  font-weight: 700;
-  letter-spacing: 0.02em;
+  font-size: 12px;
+  font-weight: 850;
 }
 
-/* =========================================================
-   MINI PANEL / STATUS
-========================================================= */
-.miniPanel {
+/* LIVE GRID */
+.live-grid {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(210px, 1fr));
+  gap: 12px;
+  margin-top: 14px;
+}
+
+.live-big {
   padding: 16px;
+  border-radius: 18px;
+  background: rgba(255, 0, 0, 0.08);
+  border: 1px solid rgba(255, 0, 0, 0.16);
+  cursor: pointer;
+  transition: transform .16s ease, box-shadow .16s ease;
+}
+
+.live-big:hover {
+  transform: translateY(-2px);
+  box-shadow: 0 14px 28px rgba(255,0,0,0.14);
+}
+
+.live-big-top {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+}
+
+.live-big-title {
+  font-weight: 950;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.live-big-sub {
+  margin-top: 8px;
+  opacity: .74;
+  font-size: 13px;
+}
+
+/* STATUS */
+.miniPanel {
+  padding: 12px;
 }
 
 .row {
@@ -5440,329 +4561,140 @@ onBeforeUnmount(() => {
   flex-wrap: wrap;
 }
 
-/* =========================================================
-   TOOLS PANEL
-========================================================= */
+.badgePill {
+  padding: 6px 10px;
+  border-radius: 999px;
+  background: rgba(255,255,255,0.10);
+  border: 1px solid rgba(255,255,255,0.14);
+  font-weight: 950;
+  font-size: 12px;
+}
+
+.badgePill.ok {
+  border-color: rgba(34,197,94,0.35);
+  background: rgba(34,197,94,0.12);
+}
+
+.badgePill.bad {
+  border-color: rgba(255,80,80,0.35);
+  background: rgba(255,80,80,0.12);
+}
+
+.badgePill.accent {
+  border-color: rgba(255,75,43,0.35);
+  background: rgba(255,75,43,0.14);
+}
+
+/* TOOLS */
 .toolsPanel {
-  margin-top: -6px;
+  margin-top: -4px;
 }
 
 .toolsGrid {
   display: grid;
-  grid-template-columns: repeat(2, minmax(0, 1fr));
+  grid-template-columns: repeat(2, minmax(0,1fr));
   gap: 10px;
 }
 
 .toolBtn {
-  border: 1px solid rgba(255, 255, 255, 0.06);
-  background: rgba(0, 0, 0, 0.25);
-  color: #e2e8f0;
-  padding: 12px 14px;
-  border-radius: 16px;
+  border: 1px solid rgba(255,255,255,0.14);
+  background: rgba(0,0,0,0.28);
+  color: #fff;
+  padding: 10px 12px;
+  border-radius: 14px;
   cursor: pointer;
-  font-weight: 700;
-  font-size: 13px;
-  transition: all 0.2s ease;
-  text-align: left;
-}
-
-.toolBtn:hover {
-  background: rgba(255, 255, 255, 0.06);
-  border-color: rgba(255, 255, 255, 0.12);
-  transform: translateY(-1px);
+  font-weight: 950;
 }
 
 .dangerTool {
-  border-color: rgba(239, 68, 68, 0.15);
-  background: rgba(239, 68, 68, 0.06);
-  color: #fca5a5;
+  border-color: rgba(255,80,80,0.30);
+  background: rgba(255,80,80,0.10);
 }
 
-.dangerTool:hover {
-  background: rgba(239, 68, 68, 0.1);
-  border-color: rgba(239, 68, 68, 0.25);
-}
-
-/* =========================================================
-   THREAD MEDIA
-========================================================= */
 .thread-media-toggle {
-  margin-top: 8px;
-  font-size: 12px;
+  margin-top: 6px;
 }
 
 .thread-media {
-  margin-top: 12px;
-}
-/* =========================================================
-   ZOOM MEETING DOCK CARD
-========================================================= */
-.zoom-create.compact {
-  display: flex;
-  gap: 10px;
-  margin-bottom: 12px;
-  flex-wrap: wrap;
-}
-.zoom-create.compact .roomInput {
-  flex: 1;
-  min-width: 140px;
+  margin-top: 10px;
 }
 
-/* =========================================================
-   ZOOM MEETING OVERLAY
-========================================================= */
-.zoom-overlay {
-  position: fixed;
-  inset: 0;
-  z-index: 100;
-  background: #070a14;
-  display: flex;
-  flex-direction: column;
-  animation: fadeIn 0.2s ease;
-}
-
-@keyframes fadeIn {
-  from { opacity: 0; }
-  to { opacity: 1; }
-}
-
-.zoom-header {
-  padding: 14px 20px;
-  display: flex;
-  justify-content: space-between;
-  align-items: center;
-  background: rgba(7, 10, 20, 0.85);
-  border-bottom: 1px solid rgba(255, 255, 255, 0.06);
-  backdrop-filter: blur(20px);
-}
-
-.zoom-title {
-  font-weight: 800;
-  font-size: 16px;
-  letter-spacing: -0.01em;
-}
-
-.zoom-header-actions {
-  display: flex;
-  gap: 10px;
-  align-items: center;
-}
-
-.zoom-stage {
-  flex: 1;
-  overflow: auto;
-  padding: 20px;
-  position: relative;
-}
-
-.zoom-grid {
-  display: grid;
-  grid-template-columns: repeat(auto-fit, minmax(260px, 1fr));
-  gap: 16px;
-  align-content: center;
-  min-height: 100%;
-}
-
-.zoom-tile {
-  position: relative;
-  background: rgba(0, 0, 0, 0.45);
-  border-radius: 24px;
-  overflow: hidden;
-  aspect-ratio: 16 / 10;
-  display: flex;
-  align-items: center;
-  justify-content: center;
-  border: 1px solid rgba(255, 255, 255, 0.06);
-}
-
-.zoom-video {
-  width: 100%;
-  height: 100%;
-  object-fit: cover;
-  display: block;
-}
-
-.zoom-video.off {
-  display: none;
-}
-
-.zoom-avatar-tile {
-  width: 72px;
-  height: 72px;
-  border-radius: 50%;
-  background: linear-gradient(135deg, #ec4899 0%, #8b5cf6 100%);
-  display: grid;
-  place-items: center;
-  font-size: 28px;
-  font-weight: 900;
-  color: #fff;
-}
-
-.zoom-tile-label {
-  position: absolute;
-  bottom: 14px;
-  left: 14px;
-  padding: 6px 12px;
-  border-radius: 999px;
-  background: rgba(0, 0, 0, 0.55);
-  font-size: 12px;
-  font-weight: 700;
-  color: #fff;
-  backdrop-filter: blur(8px);
-}
-
-.zoom-controls {
-  padding: 16px;
-  display: flex;
-  justify-content: center;
-  gap: 18px;
-  background: rgba(7, 10, 20, 0.85);
-  border-top: 1px solid rgba(255, 255, 255, 0.06);
-  backdrop-filter: blur(20px);
-}
-
-.zoom-ctrl {
-  width: 56px;
-  height: 56px;
-  border-radius: 50%;
-  border: 1px solid rgba(255, 255, 255, 0.1);
-  background: rgba(255, 255, 255, 0.08);
-  color: #fff;
-  font-size: 20px;
-  cursor: pointer;
-  transition: all 0.2s ease;
-  display: grid;
-  place-items: center;
-}
-
-.zoom-ctrl:hover {
-  background: rgba(255, 255, 255, 0.15);
-  transform: translateY(-2px);
-}
-
-.zoom-ctrl.off {
-  background: rgba(239, 68, 68, 0.9);
-  border-color: rgba(239, 68, 68, 0.4);
-}
-
-.zoom-ctrl.danger {
-  background: rgba(220, 38, 38, 0.9);
-  border-color: rgba(220, 38, 38, 0.4);
-}
-
-.zoom-ctrl.danger:hover {
-  background: rgba(185, 28, 28, 1);
-}
-
-/* Sidebar */
-.zoom-sidebar {
-  position: absolute;
-  right: 0;
-  top: 0;
-  bottom: 0;
-  width: 280px;
-  background: rgba(10, 14, 30, 0.95);
-  border-left: 1px solid rgba(255, 255, 255, 0.08);
-  padding: 20px;
-  z-index: 10;
-  display: flex;
-  flex-direction: column;
-  animation: slideInRight 0.2s ease;
-}
-
-@keyframes slideInRight {
-  from { transform: translateX(100%); }
-  to { transform: translateX(0); }
-}
-
-.zoom-sidebar-head {
-  display: flex;
-  justify-content: space-between;
-  align-items: center;
-  margin-bottom: 16px;
-}
-
-.zoom-sidebar-list {
-  overflow: auto;
-  display: grid;
-  gap: 10px;
-}
-
-.zoom-participant {
-  display: flex;
-  align-items: center;
-  gap: 10px;
-  padding: 10px 12px;
-  border-radius: 14px;
-  background: rgba(255, 255, 255, 0.04);
-  font-size: 13px;
-  font-weight: 600;
-}
-
-/* Responsive */
 @media (max-width: 900px) {
-  .zoom-grid {
-    grid-template-columns: repeat(auto-fit, minmax(200px, 1fr));
+  .heroCard {
+    grid-template-columns: 1fr;
   }
-  .zoom-sidebar {
-    width: 240px;
+
+  .dock {
+    grid-template-columns: 1fr;
+  }
+
+  .chatDrawer {
+    right: 0;
+    left: 0;
+    top: auto;
+    bottom: 0;
+    width: 100%;
+    transform: translateY(110%);
+    border-radius: 18px 18px 0 0;
+  }
+
+  .chatDrawer.open {
+    transform: translateY(0);
+  }
+
+  .rooms {
+    grid-template-columns: 1fr;
   }
 }
 
-@media (max-width: 600px) {
-  .zoom-grid {
-    grid-template-columns: 1fr 1fr;
-    gap: 10px;
+@media (max-width: 500px) {
+  .modebar,
+  .filterbar {
+    overflow-x: auto;
+    scrollbar-width: none;
   }
-  .zoom-tile {
-    aspect-ratio: 1 / 1;
-    border-radius: 18px;
+
+  .modebar::-webkit-scrollbar,
+  .filterbar::-webkit-scrollbar {
+    display: none;
   }
-  .zoom-controls {
-    gap: 12px;
-    padding: 12px;
+
+  .toolsGrid {
+    grid-template-columns: 1fr;
   }
-  .zoom-ctrl {
-    width: 48px;
-    height: 48px;
-    font-size: 18px;
+
+  .callroom-card {
+    flex-direction: column;
+    align-items: stretch;
   }
-  .zoom-sidebar {
-    width: 100%;
-    border-left: none;
-    border-top: 1px solid rgba(255, 255, 255, 0.08);
-    top: auto;
-    left: 0;
-    right: 0;
-    bottom: 76px; /* above controls */
-    height: 260px;
-    animation: slideUp 0.2s ease;
+
+  .heroActions {
+    flex-direction: column;
   }
-  @keyframes slideUp {
-    from { transform: translateY(100%); }
-    to { transform: translateY(0); }
+
+  .heroStats {
+    grid-template-columns: repeat(2, 1fr);
   }
 }
-/* =========================================================
-   ELITE UPGRADE ADDITIONS
-========================================================= */
+
+/* ===== ELITE UPGRADE ADDITIONS ===== */
 .eliteTopbar {
   position: sticky;
   top: 0;
   z-index: 60;
-  backdrop-filter: blur(24px) saturate(1.3);
-  background: rgba(7, 10, 22, 0.78);
-  border-bottom: 1px solid rgba(255, 255, 255, 0.05);
+  backdrop-filter: blur(18px);
+  background: rgba(7, 10, 22, 0.72);
+  border: 1px solid rgba(255,255,255,0.08);
 }
 
 .eliteLogo {
-  box-shadow: 0 0 30px rgba(139, 92, 246, 0.35);
+  box-shadow: 0 0 30px rgba(109, 91, 255, 0.38);
 }
 
 .eliteCenterSearch {
   flex: 1;
   max-width: 520px;
-  margin: 0 16px;
+  margin: 0 14px;
 }
 
 .eliteSearchWrap {
@@ -5771,14 +4703,12 @@ onBeforeUnmount(() => {
 
 .eliteSearch {
   min-height: 46px;
-  font-size: 14px;
 }
 
 .eliteTopActions {
-  gap: 8px;
+  gap: 10px;
   flex-wrap: wrap;
   justify-content: flex-end;
-  align-items: center;
 }
 
 .eliteChip {
@@ -5795,39 +4725,35 @@ onBeforeUnmount(() => {
   gap: 8px;
   padding: 10px 14px;
   border-radius: 999px;
-  background: rgba(255, 255, 255, 0.05);
-  border: 1px solid rgba(255, 255, 255, 0.08);
-  font-size: 12px;
+  background: rgba(255,255,255,0.08);
+  border: 1px solid rgba(255,255,255,0.1);
+  font-size: 13px;
   font-weight: 700;
-  color: #e2e8f0;
-  letter-spacing: 0.01em;
+  color: #eaf2ff;
 }
 
 .netDot {
-  width: 8px;
-  height: 8px;
-  border-radius: 50%;
-  background: #22c55e;
-  box-shadow: 0 0 10px rgba(34, 197, 94, 0.5);
-  animation: pulseDot 2s ease-in-out infinite;
+  width: 9px;
+  height: 9px;
+  border-radius: 999px;
+  background: #48d597;
+  box-shadow: 0 0 12px rgba(72, 213, 151, 0.9);
 }
 
 .netBadge.offline .netDot {
-  background: #f97316;
-  box-shadow: 0 0 10px rgba(249, 115, 22, 0.5);
-  animation: none;
+  background: #ff8d5c;
+  box-shadow: 0 0 12px rgba(255, 141, 92, 0.9);
 }
 
 .netBadge.syncing .netDot {
-  background: #60a5fa;
-  box-shadow: 0 0 10px rgba(96, 165, 250, 0.5);
-  animation: pulseDot 1s ease-in-out infinite;
+  background: #8ab4ff;
+  box-shadow: 0 0 12px rgba(138, 180, 255, 0.9);
 }
 
 .eliteQuickRail {
   position: fixed;
   left: 16px;
-  top: 140px;
+  top: 132px;
   z-index: 40;
   display: flex;
   flex-direction: column;
@@ -5835,33 +4761,21 @@ onBeforeUnmount(() => {
 }
 
 .quickRailBtn {
-  border: 1px solid rgba(255, 255, 255, 0.06);
-  background: rgba(8, 12, 28, 0.65);
-  color: #e2e8f0;
-  padding: 12px 16px;
-  border-radius: 18px;
-  backdrop-filter: blur(20px);
+  border: 1px solid rgba(255,255,255,0.1);
+  background: rgba(8, 12, 28, 0.68);
+  color: #fff;
+  padding: 12px 14px;
+  border-radius: 16px;
+  backdrop-filter: blur(16px);
   cursor: pointer;
   font-weight: 700;
-  font-size: 13px;
-  transition: all 0.2s ease;
-  text-align: left;
-  min-width: 130px;
-}
-
-.quickRailBtn:hover {
-  background: rgba(139, 92, 246, 0.15);
-  border-color: rgba(139, 92, 246, 0.25);
-  transform: translateX(3px);
-  color: #c4b5fd;
 }
 
 .quickCreateBackdrop {
   position: fixed;
   inset: 0;
   z-index: 80;
-  background: rgba(1, 4, 14, 0.6);
-  backdrop-filter: blur(8px);
+  background: rgba(1, 4, 14, 0.55);
   display: grid;
   place-items: end center;
   padding: 20px;
@@ -5869,12 +4783,10 @@ onBeforeUnmount(() => {
 
 .quickCreateSheet {
   width: min(760px, 100%);
-  border-radius: 32px;
-  padding: 24px;
-  border: 1px solid rgba(255, 255, 255, 0.08);
-  background: rgba(10, 15, 34, 0.92);
-  backdrop-filter: blur(30px);
-  box-shadow: 0 -20px 60px rgba(0, 0, 0, 0.4);
+  border-radius: 28px;
+  padding: 20px;
+  border: 1px solid rgba(255,255,255,0.1);
+  background: rgba(10, 15, 34, 0.88);
 }
 
 .quickCreateHead {
@@ -5882,7 +4794,7 @@ onBeforeUnmount(() => {
   align-items: center;
   justify-content: space-between;
   gap: 12px;
-  margin-bottom: 20px;
+  margin-bottom: 16px;
 }
 
 .quickCreateGrid {
@@ -5892,40 +4804,25 @@ onBeforeUnmount(() => {
 }
 
 .quickCreateCard {
-  min-height: 90px;
-  border-radius: 22px;
-  border: 1px solid rgba(255, 255, 255, 0.08);
-  background: linear-gradient(180deg, rgba(255, 255, 255, 0.07), rgba(255, 255, 255, 0.02));
+  min-height: 84px;
+  border-radius: 20px;
+  border: 1px solid rgba(255,255,255,0.1);
+  background: linear-gradient(180deg, rgba(255,255,255,0.09), rgba(255,255,255,0.04));
   color: #fff;
   font-weight: 800;
   cursor: pointer;
-  padding: 16px;
-  font-size: 13px;
-  transition: all 0.2s ease;
-  display: flex;
-  align-items: center;
-  justify-content: center;
-  text-align: center;
-}
-
-.quickCreateCard:hover {
-  transform: translateY(-3px);
-  border-color: rgba(139, 92, 246, 0.3);
-  background: linear-gradient(180deg, rgba(139, 92, 246, 0.1), rgba(255, 255, 255, 0.03));
-  box-shadow: 0 12px 32px rgba(139, 92, 246, 0.1);
+  padding: 12px;
 }
 
 .quickQueueBar {
-  margin-top: 18px;
+  margin-top: 16px;
   display: flex;
   align-items: center;
   justify-content: space-between;
   gap: 12px;
-  padding: 14px 16px;
+  padding: 12px 14px;
   border-radius: 18px;
-  background: rgba(255, 255, 255, 0.05);
-  font-size: 13px;
-  font-weight: 600;
+  background: rgba(255,255,255,0.06);
 }
 
 .eliteBottomNav {
@@ -5934,113 +4831,34 @@ onBeforeUnmount(() => {
 }
 
 .createBn {
-  transform: translateY(-18px);
+  transform: translateY(-20px);
 }
 
 .createCore {
-  width: 58px;
-  height: 58px;
+  width: 62px;
+  height: 62px;
   display: grid;
   place-items: center;
-  border-radius: 50%;
-  font-size: 30px;
+  border-radius: 999px;
+  font-size: 34px;
   font-weight: 900;
-  background: linear-gradient(135deg, #a78bfa 0%, #6366f1 50%, #4f46e5 100%);
-  box-shadow: 0 12px 36px rgba(99, 102, 241, 0.4);
-  border: 2px solid rgba(255, 255, 255, 0.15);
-  transition: all 0.2s ease;
-}
-
-.createBn:hover .createCore {
-  transform: scale(1.05);
-  box-shadow: 0 16px 44px rgba(99, 102, 241, 0.5);
+  background: radial-gradient(circle at 30% 30%, #a78bfa, #6d5cff 55%, #2b2f77);
+  box-shadow: 0 18px 40px rgba(109, 92, 255, 0.45);
 }
 
 .fade-enter-active,
 .fade-leave-active {
-  transition: opacity 0.25s ease, transform 0.25s ease;
+  transition: opacity .22s ease, transform .22s ease;
 }
 
 .fade-enter-from,
 .fade-leave-to {
   opacity: 0;
-  transform: translateY(10px);
 }
 
-/* =========================================================
-   COMM HUB
-========================================================= */
-.commHub {
-  position: relative;
-  overflow: hidden;
-}
-
-/* =========================================================
-   RESPONSIVE
-========================================================= */
 @media (max-width: 1100px) {
   .eliteQuickRail {
     display: none;
-  }
-}
-
-@media (max-width: 900px) {
-  .heroCard {
-    grid-template-columns: 1fr;
-    padding: 20px;
-  }
-
-  .heroStats {
-    grid-template-columns: repeat(3, 1fr);
-  }
-
-  .dock {
-    grid-template-columns: 1fr;
-  }
-
-  .chatDrawer {
-    right: 0;
-    left: 0;
-    top: auto;
-    bottom: 0;
-    width: 100%;
-    transform: translateY(110%);
-    border-radius: 24px 24px 0 0;
-  }
-
-  .chatDrawer.open {
-    transform: translateY(0);
-  }
-
-  .rooms {
-    grid-template-columns: 1fr;
-  }
-
-  .dynamicIsland {
-    flex-wrap: wrap;
-    gap: 8px;
-    padding: 10px 14px;
-    border-radius: 20px;
-  }
-
-  .islandCenter {
-    order: 3;
-    width: 100%;
-    justify-content: center;
-  }
-
-  .eliteTopActions {
-    gap: 6px;
-  }
-
-  .eliteTopActions .chip {
-    display: inline-flex;
-    padding: 8px 12px;
-    font-size: 12px;
-  }
-
-  .commHub {
-    margin-top: 12px;
   }
 }
 
@@ -6056,60 +4874,30 @@ onBeforeUnmount(() => {
   .quickCreateGrid {
     grid-template-columns: repeat(2, minmax(0, 1fr));
   }
-
-  .heroStats {
-    grid-template-columns: repeat(2, 1fr);
-  }
 }
 
-@media (max-width: 500px) {
-  .modebar,
-  .filterbar {
-    overflow-x: auto;
-    scrollbar-width: none;
-    -ms-overflow-style: none;
+
+.commHub {
+  position: relative;
+  overflow: hidden;
+}
+
+@media (max-width: 900px) {
+  .eliteTopActions {
+    gap: 8px;
+    flex-wrap: wrap;
   }
 
-  .modebar::-webkit-scrollbar,
-  .filterbar::-webkit-scrollbar {
-    display: none;
+  .eliteTopActions .chip {
+    display: inline-flex;
   }
 
-  .toolsGrid {
-    grid-template-columns: 1fr;
+  .eliteQuickRail {
+    grid-template-columns: repeat(3, minmax(0, 1fr));
   }
 
-  .callroom-card {
-    flex-direction: column;
-    align-items: stretch;
-    gap: 12px;
-  }
-
-  .heroActions {
-    flex-direction: column;
-  }
-
-  .heroStats {
-    grid-template-columns: repeat(2, 1fr);
-  }
-
-  .topbar {
-    padding: 12px 14px;
-  }
-
-  .main {
-    padding: 14px;
-  }
-
-  .panel,
-  .composer,
-  .post {
-    padding: 16px;
-    border-radius: 20px;
-  }
-
-  .dynamicIsland {
-    display: none;
+  .commHub {
+    margin-top: 10px;
   }
 }
 
