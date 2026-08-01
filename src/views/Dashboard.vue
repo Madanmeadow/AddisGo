@@ -322,6 +322,74 @@
       </div>
 
       <main class="main">
+      <!-- ═══════ MOBILE ABOVE-FOLD REDESIGN ═══════ -->
+      <section class="mobileOnly mobileHeader">
+        <div class="mhLeft">
+          <div class="mhAvatar">{{ myInitial }}</div>
+          <div class="mhMeta">
+            <div class="mhName">{{ meName }}</div>
+            <div class="mhStatus">{{ quickStatusText }}</div>
+          </div>
+        </div>
+        <div class="mhPills">
+          <span class="mhPill score">⚡ {{ creatorScore }}</span>
+          <span class="mhPill streak">🔥 {{ todayStreak }}d</span>
+        </div>
+      </section>
+
+      <section class="mobileOnly mobileStories">
+        <div class="storyWrap" @click="openMobileComposer">
+          <div class="storyRing myStory"><div class="storyAvatar">{{ myInitial }}</div></div>
+          <span class="storyLabel">You</span>
+        </div>
+        <div
+          v-for="u in filteredPeople.slice(0, 8)"
+          :key="'story-'+u.id"
+          class="storyWrap"
+          @click="startCall(u, 'audio')"
+        >
+          <div class="storyRing" :class="{ online: isOnline(u.id) }">
+            <div class="storyAvatar">{{ displayUserName(u)[0]?.toUpperCase() }}</div>
+          </div>
+          <span class="storyLabel">{{ displayUserName(u).slice(0,8) }}</span>
+        </div>
+        <div class="storyWrap" @click="togglePeople">
+          <div class="storyRing more"><div class="storyAvatar">+</div></div>
+          <span class="storyLabel">More</span>
+        </div>
+      </section>
+
+      <section class="mobileOnly mobileActionsGrid">
+        <button class="maCard live" @click="startLive">
+          <span class="maIcon">🔴</span>
+          <span class="maTitle">Go Live</span>
+          <span class="maSub">{{ liveStreams.length ? liveStreams.length + ' watching' : 'No one live' }}</span>
+          <span v-if="liveStreams.length" class="maDot"></span>
+        </button>
+        <button class="maCard meet" @click="goCallSFU">
+          <span class="maIcon">📹</span>
+          <span class="maTitle">Video Meet</span>
+          <span class="maSub">SFU Call</span>
+        </button>
+        <button class="maCard post" @click="openMobileComposer">
+          <span class="maIcon">✨</span>
+          <span class="maTitle">Create Post</span>
+          <span class="maSub">Share update</span>
+        </button>
+        <button class="maCard room" @click="createFastRoom">
+          <span class="maIcon">🎧</span>
+          <span class="maTitle">Start Room</span>
+          <span class="maSub">Audio room</span>
+        </button>
+      </section>
+
+      <section class="mobileOnly mobileComposerBar" @click="openMobileComposer" v-if="!showMobileComposer">
+        <div class="mcAvatar">{{ myInitial }}</div>
+        <div class="mcPlaceholder">What's happening?</div>
+        <div class="mcBtn">⚡</div>
+      </section>
+
+
         <!-- STATUS -->
         <section v-if="token" class="panel miniPanel glassy">
           <div class="panel-head">
@@ -596,7 +664,7 @@
         </section>
 
         <!-- COMPOSER -->
-        <section class="composer glassy">
+        <section class="composer glassy" :class="{ mobileOpen: showMobileComposer }">
           <div class="composer-head">
             <div class="avatar big">{{ myInitial }}</div>
 
@@ -1643,6 +1711,7 @@ const peopleLoading = ref(false)
 const peopleError = ref("")
 const search = ref(savedPrefs.search || "")
 const searchRef = ref(null)
+const showMobileComposer = ref(false)
 
 function togglePeople() {
   peopleOpen.value = !peopleOpen.value
@@ -1880,6 +1949,14 @@ const captionLength = computed(() => String(caption.value || "").length)
 
 function focusComposer() {
   try { composerRef.value?.focus?.() } catch {}
+}
+function openMobileComposer() {
+  showMobileComposer.value = true
+  nextTick(() => {
+    focusComposer()
+    const el = document.querySelector('.composer')
+    if (el) el.scrollIntoView({ behavior: 'smooth', block: 'center' })
+  })
 }
 
 function clearDraft() {
@@ -4823,4 +4900,234 @@ onBeforeUnmount(() => {
     margin-top: 10px;
   }
 }
+
+/* ═══════════════════════════════════════════
+   MOBILE REDESIGN — ABOVE THE FOLD
+   ═══════════════════════════════════════════ */
+.mobileOnly { display: none; }
+
+@media (max-width: 768px) {
+  .mobileOnly { display: block; }
+
+  /* Hide desktop clutter on mobile */
+  .heroStrip,
+  .dynamicIsland,
+  .dock,
+  .panel.miniPanel,
+  .commHub,
+  .toolsPanel,
+  .eliteQuickRail {
+    display: none !important;
+  }
+
+  /* Composer hidden on mobile until tapped */
+  .composer:not(.mobileOpen) { display: none !important; }
+  .composer.mobileOpen {
+    display: block !important;
+    margin: 0 16px 16px;
+    animation: composerSlide 0.25s ease;
+  }
+  @keyframes composerSlide {
+    from { opacity: 0; transform: translateY(12px); }
+    to   { opacity: 1; transform: translateY(0); }
+  }
+
+  /* ── Modebar → horizontal scroll pills ── */
+  .modebar {
+    margin: 0;
+    padding: 10px 16px;
+    overflow-x: auto;
+    scrollbar-width: none;
+    gap: 8px;
+  }
+  .modebar::-webkit-scrollbar { display: none; }
+  .modebar .mode {
+    flex: 0 0 auto;
+    white-space: nowrap;
+    padding: 8px 14px;
+    font-size: 13px;
+  }
+  .modebar .mode-right { display: none; }
+
+  /* ── Filterbar → horizontal scroll chips ── */
+  .filterbar {
+    margin: 0;
+    padding: 0 16px 12px;
+    overflow-x: auto;
+    scrollbar-width: none;
+    gap: 8px;
+  }
+  .filterbar::-webkit-scrollbar { display: none; }
+  .filterbar .filterChip {
+    flex: 0 0 auto;
+    white-space: nowrap;
+    padding: 6px 12px;
+    font-size: 12px;
+  }
+  .filterbar .filterHint { display: none; }
+
+  /* ── Mobile Compact Header ── */
+  .mobileHeader {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    padding: 6px 16px 14px;
+  }
+  .mhLeft { display: flex; align-items: center; gap: 10px; }
+  .mhAvatar {
+    width: 40px; height: 40px; border-radius: 50%;
+    background: linear-gradient(135deg, #a855f7, #ec4899);
+    display: grid; place-items: center;
+    font-weight: 800; color: #fff; font-size: 16px;
+  }
+  .mhName { font-weight: 700; color: #fff; font-size: 15px; }
+  .mhStatus { font-size: 11px; color: #64748b; }
+  .mhPills { display: flex; gap: 6px; }
+  .mhPill {
+    border-radius: 12px; padding: 5px 10px;
+    font-size: 11px; font-weight: 700;
+  }
+  .mhPill.score {
+    background: rgba(168,85,247,0.15);
+    border: 1px solid rgba(168,85,247,0.3);
+    color: #c084fc;
+  }
+  .mhPill.streak {
+    background: rgba(34,197,94,0.15);
+    border: 1px solid rgba(34,197,94,0.3);
+    color: #4ade80;
+  }
+
+  /* ── Mobile Stories (People) ── */
+  .mobileStories {
+    display: flex;
+    gap: 12px;
+    overflow-x: auto;
+    padding: 0 16px 14px;
+    scrollbar-width: none;
+  }
+  .mobileStories::-webkit-scrollbar { display: none; }
+  .storyWrap {
+    flex: 0 0 auto;
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    gap: 6px;
+    cursor: pointer;
+  }
+  .storyRing {
+    width: 60px; height: 60px; border-radius: 50%;
+    background: linear-gradient(135deg, #3b82f6, #06b6d4);
+    padding: 2.5px;
+  }
+  .storyRing.myStory {
+    background: linear-gradient(135deg, #a855f7, #ec4899);
+  }
+  .storyRing.online {
+    background: linear-gradient(135deg, #22c55e, #10b981);
+  }
+  .storyRing.more {
+    background: #2d2d44;
+  }
+  .storyAvatar {
+    width: 100%; height: 100%; border-radius: 50%;
+    background: #1a1a2e;
+    display: grid; place-items: center;
+    font-weight: 700; color: #fff; font-size: 18px;
+  }
+  .storyRing.more .storyAvatar { color: #64748b; }
+  .storyLabel {
+    font-size: 11px; color: #94a3b8;
+    max-width: 60px; overflow: hidden;
+    text-overflow: ellipsis; white-space: nowrap;
+  }
+
+  /* ── Mobile Quick Actions 2×2 Grid ── */
+  .mobileActionsGrid {
+    display: grid;
+    grid-template-columns: 1fr 1fr;
+    gap: 10px;
+    padding: 0 16px 16px;
+  }
+  .maCard {
+    position: relative;
+    border-radius: 16px;
+    padding: 14px;
+    display: flex;
+    flex-direction: column;
+    align-items: flex-start;
+    gap: 4px;
+    color: #fff;
+    text-align: left;
+    cursor: pointer;
+    border: 1px solid transparent;
+    overflow: hidden;
+    transition: transform 0.15s ease, box-shadow 0.15s ease;
+  }
+  .maCard:active { transform: scale(0.97); }
+  .maCard.live {
+    background: linear-gradient(135deg, rgba(239,68,68,0.12), rgba(236,72,153,0.08));
+    border-color: rgba(239,68,68,0.22);
+  }
+  .maCard.meet {
+    background: linear-gradient(135deg, rgba(168,85,247,0.12), rgba(99,102,241,0.08));
+    border-color: rgba(168,85,247,0.22);
+  }
+  .maCard.post {
+    background: linear-gradient(135deg, rgba(245,158,11,0.12), rgba(239,68,68,0.08));
+    border-color: rgba(245,158,11,0.22);
+  }
+  .maCard.room {
+    background: linear-gradient(135deg, rgba(34,197,94,0.12), rgba(6,182,212,0.08));
+    border-color: rgba(34,197,94,0.22);
+  }
+  .maIcon { font-size: 22px; }
+  .maTitle { font-weight: 700; font-size: 14px; }
+  .maSub { font-size: 11px; opacity: 0.65; }
+  .maDot {
+    position: absolute; top: 12px; right: 12px;
+    width: 8px; height: 8px; border-radius: 50%;
+    background: #ef4444;
+    box-shadow: 0 0 8px rgba(239,68,68,0.6);
+    animation: pulseDot 2s infinite;
+  }
+  @keyframes pulseDot {
+    0%, 100% { opacity: 1; transform: scale(1); }
+    50% { opacity: 0.6; transform: scale(1.2); }
+  }
+
+  /* ── Mobile Compact Composer Bar ── */
+  .mobileComposerBar {
+    display: flex;
+    align-items: center;
+    gap: 10px;
+    background: rgba(255,255,255,0.04);
+    border: 1px solid rgba(255,255,255,0.06);
+    border-radius: 20px;
+    padding: 10px 14px;
+    margin: 0 16px 16px;
+    cursor: pointer;
+    transition: border-color 0.2s;
+  }
+  .mobileComposerBar:active { border-color: rgba(168,85,247,0.4); }
+  .mcAvatar {
+    width: 36px; height: 36px; border-radius: 50%;
+    background: linear-gradient(135deg, #a855f7, #ec4899);
+    display: grid; place-items: center;
+    font-weight: 700; color: #fff; font-size: 14px;
+    flex-shrink: 0;
+  }
+  .mcPlaceholder { flex: 1; color: #64748b; font-size: 14px; }
+  .mcBtn {
+    width: 36px; height: 36px; border-radius: 50%;
+    background: linear-gradient(135deg, #ec4899, #a855f7);
+    display: grid; place-items: center;
+    color: #fff; font-size: 16px;
+    flex-shrink: 0;
+  }
+
+  /* Fix main padding so bottom nav doesn't clip feed */
+  .main { padding: 0; }
+}
+
 </style>
