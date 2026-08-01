@@ -428,7 +428,59 @@
           </button>
         </div>
       </div>
+            <!-- Video Meet -->
+      <div class="panel dockCard glassy">
+        <div class="panel-head">
+          <div class="panel-title">🎥 Video Meet</div>
+          <button class="btn btn-primary" @click="createZoomRoom" :disabled="zoomCreating || !token">
+            {{ zoomCreating ? "Starting…" : "New Meet" }}
+          </button>
+        </div>
 
+        <div v-if="!token" class="alert soft mt10">
+          Login to start or join video meetings.
+        </div>
+
+        <template v-else>
+          <div class="zoom-create compact">
+            <input
+              v-model="zoomRoomName"
+              class="roomInput"
+              placeholder="Class / meeting name…"
+            />
+            <button class="btn btn-primary" @click="createZoomRoom" :disabled="zoomCreating">
+              {{ zoomCreating ? "…" : "Start" }}
+            </button>
+          </div>
+
+          <div v-if="zoomError" class="alert soft mt10">{{ zoomError }}</div>
+
+          <div v-if="zoomRooms.length === 0" class="hint mt10">
+            No active meetings. Start a class or team call.
+          </div>
+
+          <div v-else class="meet-strip">
+            <div
+              v-for="room in zoomRooms.slice(0, 4)"
+              :key="'zoom-mini-' + room.roomId"
+              class="meet-pill"
+              @click="joinZoomRoom(room)"
+            >
+              <span class="meet-dot video"></span>
+              <span class="meet-pill-name">{{ room.name }}</span>
+              <span class="meet-count">{{ room.participantCount || 0 }} in</span>
+              <span class="chev">›</span>
+            </div>
+            <button
+              v-if="zoomRooms.length > 4"
+              class="chip ghost mini"
+              @click="refreshZoomRooms"
+            >
+              View all
+            </button>
+          </div>
+        </template>
+      </div>
       <!-- People -->
       <div class="panel dockCard glassy">
         <div class="panel-head">
@@ -1207,6 +1259,84 @@
       <span class="bnI">👤</span><span class="bnT">Profile</span>
     </button>
   </nav>
+      <!-- ZOOM MEETING OVERLAY -->
+    <div v-if="inZoomMeeting" class="zoom-overlay">
+      <div class="zoom-header">
+        <div class="zoom-title">{{ zoomCurrentRoom?.name }}</div>
+        <div class="zoom-header-actions">
+          <button class="chip ghost" @click="zoomShowParticipants = !zoomShowParticipants">
+            👥 {{ zoomParticipants.length + 1 }}
+          </button>
+          <button class="chip danger" @click="leaveZoomRoom">Leave</button>
+        </div>
+      </div>
+
+      <div class="zoom-stage" :class="{ sidebarOpen: zoomShowParticipants }">
+        <div class="zoom-grid">
+          <!-- Local -->
+          <div class="zoom-tile" :class="{ muted: zoomAudioMuted }">
+            <video
+              autoplay
+              playsinline
+              muted
+              :srcObject="zoomLocalStream"
+              class="zoom-video"
+              :class="{ off: !zoomVideoEnabled }"
+            ></video>
+            <div v-if="!zoomVideoEnabled" class="zoom-avatar-tile">
+              {{ myInitial }}
+            </div>
+            <div class="zoom-tile-label">
+              You {{ zoomAudioMuted ? "🔇" : "" }}
+            </div>
+          </div>
+
+          <!-- Remotes -->
+          <div v-for="p in zoomParticipants" :key="p.id" class="zoom-tile">
+            <video
+              v-if="p.stream"
+              autoplay
+              playsinline
+              :srcObject="p.stream"
+              class="zoom-video"
+            ></video>
+            <div v-else class="zoom-avatar-tile">
+              {{ getInitial(p.username) }}
+            </div>
+            <div class="zoom-tile-label">{{ p.username }}</div>
+          </div>
+        </div>
+      </div>
+
+      <div class="zoom-controls">
+        <button class="zoom-ctrl" :class="{ off: zoomAudioMuted }" @click="toggleZoomMute">
+          {{ zoomAudioMuted ? "🔇" : "🎤" }}
+        </button>
+        <button class="zoom-ctrl" :class="{ off: !zoomVideoEnabled }" @click="toggleZoomVideo">
+          {{ zoomVideoEnabled ? "📹" : "🚫" }}
+        </button>
+        <button class="zoom-ctrl" :class="{ active: zoomScreenSharing }" @click="toggleZoomScreen">
+          🖥️
+        </button>
+        <button class="zoom-ctrl danger" @click="leaveZoomRoom">📞 End</button>
+      </div>
+
+      <!-- Participants Sidebar -->
+      <div v-if="zoomShowParticipants" class="zoom-sidebar">
+        <div class="zoom-sidebar-head">
+          <div class="panel-title">Participants</div>
+          <button class="mini-x" @click="zoomShowParticipants = false">✕</button>
+        </div>
+        <div class="zoom-sidebar-list">
+          <div class="zoom-participant">
+            <span class="status on"></span> You {{ zoomAudioMuted ? "(muted)" : "" }}
+          </div>
+          <div v-for="p in zoomParticipants" :key="p.id" class="zoom-participant">
+            <span class="status on"></span> {{ p.username }}
+          </div>
+        </div>
+      </div>
+    </div>
 </div>
 
   </Layout>
@@ -1783,6 +1913,278 @@ const callRoomKind = ref("audio")
 const creatingCallRoom = ref(false)
 const callRoomsError = ref("")
 const callRoomsLoading = ref(false)
+/* =========================
+   ZOOM MEETINGS (SEPARATE)
+========================= */
+const zoomRoomName = ref("")
+const zoomRooms = ref([])
+const zoomCreating = ref(false)
+const zoomError = ref("")
+const inZoomMeeting = ref(false)
+const zoomCurrentRoom = ref(null)
+const zoomParticipants = ref([]) // { id, username, stream, audioMuted, videoOn }
+const zoomLocalStream = ref(null)
+const zoomScreenStream = ref(null)
+const zoomAudioMuted = ref(false)
+const zoomVideoEnabled = ref(true)
+const zoomScreenSharing = ref(false)
+const zoomShowParticipants = ref(false)
+const zoomPeerConnections = ref(new Map()) // userId -> RTCPeerConnection
+
+const ZOOM_ICE = [
+  { urls: "stun:stun.l.google.com:19302" },
+  { urls: "stun:stun1.l.google.com:19302" },
+]
+
+function getZoomMedia(video = true) {
+  return navigator.mediaDevices.getUserMedia({
+    audio: true,
+    video: video ? { width: 1280, height: 720 } : false,
+  })
+}
+
+function makeZoomPC(userId) {
+  const pc = new RTCPeerConnection({ iceServers: ZOOM_ICE })
+
+  // add camera + mic
+  zoomLocalStream.value?.getTracks().forEach((t) => {
+    pc.addTrack(t, zoomLocalStream.value)
+  })
+
+  // add screen if active
+  zoomScreenStream.value?.getTracks().forEach((t) => {
+    pc.addTrack(t, zoomScreenStream.value)
+  })
+
+  pc.onicecandidate = (e) => {
+    if (e.candidate && zoomCurrentRoom.value) {
+      socket.emit("zoom:signal", {
+        roomId: zoomCurrentRoom.value.roomId,
+        toUserId: userId,
+        signal: { type: "ice-candidate", candidate: e.candidate },
+      })
+    }
+  }
+
+  pc.ontrack = (e) => {
+    const p = zoomParticipants.value.find((x) => x.id === userId)
+    if (p) {
+      p.stream = e.streams[0]
+      zoomParticipants.value = [...zoomParticipants.value] // trigger reactivity
+    }
+  }
+
+  pc.onconnectionstatechange = () => {
+    if (pc.connectionState === "disconnected" || pc.connectionState === "failed") {
+      dropZoomPeer(userId)
+    }
+  }
+
+  return pc
+}
+
+async function createZoomRoom() {
+  if (!token) return alert("Login to start a meeting.")
+  if (zoomCreating.value) return
+  zoomCreating.value = true
+  zoomError.value = ""
+
+  try {
+    zoomLocalStream.value = await getZoomMedia(true)
+    const name = zoomRoomName.value.trim() || `${meName.value}'s Meeting`
+
+    socket.emit("zoom:create", { name }, async (res) => {
+      zoomCreating.value = false
+      if (res?.error) {
+        zoomError.value = res.error
+        return
+      }
+
+      const roomId = res.roomId
+      zoomCurrentRoom.value = { roomId, name, isHost: true }
+      inZoomMeeting.value = true
+      zoomParticipants.value = []
+      zoomRoomName.value = ""
+
+      // wire room-specific listeners
+      socket.on(`zoom:user-joined:${roomId}`, async ({ userId, username }) => {
+        if (userId === String(me?.id)) return
+        if (zoomParticipants.value.find((p) => p.id === userId)) return
+
+        zoomParticipants.value.push({
+          id: userId,
+          username: username || "Guest",
+          stream: null,
+          audioMuted: false,
+          videoOn: true,
+        })
+
+        const pc = makeZoomPC(userId)
+        zoomPeerConnections.value.set(userId, pc)
+
+        const offer = await pc.createOffer()
+        await pc.setLocalDescription(offer)
+
+        socket.emit("zoom:signal", {
+          roomId,
+          toUserId: userId,
+          signal: { type: "offer", sdp: offer.sdp },
+        })
+      })
+
+      socket.on(`zoom:signal:${roomId}`, async ({ fromUserId, signal }) => {
+        await handleZoomSignal(fromUserId, signal)
+      })
+
+      socket.on(`zoom:user-left:${roomId}`, ({ userId }) => {
+        dropZoomPeer(userId)
+      })
+    })
+  } catch {
+    zoomError.value = "Camera / microphone access denied."
+    zoomCreating.value = false
+  }
+}
+
+async function joinZoomRoom(room) {
+  if (!token) return alert("Login to join.")
+  zoomError.value = ""
+
+  try {
+    zoomLocalStream.value = await getZoomMedia(true)
+    const roomId = room.roomId || room.id
+
+    socket.emit("zoom:join", { roomId }, async (res) => {
+      if (res?.error) {
+        zoomError.value = res.error
+        return
+      }
+
+      zoomCurrentRoom.value = { roomId, name: room.name, isHost: false }
+      inZoomMeeting.value = true
+      zoomParticipants.value = (res.participants || [])
+        .filter((p) => String(p.userId) !== String(me?.id))
+        .map((p) => ({
+          id: p.userId,
+          username: p.username || "Guest",
+          stream: null,
+          audioMuted: false,
+          videoOn: true,
+        }))
+
+      socket.on(`zoom:signal:${roomId}`, async ({ fromUserId, signal }) => {
+        await handleZoomSignal(fromUserId, signal)
+      })
+
+      socket.on(`zoom:user-left:${roomId}`, ({ userId }) => {
+        dropZoomPeer(userId)
+      })
+    })
+  } catch {
+    zoomError.value = "Camera / microphone access denied."
+  }
+}
+
+async function handleZoomSignal(fromUserId, signal) {
+  let pc = zoomPeerConnections.value.get(fromUserId)
+
+  if (signal.type === "offer") {
+    if (!pc) {
+      pc = makeZoomPC(fromUserId)
+      zoomPeerConnections.value.set(fromUserId, pc)
+    }
+    await pc.setRemoteDescription(new RTCSessionDescription({ type: "offer", sdp: signal.sdp }))
+    const answer = await pc.createAnswer()
+    await pc.setLocalDescription(answer)
+
+    socket.emit("zoom:signal", {
+      roomId: zoomCurrentRoom.value.roomId,
+      toUserId: fromUserId,
+      signal: { type: "answer", sdp: answer.sdp },
+    })
+  } else if (signal.type === "answer") {
+    if (pc) await pc.setRemoteDescription(new RTCSessionDescription({ type: "answer", sdp: signal.sdp }))
+  } else if (signal.type === "ice-candidate") {
+    if (pc) await pc.addIceCandidate(new RTCIceCandidate(signal.candidate))
+  }
+}
+
+function dropZoomPeer(userId) {
+  const pc = zoomPeerConnections.value.get(userId)
+  if (pc) {
+    pc.close()
+    zoomPeerConnections.value.delete(userId)
+  }
+  zoomParticipants.value = zoomParticipants.value.filter((p) => p.id !== userId)
+}
+
+function leaveZoomRoom() {
+  const roomId = zoomCurrentRoom.value?.roomId
+  if (roomId) {
+    socket.emit("zoom:leave", { roomId })
+    socket.off(`zoom:signal:${roomId}`)
+    socket.off(`zoom:user-joined:${roomId}`)
+    socket.off(`zoom:user-left:${roomId}`)
+  }
+
+  zoomPeerConnections.value.forEach((pc) => pc.close())
+  zoomPeerConnections.value.clear()
+
+  zoomLocalStream.value?.getTracks().forEach((t) => t.stop())
+  zoomScreenStream.value?.getTracks().forEach((t) => t.stop())
+
+  zoomLocalStream.value = null
+  zoomScreenStream.value = null
+  inZoomMeeting.value = false
+  zoomCurrentRoom.value = null
+  zoomParticipants.value = []
+  zoomScreenSharing.value = false
+  zoomAudioMuted.value = false
+  zoomVideoEnabled.value = true
+  zoomShowParticipants.value = false
+}
+
+function toggleZoomMute() {
+  if (!zoomLocalStream.value) return
+  zoomLocalStream.value.getAudioTracks().forEach((t) => {
+    t.enabled = !t.enabled
+  })
+  zoomAudioMuted.value = !zoomAudioMuted.value
+}
+
+function toggleZoomVideo() {
+  if (!zoomLocalStream.value) return
+  zoomLocalStream.value.getVideoTracks().forEach((t) => {
+    t.enabled = !t.enabled
+  })
+  zoomVideoEnabled.value = !zoomVideoEnabled.value
+}
+
+async function toggleZoomScreen() {
+  if (zoomScreenSharing.value) {
+    zoomScreenStream.value?.getTracks().forEach((t) => t.stop())
+    zoomScreenStream.value = null
+    zoomScreenSharing.value = false
+    // note: in production you'd renegotiate peers here
+  } else {
+    try {
+      zoomScreenStream.value = await navigator.mediaDevices.getDisplayMedia({ video: true })
+      zoomScreenSharing.value = true
+      zoomScreenStream.value.getVideoTracks()[0].onended = () => {
+        zoomScreenStream.value = null
+        zoomScreenSharing.value = false
+      }
+    } catch {
+      /* user cancelled */
+    }
+  }
+}
+
+function refreshZoomRooms() {
+  socket.emit("zoom:list", {}, (res) => {
+    zoomRooms.value = Array.isArray(res?.rooms) ? res.rooms : []
+  })
+}
 
 function normalizeCallRoom(room) {
   if (!room || typeof room !== "object") return null
@@ -2972,7 +3374,10 @@ onMounted(async () => {
         })
       }
     })
-
+     refreshZoomRooms()
+    socket.on("zoom:room-list", (rooms) => {
+      zoomRooms.value = Array.isArray(rooms) ? rooms : []
+    })
     socket.on("live-list", (streams) => {
       liveStreams.value = Array.isArray(streams) ? streams : []
     })
@@ -3175,7 +3580,8 @@ onBeforeUnmount(() => {
   try { loadMoreObserver?.disconnect() } catch {}
   try { reelsLoadMoreObserver?.disconnect() } catch {}
   try { videoObserver?.disconnect() } catch {}
-
+  socket?.off("zoom:room-list")
+    leaveZoomRoom()
   loadMoreObserver = null
   reelsLoadMoreObserver = null
   videoObserver = null
@@ -5079,7 +5485,255 @@ onBeforeUnmount(() => {
 .thread-media {
   margin-top: 12px;
 }
+/* =========================================================
+   ZOOM MEETING DOCK CARD
+========================================================= */
+.zoom-create.compact {
+  display: flex;
+  gap: 10px;
+  margin-bottom: 12px;
+  flex-wrap: wrap;
+}
+.zoom-create.compact .roomInput {
+  flex: 1;
+  min-width: 140px;
+}
 
+/* =========================================================
+   ZOOM MEETING OVERLAY
+========================================================= */
+.zoom-overlay {
+  position: fixed;
+  inset: 0;
+  z-index: 100;
+  background: #070a14;
+  display: flex;
+  flex-direction: column;
+  animation: fadeIn 0.2s ease;
+}
+
+@keyframes fadeIn {
+  from { opacity: 0; }
+  to { opacity: 1; }
+}
+
+.zoom-header {
+  padding: 14px 20px;
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  background: rgba(7, 10, 20, 0.85);
+  border-bottom: 1px solid rgba(255, 255, 255, 0.06);
+  backdrop-filter: blur(20px);
+}
+
+.zoom-title {
+  font-weight: 800;
+  font-size: 16px;
+  letter-spacing: -0.01em;
+}
+
+.zoom-header-actions {
+  display: flex;
+  gap: 10px;
+  align-items: center;
+}
+
+.zoom-stage {
+  flex: 1;
+  overflow: auto;
+  padding: 20px;
+  position: relative;
+}
+
+.zoom-grid {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(260px, 1fr));
+  gap: 16px;
+  align-content: center;
+  min-height: 100%;
+}
+
+.zoom-tile {
+  position: relative;
+  background: rgba(0, 0, 0, 0.45);
+  border-radius: 24px;
+  overflow: hidden;
+  aspect-ratio: 16 / 10;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  border: 1px solid rgba(255, 255, 255, 0.06);
+}
+
+.zoom-video {
+  width: 100%;
+  height: 100%;
+  object-fit: cover;
+  display: block;
+}
+
+.zoom-video.off {
+  display: none;
+}
+
+.zoom-avatar-tile {
+  width: 72px;
+  height: 72px;
+  border-radius: 50%;
+  background: linear-gradient(135deg, #ec4899 0%, #8b5cf6 100%);
+  display: grid;
+  place-items: center;
+  font-size: 28px;
+  font-weight: 900;
+  color: #fff;
+}
+
+.zoom-tile-label {
+  position: absolute;
+  bottom: 14px;
+  left: 14px;
+  padding: 6px 12px;
+  border-radius: 999px;
+  background: rgba(0, 0, 0, 0.55);
+  font-size: 12px;
+  font-weight: 700;
+  color: #fff;
+  backdrop-filter: blur(8px);
+}
+
+.zoom-controls {
+  padding: 16px;
+  display: flex;
+  justify-content: center;
+  gap: 18px;
+  background: rgba(7, 10, 20, 0.85);
+  border-top: 1px solid rgba(255, 255, 255, 0.06);
+  backdrop-filter: blur(20px);
+}
+
+.zoom-ctrl {
+  width: 56px;
+  height: 56px;
+  border-radius: 50%;
+  border: 1px solid rgba(255, 255, 255, 0.1);
+  background: rgba(255, 255, 255, 0.08);
+  color: #fff;
+  font-size: 20px;
+  cursor: pointer;
+  transition: all 0.2s ease;
+  display: grid;
+  place-items: center;
+}
+
+.zoom-ctrl:hover {
+  background: rgba(255, 255, 255, 0.15);
+  transform: translateY(-2px);
+}
+
+.zoom-ctrl.off {
+  background: rgba(239, 68, 68, 0.9);
+  border-color: rgba(239, 68, 68, 0.4);
+}
+
+.zoom-ctrl.danger {
+  background: rgba(220, 38, 38, 0.9);
+  border-color: rgba(220, 38, 38, 0.4);
+}
+
+.zoom-ctrl.danger:hover {
+  background: rgba(185, 28, 28, 1);
+}
+
+/* Sidebar */
+.zoom-sidebar {
+  position: absolute;
+  right: 0;
+  top: 0;
+  bottom: 0;
+  width: 280px;
+  background: rgba(10, 14, 30, 0.95);
+  border-left: 1px solid rgba(255, 255, 255, 0.08);
+  padding: 20px;
+  z-index: 10;
+  display: flex;
+  flex-direction: column;
+  animation: slideInRight 0.2s ease;
+}
+
+@keyframes slideInRight {
+  from { transform: translateX(100%); }
+  to { transform: translateX(0); }
+}
+
+.zoom-sidebar-head {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  margin-bottom: 16px;
+}
+
+.zoom-sidebar-list {
+  overflow: auto;
+  display: grid;
+  gap: 10px;
+}
+
+.zoom-participant {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  padding: 10px 12px;
+  border-radius: 14px;
+  background: rgba(255, 255, 255, 0.04);
+  font-size: 13px;
+  font-weight: 600;
+}
+
+/* Responsive */
+@media (max-width: 900px) {
+  .zoom-grid {
+    grid-template-columns: repeat(auto-fit, minmax(200px, 1fr));
+  }
+  .zoom-sidebar {
+    width: 240px;
+  }
+}
+
+@media (max-width: 600px) {
+  .zoom-grid {
+    grid-template-columns: 1fr 1fr;
+    gap: 10px;
+  }
+  .zoom-tile {
+    aspect-ratio: 1 / 1;
+    border-radius: 18px;
+  }
+  .zoom-controls {
+    gap: 12px;
+    padding: 12px;
+  }
+  .zoom-ctrl {
+    width: 48px;
+    height: 48px;
+    font-size: 18px;
+  }
+  .zoom-sidebar {
+    width: 100%;
+    border-left: none;
+    border-top: 1px solid rgba(255, 255, 255, 0.08);
+    top: auto;
+    left: 0;
+    right: 0;
+    bottom: 76px; /* above controls */
+    height: 260px;
+    animation: slideUp 0.2s ease;
+  }
+  @keyframes slideUp {
+    from { transform: translateY(100%); }
+    to { transform: translateY(0); }
+  }
+}
 /* =========================================================
    ELITE UPGRADE ADDITIONS
 ========================================================= */
