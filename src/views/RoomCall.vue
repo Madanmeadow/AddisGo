@@ -1,377 +1,327 @@
-<!-- src/views/RoomCall.vue -->
+<!-- ═══════════════════════════════════════════════════════════════
+   ADDISGO ROOM CALL — ENTERPRISE EDITION v3.0
+   Zoom-surpassing video conferencing with AI backgrounds, breakout
+   rooms, whiteboard, annotation, polls, transcription, and enterprise
+   security. Single-file Vue 3 powerhouse.
+   ═══════════════════════════════════════════════════════════════ -->
 <template>
-  <div
-    class="roomcall-page"
-    :class="{
-      compactMode,
-      cinematicMode,
-      focusOnly: !!focusedTileId,
-      speakerMode: !!dominantSpeakerId,
-    }"
-  >
+  <!-- LOBBY / PRE-JOIN SCREEN -->
+  <transition name="fade-scale">
+    <div v-if="showLobby" class="lobby-overlay">
+      <div class="lobby-bg">
+        <div class="bg-orb orb1"></div>
+        <div class="bg-orb orb2"></div>
+        <div class="bg-orb orb3"></div>
+      </div>
+      <div class="lobby-card">
+        <div class="lobby-brand">
+          <div class="lobby-logo">AG</div>
+          <h1 class="lobby-title">AddisGo Room Call</h1>
+          <p class="lobby-sub">Premium video conferencing reimagined</p>
+        </div>
+        <div class="lobby-preview-wrap">
+          <div class="lobby-preview">
+            <video v-if="lobbyVideoReady" ref="lobbyVideoRef" class="lobby-video" :class="{ mirrored: mirrorLocal }" autoplay playsinline muted></video>
+            <div v-else class="lobby-avatar">{{ myInitial }}</div>
+            <canvas ref="lobbyCanvasRef" class="lobby-canvas"></canvas>
+            <div class="lobby-preview-badge"><span class="live-dot"></span>Camera Preview</div>
+            <div class="lobby-preview-actions">
+              <button class="lobby-mini-btn" :class="{ off: !lobbyMicOn }" @click="lobbyMicOn = !lobbyMicOn">{{ lobbyMicOn ? "🎙" : "🔇" }}</button>
+              <button class="lobby-mini-btn" :class="{ off: !lobbyCamOn }" @click="lobbyCamOn = !lobbyCamOn">{{ lobbyCamOn ? "📷" : "🚫" }}</button>
+            </div>
+          </div>
+          <div class="lobby-audio-meter">
+            <div v-for="n in 12" :key="n" class="meter-bar" :style="{ opacity: lobbyAudioLevel > (n / 12) ? 1 : 0.2 }"></div>
+          </div>
+        </div>
+        <div class="lobby-form">
+          <div class="lobby-field">
+            <label>Display Name</label>
+            <input v-model="lobbyName" type="text" placeholder="Your name" maxlength="32" />
+          </div>
+          <div class="lobby-field">
+            <label>Virtual Background</label>
+            <div class="bg-selector">
+              <button v-for="opt in bgOptions" :key="opt.id" class="bg-option" :class="{ active: virtualBgType === opt.id }" @click="virtualBgType = opt.id">
+                <span class="bg-option-preview" :style="opt.style">{{ opt.icon }}</span>
+                <span class="bg-option-label">{{ opt.label }}</span>
+              </button>
+            </div>
+          </div>
+          <div class="lobby-field">
+            <label>Camera Device</label>
+            <select v-model="selectedCameraId" @change="changeCamera">
+              <option v-for="d in videoDevices" :key="d.deviceId" :value="d.deviceId">{{ d.label || `Camera ${d.deviceId.slice(0,6)}` }}</option>
+            </select>
+          </div>
+          <div class="lobby-field">
+            <label>Microphone Device</label>
+            <select v-model="selectedMicId" @change="changeMic">
+              <option v-for="d in audioDevices" :key="d.deviceId" :value="d.deviceId">{{ d.label || `Mic ${d.deviceId.slice(0,6)}` }}</option>
+            </select>
+          </div>
+        </div>
+        <div class="lobby-actions">
+          <button class="btn btn-primary lobby-join" @click="enterRoom" :disabled="joining">
+            <span v-if="joining" class="spinner"></span>
+            <span v-else>Join Room</span>
+          </button>
+          <button class="btn ghostBtn" @click="goBack">Cancel</button>
+        </div>
+      </div>
+    </div>
+  </transition>
+
+  <!-- MAIN CALL INTERFACE -->
+  <div v-show="!showLobby" class="roomcall-page" :class="{ compactMode, cinematicMode, focusOnly: !!focusedTileId, speakerMode: !!dominantSpeakerId, whiteboardMode, annotationMode }" @keydown="handleKeydown" tabindex="0">
     <div class="bg-layer bg1"></div>
     <div class="bg-layer bg2"></div>
     <div class="bg-layer bg3"></div>
 
+    <!-- FLOATING REACTIONS -->
+    <div class="floating-reactions">
+      <transition-group name="float-up">
+        <div v-for="r in floatingReactions" :key="r.id" class="floating-reaction" :style="{ left: r.x + '%', animationDuration: r.duration + 's' }">{{ r.emoji }}</div>
+      </transition-group>
+    </div>
+
     <!-- REACTION BURST -->
     <transition name="pop-reaction">
-      <div v-if="reactionBurst" class="reaction-burst">
-        {{ reactionBurst }}
+      <div v-if="reactionBurst" class="reaction-burst">{{ reactionBurst }}</div>
+    </transition>
+
+    <!-- RECORDING INDICATOR -->
+    <transition name="slide-down">
+      <div v-if="isRecording" class="recording-banner">
+        <span class="rec-dot"></span>
+        <span>Recording in progress</span>
+        <span class="rec-timer">{{ recordingDurationLabel }}</span>
+      </div>
+    </transition>
+
+    <!-- NETWORK QUALITY TOAST -->
+    <transition name="slide-up">
+      <div v-if="networkToast" class="network-toast" :class="networkToast.quality">
+        <span class="nt-icon">{{ networkToast.icon }}</span>
+        <span>{{ networkToast.message }}</span>
       </div>
     </transition>
 
     <!-- TOPBAR -->
     <header class="topbar glassy">
       <div class="top-left">
-        <button class="chip ghost" @click="goBack">← Back</button>
-
+        <button class="chip ghost" @click="confirmLeave">← Back</button>
         <div class="room-pill">
           <span class="live-dot"></span>
           <div class="room-pill-meta">
             <div class="room-pill-title">{{ roomName || "Room Call" }}</div>
             <div class="room-pill-sub">
               {{ roomKindLabel }} • {{ participantCount }} participant{{ participantCount === 1 ? "" : "s" }}
+              <span v-if="isLocked" class="lock-badge">🔒 Locked</span>
             </div>
           </div>
         </div>
-
-        <button class="chip ghost miniChip" @click="copyRoomId">
-          🆔 {{ shortRoomId }}
-        </button>
+        <button class="chip ghost miniChip" @click="copyRoomId">🆔 {{ shortRoomId }}</button>
+        <div class="net-quality" :title="networkQualityTooltip">
+          <div class="nq-bars">
+            <div v-for="n in 4" :key="n" class="nq-bar" :class="{ active: networkQuality.score >= n, warn: networkQuality.score < 3 && n <= networkQuality.score }"></div>
+          </div>
+        </div>
       </div>
-
       <div class="top-right">
+        <button v-if="isHost" class="chip ghost" :class="{ active: isLocked }" @click="toggleLockRoom">{{ isLocked ? "🔓 Unlock" : "🔒 Lock" }}</button>
+        <button v-if="isHost" class="chip ghost" @click="toggleWaitingRoom">{{ waitingRoomEnabled ? "🛡 Waiting On" : "🛡 Waiting Off" }}</button>
+        <button class="chip ghost" @click="showShortcuts = true">⌨️ Shortcuts</button>
         <button class="chip ghost" @click="copyInvite">🔗 Invite</button>
         <button class="chip ghost" @click="refreshRoomState">🔄 Refresh</button>
-        <button class="chip ghost" @click="togglePanel">
-          {{ sidePanelOpen ? "Hide Panel" : "Show Panel" }}
-        </button>
-        <button class="chip danger" @click="leaveRoom">Leave</button>
+        <button class="chip ghost" @click="togglePanel">{{ sidePanelOpen ? "Hide Panel" : "Show Panel" }}</button>
+        <button class="chip danger" @click="confirmLeave">Leave</button>
       </div>
     </header>
 
     <!-- HERO -->
-    <section class="hero glassy">
+    <section class="hero glassy" :class="{ collapsed: heroCollapsed }">
       <div class="hero-left">
-        <div class="eyebrow">ADDISGO ROOM CALL</div>
+        <div class="eyebrow">ADDISGO ROOM CALL — ENTERPRISE</div>
         <h1 class="hero-title">{{ roomName || "Future Room" }}</h1>
-        <div class="hero-sub">
-          {{ roomKindLabel }} with camera, mic, screen sharing, active speaker glow,
-          compact mode, cinematic mode, focus pinning, and stronger peer recovery.
-        </div>
-
+        <div class="hero-sub">AI backgrounds • Breakout rooms • Whiteboard • Live polls • Transcription • Screen annotation • 49-participant grid • Enterprise security</div>
         <div class="hero-badges">
-          <span class="badge" :class="{ ok: socketConnected, bad: !socketConnected }">
-            {{ socketConnected ? "Socket Connected" : "Socket Disconnected" }}
-          </span>
-
-          <span class="badge" :class="{ ok: joinedRoom, bad: !joinedRoom }">
-            {{ joinedRoom ? "Joined Room" : "Not Joined" }}
-          </span>
-
+          <span class="badge" :class="{ ok: socketConnected, bad: !socketConnected }">{{ socketConnected ? "Socket Connected" : "Socket Disconnected" }}</span>
+          <span class="badge" :class="{ ok: joinedRoom, bad: !joinedRoom }">{{ joinedRoom ? "Joined Room" : "Not Joined" }}</span>
           <span class="badge">{{ participantCount }} in room</span>
           <span class="badge">{{ roomKindLabel }}</span>
           <span class="badge">{{ turnReady ? "TURN Ready" : "STUN Only" }}</span>
           <span class="badge accent">⏱ {{ sessionDurationLabel }}</span>
+          <span v-if="isRecording" class="badge danger">⏺ Recording</span>
+          <span v-if="isHost" class="badge accent">👑 Host</span>
+          <span v-if="raisedHands.size > 0" class="badge warning">✋ {{ raisedHands.size }} raised</span>
         </div>
       </div>
-
       <div class="hero-right">
-        <div class="hero-stat">
-          <div class="hero-num">{{ participantCount }}</div>
-          <div class="hero-lab">People</div>
-        </div>
-
-        <div class="hero-stat">
-          <div class="hero-num">{{ remoteParticipants.length }}</div>
-          <div class="hero-lab">Remote</div>
-        </div>
-
-        <div class="hero-stat">
-          <div class="hero-num">{{ screenSharing ? "ON" : "OFF" }}</div>
-          <div class="hero-lab">Share</div>
-        </div>
-
-        <div class="hero-stat">
-          <div class="hero-num">{{ compactMode ? "ON" : "OFF" }}</div>
-          <div class="hero-lab">Compact</div>
-        </div>
+        <div class="hero-stat"><div class="hero-num">{{ participantCount }}</div><div class="hero-lab">People</div></div>
+        <div class="hero-stat"><div class="hero-num">{{ remoteParticipants.length }}</div><div class="hero-lab">Remote</div></div>
+        <div class="hero-stat"><div class="hero-num">{{ screenSharing ? "ON" : "OFF" }}</div><div class="hero-lab">Share</div></div>
+        <div class="hero-stat"><div class="hero-num">{{ compactMode ? "ON" : "OFF" }}</div><div class="hero-lab">Compact</div></div>
       </div>
+      <button class="hero-collapse" @click="heroCollapsed = !heroCollapsed">{{ heroCollapsed ? "▼" : "▲" }}</button>
     </section>
 
-    <!-- PRESENCE -->
+    <!-- PRESENCE STRIP -->
     <section class="presence-strip glassy">
       <div class="strip-head">
         <div class="panel-title">⚡ Live Presence</div>
-
         <div class="strip-actions">
-          <button class="chip ghost miniChip" @click="toggleCompactMode">
-            {{ compactMode ? "Normal View" : "Compact View" }}
-          </button>
-
-          <button class="chip ghost miniChip" @click="toggleCinematicMode">
-            {{ cinematicMode ? "Standard Mode" : "Cinematic" }}
-          </button>
-
-          <button class="chip ghost miniChip" @click="toggleMirrorMode">
-            {{ mirrorLocal ? "Mirror On" : "Mirror Off" }}
-          </button>
+          <button class="chip ghost miniChip" @click="toggleCompactMode">{{ compactMode ? "Normal View" : "Compact View" }}</button>
+          <button class="chip ghost miniChip" @click="toggleCinematicMode">{{ cinematicMode ? "Standard Mode" : "Cinematic" }}</button>
+          <button class="chip ghost miniChip" @click="toggleMirrorMode">{{ mirrorLocal ? "Mirror On" : "Mirror Off" }}</button>
+          <button class="chip ghost miniChip" @click="toggleWhiteboard">{{ whiteboardMode ? "Close Whiteboard" : "Whiteboard" }}</button>
         </div>
       </div>
-
       <div class="presence-list">
         <button class="presenceCard self" @click="focusTile('local')">
-          <div
-            class="presenceAvatar"
-            :class="{ speaking: isSpeaking('local') }"
-          >
+          <div class="presenceAvatar" :class="{ speaking: isSpeaking('local'), raised: raisedHands.has('local') }">
             {{ myInitial }}
+            <span v-if="raisedHands.has('local')" class="hand-icon">✋</span>
           </div>
-
           <div class="presenceMeta">
             <div class="presenceName">{{ myName }}</div>
-            <div class="presenceSub">
-              {{ isSpeaking('local') ? "Speaking" : "You" }}
-            </div>
+            <div class="presenceSub">{{ isSpeaking('local') ? "Speaking" : "You" }}</div>
           </div>
         </button>
-
-        <button
-          v-for="p in remoteParticipants"
-          :key="'presence-' + p.socketId"
-          class="presenceCard"
-          @click="focusTile(p.socketId)"
-        >
-          <div
-            class="presenceAvatar alt"
-            :class="{ speaking: isSpeaking(p.socketId) }"
-          >
+        <button v-for="p in remoteParticipants" :key="'presence-' + p.socketId" class="presenceCard" @click="focusTile(p.socketId)">
+          <div class="presenceAvatar alt" :class="{ speaking: isSpeaking(p.socketId), raised: raisedHands.has(p.socketId) }">
             {{ getInitialName(p.displayName || p.username || p.userId) }}
+            <span v-if="raisedHands.has(p.socketId)" class="hand-icon">✋</span>
           </div>
-
           <div class="presenceMeta">
-            <div class="presenceName">
-              {{ trimName(p.displayName || p.username || `User #${p.userId || "?"}`) }}
-            </div>
-            <div class="presenceSub">
-              {{ isSpeaking(p.socketId) ? "Speaking" : (peerStatus[p.socketId] || "Connected") }}
-            </div>
+            <div class="presenceName">{{ trimName(p.displayName || p.username || `User #${p.userId || "?"}`) }}</div>
+            <div class="presenceSub">{{ isSpeaking(p.socketId) ? "Speaking" : (peerStatus[p.socketId] || "Connected") }}</div>
           </div>
         </button>
       </div>
     </section>
 
     <main class="main">
-      <!-- STAGE -->
       <section class="stage-wrap">
         <div class="stage-toolbar glassy">
           <div class="stage-left">
-            <button class="control" :class="{ active: micEnabled }" @click="toggleMic">
-              {{ micEnabled ? "🎙 Mic On" : "🔇 Mic Off" }}
-            </button>
-
-            <button
-              class="control"
-              :class="{ active: camEnabled }"
-              :disabled="roomKind !== 'video'"
-              @click="toggleCamera"
-            >
-              {{ camEnabled ? "📷 Camera On" : "🚫 Camera Off" }}
-            </button>
-
-            <button
-              class="control"
-              :class="{ active: screenSharing }"
-              :disabled="roomKind !== 'video'"
-              @click="toggleScreenShare"
-            >
-              {{ screenSharing ? "🖥 Stop Share" : "🖥 Share Screen" }}
-            </button>
-
-            <button class="control" :class="{ active: speakerEnabled }" @click="toggleSpeaker">
-              {{ speakerEnabled ? "🔊 Speaker On" : "🔈 Speaker Low" }}
-            </button>
+            <button class="control" :class="{ active: micEnabled }" @click="toggleMic">{{ micEnabled ? "🎙 Mic On" : "🔇 Mic Off" }}</button>
+            <button class="control" :class="{ active: camEnabled }" :disabled="roomKind !== 'video'" @click="toggleCamera">{{ camEnabled ? "📷 Camera On" : "🚫 Camera Off" }}</button>
+            <button class="control" :class="{ active: screenSharing }" :disabled="roomKind !== 'video'" @click="toggleScreenShare">{{ screenSharing ? "🖥 Stop Share" : "🖥 Share Screen" }}</button>
+            <button class="control" :class="{ active: speakerEnabled }" @click="toggleSpeaker">{{ speakerEnabled ? "🔊 Speaker On" : "🔈 Speaker Low" }}</button>
+            <button class="control" :class="{ active: raisedHands.has('local') }" @click="toggleHandRaise">{{ raisedHands.has('local') ? "✋ Lower Hand" : "✋ Raise Hand" }}</button>
           </div>
-
           <div class="stage-right">
             <button class="control ghost" @click="focusTile('local')">Focus Me</button>
-            <button class="control ghost" @click="focusDominantSpeaker" :disabled="!dominantSpeakerId">
-              Focus Speaker
-            </button>
+            <button class="control ghost" @click="focusDominantSpeaker" :disabled="!dominantSpeakerId">Focus Speaker</button>
             <button class="control ghost" @click="clearFocus">Show All</button>
             <button class="control ghost" @click="forceReconnectPeers">Repair Peers</button>
+            <button class="control ghost" @click="togglePiP">PiP</button>
           </div>
         </div>
 
         <div class="magic-toolbar glassy">
           <div class="magic-left">
-            <button class="magicBtn" @click="sendReaction('🔥')">🔥</button>
-            <button class="magicBtn" @click="sendReaction('👏')">👏</button>
-            <button class="magicBtn" @click="sendReaction('🚀')">🚀</button>
-            <button class="magicBtn" @click="sendReaction('💎')">💎</button>
-            <button class="magicBtn" @click="sendReaction('🎉')">🎉</button>
+            <div class="reaction-picker">
+              <button v-for="emoji in reactionEmojis" :key="emoji" class="magicBtn" @click="sendReaction(emoji)">{{ emoji }}</button>
+            </div>
           </div>
-
           <div class="magic-right">
+            <button v-if="isHost" class="magicChip" :class="{ active: isRecording }" @click="toggleRecording">{{ isRecording ? "⏹ Stop Record" : "⏺ Record" }}</button>
+            <button v-if="isHost" class="magicChip" @click="showPollModal = true">📊 Poll</button>
+            <button v-if="isHost" class="magicChip" @click="showBreakoutModal = true">🚪 Breakouts</button>
+            <button class="magicChip" @click="toggleTranscription">{{ transcriptionActive ? "📝 Stop Transcript" : "📝 Transcribe" }}</button>
             <button class="magicChip" @click="copyDiagnostics">🧾 Diagnostics</button>
             <button class="magicChip" @click="copyInvite">🔗 Copy Invite</button>
-            <button class="magicChip" @click="togglePanel">
-              {{ sidePanelOpen ? "📚 Hide Panel" : "📚 Show Panel" }}
-            </button>
+            <button class="magicChip" @click="togglePanel">{{ sidePanelOpen ? "📚 Hide Panel" : "📚 Show Panel" }}</button>
           </div>
         </div>
 
-        <div
-          class="video-stage"
-          :class="[
-            gridClass,
-            { focused: !!focusedTileId, cinematic: cinematicMode }
-          ]"
-        >
+        <!-- PAGINATION -->
+        <div v-if="pageCount > 1" class="pagination-bar glassy">
+          <button class="page-btn" :disabled="currentPage === 0" @click="currentPage--">← Prev</button>
+          <span class="page-info">Page {{ currentPage + 1 }} of {{ pageCount }}</span>
+          <button class="page-btn" :disabled="currentPage >= pageCount - 1" @click="currentPage++">Next →</button>
+        </div>
+
+        <!-- VIDEO STAGE / WHITEBOARD -->
+        <div class="video-stage" :class="[gridClass, { focused: !!focusedTileId, cinematic: cinematicMode }]">
+          <!-- WHITEBOARD -->
+          <div v-if="whiteboardMode" class="whiteboard-wrap">
+            <canvas ref="whiteboardRef" class="whiteboard-canvas" @mousedown="startDraw" @mousemove="draw" @mouseup="endDraw" @mouseleave="endDraw"></canvas>
+            <div class="whiteboard-tools">
+              <button v-for="color in wbColors" :key="color" class="wb-color" :style="{ background: color }" :class="{ active: wbColor === color }" @click="wbColor = color"></button>
+              <button class="wb-tool" :class="{ active: wbTool === 'pen' }" @click="wbTool = 'pen'">✏️</button>
+              <button class="wb-tool" :class="{ active: wbTool === 'eraser' }" @click="wbTool = 'eraser'">🧹</button>
+              <button class="wb-tool" @click="clearWhiteboard">🗑</button>
+            </div>
+          </div>
+
           <!-- LOCAL TILE -->
-          <article
-            v-if="shouldShowLocalTile"
-            class="tile selfTile glassy"
-            :class="{
-              big: focusedTileId === 'local',
-              compact: compactMode,
-              speaking: isSpeaking('local'),
-              dominant: dominantSpeakerId === 'local',
-            }"
-            @click="focusTile('local')"
-          >
+          <article v-if="shouldShowLocalTile && !whiteboardMode" class="tile selfTile glassy" :class="{ big: focusedTileId === 'local', compact: compactMode, speaking: isSpeaking('local'), dominant: dominantSpeakerId === 'local', spotlight: spotlightIds.has('local') }" @click="focusTile('local')" @dblclick="toggleSpotlight('local')">
             <div class="tile-head">
               <div class="tile-user">
                 <span class="avatar">{{ myInitial }}</span>
-
                 <div class="tile-meta">
-                  <div class="tile-name">
-                    {{ myName }}
-                    <span class="me-tag">You</span>
-                  </div>
-
-                  <div class="tile-sub">
-                    {{
-                      screenSharing
-                        ? "Screen sharing"
-                        : roomKind === "video"
-                          ? "Local camera"
-                          : "Local audio"
-                    }}
-                  </div>
+                  <div class="tile-name">{{ myName }}<span class="me-tag">You</span><span v-if="raisedHands.has('local')" class="hand-tag">✋</span></div>
+                  <div class="tile-sub">{{ screenSharing ? "Screen sharing" : roomKind === "video" ? "Local camera" : "Local audio" }}</div>
                 </div>
               </div>
-
               <div class="tile-pills">
                 <span class="pill" :class="{ off: !micEnabled }">{{ micEnabled ? "Mic" : "Muted" }}</span>
-                <span
-                  v-if="roomKind === 'video'"
-                  class="pill"
-                  :class="{ off: !camEnabled && !screenSharing }"
-                >
-                  {{ screenSharing ? "Screen" : (camEnabled ? "Cam" : "Cam Off") }}
-                </span>
+                <span v-if="roomKind === 'video'" class="pill" :class="{ off: !camEnabled && !screenSharing }">{{ screenSharing ? "Screen" : (camEnabled ? "Cam" : "Cam Off") }}</span>
                 <span class="pill">{{ sessionDurationLabel }}</span>
+                <span v-if="networkQuality.score < 3" class="pill warn">⚠️ Network</span>
               </div>
             </div>
-
             <div class="media-wrap">
-              <video
-                v-if="roomKind === 'video' || screenSharing"
-                ref="localVideoRef"
-                class="media"
-                :class="{ mirrored: mirrorLocal }"
-                autoplay
-                playsinline
-                muted
-              ></video>
-
+              <video v-if="roomKind === 'video' || screenSharing" ref="localVideoRef" class="media" :class="{ mirrored: mirrorLocal }" autoplay playsinline muted></video>
               <div v-else class="audio-room-card">
                 <div class="audio-room-avatar">{{ myInitial }}</div>
                 <div class="audio-room-name">{{ myName }}</div>
                 <div class="audio-room-sub">Audio room connected</div>
               </div>
-
+              <canvas v-if="screenSharing && annotationMode" ref="annotationRef" class="annotation-canvas" @mousedown="startAnnotate" @mousemove="annotate" @mouseup="endAnnotate"></canvas>
               <div class="corner-status">{{ joinedRoom ? "LIVE" : "CONNECTING" }}</div>
               <div class="speaker-ring" :style="speakerRingStyle('local')"></div>
+              <div v-if="raisedHands.has('local')" class="hand-indicator">✋</div>
             </div>
           </article>
 
           <!-- REMOTE TILES -->
-          <article
-            v-for="p in visibleRemoteParticipants"
-            :key="p.socketId"
-            class="tile remoteTile glassy"
-            :class="{
-              big: focusedTileId === p.socketId,
-              compact: compactMode,
-              speaking: isSpeaking(p.socketId),
-              dominant: dominantSpeakerId === p.socketId,
-            }"
-            @click="focusTile(p.socketId)"
-          >
+          <article v-for="p in paginatedRemoteParticipants" :key="p.socketId" class="tile remoteTile glassy" :class="{ big: focusedTileId === p.socketId, compact: compactMode, speaking: isSpeaking(p.socketId), dominant: dominantSpeakerId === p.socketId, spotlight: spotlightIds.has(p.socketId) }" @click="focusTile(p.socketId)" @dblclick="toggleSpotlight(p.socketId)">
             <div class="tile-head">
               <div class="tile-user">
-                <span class="avatar alt">
-                  {{ getInitialName(p.displayName || p.username || p.userId) }}
-                </span>
-
+                <span class="avatar alt">{{ getInitialName(p.displayName || p.username || p.userId) }}</span>
                 <div class="tile-meta">
-                  <div class="tile-name">
-                    {{ p.displayName || p.username || `User #${p.userId || "?"}` }}
-                  </div>
-
-                  <div class="tile-sub">
-                    {{ peerStatus[p.socketId] || "Connected" }}
-                  </div>
+                  <div class="tile-name">{{ p.displayName || p.username || `User #${p.userId || "?"}` }}<span v-if="raisedHands.has(p.socketId)" class="hand-tag">✋</span></div>
+                  <div class="tile-sub">{{ peerStatus[p.socketId] || "Connected" }}</div>
                 </div>
               </div>
-
               <div class="tile-pills">
                 <span class="pill">{{ roomKind === "video" ? "Video" : "Audio" }}</span>
-                <span class="pill ghostState">
-                  {{ peerConnectionState[p.socketId] || "online" }}
-                </span>
+                <span class="pill ghostState">{{ peerConnectionState[p.socketId] || "online" }}</span>
+                <span v-if="networkQuality.remote[p.socketId] && networkQuality.remote[p.socketId].score < 3" class="pill warn">⚠️ Weak</span>
               </div>
             </div>
-
             <div class="media-wrap">
-              <video
-                v-if="roomKind === 'video'"
-                :ref="(el) => setRemoteVideoRef(p.socketId, el)"
-                class="media"
-                autoplay
-                playsinline
-              ></video>
-
+              <video v-if="roomKind === 'video'" :ref="(el) => setRemoteVideoRef(p.socketId, el)" class="media" autoplay playsinline></video>
               <div v-else class="audio-room-card">
-                <div class="audio-room-avatar">
-                  {{ getInitialName(p.displayName || p.username || p.userId) }}
-                </div>
-                <div class="audio-room-name">
-                  {{ p.displayName || p.username || `User #${p.userId || "?"}` }}
-                </div>
+                <div class="audio-room-avatar">{{ getInitialName(p.displayName || p.username || p.userId) }}</div>
+                <div class="audio-room-name">{{ p.displayName || p.username || `User #${p.userId || "?"}` }}</div>
                 <div class="audio-room-sub">Audio participant</div>
               </div>
-
-              <div class="corner-status remote">
-                {{ peerConnectionState[p.socketId] || "online" }}
-              </div>
+              <div class="corner-status remote">{{ peerConnectionState[p.socketId] || "online" }}</div>
               <div class="speaker-ring" :style="speakerRingStyle(p.socketId)"></div>
+              <div v-if="raisedHands.has(p.socketId)" class="hand-indicator">✋</div>
             </div>
           </article>
 
-          <!-- EMPTY -->
-          <div
-            v-if="visibleRemoteParticipants.length === 0 && (!focusedTileId || focusedTileId === 'local')"
-            class="empty-state glassy"
-          >
+          <!-- EMPTY STATE -->
+          <div v-if="visibleRemoteParticipants.length === 0 && (!focusedTileId || focusedTileId === 'local') && !whiteboardMode" class="empty-state glassy">
             <div class="empty-emoji">✨</div>
             <div class="empty-title">Room is ready</div>
-            <div class="empty-sub">
-              Share the invite link so others can join your AddisGo room call.
-            </div>
-
+            <div class="empty-sub">Share the invite link so others can join your AddisGo room call.</div>
             <div class="empty-actions">
               <button class="btn btn-primary" @click="copyInvite">Copy Invite</button>
               <button class="btn ghostBtn" @click="refreshRoomState">Refresh</button>
@@ -383,94 +333,148 @@
 
       <!-- SIDE PANEL -->
       <aside class="side" :class="{ closed: !sidePanelOpen }">
-        <section class="panel glassy">
+        <div class="panel-tabs">
+          <button v-for="tab in panelTabs" :key="tab.id" class="panel-tab" :class="{ active: activePanelTab === tab.id }" @click="activePanelTab = tab.id">
+            {{ tab.label }}
+            <span v-if="tab.id === 'chat' && unreadChatCount > 0" class="tab-badge">{{ unreadChatCount }}</span>
+            <span v-if="tab.id === 'waiting' && waitingParticipants.length > 0" class="tab-badge warn">{{ waitingParticipants.length }}</span>
+          </button>
+        </div>
+
+        <!-- PARTICIPANTS -->
+        <section v-if="activePanelTab === 'participants'" class="panel glassy">
           <div class="panel-head">
             <div class="panel-title">👥 Participants</div>
             <div class="panel-sub">{{ participantCount }} connected</div>
           </div>
-
           <div class="people-list">
             <div class="person-card self">
               <div class="avatar big">{{ myInitial }}</div>
               <div class="person-meta">
-                <div class="person-name">
-                  {{ myName }} <span class="me-tag">You</span>
-                </div>
-                <div class="person-sub">
-                  <span class="status-dot on"></span>
-                  {{ joinedRoom ? "In room" : "Joining..." }}
-                </div>
+                <div class="person-name">{{ myName }} <span class="me-tag">You</span><span v-if="isHost" class="host-tag">HOST</span></div>
+                <div class="person-sub"><span class="status-dot on"></span>{{ joinedRoom ? "In room" : "Joining..." }}</div>
               </div>
+              <button class="person-action" @click="toggleHandRaise">{{ raisedHands.has('local') ? "✋" : "✊" }}</button>
             </div>
-
-            <div
-              v-for="p in remoteParticipants"
-              :key="'side-' + p.socketId"
-              class="person-card"
-            >
-              <div class="avatar big alt">
-                {{ getInitialName(p.displayName || p.username || p.userId) }}
-              </div>
-
+            <div v-for="p in remoteParticipants" :key="'side-' + p.socketId" class="person-card">
+              <div class="avatar big alt">{{ getInitialName(p.displayName || p.username || p.userId) }}</div>
               <div class="person-meta">
-                <div class="person-name">
-                  {{ p.displayName || p.username || `User #${p.userId || "?"}` }}
-                </div>
-                <div class="person-sub">
-                  <span
-                    class="status-dot"
-                    :class="{ on: isSpeaking(p.socketId) || (peerConnectionState[p.socketId] === 'connected') }"
-                  ></span>
-                  {{ peerStatus[p.socketId] || "Connected" }}
-                </div>
+                <div class="person-name">{{ p.displayName || p.username || `User #${p.userId || "?"}` }}<span v-if="p.isHost" class="host-tag">HOST</span></div>
+                <div class="person-sub"><span class="status-dot" :class="{ on: isSpeaking(p.socketId) || (peerConnectionState[p.socketId] === 'connected') }"></span>{{ peerStatus[p.socketId] || "Connected" }}</div>
+              </div>
+              <div class="person-actions">
+                <button v-if="isHost && p.socketId !== mySocketId" class="person-action" @click="removeParticipant(p.socketId)" title="Remove">🚫</button>
+                <button class="person-action" @click="focusTile(p.socketId)" title="Focus">🎯</button>
               </div>
             </div>
           </div>
         </section>
 
-        <section class="panel glassy">
+        <!-- CHAT -->
+        <section v-if="activePanelTab === 'chat'" class="panel glassy chat-panel">
           <div class="panel-head">
-            <div class="panel-title">🧰 Controls</div>
+            <div class="panel-title">💬 Chat</div>
+            <button class="chip ghost miniChip" @click="chatMessages = []">Clear</button>
           </div>
+          <div ref="chatScrollRef" class="chat-messages">
+            <div v-for="msg in chatMessages" :key="msg.id" class="chat-msg" :class="{ self: msg.from === mySocketId }">
+              <div class="chat-msg-header"><strong>{{ msg.name }}</strong><span class="chat-time">{{ formatTime(msg.time) }}</span></div>
+              <div class="chat-msg-body">{{ msg.text }}</div>
+              <div v-if="msg.reactions?.length" class="chat-reactions"><span v-for="r in msg.reactions" :key="r" class="chat-reaction">{{ r }}</span></div>
+            </div>
+            <div v-if="chatMessages.length === 0" class="chat-empty">No messages yet. Start the conversation!</div>
+          </div>
+          <div class="chat-input-wrap">
+            <input v-model="chatInput" type="text" placeholder="Type a message..." maxlength="500" @keydown.enter="sendChatMessage" />
+            <button class="chat-send" @click="sendChatMessage">➤</button>
+          </div>
+        </section>
 
+        <!-- POLLS -->
+        <section v-if="activePanelTab === 'polls'" class="panel glassy">
+          <div class="panel-head">
+            <div class="panel-title">📊 Polls</div>
+            <button v-if="isHost" class="chip ghost miniChip" @click="showPollModal = true">+ New</button>
+          </div>
+          <div v-if="!activePoll" class="chat-empty">No active poll.</div>
+          <div v-else class="poll-wrap">
+            <div class="poll-q">{{ activePoll.question }}</div>
+            <div class="poll-options">
+              <button v-for="(opt, idx) in activePoll.options" :key="idx" class="poll-option" :class="{ voted: activePoll.myVote === idx, winner: activePoll.revealed && activePoll.winner === idx }" :disabled="activePoll.myVote !== null && !activePoll.revealed" @click="votePoll(idx)">
+                <span class="poll-opt-text">{{ opt }}</span>
+                <span v-if="activePoll.revealed" class="poll-opt-bar" :style="{ width: activePoll.percentages[idx] + '%' }"></span>
+                <span v-if="activePoll.revealed" class="poll-opt-pct">{{ activePoll.percentages[idx] }}%</span>
+              </button>
+            </div>
+            <div v-if="activePoll.revealed" class="poll-total">{{ activePoll.totalVotes }} votes</div>
+            <button v-if="isHost && !activePoll.revealed" class="btn btn-primary mt10" @click="revealPoll">Reveal Results</button>
+            <button v-if="isHost" class="btn ghostBtn mt10" @click="closePoll">Close Poll</button>
+          </div>
+        </section>
+
+        <!-- WAITING ROOM -->
+        <section v-if="activePanelTab === 'waiting'" class="panel glassy">
+          <div class="panel-head">
+            <div class="panel-title">🛡 Waiting Room</div>
+            <div class="panel-sub">{{ waitingParticipants.length }} waiting</div>
+          </div>
+          <div class="people-list">
+            <div v-for="w in waitingParticipants" :key="w.socketId" class="person-card">
+              <div class="avatar big alt">{{ getInitialName(w.name) }}</div>
+              <div class="person-meta">
+                <div class="person-name">{{ w.name }}</div>
+                <div class="person-sub">Waiting to join</div>
+              </div>
+              <div class="person-actions">
+                <button class="person-action ok" @click="admitParticipant(w.socketId)">✓</button>
+                <button class="person-action danger" @click="denyParticipant(w.socketId)">✕</button>
+              </div>
+            </div>
+            <div v-if="waitingParticipants.length === 0" class="chat-empty">Nobody in waiting room.</div>
+          </div>
+        </section>
+
+        <!-- TRANSCRIPTION -->
+        <section v-if="activePanelTab === 'transcript'" class="panel glassy">
+          <div class="panel-head">
+            <div class="panel-title">📝 Live Transcription</div>
+            <button class="chip ghost miniChip" @click="transcriptLines = []">Clear</button>
+          </div>
+          <div class="transcript-wrap">
+            <div v-for="(line, idx) in transcriptLines" :key="idx" class="transcript-line">
+              <span class="transcript-name">{{ line.name }}:</span>
+              <span class="transcript-text">{{ line.text }}</span>
+            </div>
+            <div v-if="transcriptLines.length === 0" class="chat-empty">{{ transcriptionActive ? "Listening..." : "Transcription is off." }}</div>
+          </div>
+        </section>
+
+        <!-- CONTROLS -->
+        <section v-if="activePanelTab === 'controls'" class="panel glassy">
+          <div class="panel-head"><div class="panel-title">🧰 Controls</div></div>
           <div class="tools-grid">
             <button class="toolBtn" @click="copyInvite">🔗 Copy Invite</button>
             <button class="toolBtn" @click="copyRoomId">🆔 Copy Room ID</button>
             <button class="toolBtn" @click="refreshRoomState">🔄 Refresh State</button>
-            <button class="toolBtn" @click="toggleMic">
-              {{ micEnabled ? "🔇 Mute Mic" : "🎙 Unmute" }}
-            </button>
-            <button class="toolBtn" :disabled="roomKind !== 'video'" @click="toggleCamera">
-              {{ camEnabled ? "🚫 Stop Camera" : "📷 Start Camera" }}
-            </button>
-            <button class="toolBtn" :disabled="roomKind !== 'video'" @click="toggleScreenShare">
-              {{ screenSharing ? "🖥 Stop Share" : "🖥 Share Screen" }}
-            </button>
-            <button class="toolBtn" @click="toggleMirrorMode">
-              {{ mirrorLocal ? "🪞 Mirror On" : "🪞 Mirror Off" }}
-            </button>
-            <button class="toolBtn" @click="toggleCompactMode">
-              {{ compactMode ? "🧩 Normal View" : "🧩 Compact View" }}
-            </button>
-            <button class="toolBtn" @click="toggleCinematicMode">
-              {{ cinematicMode ? "🎬 Standard Mode" : "🎬 Cinematic" }}
-            </button>
-            <button class="toolBtn" @click="focusDominantSpeaker" :disabled="!dominantSpeakerId">
-              🎯 Focus Speaker
-            </button>
+            <button class="toolBtn" @click="toggleMic">{{ micEnabled ? "🔇 Mute Mic" : "🎙 Unmute" }}</button>
+            <button class="toolBtn" :disabled="roomKind !== 'video'" @click="toggleCamera">{{ camEnabled ? "🚫 Stop Camera" : "📷 Start Camera" }}</button>
+            <button class="toolBtn" :disabled="roomKind !== 'video'" @click="toggleScreenShare">{{ screenSharing ? "🖥 Stop Share" : "🖥 Share Screen" }}</button>
+            <button class="toolBtn" @click="toggleMirrorMode">{{ mirrorLocal ? "🪞 Mirror On" : "🪞 Mirror Off" }}</button>
+            <button class="toolBtn" @click="toggleCompactMode">{{ compactMode ? "🧩 Normal View" : "🧩 Compact View" }}</button>
+            <button class="toolBtn" @click="toggleCinematicMode">{{ cinematicMode ? "🎬 Standard Mode" : "🎬 Cinematic" }}</button>
+            <button class="toolBtn" @click="toggleWhiteboard">{{ whiteboardMode ? "🎨 Close Board" : "🎨 Whiteboard" }}</button>
+            <button class="toolBtn" @click="focusDominantSpeaker" :disabled="!dominantSpeakerId">🎯 Focus Speaker</button>
             <button class="toolBtn" @click="forceReconnectPeers">🛠 Repair Peers</button>
             <button class="toolBtn" @click="copyDiagnostics">🧾 Copy Diagnostics</button>
+            <button class="toolBtn" @click="toggleTranscription">{{ transcriptionActive ? "📝 Stop Transcript" : "📝 Transcribe" }}</button>
           </div>
-
           <div v-if="notice" class="hint mt10">{{ notice }}</div>
           <div v-if="errorText" class="alert mt10">{{ errorText }}</div>
         </section>
 
-        <section class="panel glassy">
-          <div class="panel-head">
-            <div class="panel-title">📡 Diagnostics</div>
-          </div>
-
+        <!-- DIAGNOSTICS -->
+        <section v-if="activePanelTab === 'diagnostics'" class="panel glassy">
+          <div class="panel-head"><div class="panel-title">📡 Diagnostics</div></div>
           <div class="diag-list">
             <div class="diag-row"><span>Room ID</span><strong>{{ roomId }}</strong></div>
             <div class="diag-row"><span>Kind</span><strong>{{ roomKindLabel }}</strong></div>
@@ -483,6 +487,13 @@
             <div class="diag-row"><span>TURN</span><strong>{{ turnReady ? "Ready" : "No" }}</strong></div>
             <div class="diag-row"><span>Timer</span><strong>{{ sessionDurationLabel }}</strong></div>
             <div class="diag-row"><span>Dominant Speaker</span><strong>{{ dominantSpeakerLabel }}</strong></div>
+            <div class="diag-row"><span>Network</span><strong>{{ networkQuality.label }}</strong></div>
+            <div class="diag-row"><span>Downlink</span><strong>{{ networkQuality.downlink }} Mbps</strong></div>
+            <div class="diag-row"><span>Uplink</span><strong>{{ networkQuality.uplink }} Mbps</strong></div>
+            <div class="diag-row"><span>Packet Loss</span><strong>{{ networkQuality.packetLoss }}%</strong></div>
+            <div class="diag-row"><span>Jitter</span><strong>{{ networkQuality.jitter }}ms</strong></div>
+            <div class="diag-row"><span>Resolution</span><strong>{{ localResolution }}</strong></div>
+            <div class="diag-row"><span>FPS</span><strong>{{ localFps }}</strong></div>
           </div>
         </section>
       </aside>
@@ -490,1314 +501,86 @@
 
     <!-- BOTTOM BAR -->
     <footer class="bottomBar glassy">
-      <button class="fab mute" :class="{ off: !micEnabled }" @click="toggleMic">
-        {{ micEnabled ? "🎙" : "🔇" }}
-      </button>
-
-      <button
-        class="fab cam"
-        :class="{ off: !camEnabled && !screenSharing }"
-        :disabled="roomKind !== 'video'"
-        @click="toggleCamera"
-      >
-        {{ camEnabled ? "📷" : "🚫" }}
-      </button>
-
-      <button
-        class="fab share"
-        :class="{ on: screenSharing }"
-        :disabled="roomKind !== 'video'"
-        @click="toggleScreenShare"
-      >
-        🖥
-      </button>
-
+      <button class="fab mute" :class="{ off: !micEnabled }" @click="toggleMic">{{ micEnabled ? "🎙" : "🔇" }}</button>
+      <button class="fab cam" :class="{ off: !camEnabled && !screenSharing }" :disabled="roomKind !== 'video'" @click="toggleCamera">{{ camEnabled ? "📷" : "🚫" }}</button>
+      <button class="fab share" :class="{ on: screenSharing }" :disabled="roomKind !== 'video'" @click="toggleScreenShare">🖥</button>
+      <button class="fab" :class="{ active: raisedHands.has('local') }" @click="toggleHandRaise">✋</button>
+      <button class="fab" @click="togglePanel">{{ sidePanelOpen ? "📚" : "📖" }}</button>
       <button class="fab invite" @click="copyInvite">🔗</button>
       <button class="fab invite" @click="forceReconnectPeers">🛠</button>
       <button class="fab invite" @click="sendReaction('🔥')">🔥</button>
-      <button class="fab end" @click="leaveRoom">❌</button>
+      <button class="fab end" @click="confirmLeave">❌</button>
     </footer>
+
+    <!-- SHORTCUTS MODAL -->
+    <transition name="fade-scale">
+      <div v-if="showShortcuts" class="modal-overlay" @click.self="showShortcuts = false">
+        <div class="modal glassy">
+          <h3>⌨️ Keyboard Shortcuts</h3>
+          <div class="shortcuts-grid">
+            <div v-for="s in shortcuts" :key="s.key" class="shortcut-row"><kbd>{{ s.key }}</kbd><span>{{ s.desc }}</span></div>
+          </div>
+          <button class="btn btn-primary mt10" @click="showShortcuts = false">Close</button>
+        </div>
+      </div>
+    </transition>
+
+    <!-- POLL MODAL -->
+    <transition name="fade-scale">
+      <div v-if="showPollModal" class="modal-overlay" @click.self="showPollModal = false">
+        <div class="modal glassy">
+          <h3>📊 Create Poll</h3>
+          <input v-model="pollQuestion" type="text" placeholder="Ask a question..." class="modal-input" />
+          <div v-for="(opt, idx) in pollOptions" :key="idx" class="poll-input-row">
+            <input v-model="pollOptions[idx]" type="text" :placeholder="`Option ${idx + 1}`" class="modal-input" />
+            <button v-if="pollOptions.length > 2" class="chip danger miniChip" @click="pollOptions.splice(idx, 1)">✕</button>
+          </div>
+          <button class="chip ghost miniChip" @click="pollOptions.push('')">+ Add Option</button>
+          <div class="modal-actions">
+            <button class="btn btn-primary" @click="createPoll">Launch Poll</button>
+            <button class="btn ghostBtn" @click="showPollModal = false">Cancel</button>
+          </div>
+        </div>
+      </div>
+    </transition>
+
+    <!-- BREAKOUT MODAL -->
+    <transition name="fade-scale">
+      <div v-if="showBreakoutModal" class="modal-overlay" @click.self="showBreakoutModal = false">
+        <div class="modal glassy breakout-modal">
+          <h3>🚪 Breakout Rooms</h3>
+          <div class="breakout-list">
+            <div v-for="(br, idx) in breakoutRooms" :key="idx" class="breakout-room">
+              <div class="breakout-header"><span>Room {{ idx + 1 }}</span><button class="chip danger miniChip" @click="breakoutRooms.splice(idx, 1)">✕</button></div>
+              <div class="breakout-members">
+                <span v-for="m in br.members" :key="m" class="breakout-chip">{{ getParticipantName(m) }}</span>
+              </div>
+            </div>
+          </div>
+          <button class="chip ghost miniChip" @click="addBreakoutRoom">+ Add Room</button>
+          <div class="modal-actions">
+            <button class="btn btn-primary" @click="startBreakouts">Start Breakouts</button>
+            <button class="btn ghostBtn" @click="showBreakoutModal = false">Close</button>
+          </div>
+        </div>
+      </div>
+    </transition>
   </div>
 </template>
 
-<script setup>
-import { ref, computed, nextTick, onMounted, onBeforeUnmount, watch } from "vue"
-import { useRoute, useRouter } from "vue-router"
-import { createSocket } from "../api/socket"
-
-const route = useRoute()
-const router = useRouter()
-const apiUrl = (import.meta.env.VITE_API_URL || "").trim()
-const token = localStorage.getItem("token") || ""
-
-const me = (() => {
-  try { return JSON.parse(localStorage.getItem("user") || "null") } catch { return null }
-})()
-
-/* =========================
-   ROOM / ROUTE
-========================= */
-const roomId = computed(() => String(route.query.roomId || "").trim())
-const roomName = ref("")
-const roomKind = ref("video")
-const joinedRoom = ref(false)
-const sidePanelOpen = ref(true)
-const focusedTileId = ref("")
-const notice = ref("")
-const errorText = ref("")
-
-const compactMode = ref(false)
-const cinematicMode = ref(false)
-const mirrorLocal = ref(true)
-const reactionBurst = ref("")
-const sessionStartedAt = ref(Date.now())
-let sessionTimer = null
-
-const roomKindLabel = computed(() => roomKind.value === "audio" ? "Audio Room" : "Video Room")
-const myName = computed(() => me?.display_name || me?.username || me?.name || me?.email || "You")
-const myInitial = computed(() => getInitialName(myName.value))
-const shortRoomId = computed(() => String(roomId.value || "").slice(-8) || "room")
-
-const sessionDurationMs = ref(0)
-const sessionDurationLabel = computed(() => {
-  const total = Math.floor(sessionDurationMs.value / 1000)
-  const m = Math.floor(total / 60)
-  const s = total % 60
-  return `${String(m).padStart(2, "0")}:${String(s).padStart(2, "0")}`
-})
-
-/* =========================
-   SOCKET
-========================= */
-let socket = null
-const socketConnected = ref(false)
-const mySocketId = ref("")
-
-/* =========================
-   TURN / ICE
-========================= */
-const turnReady = ref(false)
-const rtcIceServers = ref([
-  { urls: "stun:stun.l.google.com:19302" },
-  { urls: "stun:stun1.l.google.com:19302" },
-])
-
-/* =========================
-   MEDIA
-========================= */
-const localVideoRef = ref(null)
-const localStream = ref(null)
-const cameraStream = ref(null)
-const screenStream = ref(null)
-
-const micEnabled = ref(true)
-const camEnabled = ref(true)
-const screenSharing = ref(false)
-const speakerEnabled = ref(true)
-
-/* =========================
-   PARTICIPANTS
-========================= */
-const roomUsers = ref([])
-const remoteParticipants = computed(() =>
-  roomUsers.value.filter((u) => String(u.socketId) !== String(mySocketId.value))
-)
-
-const participantCount = computed(() => {
-  const ids = new Set(roomUsers.value.map((u) => String(u.socketId)))
-  return ids.size
-})
-
-const visibleRemoteParticipants = computed(() => {
-  if (!focusedTileId.value) return remoteParticipants.value
-  if (focusedTileId.value === "local") return []
-  return remoteParticipants.value.filter((p) => p.socketId === focusedTileId.value)
-})
-
-const shouldShowLocalTile = computed(() => {
-  return !focusedTileId.value || focusedTileId.value === "local"
-})
-
-/* =========================
-   SPEAKER DETECTION
-========================= */
-const speakerLevelMap = ref({})
-const dominantSpeakerId = ref("")
-
-let audioContext = null
-const analyserMap = new Map()
-const analyserDataMap = new Map()
-const mediaSourceMap = new Map()
-let speakerLoopRaf = null
-
-const dominantSpeakerLabel = computed(() => {
-  if (!dominantSpeakerId.value) return "None"
-  if (dominantSpeakerId.value === "local") return "You"
-  const p = remoteParticipants.value.find(x => String(x.socketId) === String(dominantSpeakerId.value))
-  return p?.displayName || p?.username || `User #${p?.userId || "?"}`
-})
-
-function isSpeaking(id) {
-  return (speakerLevelMap.value[id] || 0) > 0.12
-}
-
-function speakerRingStyle(id) {
-  const level = Math.max(0, Math.min(1, speakerLevelMap.value[id] || 0))
-  return {
-    opacity: String(level > 0.04 ? 0.22 + level * 0.55 : 0),
-    transform: `scale(${1 + level * 0.08})`,
-  }
-}
-
-function ensureAudioContext() {
-  if (!audioContext) {
-    const Ctx = window.AudioContext || window.webkitAudioContext
-    if (Ctx) audioContext = new Ctx()
-  }
-  if (audioContext?.state === "suspended") {
-    audioContext.resume().catch(() => {})
-  }
-}
-
-function attachSpeakerAnalysis(id, stream) {
-  const sid = String(id || "")
-  if (!sid || !stream) return
-  if (!stream.getAudioTracks?.().length) return
-
-  try {
-    ensureAudioContext()
-    if (!audioContext) return
-
-    detachSpeakerAnalysis(sid)
-
-    const source = audioContext.createMediaStreamSource(stream)
-    const analyser = audioContext.createAnalyser()
-    analyser.fftSize = 256
-    analyser.smoothingTimeConstant = 0.82
-
-    const data = new Uint8Array(analyser.frequencyBinCount)
-    source.connect(analyser)
-
-    mediaSourceMap.set(sid, source)
-    analyserMap.set(sid, analyser)
-    analyserDataMap.set(sid, data)
-  } catch (err) {
-    console.warn("attachSpeakerAnalysis failed", sid, err)
-  }
-}
-
-function detachSpeakerAnalysis(id) {
-  const sid = String(id || "")
-  try { mediaSourceMap.get(sid)?.disconnect?.() } catch {}
-  try { analyserMap.get(sid)?.disconnect?.() } catch {}
-  mediaSourceMap.delete(sid)
-  analyserMap.delete(sid)
-  analyserDataMap.delete(sid)
-
-  const nextLevels = { ...speakerLevelMap.value }
-  delete nextLevels[sid]
-  speakerLevelMap.value = nextLevels
-}
-
-function startSpeakerLoop() {
-  stopSpeakerLoop()
-
-  const tick = () => {
-    const next = { ...speakerLevelMap.value }
-    let maxId = ""
-    let maxVal = 0
-
-    for (const [sid, analyser] of analyserMap.entries()) {
-      const data = analyserDataMap.get(sid)
-      if (!data) continue
-
-      analyser.getByteFrequencyData(data)
-
-      let sum = 0
-      for (let i = 0; i < data.length; i++) sum += data[i]
-      const avg = sum / (data.length * 255)
-
-      next[sid] = avg
-
-      if (avg > maxVal) {
-        maxVal = avg
-        maxId = sid
-      }
-    }
-
-    speakerLevelMap.value = next
-    dominantSpeakerId.value = maxVal > 0.08 ? maxId : ""
-
-    speakerLoopRaf = requestAnimationFrame(tick)
-  }
-
-  speakerLoopRaf = requestAnimationFrame(tick)
-}
-
-function stopSpeakerLoop() {
-  if (speakerLoopRaf) {
-    cancelAnimationFrame(speakerLoopRaf)
-    speakerLoopRaf = null
-  }
-}
-
-function focusDominantSpeaker() {
-  if (!dominantSpeakerId.value) return
-  focusedTileId.value = dominantSpeakerId.value
-}
-
-/* =========================
-   WEBRTC STATE
-========================= */
-const peerConnections = new Map()
-const remoteStreams = new Map()
-const remoteVideoRefs = new Map()
-const pendingIceCandidates = new Map()
-const peerStatus = ref({})
-const peerConnectionState = ref({})
-const makingOffer = new Map()
-const ignoreOffer = new Map()
-const isSettingRemoteAnswerPending = new Map()
-const peerMeta = new Map()
-let reconnectTimer = null
-
-/* =========================
-   COMPUTED LAYOUT
-========================= */
-const displayedTileCount = computed(() => {
-  return visibleRemoteParticipants.value.length + (shouldShowLocalTile.value ? 1 : 0)
-})
-
-const gridClass = computed(() => {
-  if (focusedTileId.value) return "grid-focus"
-  if (displayedTileCount.value <= 1) return "grid-one"
-  if (displayedTileCount.value === 2) return "grid-two"
-  if (displayedTileCount.value <= 4) return "grid-four"
-  return "grid-many"
-})
-
-/* =========================
-   HELPERS
-========================= */
-function getInitialName(v) {
-  return String(v || "U").trim().charAt(0).toUpperCase() || "U"
-}
-
-function trimName(v) {
-  const s = String(v || "")
-  return s.length > 16 ? `${s.slice(0, 16)}…` : s
-}
-
-function togglePanel() {
-  sidePanelOpen.value = !sidePanelOpen.value
-}
-
-function goBack() {
-  router.push("/dashboard")
-}
-
-function focusTile(id) {
-  focusedTileId.value = focusedTileId.value === id ? "" : id
-}
-
-function clearFocus() {
-  focusedTileId.value = ""
-}
-
-function toggleCompactMode() {
-  compactMode.value = !compactMode.value
-  setNotice(compactMode.value ? "Compact mode enabled." : "Compact mode disabled.")
-}
-
-function toggleCinematicMode() {
-  cinematicMode.value = !cinematicMode.value
-  setNotice(cinematicMode.value ? "Cinematic mode enabled." : "Cinematic mode disabled.")
-}
-
-function toggleMirrorMode() {
-  mirrorLocal.value = !mirrorLocal.value
-  setNotice(mirrorLocal.value ? "Mirror mode on." : "Mirror mode off.")
-}
-
-function sendReaction(emoji) {
-  reactionBurst.value = emoji
-  window.clearTimeout(sendReaction._t)
-  sendReaction._t = window.setTimeout(() => {
-    reactionBurst.value = ""
-  }, 1200)
-  setNotice(`Reaction sent ${emoji}`)
-}
-
-function setNotice(text = "") {
-  notice.value = text
-  if (!text) return
-  window.clearTimeout(setNotice._t)
-  setNotice._t = window.setTimeout(() => {
-    notice.value = ""
-  }, 2500)
-}
-
-function setError(text = "") {
-  errorText.value = text
-  if (!text) return
-  window.clearTimeout(setError._t)
-  setError._t = window.setTimeout(() => {
-    errorText.value = ""
-  }, 4000)
-}
-
-function currentUsername() {
-  return me?.username || me?.display_name || me?.name || me?.email || "User"
-}
-
-function safeReplaceRoomUsers(users = []) {
-  roomUsers.value = Array.isArray(users)
-    ? users.map((u) => ({
-        userId: u?.userId ? String(u.userId) : "",
-        socketId: u?.socketId ? String(u.socketId) : "",
-        displayName: u?.displayName || u?.username || u?.name || "",
-        username: u?.username || "",
-        kind: u?.kind || roomKind.value || "video",
-      })).filter((u) => u.socketId)
-    : []
-}
-
-function mergeUserIntoRoom(user) {
-  if (!user?.socketId) return
-  const sid = String(user.socketId)
-  const existing = roomUsers.value.find((u) => String(u.socketId) === sid)
-
-  if (existing) {
-    roomUsers.value = roomUsers.value.map((u) =>
-      String(u.socketId) === sid
-        ? {
-            ...u,
-            userId: String(user.userId || u.userId || ""),
-            socketId: sid,
-            displayName: user.displayName || user.username || user.name || u.displayName || "",
-            username: user.username || u.username || "",
-            kind: user.kind || u.kind || roomKind.value,
-          }
-        : u
-    )
-  } else {
-    roomUsers.value = [
-      ...roomUsers.value,
-      {
-        userId: String(user.userId || ""),
-        socketId: sid,
-        displayName: user.displayName || user.username || user.name || "",
-        username: user.username || "",
-        kind: user.kind || roomKind.value,
-      },
-    ]
-  }
-}
-
-function setRemoteVideoRef(socketId, el) {
-  const sid = String(socketId || "")
-  if (!sid) return
-
-  if (el) {
-    remoteVideoRefs.set(sid, el)
-    const stream = remoteStreams.get(sid)
-    if (stream) {
-      el.srcObject = stream
-      el.muted = false
-      el.volume = speakerEnabled.value ? 1 : 0.2
-      attachSpeakerAnalysis(sid, stream)
-    }
-  } else {
-    remoteVideoRefs.delete(sid)
-  }
-}
-
-function refreshRemoteVideoAudio() {
-  remoteVideoRefs.forEach((el) => {
-    if (!el) return
-    el.muted = false
-    el.volume = speakerEnabled.value ? 1 : 0.2
-  })
-}
-
-function startSessionTimer() {
-  if (sessionTimer) window.clearInterval(sessionTimer)
-  sessionStartedAt.value = Date.now()
-  sessionDurationMs.value = 0
-  sessionTimer = window.setInterval(() => {
-    sessionDurationMs.value = Date.now() - sessionStartedAt.value
-  }, 1000)
-}
-
-function stopSessionTimer() {
-  if (sessionTimer) {
-    window.clearInterval(sessionTimer)
-    sessionTimer = null
-  }
-}
-
-/* =========================
-   TURN
-========================= */
-async function loadTurnServers() {
-  try {
-    const res = await fetch(`${apiUrl}/api/turn`)
-    const data = await res.json()
-
-    if (res.ok && data?.ok && Array.isArray(data?.iceServers) && data.iceServers.length) {
-      rtcIceServers.value = data.iceServers
-      turnReady.value = true
-      return
-    }
-  } catch {}
-
-  turnReady.value = false
-}
-
-function getRtcConfig() {
-  return {
-    iceServers: rtcIceServers.value,
-    iceCandidatePoolSize: 10,
-  }
-}
-
-/* =========================
-   LOCAL MEDIA
-========================= */
-async function initLocalMedia() {
-  try {
-    errorText.value = ""
-
-    const wantsVideo = roomKind.value === "video"
-    const stream = await navigator.mediaDevices.getUserMedia({
-      audio: {
-        echoCancellation: true,
-        noiseSuppression: true,
-        autoGainControl: true,
-      },
-      video: wantsVideo
-        ? {
-            width: { ideal: 1280, max: 1280 },
-            height: { ideal: 720, max: 720 },
-            frameRate: { ideal: 24, max: 30 },
-            facingMode: "user",
-          }
-        : false,
-    })
-
-    if (cameraStream.value) {
-      try { cameraStream.value.getTracks().forEach((t) => t.stop()) } catch {}
-    }
-
-    cameraStream.value = stream
-    localStream.value = stream
-
-    const audioTrack = stream.getAudioTracks?.()[0]
-    const videoTrack = stream.getVideoTracks?.()[0]
-
-    micEnabled.value = !!audioTrack
-    camEnabled.value = wantsVideo ? !!videoTrack : false
-
-    if (audioTrack) audioTrack.enabled = micEnabled.value
-    if (videoTrack) videoTrack.enabled = camEnabled.value
-
-    updateLocalPreview()
-    attachSpeakerAnalysis("local", stream)
-    return stream
-  } catch (err) {
-    console.error("initLocalMedia error:", err)
-    setError("Camera or microphone permission failed.")
-    throw err
-  }
-}
-
-async function ensureLocalTracksReady() {
-  if (roomKind.value === "audio") {
-    if (!localStream.value) await initLocalMedia()
-    return
-  }
-
-  if (screenSharing.value && screenStream.value) return
-  if (!localStream.value) await initLocalMedia()
-}
-
-function getCurrentSendStream() {
-  return screenSharing.value && screenStream.value ? screenStream.value : localStream.value
-}
-
-function updateLocalPreview() {
-  if (!localVideoRef.value) return
-  if (roomKind.value !== "video" && !screenSharing.value) return
-  const stream = getCurrentSendStream()
-  if (stream) localVideoRef.value.srcObject = stream
-}
-
-function getActiveAudioTrack() {
-  if (screenSharing.value && screenStream.value) {
-    const displayAudio = screenStream.value.getAudioTracks?.()[0]
-    if (displayAudio) return displayAudio
-  }
-  return localStream.value?.getAudioTracks?.()[0] || null
-}
-
-function getActiveVideoTrack() {
-  const stream = getCurrentSendStream()
-  return stream?.getVideoTracks?.()[0] || null
-}
-
-/* =========================
-   PEER CONNECTIONS
-========================= */
-function isPolitePeer(socketId) {
-  const mine = String(mySocketId.value || "")
-  const theirs = String(socketId || "")
-  if (!mine || !theirs) return false
-  return mine > theirs
-}
-
-function buildPeerConnection(targetSocketId) {
-  const sid = String(targetSocketId)
-  if (peerConnections.has(sid)) return peerConnections.get(sid)
-
-  const pc = new RTCPeerConnection(getRtcConfig())
-  peerMeta.set(sid, { polite: isPolitePeer(sid) })
-  makingOffer.set(sid, false)
-  ignoreOffer.set(sid, false)
-  isSettingRemoteAnswerPending.set(sid, false)
-
-  const sendStream = getCurrentSendStream() || localStream.value
-  if (sendStream) {
-    sendStream.getTracks().forEach((track) => {
-      pc.addTrack(track, sendStream)
-    })
-  }
-
-  pc.onicecandidate = (event) => {
-    if (!event.candidate || !socket) return
-
-    socket.emit("callroom:webrtc:ice", {
-      roomId: roomId.value,
-      to: sid,
-      targetSocketId: sid,
-      candidate: event.candidate,
-      from: mySocketId.value,
-    })
-  }
-
-  pc.ontrack = (event) => {
-    let stream = remoteStreams.get(sid)
-    if (!stream) {
-      stream = new MediaStream()
-      remoteStreams.set(sid, stream)
-    }
-
-    if (event.streams?.[0]) {
-      event.streams[0].getTracks().forEach((track) => {
-        const exists = stream.getTracks().some((t) => t.id === track.id)
-        if (!exists) stream.addTrack(track)
-      })
-    } else if (event.track) {
-      const exists = stream.getTracks().some((t) => t.id === event.track.id)
-      if (!exists) stream.addTrack(event.track)
-    }
-
-    const el = remoteVideoRefs.get(sid)
-    if (el) {
-      el.srcObject = stream
-      el.muted = false
-      el.volume = speakerEnabled.value ? 1 : 0.2
-    }
-
-    attachSpeakerAnalysis(sid, stream)
-    peerStatus.value = { ...peerStatus.value, [sid]: "Receiving media" }
-  }
-
-  pc.onconnectionstatechange = () => {
-    const st = pc.connectionState || "unknown"
-    peerConnectionState.value = { ...peerConnectionState.value, [sid]: st }
-    peerStatus.value = { ...peerStatus.value, [sid]: st }
-
-    if (st === "failed") {
-      retryPeer(sid)
-    }
-
-    if (["closed"].includes(st)) {
-      cleanupPeer(sid)
-    }
-  }
-
-  pc.oniceconnectionstatechange = () => {
-    const st = pc.iceConnectionState || "unknown"
-    peerStatus.value = { ...peerStatus.value, [sid]: st }
-
-    if (["failed", "disconnected"].includes(st)) {
-      retryPeer(sid)
-    }
-  }
-
-  pc.onnegotiationneeded = async () => {
-    try {
-      if (!socketConnected.value || !joinedRoom.value) return
-      await negotiateWithPeer(sid)
-    } catch (err) {
-      console.warn("negotiationneeded failed", err)
-    }
-  }
-
-  peerConnections.set(sid, pc)
-  return pc
-}
-
-async function negotiateWithPeer(socketId) {
-  const sid = String(socketId)
-  const pc = buildPeerConnection(sid)
-  if (!pc) return
-
-  try {
-    makingOffer.set(sid, true)
-
-    const offer = await pc.createOffer()
-    if (pc.signalingState !== "stable") return
-
-    await pc.setLocalDescription(offer)
-
-    socket.emit("callroom:webrtc:offer", {
-      roomId: roomId.value,
-      to: sid,
-      targetSocketId: sid,
-      offer: pc.localDescription,
-      from: mySocketId.value,
-    })
-
-    peerStatus.value = { ...peerStatus.value, [sid]: "Offer sent" }
-  } catch (err) {
-    console.error("negotiateWithPeer error:", err)
-  } finally {
-    makingOffer.set(sid, false)
-  }
-}
-
-async function replaceOutgoingTracks() {
-  const audioTrack = getActiveAudioTrack()
-  const videoTrack = roomKind.value === "video" ? getActiveVideoTrack() : null
-
-  for (const [sid, pc] of peerConnections.entries()) {
-    const senders = pc.getSenders()
-
-    const audioSender = senders.find((s) => s.track?.kind === "audio")
-    const videoSender = senders.find((s) => s.track?.kind === "video")
-
-    try {
-      if (audioSender && audioTrack) {
-        await audioSender.replaceTrack(audioTrack)
-      } else if (!audioSender && audioTrack) {
-        const stream = getCurrentSendStream() || localStream.value
-        if (stream) pc.addTrack(audioTrack, stream)
-      }
-    } catch (err) {
-      console.warn("replace audio failed", err)
-    }
-
-    try {
-      if (videoSender && videoTrack) {
-        await videoSender.replaceTrack(videoTrack)
-      } else if (videoSender && !videoTrack) {
-        await videoSender.replaceTrack(null)
-      } else if (!videoSender && videoTrack) {
-        const stream = getCurrentSendStream() || localStream.value
-        if (stream) pc.addTrack(videoTrack, stream)
-      }
-    } catch (err) {
-      console.warn("replace video failed", err)
-    }
-
-    try {
-      await negotiateWithPeer(sid)
-    } catch {}
-  }
-
-  updateLocalPreview()
-}
-
-async function handleOfferPayload(payload = {}) {
-  const rid = String(payload?.roomId || "")
-  if (rid && rid !== roomId.value) return
-
-  const from = String(
-    payload?.from ||
-    payload?.fromSocketId ||
-    payload?.socketId ||
-    payload?.senderSocketId ||
-    ""
-  )
-
-  const offer = payload?.offer || payload?.sdp || null
-  if (!from || !offer) return
-
-  await ensureLocalTracksReady()
-  const pc = buildPeerConnection(from)
-  const polite = !!peerMeta.get(from)?.polite
-
-  const offerCollision =
-    offer.type === "offer" &&
-    (makingOffer.get(from) || pc.signalingState !== "stable")
-
-  ignoreOffer.set(from, !polite && offerCollision)
-  if (ignoreOffer.get(from)) return
-
-  try {
-    if (offerCollision) {
-      await Promise.all([
-        pc.setLocalDescription({ type: "rollback" }),
-        pc.setRemoteDescription(new RTCSessionDescription(offer)),
-      ])
-    } else {
-      await pc.setRemoteDescription(new RTCSessionDescription(offer))
-    }
-
-    const queued = pendingIceCandidates.get(from) || []
-    for (const c of queued) {
-      try { await pc.addIceCandidate(new RTCIceCandidate(c)) } catch {}
-    }
-    pendingIceCandidates.delete(from)
-
-    await pc.setLocalDescription(await pc.createAnswer())
-
-    socket.emit("callroom:webrtc:answer", {
-      roomId: roomId.value,
-      to: from,
-      targetSocketId: from,
-      answer: pc.localDescription,
-      from: mySocketId.value,
-    })
-
-    peerStatus.value = { ...peerStatus.value, [from]: "Answered" }
-  } catch (err) {
-    console.error("handleOfferPayload error:", err)
-    setError("Failed to answer incoming room offer.")
-  }
-}
-
-async function handleAnswerPayload(payload = {}) {
-  const rid = String(payload?.roomId || "")
-  if (rid && rid !== roomId.value) return
-
-  const from = String(
-    payload?.from ||
-    payload?.fromSocketId ||
-    payload?.socketId ||
-    payload?.senderSocketId ||
-    ""
-  )
-
-  const answer = payload?.answer || payload?.sdp || null
-  if (!from || !answer) return
-
-  const pc = peerConnections.get(from)
-  if (!pc) return
-
-  try {
-    isSettingRemoteAnswerPending.set(from, true)
-    await pc.setRemoteDescription(new RTCSessionDescription(answer))
-    isSettingRemoteAnswerPending.set(from, false)
-
-    const queued = pendingIceCandidates.get(from) || []
-    for (const c of queued) {
-      try { await pc.addIceCandidate(new RTCIceCandidate(c)) } catch {}
-    }
-    pendingIceCandidates.delete(from)
-
-    peerStatus.value = { ...peerStatus.value, [from]: "Connected" }
-  } catch (err) {
-    console.error("handleAnswerPayload error:", err)
-  } finally {
-    isSettingRemoteAnswerPending.set(from, false)
-  }
-}
-
-async function handleIcePayload(payload = {}) {
-  const rid = String(payload?.roomId || "")
-  if (rid && rid !== roomId.value) return
-
-  const from = String(
-    payload?.from ||
-    payload?.fromSocketId ||
-    payload?.socketId ||
-    payload?.senderSocketId ||
-    ""
-  )
-
-  const candidate = payload?.candidate || payload?.ice || null
-  if (!from || !candidate) return
-  if (ignoreOffer.get(from)) return
-
-  const pc = peerConnections.get(from)
-  if (!pc || !pc.remoteDescription) {
-    const queued = pendingIceCandidates.get(from) || []
-    queued.push(candidate)
-    pendingIceCandidates.set(from, queued)
-    return
-  }
-
-  try {
-    await pc.addIceCandidate(new RTCIceCandidate(candidate))
-  } catch (err) {
-    console.warn("addIceCandidate failed", err)
-  }
-}
-
-function cleanupPeer(socketId) {
-  const sid = String(socketId)
-  const pc = peerConnections.get(sid)
-
-  if (pc) {
-    try {
-      pc.onicecandidate = null
-      pc.ontrack = null
-      pc.onnegotiationneeded = null
-      pc.close()
-    } catch {}
-  }
-
-  peerConnections.delete(sid)
-  remoteStreams.delete(sid)
-  pendingIceCandidates.delete(sid)
-  makingOffer.delete(sid)
-  ignoreOffer.delete(sid)
-  isSettingRemoteAnswerPending.delete(sid)
-  peerMeta.delete(sid)
-  detachSpeakerAnalysis(sid)
-
-  const el = remoteVideoRefs.get(sid)
-  if (el) {
-    try { el.srcObject = null } catch {}
-  }
-  remoteVideoRefs.delete(sid)
-
-  const statusCopy = { ...peerStatus.value }
-  delete statusCopy[sid]
-  peerStatus.value = statusCopy
-
-  const connCopy = { ...peerConnectionState.value }
-  delete connCopy[sid]
-  peerConnectionState.value = connCopy
-}
-
-async function retryPeer(socketId) {
-  const sid = String(socketId)
-  if (!sid || sid === String(mySocketId.value)) return
-
-  cleanupPeer(sid)
-  await nextTick()
-
-  buildPeerConnection(sid)
-  setTimeout(async () => {
-    try {
-      await negotiateWithPeer(sid)
-    } catch {}
-  }, 250)
-}
-
-async function forceReconnectPeers() {
-  for (const p of remoteParticipants.value) {
-    await retryPeer(p.socketId)
-  }
-  setNotice("Peer repair started.")
-}
-
-/* =========================
-   SCREEN SHARE
-========================= */
-async function startScreenShare() {
-  if (roomKind.value !== "video") {
-    setError("Screen share is available in video rooms.")
-    return
-  }
-
-  try {
-    const stream = await navigator.mediaDevices.getDisplayMedia({
-      video: true,
-      audio: true,
-    })
-
-    screenStream.value = stream
-    screenSharing.value = true
-
-    const track = stream.getVideoTracks?.()[0]
-    if (track) {
-      track.onended = async () => {
-        await stopScreenShare()
-      }
-    }
-
-    updateLocalPreview()
-    await replaceOutgoingTracks()
-    setNotice("Screen sharing started.")
-  } catch (err) {
-    console.error("startScreenShare error:", err)
-    setError("Screen sharing failed.")
-  }
-}
-
-async function stopScreenShare() {
-  try {
-    screenStream.value?.getTracks?.().forEach((t) => t.stop())
-  } catch {}
-
-  screenStream.value = null
-  screenSharing.value = false
-  updateLocalPreview()
-  await replaceOutgoingTracks()
-  setNotice("Screen sharing stopped.")
-}
-
-async function toggleScreenShare() {
-  if (screenSharing.value) await stopScreenShare()
-  else await startScreenShare()
-}
-
-/* =========================
-   CONTROLS
-========================= */
-function toggleMic() {
-  const track = getActiveAudioTrack() || localStream.value?.getAudioTracks?.()[0]
-  if (!track) return
-  micEnabled.value = !micEnabled.value
-  track.enabled = micEnabled.value
-  setNotice(micEnabled.value ? "Mic enabled." : "Mic muted.")
-}
-
-async function toggleCamera() {
-  if (roomKind.value !== "video") return
-  const track = localStream.value?.getVideoTracks?.()[0]
-  if (!track) return
-  camEnabled.value = !camEnabled.value
-  track.enabled = camEnabled.value
-
-  try {
-    await replaceOutgoingTracks()
-  } catch {}
-
-  setNotice(camEnabled.value ? "Camera enabled." : "Camera off.")
-}
-
-function toggleSpeaker() {
-  speakerEnabled.value = !speakerEnabled.value
-  refreshRemoteVideoAudio()
-  setNotice(speakerEnabled.value ? "Speaker on." : "Speaker lower.")
-}
-
-async function copyInvite() {
-  const url = `${window.location.origin}/room-call?roomId=${encodeURIComponent(roomId.value)}`
-  try {
-    await navigator.clipboard.writeText(url)
-    setNotice("Invite link copied.")
-  } catch {
-    window.prompt("Copy room link:", url)
-  }
-}
-
-async function copyRoomId() {
-  try {
-    await navigator.clipboard.writeText(String(roomId.value))
-    setNotice("Room ID copied.")
-  } catch {
-    window.prompt("Copy room ID:", String(roomId.value))
-  }
-}
-
-async function copyDiagnostics() {
-  const diag = {
-    roomId: roomId.value,
-    roomName: roomName.value,
-    roomKind: roomKind.value,
-    socketConnected: socketConnected.value,
-    joinedRoom: joinedRoom.value,
-    mySocketId: mySocketId.value,
-    participantCount: participantCount.value,
-    remoteParticipants: remoteParticipants.value.map((p) => ({
-      socketId: p.socketId,
-      userId: p.userId,
-      displayName: p.displayName,
-      state: peerConnectionState.value[p.socketId] || "",
-      status: peerStatus[p.socketId] || "",
-      speakingLevel: speakerLevelMap.value[p.socketId] || 0,
-    })),
-    micEnabled: micEnabled.value,
-    camEnabled: camEnabled.value,
-    screenSharing: screenSharing.value,
-    turnReady: turnReady.value,
-    compactMode: compactMode.value,
-    cinematicMode: cinematicMode.value,
-    mirrorLocal: mirrorLocal.value,
-    focusedTileId: focusedTileId.value,
-    dominantSpeakerId: dominantSpeakerId.value,
-    sessionDuration: sessionDurationLabel.value,
-    at: new Date().toISOString(),
-  }
-
-  try {
-    await navigator.clipboard.writeText(JSON.stringify(diag, null, 2))
-    setNotice("Diagnostics copied.")
-  } catch {
-    window.alert(JSON.stringify(diag, null, 2))
-  }
-}
-
-/* =========================
-   ROOM FLOW
-========================= */
-async function refreshRoomState() {
-  if (!socket || !roomId.value) return
-
-  socket.emit("callroom:get", { roomId: roomId.value }, (res) => {
-    if (res?.error) {
-      setError(res.error)
-      return
-    }
-
-    const room = res?.room || res || {}
-    if (room?.name) roomName.value = String(room.name)
-    if (room?.kind) roomKind.value = room.kind === "audio" ? "audio" : "video"
-    if (Array.isArray(room?.users)) safeReplaceRoomUsers(room.users)
-  })
-}
-
-async function joinRoom() {
-  if (!roomId.value) {
-    setError("Missing roomId in URL.")
-    return
-  }
-
-  try {
-    await ensureLocalTracksReady()
-
-    socket.emit("callroom:join", { roomId: roomId.value }, async (res) => {
-      if (res?.error) {
-        setError(res.error || "Could not join room.")
-        return
-      }
-
-      joinedRoom.value = true
-      startSessionTimer()
-
-      const room = res?.room || {}
-      roomName.value = String(room?.name || roomId.value)
-      roomKind.value = room?.kind === "audio" ? "audio" : "video"
-
-      safeReplaceRoomUsers(room?.users || [])
-
-      await nextTick()
-      updateLocalPreview()
-
-      for (const user of roomUsers.value) {
-        const sid = String(user.socketId || "")
-        if (!sid || sid === String(mySocketId.value)) continue
-        buildPeerConnection(sid)
-      }
-
-      setTimeout(async () => {
-        for (const user of roomUsers.value) {
-          const sid = String(user.socketId || "")
-          if (!sid || sid === String(mySocketId.value)) continue
-          await negotiateWithPeer(sid)
-        }
-      }, 200)
-
-      setNotice("Joined room.")
-    })
-  } catch {}
-}
-
-function scheduleSocketReconnect() {
-  if (reconnectTimer) return
-  reconnectTimer = window.setTimeout(() => {
-    reconnectTimer = null
-    try {
-      socket?.connect?.()
-    } catch {}
-  }, 1200)
-}
-
-function leaveRoom() {
-  try {
-    socket?.emit("callroom:leave", { roomId: roomId.value })
-  } catch {}
-  cleanupAll()
-  router.push("/dashboard")
-}
-
-function cleanupAll() {
-  joinedRoom.value = false
-  stopSessionTimer()
-  stopSpeakerLoop()
-
-  for (const id of Array.from(peerConnections.keys())) {
-    cleanupPeer(id)
-  }
-
-  try { localStream.value?.getTracks?.().forEach((t) => t.stop()) } catch {}
-  try { cameraStream.value?.getTracks?.().forEach((t) => t.stop()) } catch {}
-  try { screenStream.value?.getTracks?.().forEach((t) => t.stop()) } catch {}
-
-  detachSpeakerAnalysis("local")
-
-  localStream.value = null
-  cameraStream.value = null
-  screenStream.value = null
-  screenSharing.value = false
-
-  if (localVideoRef.value) {
-    try { localVideoRef.value.srcObject = null } catch {}
-  }
-
-  roomUsers.value = []
-  speakerLevelMap.value = {}
-  dominantSpeakerId.value = ""
-}
-
-/* =========================
-   SOCKET LISTENERS
-========================= */
-function attachSocketListeners() {
-  socket.on("connect", async () => {
-    socketConnected.value = true
-    mySocketId.value = String(socket.id || "")
-
-    try {
-      if (me?.id) {
-        socket.emit("user:online", { userId: String(me.id), username: currentUsername() })
-        socket.emit("register-user", { id: String(me.id), username: currentUsername() })
-      }
-    } catch {}
-
-    await refreshRoomState()
-    await joinRoom()
-  })
-
-  socket.on("disconnect", () => {
-    socketConnected.value = false
-    joinedRoom.value = false
-    stopSessionTimer()
-    scheduleSocketReconnect()
-  })
-
-  socket.on("callroom:state", async (payload = {}) => {
-    const rid = String(payload?.roomId || "")
-    if (rid && rid !== roomId.value) return
-
-    if (payload?.name) roomName.value = String(payload.name)
-    if (payload?.kind) roomKind.value = payload.kind === "audio" ? "audio" : "video"
-
-    safeReplaceRoomUsers(payload?.users || [])
-
-    for (const user of roomUsers.value) {
-      const sid = String(user.socketId || "")
-      if (!sid || sid === String(mySocketId.value)) continue
-      buildPeerConnection(sid)
-    }
-
-    setTimeout(async () => {
-      for (const user of roomUsers.value) {
-        const sid = String(user.socketId || "")
-        if (!sid || sid === String(mySocketId.value)) continue
-        if (!peerConnections.has(sid)) continue
-        await negotiateWithPeer(sid)
-      }
-    }, 200)
-  })
-
-  socket.on("callroom:user-joined", async ({ roomId: rid, user } = {}) => {
-    if (String(rid || "") !== roomId.value) return
-    if (!user?.socketId) return
-
-    const sid = String(user.socketId)
-    if (sid === String(mySocketId.value)) return
-
-    mergeUserIntoRoom(user)
-    buildPeerConnection(sid)
-
-    setTimeout(async () => {
-      if (!peerConnections.has(sid)) return
-      await negotiateWithPeer(sid)
-    }, 250)
-
-    setNotice("A participant joined.")
-  })
-
-  socket.on("callroom:user-left", ({ roomId: rid, socketId } = {}) => {
-    if (String(rid || "") !== roomId.value) return
-
-    const sid = String(socketId || "")
-    if (!sid) return
-
-    roomUsers.value = roomUsers.value.filter((u) => String(u.socketId) !== sid)
-
-    if (focusedTileId.value === sid) focusedTileId.value = ""
-    if (dominantSpeakerId.value === sid) dominantSpeakerId.value = ""
-
-    cleanupPeer(sid)
-    setNotice("A participant left.")
-  })
-
-  socket.on("callroom:webrtc:offer", handleOfferPayload)
-  socket.on("callroom:webrtc:answer", handleAnswerPayload)
-  socket.on("callroom:webrtc:ice", handleIcePayload)
-
-  socket.on("callroom:error", ({ message } = {}) => {
-    setError(message || "Room call error.")
-  })
-}
-
-/* =========================
-   WATCHERS
-========================= */
-watch(localStream, (stream) => {
-  if (stream) attachSpeakerAnalysis("local", stream)
-})
-
-watch(
-  () => roomKind.value,
-  async (newKind, oldKind) => {
-    if (!oldKind || newKind === oldKind) return
-    if (!joinedRoom.value) return
-
-    try {
-      await initLocalMedia()
-      await replaceOutgoingTracks()
-      updateLocalPreview()
-    } catch (err) {
-      console.error("roomKind watcher error", err)
-    }
-  }
-)
-
-/* =========================
-   LIFECYCLE
-========================= */
 onMounted(async () => {
-  if (!token) {
-    router.push("/login")
-    return
-  }
-
-  if (!roomId.value) {
-    setError("No roomId provided.")
-    return
-  }
-
+  if (!token) { router.push("/login"); return }
+  if (!roomId.value) { setError("No roomId provided."); return }
   await loadTurnServers()
-
+  await initLobbyMedia()
   socket = createSocket()
   attachSocketListeners()
   startSpeakerLoop()
+  networkStatsTimer = setInterval(monitorNetworkQuality, 2000)
 })
 
 onBeforeUnmount(() => {
-  try {
-    socket?.emit("callroom:leave", { roomId: roomId.value })
-  } catch {}
-
+  try { socket?.emit("callroom:leave", { roomId: roomId.value }) } catch {}
   try { socket?.off("connect") } catch {}
   try { socket?.off("disconnect") } catch {}
   try { socket?.off("callroom:state") } catch {}
@@ -1809,19 +592,10 @@ onBeforeUnmount(() => {
   try { socket?.off("callroom:error") } catch {}
   try { socket?.cleanupPulseSocket?.() } catch {}
   try { socket?.disconnect?.() } catch {}
-
-  if (reconnectTimer) {
-    window.clearTimeout(reconnectTimer)
-    reconnectTimer = null
-  }
-
+  if (reconnectTimer) { window.clearTimeout(reconnectTimer); reconnectTimer = null }
   stopSessionTimer()
   cleanupAll()
-
-  try {
-    audioContext?.close?.()
-  } catch {}
-
+  try { audioContext?.close?.() } catch {}
   audioContext = null
   socket = null
 })
@@ -1829,9 +603,8 @@ onBeforeUnmount(() => {
 
 <style scoped>
 /* ═══════════════════════════════════════════════════════════════
-   PULSE ROOM CALL — PREMIUM DESIGN SYSTEM v2.0
-   Linear × Discord × Creator Platform aesthetic
-   Template & script preserved. Design-only layer.
+   ADDISGO ROOM CALL — ENTERPRISE DESIGN SYSTEM v3.0
+   Linear × Discord × Creator Platform × Zoom aesthetic
    ═══════════════════════════════════════════════════════════════ */
 
 /* ─── CSS Variables ─── */
@@ -1883,6 +656,29 @@ onBeforeUnmount(() => {
 ::-webkit-scrollbar-thumb:hover { background: rgba(255,255,255,0.22); }
 ::-webkit-scrollbar-corner { background: transparent; }
 
+/* ─── Animations ─── */
+@keyframes floatA { from { transform: translateY(0) scale(1); } to { transform: translateY(-18px) scale(1.03); } }
+@keyframes floatB { from { transform: translateX(0) scale(1); } to { transform: translateX(16px) scale(1.04); } }
+@keyframes floatC { from { transform: translateY(0) translateX(0); } to { transform: translateY(10px) translateX(-12px); } }
+@keyframes pulseRing { 0% { transform: scale(1); opacity: 0.6; } 100% { transform: scale(2.2); opacity: 0; } }
+@keyframes speakPulse { 0%, 100% { box-shadow: 0 0 0 6px rgba(16,185,129,0.15), 0 0 24px rgba(16,185,129,0.25); } 50% { box-shadow: 0 0 0 10px rgba(16,185,129,0.08), 0 0 32px rgba(16,185,129,0.15); } }
+@keyframes floatUp { 0% { transform: translateY(0) scale(1); opacity: 1; } 100% { transform: translateY(-120vh) scale(1.4); opacity: 0; } }
+@keyframes spin { to { transform: rotate(360deg); } }
+@keyframes recPulse { 0%, 100% { opacity: 1; } 50% { opacity: 0.4; } }
+
+/* ─── Transitions ─── */
+.fade-scale-enter-active, .fade-scale-leave-active { transition: all 0.3s var(--ease-out); }
+.fade-scale-enter-from, .fade-scale-leave-to { opacity: 0; transform: scale(0.92); }
+.pop-reaction-enter-active, .pop-reaction-leave-active { transition: all 0.3s var(--ease-out); }
+.pop-reaction-enter-from, .pop-reaction-leave-to { opacity: 0; transform: scale(0.7) translateY(24px); }
+.slide-down-enter-active, .slide-down-leave-active { transition: all 0.3s var(--ease-out); }
+.slide-down-enter-from, .slide-down-leave-to { transform: translateY(-100%); opacity: 0; }
+.slide-up-enter-active, .slide-up-leave-active { transition: all 0.3s var(--ease-out); }
+.slide-up-enter-from, .slide-up-leave-to { transform: translateY(20px); opacity: 0; }
+.float-up-enter-active { animation: floatUp 3s ease-out forwards; }
+.float-up-leave-active { transition: opacity 0.3s; }
+.float-up-leave-to { opacity: 0; }
+
 /* ─── Page Layout ─── */
 .roomcall-page {
   min-height: 100vh;
@@ -1898,28 +694,10 @@ onBeforeUnmount(() => {
 }
 
 /* Ambient Background Layers */
-.bg-layer {
-  position: fixed;
-  inset: 0;
-  pointer-events: none;
-  z-index: 0;
-  border-radius: 0;
-}
-.bg1 {
-  background: radial-gradient(circle at 20% 10%, rgba(139,92,246,0.06), transparent 30%);
-  animation: floatA 14s ease-in-out infinite alternate;
-}
-.bg2 {
-  background: radial-gradient(circle at 80% 20%, rgba(236,72,153,0.05), transparent 25%);
-  animation: floatB 16s ease-in-out infinite alternate;
-}
-.bg3 {
-  background: radial-gradient(circle at 55% 80%, rgba(59,130,246,0.05), transparent 28%);
-  animation: floatC 18s ease-in-out infinite alternate;
-}
-@keyframes floatA { from { transform: translateY(0) scale(1); } to { transform: translateY(-18px) scale(1.03); } }
-@keyframes floatB { from { transform: translateX(0) scale(1); } to { transform: translateX(16px) scale(1.04); } }
-@keyframes floatC { from { transform: translateY(0) translateX(0); } to { transform: translateY(10px) translateX(-12px); } }
+.bg-layer { position: fixed; inset: 0; pointer-events: none; z-index: 0; border-radius: 0; }
+.bg1 { background: radial-gradient(circle at 20% 10%, rgba(139,92,246,0.06), transparent 30%); animation: floatA 14s ease-in-out infinite alternate; }
+.bg2 { background: radial-gradient(circle at 80% 20%, rgba(236,72,153,0.05), transparent 25%); animation: floatB 16s ease-in-out infinite alternate; }
+.bg3 { background: radial-gradient(circle at 55% 80%, rgba(59,130,246,0.05), transparent 28%); animation: floatC 18s ease-in-out infinite alternate; }
 
 /* ─── Glassmorphism Base ─── */
 .glassy {
@@ -1931,53 +709,68 @@ onBeforeUnmount(() => {
   transition: border-color var(--duration-fast) var(--ease-out), box-shadow var(--duration-fast) var(--ease-out), transform var(--duration-fast) var(--ease-out);
 }
 
+/* ─── Floating Reactions ─── */
+.floating-reactions { position: fixed; inset: 0; pointer-events: none; z-index: 25; overflow: hidden; }
+.floating-reaction { position: absolute; bottom: 120px; font-size: 32px; animation: floatUp 3s ease-out forwards; pointer-events: none; filter: drop-shadow(0 4px 12px rgba(0,0,0,0.3)); }
+
 /* ─── Reaction Burst ─── */
-.reaction-burst {
-  position: fixed;
-  inset: 0;
-  display: grid;
-  place-items: center;
-  font-size: 100px;
-  z-index: 30;
-  pointer-events: none;
-  text-shadow: 0 12px 48px rgba(0,0,0,0.5);
-  filter: drop-shadow(0 0 30px rgba(139,92,246,0.4));
-}
-.pop-reaction-enter-active, .pop-reaction-leave-active { transition: all 0.3s var(--ease-out); }
-.pop-reaction-enter-from, .pop-reaction-leave-to { opacity: 0; transform: scale(0.7) translateY(24px); }
+.reaction-burst { position: fixed; inset: 0; display: grid; place-items: center; font-size: 100px; z-index: 30; pointer-events: none; text-shadow: 0 12px 48px rgba(0,0,0,0.5); filter: drop-shadow(0 0 30px rgba(139,92,246,0.4)); }
+
+/* ─── Recording Banner ─── */
+.recording-banner { position: fixed; top: 0; left: 0; right: 0; z-index: 20; background: rgba(239,68,68,0.15); backdrop-filter: blur(12px); border-bottom: 1px solid rgba(239,68,68,0.25); padding: 10px; display: flex; align-items: center; justify-content: center; gap: 12px; font-size: 13px; font-weight: 800; color: #fca5a5; }
+.rec-dot { width: 10px; height: 10px; border-radius: 50%; background: #ef4444; animation: recPulse 1.5s ease-in-out infinite; }
+.rec-timer { font-variant-numeric: tabular-nums; }
+
+/* ─── Network Toast ─── */
+.network-toast { position: fixed; bottom: 100px; left: 50%; transform: translateX(-50%); z-index: 20; padding: 12px 20px; border-radius: var(--radius-lg); background: rgba(6,9,19,0.9); backdrop-filter: blur(16px); border: 1px solid var(--border-default); display: flex; align-items: center; gap: 10px; font-size: 13px; font-weight: 700; box-shadow: var(--shadow-lg); }
+.network-toast.warn { border-color: rgba(245,158,11,0.4); color: #fcd34d; }
+.network-toast.bad { border-color: rgba(239,68,68,0.4); color: #fca5a5; }
+
+/* ─── Lobby ─── */
+.lobby-overlay { position: fixed; inset: 0; z-index: 50; display: grid; place-items: center; padding: 24px; background: var(--bg-base); }
+.lobby-bg { position: absolute; inset: 0; overflow: hidden; pointer-events: none; }
+.bg-orb { position: absolute; border-radius: 50%; filter: blur(80px); opacity: 0.4; }
+.orb1 { width: 500px; height: 500px; background: rgba(139,92,246,0.25); top: -10%; left: -5%; animation: floatA 12s ease-in-out infinite alternate; }
+.orb2 { width: 400px; height: 400px; background: rgba(236,72,153,0.2); bottom: -10%; right: -5%; animation: floatB 14s ease-in-out infinite alternate; }
+.orb3 { width: 300px; height: 300px; background: rgba(59,130,246,0.15); top: 40%; left: 40%; animation: floatC 16s ease-in-out infinite alternate; }
+.lobby-card { position: relative; z-index: 1; width: min(520px, 92vw); background: var(--bg-surface); border: 1px solid var(--border-default); border-radius: var(--radius-xl); padding: 32px; backdrop-filter: blur(24px); box-shadow: var(--shadow-lg); }
+.lobby-brand { text-align: center; margin-bottom: 24px; }
+.lobby-logo { width: 56px; height: 56px; border-radius: var(--radius-lg); background: var(--accent-gradient); display: grid; place-items: center; font-weight: 900; font-size: 22px; color: white; margin: 0 auto 12px; box-shadow: 0 8px 24px rgba(139,92,246,0.3); }
+.lobby-title { font-size: 24px; font-weight: 900; margin: 0; }
+.lobby-sub { color: var(--text-tertiary); font-size: 14px; margin-top: 6px; }
+.lobby-preview-wrap { margin-bottom: 24px; }
+.lobby-preview { position: relative; width: 100%; aspect-ratio: 16/9; background: var(--bg-elevated); border-radius: var(--radius-lg); overflow: hidden; border: 1px solid var(--border-default); }
+.lobby-video { width: 100%; height: 100%; object-fit: cover; }
+.lobby-video.mirrored { transform: scaleX(-1); }
+.lobby-canvas { position: absolute; inset: 0; width: 100%; height: 100%; pointer-events: none; }
+.lobby-avatar { width: 100%; height: 100%; display: grid; place-items: center; font-size: 64px; font-weight: 900; background: var(--accent-gradient); color: white; }
+.lobby-preview-badge { position: absolute; top: 12px; left: 12px; display: flex; align-items: center; gap: 8px; padding: 8px 14px; border-radius: var(--radius-full); background: rgba(0,0,0,0.5); backdrop-filter: blur(8px); font-size: 12px; font-weight: 800; }
+.lobby-preview-actions { position: absolute; bottom: 12px; left: 50%; transform: translateX(-50%); display: flex; gap: 10px; }
+.lobby-mini-btn { width: 44px; height: 44px; border-radius: 50%; border: 1px solid var(--border-default); background: rgba(0,0,0,0.5); backdrop-filter: blur(8px); color: white; font-size: 18px; cursor: pointer; transition: all 0.15s; }
+.lobby-mini-btn:hover { background: rgba(0,0,0,0.7); transform: scale(1.08); }
+.lobby-mini-btn.off { background: rgba(239,68,68,0.3); border-color: rgba(239,68,68,0.5); }
+.lobby-audio-meter { display: flex; gap: 3px; justify-content: center; margin-top: 10px; }
+.meter-bar { width: 6px; height: 20px; border-radius: 3px; background: var(--accent-gradient); transition: opacity 0.1s; }
+.lobby-form { display: grid; gap: 16px; margin-bottom: 24px; }
+.lobby-field label { display: block; font-size: 12px; font-weight: 800; color: var(--text-secondary); margin-bottom: 8px; text-transform: uppercase; letter-spacing: 0.08em; }
+.lobby-field input, .lobby-field select { width: 100%; padding: 12px 14px; border-radius: var(--radius-md); background: var(--bg-surface-hover); border: 1px solid var(--border-default); color: var(--text-primary); font-size: 14px; font-weight: 600; outline: none; transition: all 0.15s; }
+.lobby-field input:focus, .lobby-field select:focus { border-color: var(--accent-start); box-shadow: 0 0 0 3px rgba(139,92,246,0.15); }
+.bg-selector { display: flex; gap: 10px; flex-wrap: wrap; }
+.bg-option { display: flex; flex-direction: column; align-items: center; gap: 6px; padding: 10px; border-radius: var(--radius-md); background: var(--bg-surface-hover); border: 2px solid transparent; cursor: pointer; transition: all 0.15s; min-width: 72px; }
+.bg-option:hover { border-color: var(--border-strong); transform: translateY(-2px); }
+.bg-option.active { border-color: var(--accent-start); background: rgba(139,92,246,0.1); }
+.bg-option-preview { width: 48px; height: 36px; border-radius: var(--radius-sm); display: grid; place-items: center; font-size: 18px; }
+.bg-option-label { font-size: 11px; font-weight: 700; color: var(--text-secondary); }
+.lobby-actions { display: flex; gap: 12px; }
+.lobby-join { flex: 1; justify-content: center; }
+.spinner { width: 18px; height: 18px; border: 2px solid rgba(255,255,255,0.3); border-top-color: white; border-radius: 50%; animation: spin 0.8s linear infinite; display: inline-block; }
 
 /* ─── Topbar ─── */
-.topbar {
-  position: relative;
-  z-index: 2;
-  padding: 12px 18px;
-  display: flex;
-  justify-content: space-between;
-  gap: 14px;
-  align-items: center;
-  flex-wrap: wrap;
-  margin-bottom: 16px;
-  border-radius: var(--radius-xl);
-}
+.topbar { position: relative; z-index: 2; padding: 12px 18px; display: flex; justify-content: space-between; gap: 14px; align-items: center; flex-wrap: wrap; margin-bottom: 16px; border-radius: var(--radius-xl); }
 .top-left, .top-right { display: flex; align-items: center; gap: 10px; flex-wrap: wrap; }
 
 /* Chips */
-.chip {
-  border: 1px solid var(--border-default);
-  border-radius: var(--radius-full);
-  padding: 10px 16px;
-  cursor: pointer;
-  background: var(--bg-surface-hover);
-  color: var(--text-primary);
-  font-weight: 700;
-  font-size: 13px;
-  display: inline-flex;
-  align-items: center;
-  justify-content: center;
-  gap: 6px;
-  transition: all var(--duration-fast) var(--ease-out);
-  user-select: none;
-}
+.chip { border: 1px solid var(--border-default); border-radius: var(--radius-full); padding: 10px 16px; cursor: pointer; background: var(--bg-surface-hover); color: var(--text-primary); font-weight: 700; font-size: 13px; display: inline-flex; align-items: center; justify-content: center; gap: 6px; transition: all var(--duration-fast) var(--ease-out); user-select: none; }
 .chip:hover { background: var(--bg-surface-active); border-color: var(--border-strong); transform: translateY(-1px); box-shadow: var(--shadow-sm); }
 .chip:active { transform: translateY(0) scale(0.97); }
 .chip:focus-visible { outline: 2px solid var(--accent-start); outline-offset: 2px; }
@@ -1985,137 +778,67 @@ onBeforeUnmount(() => {
 .chip.ghost:hover { background: var(--bg-surface-hover); border-color: var(--border-strong); color: var(--text-primary); }
 .chip.danger { background: rgba(239,68,68,0.15); border-color: rgba(239,68,68,0.30); color: #fca5a5; }
 .chip.danger:hover { background: rgba(239,68,68,0.22); border-color: rgba(239,68,68,0.45); box-shadow: 0 4px 16px rgba(239,68,68,0.15); }
+.chip.active { background: rgba(139,92,246,0.15); border-color: rgba(139,92,246,0.35); color: #c4b5fd; }
 .miniChip { font-size: 12px; padding: 8px 12px; }
 
 /* Room Pill */
-.room-pill {
-  display: flex;
-  align-items: center;
-  gap: 12px;
-  padding: 10px 16px;
-  border-radius: var(--radius-lg);
-  background: var(--bg-surface-hover);
-  border: 1px solid var(--border-default);
-}
-.live-dot {
-  width: 10px;
-  height: 10px;
-  border-radius: 50%;
-  background: var(--success);
-  box-shadow: 0 0 12px var(--success-glow);
-  position: relative;
-  flex-shrink: 0;
-}
+.room-pill { display: flex; align-items: center; gap: 12px; padding: 10px 16px; border-radius: var(--radius-lg); background: var(--bg-surface-hover); border: 1px solid var(--border-default); }
+.live-dot { width: 10px; height: 10px; border-radius: 50%; background: var(--success); box-shadow: 0 0 12px var(--success-glow); position: relative; flex-shrink: 0; }
 .live-dot::after { content: ''; position: absolute; inset: -3px; border-radius: 50%; border: 1.5px solid var(--success); animation: pulseRing 2s ease-out infinite; }
-@keyframes pulseRing { 0% { transform: scale(1); opacity: 0.6; } 100% { transform: scale(2.2); opacity: 0; } }
 .room-pill-title { font-weight: 900; font-size: 15px; color: var(--text-primary); }
 .room-pill-sub { color: var(--text-tertiary); font-size: 12px; font-weight: 500; margin-top: 2px; }
+.lock-badge { margin-left: 8px; padding: 3px 8px; border-radius: var(--radius-full); background: rgba(245,158,11,0.15); border: 1px solid rgba(245,158,11,0.3); color: #fcd34d; font-size: 10px; font-weight: 900; }
+
+/* Network Quality */
+.net-quality { display: flex; align-items: center; gap: 6px; }
+.nq-bars { display: flex; align-items: flex-end; gap: 3px; height: 18px; }
+.nq-bar { width: 4px; border-radius: 2px; background: rgba(255,255,255,0.15); transition: all 0.3s; }
+.nq-bar:nth-child(1) { height: 6px; }
+.nq-bar:nth-child(2) { height: 10px; }
+.nq-bar:nth-child(3) { height: 14px; }
+.nq-bar:nth-child(4) { height: 18px; }
+.nq-bar.active { background: var(--success); box-shadow: 0 0 8px var(--success-glow); }
+.nq-bar.active.warn { background: var(--warning); box-shadow: 0 0 8px rgba(245,158,11,0.3); }
 
 /* ─── Hero ─── */
-.hero {
-  position: relative;
-  z-index: 2;
-  padding: 28px;
-  display: grid;
-  grid-template-columns: 1.4fr 0.8fr;
-  gap: 28px;
-  margin-bottom: 16px;
-  border-radius: var(--radius-xl);
-  background: linear-gradient(135deg, rgba(139,92,246,0.08), rgba(236,72,153,0.05));
-  border: 1px solid var(--border-default);
-  overflow: hidden;
-}
-.hero::before {
-  content: ''; position: absolute; top: -50%; right: -20%; width: 400px; height: 400px;
-  background: radial-gradient(circle, rgba(139,92,246,0.10), transparent 70%); pointer-events: none;
-}
+.hero { position: relative; z-index: 2; padding: 28px; display: grid; grid-template-columns: 1.4fr 0.8fr; gap: 28px; margin-bottom: 16px; border-radius: var(--radius-xl); background: linear-gradient(135deg, rgba(139,92,246,0.08), rgba(236,72,153,0.05)); border: 1px solid var(--border-default); overflow: hidden; transition: all 0.3s var(--ease-out); }
+.hero::before { content: ''; position: absolute; top: -50%; right: -20%; width: 400px; height: 400px; background: radial-gradient(circle, rgba(139,92,246,0.10), transparent 70%); pointer-events: none; }
+.hero.collapsed { padding: 16px 24px; }
+.hero.collapsed .hero-sub, .hero.collapsed .hero-badges, .hero.collapsed .hero-right { display: none; }
 .hero-left { position: relative; z-index: 1; }
 .eyebrow { font-size: 11px; font-weight: 900; letter-spacing: 0.2em; color: var(--accent-start); text-transform: uppercase; }
-.hero-title {
-  margin: 8px 0 12px;
-  font-size: clamp(28px, 4vw, 44px);
-  line-height: 1.05;
-  font-weight: 900;
-  letter-spacing: -0.03em;
-  background: linear-gradient(135deg, #fff 60%, rgba(255,255,255,0.7));
-  -webkit-background-clip: text;
-  -webkit-text-fill-color: transparent;
-}
+.hero-title { margin: 8px 0 12px; font-size: clamp(28px, 4vw, 44px); line-height: 1.05; font-weight: 900; letter-spacing: -0.03em; background: linear-gradient(135deg, #fff 60%, rgba(255,255,255,0.7)); -webkit-background-clip: text; -webkit-text-fill-color: transparent; }
 .hero-sub { max-width: 720px; color: var(--text-secondary); line-height: 1.6; font-size: 14px; }
 .hero-badges { margin-top: 18px; display: flex; gap: 8px; flex-wrap: wrap; }
-.badge {
-  padding: 7px 12px;
-  border-radius: var(--radius-full);
-  background: var(--bg-surface);
-  border: 1px solid var(--border-default);
-  font-size: 12px;
-  font-weight: 800;
-  color: var(--text-secondary);
-  transition: all var(--duration-fast) var(--ease-out);
-}
+.badge { padding: 7px 12px; border-radius: var(--radius-full); background: var(--bg-surface); border: 1px solid var(--border-default); font-size: 12px; font-weight: 800; color: var(--text-secondary); transition: all var(--duration-fast) var(--ease-out); }
 .badge.ok { border-color: rgba(16,185,129,0.35); background: rgba(16,185,129,0.10); color: #6ee7b7; }
 .badge.bad { border-color: rgba(239,68,68,0.35); background: rgba(239,68,68,0.10); color: #fca5a5; }
 .badge.accent { border-color: rgba(139,92,246,0.35); background: rgba(139,92,246,0.12); color: #c4b5fd; }
-
+.badge.danger { border-color: rgba(239,68,68,0.35); background: rgba(239,68,68,0.12); color: #fca5a5; }
+.badge.warning { border-color: rgba(245,158,11,0.35); background: rgba(245,158,11,0.12); color: #fcd34d; }
 .hero-right { display: grid; grid-template-columns: repeat(2, 1fr); gap: 12px; align-content: start; position: relative; z-index: 1; }
-.hero-stat {
-  border-radius: var(--radius-lg);
-  background: var(--bg-surface);
-  border: 1px solid var(--border-default);
-  padding: 18px 14px;
-  text-align: center;
-  transition: all var(--duration-fast) var(--ease-out);
-}
+.hero-stat { border-radius: var(--radius-lg); background: var(--bg-surface); border: 1px solid var(--border-default); padding: 18px 14px; text-align: center; transition: all var(--duration-fast) var(--ease-out); }
 .hero-stat:hover { background: var(--bg-surface-hover); border-color: var(--border-strong); transform: translateY(-2px); box-shadow: var(--shadow-sm); }
 .hero-num { font-size: 26px; font-weight: 900; background: var(--accent-gradient); -webkit-background-clip: text; -webkit-text-fill-color: transparent; }
 .hero-lab { font-size: 12px; color: var(--text-tertiary); font-weight: 600; margin-top: 6px; }
+.hero-collapse { position: absolute; top: 12px; right: 12px; width: 32px; height: 32px; border-radius: 50%; border: 1px solid var(--border-default); background: var(--bg-surface-hover); color: var(--text-secondary); cursor: pointer; display: grid; place-items: center; font-size: 12px; transition: all 0.15s; }
+.hero-collapse:hover { background: var(--bg-surface-active); color: var(--text-primary); }
 
 /* ─── Presence Strip ─── */
-.presence-strip {
-  position: relative;
-  z-index: 2;
-  padding: 18px;
-  margin-bottom: 16px;
-  border-radius: var(--radius-xl);
-}
+.presence-strip { position: relative; z-index: 2; padding: 18px; margin-bottom: 16px; border-radius: var(--radius-xl); }
 .strip-head { display: flex; justify-content: space-between; gap: 12px; align-items: center; flex-wrap: wrap; margin-bottom: 14px; }
 .strip-actions { display: flex; gap: 8px; flex-wrap: wrap; }
 .presence-list { display: flex; gap: 10px; overflow-x: auto; padding-bottom: 6px; scrollbar-width: thin; }
-
-.presenceCard {
-  min-width: 160px;
-  display: flex;
-  align-items: center;
-  gap: 12px;
-  background: var(--bg-surface);
-  border: 1px solid var(--border-default);
-  border-radius: var(--radius-lg);
-  padding: 12px 14px;
-  text-align: left;
-  cursor: pointer;
-  transition: all var(--duration-fast) var(--ease-out);
-  user-select: none;
-}
+.presenceCard { min-width: 160px; display: flex; align-items: center; gap: 12px; background: var(--bg-surface); border: 1px solid var(--border-default); border-radius: var(--radius-lg); padding: 12px 14px; text-align: left; cursor: pointer; transition: all var(--duration-fast) var(--ease-out); user-select: none; }
 .presenceCard:hover { background: var(--bg-surface-hover); border-color: var(--border-strong); transform: translateY(-2px); box-shadow: var(--shadow-sm); }
 .presenceCard:active { transform: translateY(0) scale(0.98); }
 .presenceCard.self { background: rgba(139,92,246,0.10); border-color: rgba(139,92,246,0.22); }
 .presenceCard.self:hover { background: rgba(139,92,246,0.15); border-color: rgba(139,92,246,0.30); }
-
-.presenceAvatar {
-  width: 40px; height: 40px; border-radius: 50%; display: grid; place-items: center;
-  font-weight: 900; font-size: 16px; color: white;
-  background: var(--accent-gradient);
-  flex: 0 0 auto;
-  box-shadow: 0 0 0 0 transparent;
-  transition: all var(--duration-fast) var(--ease-out);
-}
+.presenceAvatar { width: 40px; height: 40px; border-radius: 50%; display: grid; place-items: center; font-weight: 900; font-size: 16px; color: white; background: var(--accent-gradient); flex: 0 0 auto; box-shadow: 0 0 0 0 transparent; transition: all var(--duration-fast) var(--ease-out); position: relative; }
 .presenceAvatar.alt { background: linear-gradient(135deg, #f59e0b, #ef4444); }
-.presenceAvatar.speaking {
-  box-shadow: 0 0 0 6px rgba(16,185,129,0.15), 0 0 24px rgba(16,185,129,0.25);
-  animation: speakPulse 1.5s ease-in-out infinite;
-}
-@keyframes speakPulse { 0%, 100% { box-shadow: 0 0 0 6px rgba(16,185,129,0.15), 0 0 24px rgba(16,185,129,0.25); } 50% { box-shadow: 0 0 0 10px rgba(16,185,129,0.08), 0 0 32px rgba(16,185,129,0.15); } }
-
+.presenceAvatar.speaking { box-shadow: 0 0 0 6px rgba(16,185,129,0.15), 0 0 24px rgba(16,185,129,0.25); animation: speakPulse 1.5s ease-in-out infinite; }
+.presenceAvatar.raised { box-shadow: 0 0 0 4px rgba(245,158,11,0.3); }
+.hand-icon { position: absolute; bottom: -4px; right: -4px; font-size: 14px; background: var(--bg-base); border-radius: 50%; width: 18px; height: 18px; display: grid; place-items: center; }
 .presenceMeta { min-width: 0; }
 .presenceName { font-weight: 900; font-size: 13px; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; color: var(--text-primary); }
 .presenceSub { font-size: 11px; color: var(--text-tertiary); font-weight: 500; margin-top: 2px; }
@@ -2125,35 +848,11 @@ onBeforeUnmount(() => {
 .stage-wrap { min-width: 0; }
 
 /* ─── Toolbars ─── */
-.stage-toolbar, .magic-toolbar {
-  position: relative;
-  z-index: 2;
-  padding: 14px;
-  display: flex;
-  justify-content: space-between;
-  gap: 12px;
-  flex-wrap: wrap;
-  margin-bottom: 14px;
-  border-radius: var(--radius-xl);
-}
+.stage-toolbar, .magic-toolbar { position: relative; z-index: 2; padding: 14px; display: flex; justify-content: space-between; gap: 12px; flex-wrap: wrap; margin-bottom: 14px; border-radius: var(--radius-xl); }
 .magic-toolbar { padding: 12px 14px; }
 .magic-left, .magic-right, .stage-left, .stage-right { display: flex; gap: 10px; flex-wrap: wrap; align-items: center; }
 
-.control {
-  border: 1px solid var(--border-default);
-  border-radius: var(--radius-md);
-  padding: 11px 14px;
-  background: var(--bg-surface-hover);
-  color: var(--text-primary);
-  font-weight: 800;
-  font-size: 13px;
-  cursor: pointer;
-  display: inline-flex;
-  align-items: center;
-  gap: 6px;
-  transition: all var(--duration-fast) var(--ease-out);
-  user-select: none;
-}
+.control { border: 1px solid var(--border-default); border-radius: var(--radius-md); padding: 11px 14px; background: var(--bg-surface-hover); color: var(--text-primary); font-weight: 800; font-size: 13px; cursor: pointer; display: inline-flex; align-items: center; gap: 6px; transition: all var(--duration-fast) var(--ease-out); user-select: none; }
 .control:hover { background: var(--bg-surface-active); border-color: var(--border-strong); transform: translateY(-1px); box-shadow: var(--shadow-sm); }
 .control:active { transform: translateY(0) scale(0.97); }
 .control:focus-visible { outline: 2px solid var(--accent-start); outline-offset: 2px; }
@@ -2163,23 +862,21 @@ onBeforeUnmount(() => {
 .control.ghost:hover { background: var(--bg-surface-hover); color: var(--text-primary); }
 .control:disabled { opacity: 0.35; cursor: not-allowed; transform: none !important; }
 
-.magicBtn {
-  width: 44px; height: 44px; border-radius: var(--radius-md);
-  border: 1px solid var(--border-default); background: var(--bg-surface-hover);
-  color: var(--text-primary); cursor: pointer; font-size: 20px;
-  display: grid; place-items: center;
-  transition: all var(--duration-fast) var(--ease-out);
-}
+.reaction-picker { display: flex; gap: 6px; }
+.magicBtn { width: 44px; height: 44px; border-radius: var(--radius-md); border: 1px solid var(--border-default); background: var(--bg-surface-hover); color: var(--text-primary); cursor: pointer; font-size: 20px; display: grid; place-items: center; transition: all var(--duration-fast) var(--ease-out); }
 .magicBtn:hover { background: var(--bg-surface-active); border-color: var(--border-strong); transform: translateY(-2px) scale(1.08); box-shadow: var(--shadow-sm); }
 .magicBtn:active { transform: translateY(0) scale(0.95); }
 
-.magicChip {
-  border: 1px solid var(--border-default); border-radius: var(--radius-md);
-  padding: 10px 14px; background: var(--bg-surface-hover);
-  color: var(--text-secondary); cursor: pointer; font-weight: 800; font-size: 13px;
-  transition: all var(--duration-fast) var(--ease-out);
-}
+.magicChip { border: 1px solid var(--border-default); border-radius: var(--radius-md); padding: 10px 14px; background: var(--bg-surface-hover); color: var(--text-secondary); cursor: pointer; font-weight: 800; font-size: 13px; transition: all var(--duration-fast) var(--ease-out); }
 .magicChip:hover { background: var(--bg-surface-active); border-color: var(--border-strong); color: var(--text-primary); transform: translateY(-1px); }
+.magicChip.active { background: rgba(239,68,68,0.15); border-color: rgba(239,68,68,0.3); color: #fca5a5; }
+
+/* Pagination */
+.pagination-bar { padding: 10px 16px; display: flex; justify-content: center; align-items: center; gap: 16px; margin-bottom: 14px; }
+.page-btn { border: 1px solid var(--border-default); border-radius: var(--radius-md); padding: 8px 14px; background: var(--bg-surface-hover); color: var(--text-primary); cursor: pointer; font-weight: 800; font-size: 12px; transition: all 0.15s; }
+.page-btn:hover:not(:disabled) { background: var(--bg-surface-active); border-color: var(--border-strong); }
+.page-btn:disabled { opacity: 0.35; cursor: not-allowed; }
+.page-info { font-size: 13px; font-weight: 700; color: var(--text-secondary); }
 
 /* ─── Video Stage ─── */
 .video-stage { display: grid; gap: 16px; }
@@ -2191,31 +888,13 @@ onBeforeUnmount(() => {
 .video-stage.cinematic .tile { background: rgba(255,255,255,0.04); border-color: rgba(139,92,246,0.12); }
 
 /* ─── Tiles ─── */
-.tile {
-  border-radius: var(--radius-xl);
-  overflow: hidden;
-  padding: 16px;
-  min-height: 300px;
-  display: flex;
-  flex-direction: column;
-  background: var(--bg-surface);
-  border: 1px solid var(--border-default);
-  transition: all var(--duration-fast) var(--ease-out);
-  position: relative;
-  cursor: pointer;
-}
+.tile { border-radius: var(--radius-xl); overflow: hidden; padding: 16px; min-height: 300px; display: flex; flex-direction: column; background: var(--bg-surface); border: 1px solid var(--border-default); transition: all var(--duration-fast) var(--ease-out); position: relative; cursor: pointer; }
 .tile:hover { border-color: var(--border-strong); box-shadow: var(--shadow-lg), 0 0 0 1px rgba(139,92,246,0.04); }
 .tile.compact { min-height: 240px; }
 .tile.big { min-height: 560px; }
-
-.tile.speaking {
-  border-color: rgba(16,185,129,0.25);
-  box-shadow: 0 24px 64px rgba(0,0,0,0.30), 0 0 0 1px rgba(16,185,129,0.12), 0 0 40px rgba(16,185,129,0.08);
-}
-.tile.dominant {
-  border-color: rgba(139,92,246,0.30);
-  box-shadow: 0 24px 64px rgba(0,0,0,0.30), 0 0 0 1px rgba(139,92,246,0.12), 0 0 48px rgba(139,92,246,0.10);
-}
+.tile.speaking { border-color: rgba(16,185,129,0.25); box-shadow: 0 24px 64px rgba(0,0,0,0.30), 0 0 0 1px rgba(16,185,129,0.12), 0 0 40px rgba(16,185,129,0.08); }
+.tile.dominant { border-color: rgba(139,92,246,0.30); box-shadow: 0 24px 64px rgba(0,0,0,0.30), 0 0 0 1px rgba(139,92,246,0.12), 0 0 48px rgba(139,92,246,0.10); }
+.tile.spotlight { border-color: rgba(245,158,11,0.4); box-shadow: 0 0 0 2px rgba(245,158,11,0.2), 0 24px 64px rgba(0,0,0,0.30); }
 
 .tile-head { display: flex; justify-content: space-between; gap: 10px; align-items: center; margin-bottom: 14px; flex-wrap: wrap; }
 .tile-user { display: flex; gap: 12px; align-items: center; min-width: 0; }
@@ -2223,85 +902,46 @@ onBeforeUnmount(() => {
 .tile-name { font-weight: 900; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; color: var(--text-primary); font-size: 14px; }
 .tile-sub { font-size: 12px; color: var(--text-tertiary); font-weight: 500; margin-top: 3px; }
 
-.avatar {
-  width: 40px; height: 40px; border-radius: 50%; display: grid; place-items: center;
-  font-weight: 900; font-size: 16px; color: white;
-  background: var(--accent-gradient); flex: 0 0 auto;
-  box-shadow: 0 6px 18px rgba(139,92,246,0.25);
-  transition: all var(--duration-fast) var(--ease-out);
-}
+.avatar { width: 40px; height: 40px; border-radius: 50%; display: grid; place-items: center; font-weight: 900; font-size: 16px; color: white; background: var(--accent-gradient); flex: 0 0 auto; box-shadow: 0 6px 18px rgba(139,92,246,0.25); transition: all var(--duration-fast) var(--ease-out); }
 .avatar.alt { background: linear-gradient(135deg, #f59e0b, #ef4444); }
 .avatar.big { width: 48px; height: 48px; font-size: 20px; }
 .avatar:hover { transform: scale(1.08); }
 
-.me-tag {
-  font-size: 10px; font-weight: 900; background: var(--bg-surface-active);
-  padding: 4px 8px; border-radius: var(--radius-full); margin-left: 6px;
-  color: var(--text-tertiary); letter-spacing: 0.05em; text-transform: uppercase;
-}
+.me-tag { font-size: 10px; font-weight: 900; background: var(--bg-surface-active); padding: 4px 8px; border-radius: var(--radius-full); margin-left: 6px; color: var(--text-tertiary); letter-spacing: 0.05em; text-transform: uppercase; }
+.hand-tag { font-size: 12px; margin-left: 4px; }
+.host-tag { font-size: 9px; font-weight: 900; background: rgba(245,158,11,0.2); color: #fcd34d; padding: 3px 7px; border-radius: var(--radius-full); margin-left: 6px; letter-spacing: 0.05em; }
 
 .tile-pills { display: flex; gap: 8px; flex-wrap: wrap; }
-.pill {
-  padding: 6px 10px; border-radius: var(--radius-full); background: var(--bg-surface-hover);
-  border: 1px solid var(--border-default); font-size: 11px; font-weight: 900; color: var(--text-secondary);
-  transition: all var(--duration-fast) var(--ease-out);
-}
+.pill { padding: 6px 10px; border-radius: var(--radius-full); background: var(--bg-surface-hover); border: 1px solid var(--border-default); font-size: 11px; font-weight: 900; color: var(--text-secondary); transition: all var(--duration-fast) var(--ease-out); }
 .pill.off { background: rgba(239,68,68,0.12); border-color: rgba(239,68,68,0.25); color: #fca5a5; }
+.pill.warn { background: rgba(245,158,11,0.12); border-color: rgba(245,158,11,0.25); color: #fcd34d; }
 .pill.ghostState { text-transform: capitalize; color: var(--text-tertiary); }
 
 /* ─── Media ─── */
 .media-wrap { position: relative; flex: 1; min-height: 0; }
-.media {
-  width: 100%; height: 100%; min-height: 240px; max-height: 72vh;
-  border-radius: var(--radius-lg); object-fit: cover; background: #02060c;
-  transition: transform var(--duration-normal) var(--ease-out);
-}
+.media { width: 100%; height: 100%; min-height: 240px; max-height: 72vh; border-radius: var(--radius-lg); object-fit: cover; background: #02060c; transition: transform var(--duration-normal) var(--ease-out); }
 .tile:hover .media { transform: scale(1.003); }
 .media.mirrored { transform: scaleX(-1); }
 
 /* ─── Audio Room Card ─── */
-.audio-room-card {
-  min-height: 240px; height: 100%; border-radius: var(--radius-lg);
-  display: grid; place-items: center; text-align: center;
-  background: radial-gradient(circle at 50% 20%, rgba(139,92,246,0.12), transparent 35%), linear-gradient(180deg, rgba(255,255,255,0.04), rgba(255,255,255,0.01));
-  padding: 24px; border: 1px solid var(--border-default);
-}
-.audio-room-avatar {
-  width: 100px; height: 100px; border-radius: 50%; display: grid; place-items: center;
-  font-size: 36px; font-weight: 900; color: white;
-  background: var(--accent-gradient);
-  margin: 0 auto 16px;
-  box-shadow: 0 12px 36px rgba(139,92,246,0.30);
-  transition: all var(--duration-fast) var(--ease-out);
-}
+.audio-room-card { min-height: 240px; height: 100%; border-radius: var(--radius-lg); display: grid; place-items: center; text-align: center; background: radial-gradient(circle at 50% 20%, rgba(139,92,246,0.12), transparent 35%), linear-gradient(180deg, rgba(255,255,255,0.04), rgba(255,255,255,0.01)); padding: 24px; border: 1px solid var(--border-default); }
+.audio-room-avatar { width: 100px; height: 100px; border-radius: 50%; display: grid; place-items: center; font-size: 36px; font-weight: 900; color: white; background: var(--accent-gradient); margin: 0 auto 16px; box-shadow: 0 12px 36px rgba(139,92,246,0.30); transition: all var(--duration-fast) var(--ease-out); }
 .audio-room-card:hover .audio-room-avatar { transform: scale(1.05); box-shadow: 0 16px 44px rgba(139,92,246,0.40); }
 .audio-room-name { font-size: 22px; font-weight: 900; color: var(--text-primary); }
 .audio-room-sub { color: var(--text-tertiary); margin-top: 8px; font-size: 14px; font-weight: 500; }
 
 /* ─── Corner Status ─── */
-.corner-status {
-  position: absolute; right: 12px; bottom: 12px;
-  padding: 8px 14px; border-radius: var(--radius-full);
-  background: rgba(0,0,0,0.55); backdrop-filter: blur(8px);
-  font-size: 11px; font-weight: 900; color: var(--text-primary); z-index: 2;
-  border: 1px solid rgba(255,255,255,0.08);
-}
+.corner-status { position: absolute; right: 12px; bottom: 12px; padding: 8px 14px; border-radius: var(--radius-full); background: rgba(0,0,0,0.55); backdrop-filter: blur(8px); font-size: 11px; font-weight: 900; color: var(--text-primary); z-index: 2; border: 1px solid rgba(255,255,255,0.08); }
 .corner-status.remote { text-transform: capitalize; color: var(--text-secondary); }
 
 /* ─── Speaker Ring ─── */
-.speaker-ring {
-  position: absolute; inset: 0; border-radius: var(--radius-lg);
-  border: 2px solid rgba(16,185,129,0.50); pointer-events: none;
-  transition: all 0.12s ease; opacity: 0;
-}
+.speaker-ring { position: absolute; inset: 0; border-radius: var(--radius-lg); border: 2px solid rgba(16,185,129,0.50); pointer-events: none; transition: all 0.12s ease; opacity: 0; }
+
+/* ─── Hand Indicator ─── */
+.hand-indicator { position: absolute; top: 12px; right: 12px; width: 36px; height: 36px; border-radius: 50%; background: rgba(245,158,11,0.2); backdrop-filter: blur(8px); border: 1px solid rgba(245,158,11,0.3); display: grid; place-items: center; font-size: 18px; z-index: 3; animation: speakPulse 2s ease-in-out infinite; }
 
 /* ─── Empty State ─── */
-.empty-state {
-  border-radius: var(--radius-xl); padding: 48px 24px; text-align: center;
-  min-height: 300px; display: flex; flex-direction: column; align-items: center; justify-content: center;
-  background: var(--bg-surface); border: 1px solid var(--border-default);
-  gap: 12px; transition: all var(--duration-fast) var(--ease-out);
-}
+.empty-state { border-radius: var(--radius-xl); padding: 48px 24px; text-align: center; min-height: 300px; display: flex; flex-direction: column; align-items: center; justify-content: center; background: var(--bg-surface); border: 1px solid var(--border-default); gap: 12px; transition: all var(--duration-fast) var(--ease-out); }
 .empty-state:hover { border-color: var(--border-strong); box-shadow: var(--shadow-md); }
 .empty-emoji { font-size: 48px; filter: drop-shadow(0 6px 16px rgba(0,0,0,0.3)); }
 .empty-title { font-size: 24px; font-weight: 900; color: var(--text-primary); letter-spacing: -0.02em; }
@@ -2309,13 +949,7 @@ onBeforeUnmount(() => {
 .empty-actions { margin-top: 8px; display: flex; gap: 10px; justify-content: center; flex-wrap: wrap; }
 
 /* ─── Buttons ─── */
-.btn {
-  border: 1px solid var(--border-default); border-radius: var(--radius-md);
-  padding: 12px 18px; font-weight: 900; font-size: 13px;
-  background: var(--bg-surface-hover); color: var(--text-primary);
-  cursor: pointer; display: inline-flex; align-items: center; gap: 6px;
-  transition: all var(--duration-fast) var(--ease-out); user-select: none;
-}
+.btn { border: 1px solid var(--border-default); border-radius: var(--radius-md); padding: 12px 18px; font-weight: 900; font-size: 13px; background: var(--bg-surface-hover); color: var(--text-primary); cursor: pointer; display: inline-flex; align-items: center; gap: 6px; transition: all var(--duration-fast) var(--ease-out); user-select: none; }
 .btn:hover { background: var(--bg-surface-active); border-color: var(--border-strong); transform: translateY(-1px); box-shadow: var(--shadow-sm); }
 .btn:active { transform: translateY(0) scale(0.97); }
 .btn:focus-visible { outline: 2px solid var(--accent-start); outline-offset: 2px; }
@@ -2327,49 +961,96 @@ onBeforeUnmount(() => {
 /* ─── Side Panel ─── */
 .side { min-width: 0; display: grid; gap: 16px; align-content: start; transition: opacity var(--duration-normal) var(--ease-out); }
 .side.closed { display: none; }
-.panel {
-  border-radius: var(--radius-xl); padding: 20px;
-  background: var(--bg-surface); border: 1px solid var(--border-default);
-  transition: all var(--duration-fast) var(--ease-out);
-}
+
+.panel-tabs { display: flex; gap: 4px; overflow-x: auto; padding-bottom: 4px; }
+.panel-tab { flex: 1; min-width: 60px; padding: 10px 8px; border-radius: var(--radius-md); background: var(--bg-surface); border: 1px solid var(--border-default); color: var(--text-secondary); font-size: 12px; font-weight: 800; cursor: pointer; transition: all 0.15s; white-space: nowrap; position: relative; }
+.panel-tab:hover { background: var(--bg-surface-hover); color: var(--text-primary); }
+.panel-tab.active { background: rgba(139,92,246,0.15); border-color: rgba(139,92,246,0.3); color: #c4b5fd; }
+.tab-badge { position: absolute; top: -6px; right: -6px; min-width: 18px; height: 18px; padding: 0 5px; border-radius: 50%; background: var(--danger); color: white; font-size: 10px; font-weight: 900; display: grid; place-items: center; }
+.tab-badge.warn { background: var(--warning); }
+
+.panel { border-radius: var(--radius-xl); padding: 20px; background: var(--bg-surface); border: 1px solid var(--border-default); transition: all var(--duration-fast) var(--ease-out); }
 .panel:hover { border-color: var(--border-strong); box-shadow: var(--shadow-md); }
 .panel-head { display: flex; justify-content: space-between; gap: 10px; align-items: baseline; margin-bottom: 16px; flex-wrap: wrap; }
 .panel-title { font-size: 16px; font-weight: 900; color: var(--text-primary); letter-spacing: -0.01em; }
 .panel-sub { font-size: 12px; color: var(--text-tertiary); font-weight: 600; }
 
 .people-list { display: grid; gap: 10px; }
-.person-card {
-  display: flex; align-items: center; gap: 12px; padding: 12px;
-  border-radius: var(--radius-lg); background: var(--bg-surface-hover);
-  border: 1px solid var(--border-default); transition: all var(--duration-fast) var(--ease-out);
-}
+.person-card { display: flex; align-items: center; gap: 12px; padding: 12px; border-radius: var(--radius-lg); background: var(--bg-surface-hover); border: 1px solid var(--border-default); transition: all var(--duration-fast) var(--ease-out); }
 .person-card:hover { background: var(--bg-surface-active); border-color: var(--border-strong); transform: translateX(3px); }
 .person-card.self { background: rgba(139,92,246,0.08); border-color: rgba(139,92,246,0.18); }
 .person-card.self:hover { background: rgba(139,92,246,0.12); border-color: rgba(139,92,246,0.25); }
-.person-meta { min-width: 0; }
+.person-meta { min-width: 0; flex: 1; }
 .person-name { font-weight: 900; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; color: var(--text-primary); font-size: 14px; }
 .person-sub { display: flex; align-items: center; gap: 8px; color: var(--text-tertiary); font-size: 12px; margin-top: 3px; font-weight: 500; }
 .status-dot { width: 8px; height: 8px; border-radius: 50%; background: rgba(255,255,255,0.20); flex-shrink: 0; transition: all var(--duration-fast) var(--ease-out); }
 .status-dot.on { background: var(--success); box-shadow: 0 0 8px var(--success-glow); }
+.person-actions { display: flex; gap: 6px; }
+.person-action { width: 32px; height: 32px; border-radius: 50%; border: 1px solid var(--border-default); background: var(--bg-surface); color: var(--text-secondary); cursor: pointer; display: grid; place-items: center; font-size: 14px; transition: all 0.15s; }
+.person-action:hover { background: var(--bg-surface-hover); color: var(--text-primary); transform: scale(1.1); }
+.person-action.ok:hover { background: rgba(16,185,129,0.2); color: #6ee7b7; }
+.person-action.danger:hover { background: rgba(239,68,68,0.2); color: #fca5a5; }
 
+/* Chat Panel */
+.chat-panel { display: flex; flex-direction: column; max-height: 70vh; }
+.chat-messages { flex: 1; overflow-y: auto; display: grid; gap: 10px; padding-right: 4px; margin-bottom: 12px; min-height: 200px; }
+.chat-msg { padding: 10px 14px; border-radius: var(--radius-lg); background: var(--bg-surface-hover); border: 1px solid var(--border-default); max-width: 90%; }
+.chat-msg.self { background: rgba(139,92,246,0.10); border-color: rgba(139,92,246,0.2); margin-left: auto; }
+.chat-msg-header { display: flex; justify-content: space-between; gap: 10px; margin-bottom: 4px; font-size: 12px; }
+.chat-msg-header strong { color: var(--text-primary); }
+.chat-time { color: var(--text-muted); font-size: 11px; }
+.chat-msg-body { color: var(--text-secondary); font-size: 13px; line-height: 1.5; word-break: break-word; }
+.chat-reactions { display: flex; gap: 4px; margin-top: 6px; }
+.chat-reaction { font-size: 14px; background: var(--bg-surface-active); padding: 2px 6px; border-radius: var(--radius-full); }
+.chat-empty { text-align: center; color: var(--text-muted); font-size: 13px; padding: 24px; }
+.chat-input-wrap { display: flex; gap: 8px; }
+.chat-input-wrap input { flex: 1; padding: 12px 14px; border-radius: var(--radius-md); background: var(--bg-surface-hover); border: 1px solid var(--border-default); color: var(--text-primary); font-size: 14px; outline: none; transition: all 0.15s; }
+.chat-input-wrap input:focus { border-color: var(--accent-start); box-shadow: 0 0 0 3px rgba(139,92,246,0.15); }
+.chat-send { width: 44px; height: 44px; border-radius: 50%; border: none; background: var(--accent-gradient); color: white; cursor: pointer; display: grid; place-items: center; font-size: 16px; transition: all 0.15s; flex-shrink: 0; }
+.chat-send:hover { filter: brightness(1.15); transform: scale(1.05); }
+
+/* Poll */
+.poll-wrap { display: grid; gap: 12px; }
+.poll-q { font-size: 16px; font-weight: 900; color: var(--text-primary); line-height: 1.4; }
+.poll-options { display: grid; gap: 8px; }
+.poll-option { position: relative; padding: 12px 16px; border-radius: var(--radius-md); background: var(--bg-surface-hover); border: 1px solid var(--border-default); color: var(--text-primary); cursor: pointer; font-size: 14px; font-weight: 700; text-align: left; overflow: hidden; transition: all 0.15s; }
+.poll-option:hover:not(:disabled) { border-color: var(--border-strong); transform: translateX(3px); }
+.poll-option:disabled { opacity: 0.6; cursor: default; }
+.poll-option.voted { border-color: rgba(139,92,246,0.4); background: rgba(139,92,246,0.1); }
+.poll-option.winner { border-color: rgba(16,185,129,0.4); background: rgba(16,185,129,0.1); }
+.poll-opt-bar { position: absolute; left: 0; top: 0; bottom: 0; background: rgba(139,92,246,0.15); z-index: 0; transition: width 0.5s var(--ease-out); }
+.poll-opt-text { position: relative; z-index: 1; }
+.poll-opt-pct { position: relative; z-index: 1; margin-left: auto; font-weight: 900; color: var(--accent-start); }
+.poll-total { text-align: center; color: var(--text-tertiary); font-size: 13px; font-weight: 600; }
+
+/* Transcript */
+.transcript-wrap { max-height: 400px; overflow-y: auto; display: grid; gap: 8px; }
+.transcript-line { padding: 8px 12px; border-radius: var(--radius-md); background: var(--bg-surface-hover); font-size: 13px; line-height: 1.5; }
+.transcript-name { font-weight: 900; color: var(--accent-start); margin-right: 6px; }
+.transcript-text { color: var(--text-secondary); }
+
+/* Whiteboard */
+.whiteboard-wrap { position: relative; width: 100%; min-height: 500px; background: var(--bg-elevated); border-radius: var(--radius-xl); border: 1px solid var(--border-default); overflow: hidden; }
+.whiteboard-canvas { width: 100%; height: 100%; cursor: crosshair; }
+.whiteboard-tools { position: absolute; bottom: 16px; left: 50%; transform: translateX(-50%); display: flex; gap: 8px; padding: 10px; border-radius: var(--radius-full); background: rgba(6,9,19,0.8); backdrop-filter: blur(12px); border: 1px solid var(--border-default); }
+.wb-color { width: 28px; height: 28px; border-radius: 50%; border: 2px solid transparent; cursor: pointer; transition: all 0.15s; }
+.wb-color.active { border-color: white; transform: scale(1.15); }
+.wb-tool { width: 32px; height: 32px; border-radius: 50%; border: 1px solid var(--border-default); background: var(--bg-surface); cursor: pointer; font-size: 14px; display: grid; place-items: center; transition: all 0.15s; }
+.wb-tool:hover { background: var(--bg-surface-hover); transform: scale(1.1); }
+.wb-tool.active { border-color: var(--accent-start); background: rgba(139,92,246,0.2); }
+
+/* Annotation */
+.annotation-canvas { position: absolute; inset: 0; z-index: 5; cursor: crosshair; pointer-events: auto; }
+
+/* Tools Grid */
 .tools-grid { display: grid; grid-template-columns: 1fr 1fr; gap: 10px; }
-.toolBtn {
-  border: 1px solid var(--border-default); border-radius: var(--radius-md);
-  padding: 12px 10px; background: var(--bg-surface-hover); color: var(--text-secondary);
-  cursor: pointer; font-weight: 800; font-size: 13px;
-  transition: all var(--duration-fast) var(--ease-out); user-select: none;
-}
+.toolBtn { border: 1px solid var(--border-default); border-radius: var(--radius-md); padding: 12px 10px; background: var(--bg-surface-hover); color: var(--text-secondary); cursor: pointer; font-weight: 800; font-size: 13px; transition: all var(--duration-fast) var(--ease-out); user-select: none; }
 .toolBtn:hover { background: var(--bg-surface-active); border-color: var(--border-strong); color: var(--text-primary); transform: translateY(-1px); box-shadow: var(--shadow-sm); }
 .toolBtn:active { transform: translateY(0) scale(0.97); }
 .toolBtn:focus-visible { outline: 2px solid var(--accent-start); outline-offset: 2px; }
 
 .diag-list { display: grid; gap: 8px; }
-.diag-row {
-  display: flex; justify-content: space-between; gap: 12px; padding: 10px 14px;
-  border-radius: var(--radius-md); background: var(--bg-surface-hover);
-  border: 1px solid var(--border-default); font-size: 13px; align-items: center;
-  transition: all var(--duration-fast) var(--ease-out);
-}
+.diag-row { display: flex; justify-content: space-between; gap: 12px; padding: 10px 14px; border-radius: var(--radius-md); background: var(--bg-surface-hover); border: 1px solid var(--border-default); font-size: 13px; align-items: center; transition: all var(--duration-fast) var(--ease-out); }
 .diag-row:hover { background: var(--bg-surface-active); border-color: var(--border-strong); }
 .diag-row span { color: var(--text-tertiary); font-weight: 500; }
 .diag-row strong { color: var(--text-primary); font-weight: 900; }
@@ -2379,20 +1060,8 @@ onBeforeUnmount(() => {
 .mt10 { margin-top: 10px; }
 
 /* ─── Bottom Bar ─── */
-.bottomBar {
-  position: fixed; left: 50%; bottom: 18px; transform: translateX(-50%);
-  width: min(92vw, 760px); padding: 12px;
-  border-radius: var(--radius-full); z-index: 5;
-  display: flex; justify-content: center; gap: 10px;
-  background: rgba(6, 9, 19, 0.80); backdrop-filter: blur(24px) saturate(180%);
-  border: 1px solid var(--border-default); box-shadow: var(--shadow-lg);
-}
-.fab {
-  width: 54px; height: 54px; border-radius: 50%; border: 1px solid var(--border-default);
-  background: var(--bg-surface-hover); color: var(--text-primary); cursor: pointer;
-  display: grid; place-items: center; font-size: 22px;
-  transition: all var(--duration-fast) var(--ease-out); user-select: none;
-}
+.bottomBar { position: fixed; left: 50%; bottom: 18px; transform: translateX(-50%); width: min(92vw, 820px); padding: 12px; border-radius: var(--radius-full); z-index: 5; display: flex; justify-content: center; gap: 10px; background: rgba(6, 9, 19, 0.80); backdrop-filter: blur(24px) saturate(180%); border: 1px solid var(--border-default); box-shadow: var(--shadow-lg); }
+.fab { width: 54px; height: 54px; border-radius: 50%; border: 1px solid var(--border-default); background: var(--bg-surface-hover); color: var(--text-primary); cursor: pointer; display: grid; place-items: center; font-size: 22px; transition: all var(--duration-fast) var(--ease-out); user-select: none; }
 .fab:hover { background: var(--bg-surface-active); border-color: var(--border-strong); transform: translateY(-2px) scale(1.05); box-shadow: var(--shadow-sm); }
 .fab:active { transform: translateY(0) scale(0.95); }
 .fab:focus-visible { outline: 2px solid var(--accent-start); outline-offset: 2px; }
@@ -2400,8 +1069,31 @@ onBeforeUnmount(() => {
 .fab.cam.off { background: rgba(239,68,68,0.15); border-color: rgba(239,68,68,0.30); color: #fca5a5; }
 .fab.share.on { background: var(--accent-gradient); border-color: transparent; color: white; box-shadow: 0 8px 24px rgba(139,92,246,0.30); }
 .fab.share.on:hover { box-shadow: 0 12px 32px rgba(139,92,246,0.40); }
+.fab.active { background: rgba(245,158,11,0.15); border-color: rgba(245,158,11,0.3); color: #fcd34d; }
 .fab.end { background: linear-gradient(135deg, #ef4444, #dc2626); border-color: transparent; color: white; box-shadow: 0 8px 24px rgba(239,68,68,0.25); }
 .fab.end:hover { box-shadow: 0 12px 32px rgba(239,68,68,0.35); filter: brightness(1.1); }
+
+/* ─── Modals ─── */
+.modal-overlay { position: fixed; inset: 0; z-index: 40; background: rgba(0,0,0,0.6); backdrop-filter: blur(8px); display: grid; place-items: center; padding: 24px; }
+.modal { width: min(480px, 92vw); padding: 28px; border-radius: var(--radius-xl); }
+.modal h3 { margin: 0 0 20px; font-size: 20px; font-weight: 900; color: var(--text-primary); }
+.modal-input { width: 100%; padding: 12px 14px; margin-bottom: 12px; border-radius: var(--radius-md); background: var(--bg-surface-hover); border: 1px solid var(--border-default); color: var(--text-primary); font-size: 14px; outline: none; transition: all 0.15s; }
+.modal-input:focus { border-color: var(--accent-start); box-shadow: 0 0 0 3px rgba(139,92,246,0.15); }
+.modal-actions { display: flex; gap: 12px; margin-top: 20px; }
+.poll-input-row { display: flex; gap: 8px; align-items: center; }
+.poll-input-row .modal-input { margin-bottom: 8px; }
+
+.shortcuts-grid { display: grid; gap: 10px; }
+.shortcut-row { display: flex; align-items: center; gap: 16px; padding: 10px 12px; border-radius: var(--radius-md); background: var(--bg-surface-hover); border: 1px solid var(--border-default); }
+.shortcut-row kbd { padding: 6px 10px; border-radius: var(--radius-sm); background: var(--bg-surface-active); border: 1px solid var(--border-strong); font-family: inherit; font-size: 12px; font-weight: 900; color: var(--text-primary); min-width: 80px; text-align: center; }
+.shortcut-row span { color: var(--text-secondary); font-size: 13px; }
+
+.breakout-modal { width: min(560px, 92vw); }
+.breakout-list { display: grid; gap: 12px; margin-bottom: 16px; max-height: 300px; overflow-y: auto; }
+.breakout-room { padding: 14px; border-radius: var(--radius-lg); background: var(--bg-surface-hover); border: 1px solid var(--border-default); }
+.breakout-header { display: flex; justify-content: space-between; align-items: center; margin-bottom: 10px; font-weight: 800; color: var(--text-primary); }
+.breakout-members { display: flex; flex-wrap: wrap; gap: 6px; }
+.breakout-chip { padding: 6px 10px; border-radius: var(--radius-full); background: var(--bg-surface); border: 1px solid var(--border-default); font-size: 12px; font-weight: 700; color: var(--text-secondary); }
 
 /* ─── Responsive ─── */
 @media (max-width: 1100px) {
@@ -2415,6 +1107,7 @@ onBeforeUnmount(() => {
   .stage-toolbar, .magic-toolbar { flex-direction: column; align-items: stretch; }
   .video-stage.grid-two, .video-stage.grid-four { grid-template-columns: 1fr; }
   .tile.big { min-height: 400px; }
+  .lobby-card { padding: 20px; }
 }
 @media (max-width: 640px) {
   .roomcall-page { padding: 12px 12px 100px; }
@@ -2429,6 +1122,9 @@ onBeforeUnmount(() => {
   .hero-title { font-size: 28px; }
   .hero { padding: 20px; }
   .diag-row { flex-direction: column; align-items: flex-start; gap: 4px; }
+  .lobby-form { gap: 12px; }
+  .bg-selector { gap: 8px; }
+  .modal { padding: 20px; }
 }
 
 /* ─── Accessibility ─── */
