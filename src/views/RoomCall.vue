@@ -861,6 +861,7 @@ onBeforeUnmount(() => {
 })
 </script>
 
+<style scoped>
 /* ═══════════════════════════════════════════════════════════════
    ADDISGO ROOM CALL — ENTERPRISE DESIGN SYSTEM v3.0
    Linear × Discord × Creator Platform × Zoom aesthetic
