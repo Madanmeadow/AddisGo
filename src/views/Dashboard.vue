@@ -4276,7 +4276,58 @@ onBeforeUnmount(() => {
   background: rgba(139, 92, 246, 0.08);
   color: #c4b5fd;
 }
+/* ========== HIDE EVERYTHING HIGHLIGHTED ========== */
 
+/* 1. Hero badges: Creator Score, Streak, Creator mode online */
+.heroLeft .trendingRow,
+.heroStats {
+  display: none !important;
+}
+
+/* 2. Hero buttons: Open Rooms, Go Live Area, Creator Studio, Start Room */
+.heroActions {
+  display: none !important;
+}
+
+/* 3. Entire modebar: For You, Reels, Following, Threads, Rooms, Live, Saved, Pinned, SFU Call */
+.modebar {
+  display: none !important;
+}
+
+/* 4. Filter bar: All, Videos, Images, Text + "139 shown" */
+.filterbar {
+  display: none !important;
+}
+
+/* 5. Trending section with all hashtag pills */
+.panel:has(.trendChip) {
+  display: none !important;
+}
+
+/* 6. Dynamic island buttons (Refresh, Post, Live, Room) — keep only connection dot */
+.islandCenter,
+.islandRight {
+  display: none !important;
+}
+
+/* 7. Top nav buttons: Post, Chat, Tools, Studio, Focus Mode (keep Online + Logout) */
+.eliteTopActions .chip:not(.netBadge):not(.danger) {
+  display: none !important;
+}
+
+/* 8. Command Center, Spotlight, Creator Pulse panels */
+.dock {
+  display: none !important;
+}
+
+/* 9. Video Meet card on the right (if class is different, adjust) */
+/* If your video meet has a class like .video-meet or .meet-card, add it here */
+
+/* 10. "Rooms" label and filter hints inside mode-right */
+.mode-right,
+.filterHint {
+  display: none !important;
+}
 /* =========================================================
    LIVE SECTIONS
 ========================================================= */
