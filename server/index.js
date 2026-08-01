@@ -25,7 +25,7 @@ import { initMediasoupWorker } from "./mediasoup/workers.js";
 import { registerLiveSfuHandlers } from "./mediasoup/socketLiveSfu.js";
 import { registerLocationHandlers } from "./location/socketLocation.js";
 import socketAuth from "./middleware/socketAuth.js";
-
+import initZoomServer from "./handlers/zoom.js";   
 await initMediasoupWorker();
 dotenv.config();
 
@@ -315,7 +315,7 @@ io.use((socket, next) => {
     return next();
   }
 });
-
+initZoomServer(io);   
 /* ---------- PRESENCE ---------- */
 const onlineUsers = new Map();    // userId -> socketId
 const socketToUserId = new Map(); // socketId -> userId
