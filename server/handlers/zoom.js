@@ -1,4 +1,4 @@
-const { randomBytes } = require("crypto");
+import { randomBytes } from "crypto";
 
 /* =========================================================
    STATE
@@ -25,7 +25,7 @@ function broadcastRoomList(io) {
 /* =========================================================
    MODULE
 ========================================================= */
-module.exports = function initZoomServer(io) {
+export default function initZoomServer(io) {
   io.on("connection", (socket) => {
     // Track which zoom room this socket is currently in
     let myZoomRoomId = null;
@@ -35,7 +35,7 @@ module.exports = function initZoomServer(io) {
       try {
         const name = (data?.name || "Meeting").trim().slice(0, 60);
 
-        // Pull user from auth middleware (see integration note below)
+        // Pull user from auth middleware
         const userId = String(socket.user?.id || socket.id);
         const username =
           socket.user?.username ||
@@ -110,7 +110,6 @@ module.exports = function initZoomServer(io) {
         myZoomRoomId = roomId;
 
         // Notify existing participants BEFORE adding this socket
-        // so they initiate a new PeerConnection to this newcomer
         socket.to(roomId).emit(`zoom:user-joined:${roomId}`, {
           userId,
           username,
@@ -161,15 +160,13 @@ module.exports = function initZoomServer(io) {
         if (!room) return;
 
         const sender = room.participants.get(socket.id);
-        if (!sender) return; // sender not in this room
+        if (!sender) return;
 
-        // Find target by userId (not socketId)
         const target = Array.from(room.participants.values()).find(
           (p) => p.userId === String(toUserId)
         );
         if (!target) return;
 
-        // Relay directly to target socket
         io.to(target.socketId).emit(`zoom:signal:${roomId}`, {
           fromUserId: sender.userId,
           signal,
@@ -195,12 +192,10 @@ module.exports = function initZoomServer(io) {
       room.participants.delete(socket.id);
       socket.leave(roomId);
 
-      // Notify remaining peers
       socket.to(roomId).emit(`zoom:user-left:${roomId}`, {
         userId: participant.userId,
       });
 
-      // Destroy empty room
       if (room.participants.size === 0) {
         rooms.delete(roomId);
       }
@@ -209,4 +204,4 @@ module.exports = function initZoomServer(io) {
       broadcastRoomList(io);
     }
   });
-};
+}

@@ -308,7 +308,7 @@ io.use((socket, next) => {
       id: userId,
       username: socket.username,
     };
-
+    socket.user = socket.data.user;   
     return next();
   } catch (e) {
     logWARN("Socket auth failed (continuing as guest):", e?.message || e);
