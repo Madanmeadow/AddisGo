@@ -28,12 +28,16 @@
             </button>
 
             <template v-if="isOwnProfile">
-              <button class="btn danger" @click="logout">Logout</button>
+              <button class="btn danger" @click="confirmLogout">Logout</button>
             </template>
 
             <template v-else>
-              <button class="btn primary" @click="toggleFollow">
-                {{ isFollowing ? "Following" : "Follow" }}
+              <button
+                class="btn primary"
+                @click="toggleFollow"
+                :disabled="followLoading"
+              >
+                {{ followLoading ? "..." : (isFollowing ? "Following" : "Follow") }}
               </button>
             </template>
           </div>
@@ -59,7 +63,7 @@
                   title="Change avatar"
                 >
                   📷
-                  <input type="file" accept="image/*" hidden @change="onPickAvatar" />
+                  <input type="file" accept="image/jpeg,image/png,image/webp" hidden @change="onPickAvatar" />
                 </label>
               </div>
 
@@ -153,8 +157,8 @@
               </template>
 
               <template v-else>
-                <button class="btn primary" @click="toggleFollow">
-                  {{ isFollowing ? "Following" : "Follow" }}
+                <button class="btn primary" @click="toggleFollow" :disabled="followLoading">
+                  {{ followLoading ? "..." : (isFollowing ? "Following" : "Follow") }}
                 </button>
                 <button class="btn ghost" @click="goInbox">Message</button>
                 <button class="btn ghost" @click="startCall('audio')">Audio Call</button>
@@ -232,6 +236,12 @@
 
       <section class="gridZone">
         <section class="content glass mainContent">
+          <!-- Error Banner -->
+          <div v-if="contentError" class="content-error">
+            {{ contentError }}
+            <button @click="contentError = ''">×</button>
+          </div>
+
           <template v-if="tab === 'about'">
             <h2 class="sectionTitle">About</h2>
 
@@ -319,7 +329,7 @@
             </div>
 
             <div v-else class="postList">
-              <article v-for="post in userPosts" :key="`post-${post.id}`" class="postCard glassMini">
+              <article v-for="post in paginatedPosts" :key="`post-${post.id}`" class="postCard glassMini">
                 <div class="postHead">
                   <div>
                     <div class="postTitle">{{ firstLine(post.caption) || "Untitled post" }}</div>
@@ -337,6 +347,7 @@
                   class="postMedia"
                   :src="mediaUrl(post.image_url)"
                   loading="lazy"
+                  @error="onMediaError"
                 />
 
                 <video
@@ -346,8 +357,17 @@
                   controls
                   playsinline
                   preload="metadata"
+                  @play="onVideoPlay"
+                  @pause="onVideoPause"
                 ></video>
               </article>
+            </div>
+
+            <!-- Posts Pagination -->
+            <div v-if="totalPostPages > 1" class="pagination">
+              <button :disabled="postPage === 1" @click="postPage--">← Prev</button>
+              <span>{{ postPage }} / {{ totalPostPages }}</span>
+              <button :disabled="postPage >= totalPostPages" @click="postPage++">Next →</button>
             </div>
           </template>
 
@@ -369,13 +389,15 @@
             </div>
 
             <div v-else class="reelsGrid">
-              <article v-for="reel in userReels" :key="`reel-${reel.id}`" class="reelCard glassMini">
+              <article v-for="reel in paginatedReels" :key="`reel-${reel.id}`" class="reelCard glassMini">
                 <video
                   class="reelVideo"
                   :src="mediaUrl(reel.video_url)"
                   controls
                   playsinline
                   preload="metadata"
+                  @play="onVideoPlay"
+                  @pause="onVideoPause"
                 ></video>
 
                 <div class="reelInfo">
@@ -383,6 +405,13 @@
                   <div class="postTime">{{ formatDate(reel.created_at || reel.createdAt) }}</div>
                 </div>
               </article>
+            </div>
+
+            <!-- Reels Pagination -->
+            <div v-if="totalReelPages > 1" class="pagination">
+              <button :disabled="reelPage === 1" @click="reelPage--">← Prev</button>
+              <span>{{ reelPage }} / {{ totalReelPages }}</span>
+              <button :disabled="reelPage >= totalReelPages" @click="reelPage++">Next →</button>
             </div>
           </template>
 
@@ -422,7 +451,7 @@
 
               <div class="infoRow">
                 <span class="infoKey">Private profile</span>
-                <button class="btn ghost smallBtn" @click="togglePrivate">
+                <button class="btn ghost smallBtn" @click="togglePrivate" :disabled="saving">
                   {{ profile.isPrivate ? "🔒 Private" : "🌐 Public" }}
                 </button>
               </div>
@@ -434,7 +463,7 @@
               <button class="btn ghost" @click="goLive">🔴 Go Live</button>
               <button class="btn ghost" @click="goInbox">💬 Inbox</button>
               <button class="btn ghost" @click="goHome">🏠 Home</button>
-              <button class="btn danger fullBtn" @click="logout">Logout</button>
+              <button class="btn danger fullBtn" @click="confirmLogout">Logout</button>
             </div>
           </template>
         </section>
@@ -492,14 +521,15 @@
               <button class="btn primary fullBtn" @click="goInbox">Message User</button>
               <button class="btn ghost fullBtn" @click="startCall('video')">Video Call</button>
               <button class="btn ghost fullBtn" @click="startCall('audio')">Audio Call</button>
-              <button class="btn ghost fullBtn" @click="toggleFollow">
-                {{ isFollowing ? "Following" : "Follow User" }}
+              <button class="btn ghost fullBtn" @click="toggleFollow" :disabled="followLoading">
+                {{ followLoading ? "..." : (isFollowing ? "Following" : "Follow User") }}
               </button>
             </template>
           </div>
         </aside>
       </section>
 
+      <!-- Edit Modal -->
       <transition name="fade-up">
         <div v-if="openEdit" class="modalBack" @click.self="openEdit = false">
           <div class="modal glass">
@@ -507,6 +537,8 @@
               <div class="modalTitle">Edit Profile</div>
               <button class="btn ghost smallBtn" @click="openEdit = false">✕</button>
             </div>
+
+            <div v-if="saveError" class="save-error">{{ saveError }}</div>
 
             <div class="editGrid">
               <div class="field">
@@ -563,6 +595,20 @@
           </div>
         </div>
       </transition>
+
+      <!-- Logout Confirmation -->
+      <transition name="fade-up">
+        <div v-if="showLogoutConfirm" class="modalBack" @click.self="showLogoutConfirm = false">
+          <div class="modal glass" style="max-width: 400px; text-align: center;">
+            <div class="modalTitle" style="margin-bottom: 12px;">Logout?</div>
+            <p style="opacity: 0.8; margin-bottom: 20px;">Are you sure you want to log out?</p>
+            <div class="modalActions" style="justify-content: center;">
+              <button class="btn ghost" @click="showLogoutConfirm = false">Cancel</button>
+              <button class="btn danger" @click="doLogout">Logout</button>
+            </div>
+          </div>
+        </div>
+      </transition>
     </div>
   </Layout>
 </template>
@@ -586,6 +632,7 @@ const me = (() => {
   }
 })()
 
+// Profile state
 const profile = reactive({
   id: "",
   displayName: "Pulse User",
@@ -611,13 +658,22 @@ const stats = reactive({
 
 const tab = ref("about")
 const openEdit = ref(false)
+const showLogoutConfirm = ref(false)
 const soundOn = ref(localStorage.getItem("soundOn") !== "0")
 const isOnlineNow = ref(navigator.onLine)
 const loading = ref(false)
 const syncing = ref(false)
 const saving = ref(false)
+const contentError = ref("")
+const saveError = ref("")
 const allPosts = ref([])
 const isFollowing = ref(false)
+const followLoading = ref(false)
+
+// Pagination
+const postPage = ref(1)
+const reelPage = ref(1)
+const itemsPerPage = ref(6)
 
 const edit = reactive({
   displayName: "",
@@ -629,6 +685,9 @@ const edit = reactive({
   website: "",
   coverUrl: "",
 })
+
+// Abort controllers
+const abortControllers = new Set()
 
 const defaultAvatar =
   "data:image/svg+xml;utf8," +
@@ -672,6 +731,20 @@ const userReels = computed(() => {
     (p) => String(resolvePostUserId(p)) === targetId && !!p.video_url
   )
 })
+
+const paginatedPosts = computed(() => {
+  const start = (postPage.value - 1) * itemsPerPage.value
+  return userPosts.value.slice(start, start + itemsPerPage.value)
+})
+
+const totalPostPages = computed(() => Math.ceil(userPosts.value.length / itemsPerPage.value))
+
+const paginatedReels = computed(() => {
+  const start = (reelPage.value - 1) * itemsPerPage.value
+  return userReels.value.slice(start, start + itemsPerPage.value)
+})
+
+const totalReelPages = computed(() => Math.ceil(userReels.value.length / itemsPerPage.value))
 
 const completionPercent = computed(() => {
   const fields = [
@@ -725,6 +798,38 @@ const coverStyle = computed(() => {
     backgroundPosition: "center",
   }
 })
+
+// Abort controller helpers
+function createAbortController() {
+  const controller = new AbortController()
+  abortControllers.add(controller)
+  return controller
+}
+
+function cleanupControllers() {
+  for (const controller of abortControllers) {
+    controller.abort()
+  }
+  abortControllers.clear()
+}
+
+// Video tracking for cleanup
+const activeVideos = new Set()
+
+function onVideoPlay(event) {
+  activeVideos.add(event.target)
+}
+
+function onVideoPause(event) {
+  activeVideos.delete(event.target)
+}
+
+function pauseAllVideos() {
+  for (const video of activeVideos) {
+    try { video.pause() } catch {}
+  }
+  activeVideos.clear()
+}
 
 function safeJSON(v) {
   try {
@@ -799,38 +904,41 @@ function patchProfileFromUser(u = {}) {
 
   stats.followers = Number(u.followers ?? u.followers_count ?? stats.followers ?? 0)
   stats.following = Number(u.following ?? u.following_count ?? stats.following ?? 0)
-
-  edit.displayName = profile.displayName
-  edit.username = profile.username
-  edit.bio = profile.bio
-  edit.email = profile.email
-  edit.location = profile.location
-  edit.country = profile.country
-  edit.website = profile.website
-  edit.coverUrl = profile.coverUrl
 }
 
 function saveUserPatch(patch) {
-  const existing = safeJSON(localStorage.getItem("user")) || safeJSON(localStorage.getItem("currentUser")) || {}
-  const merged = { ...existing, ...patch }
-  localStorage.setItem("user", JSON.stringify(merged))
-  localStorage.setItem("currentUser", JSON.stringify(merged))
+  try {
+    const existing = safeJSON(localStorage.getItem("user")) || safeJSON(localStorage.getItem("currentUser")) || {}
+    const merged = { ...existing, ...patch }
+    localStorage.setItem("user", JSON.stringify(merged))
+    localStorage.setItem("currentUser", JSON.stringify(merged))
+  } catch (err) {
+    console.error("saveUserPatch failed (quota exceeded?):", err)
+    // Don't throw — non-critical
+  }
 }
 
 async function fetchOwnProfileRemote() {
   if (!token) return
 
   syncing.value = true
+  const controller = createAbortController()
+
   try {
     const res = await fetch(`${apiBase}/users/me`, {
       headers: { Authorization: `Bearer ${token}` },
+      signal: controller.signal,
     })
-    if (!res.ok) throw new Error("failed")
+    abortControllers.delete(controller)
+
+    if (!res.ok) throw new Error(`HTTP ${res.status}`)
     const data = await res.json()
     patchProfileFromUser(data)
     saveUserPatch(data)
   } catch (err) {
-    console.error("fetchOwnProfileRemote failed:", err)
+    if (err.name !== "AbortError") {
+      console.error("fetchOwnProfileRemote failed:", err)
+    }
   } finally {
     syncing.value = false
   }
@@ -840,42 +948,59 @@ async function fetchViewedUser() {
   if (!token || !viewedUserId.value) return
 
   syncing.value = true
+  const controller = createAbortController()
+
   try {
     const res = await fetch(`${apiBase}/users/${viewedUserId.value}`, {
       headers: { Authorization: `Bearer ${token}` },
+      signal: controller.signal,
     })
-    if (!res.ok) throw new Error("failed")
+    abortControllers.delete(controller)
+
+    if (!res.ok) throw new Error(`HTTP ${res.status}`)
     const data = await res.json()
     patchProfileFromUser(data)
   } catch (err) {
-    console.error("fetchViewedUser failed:", err)
+    if (err.name !== "AbortError") {
+      console.error("fetchViewedUser failed:", err)
+      contentError.value = "Failed to load profile"
+    }
   } finally {
     syncing.value = false
   }
 }
 
 async function fetchPostsRemote() {
+  const controller = createAbortController()
+
   try {
     const res = await fetch(`${apiBase}/posts`, {
       headers: token ? { Authorization: `Bearer ${token}` } : {},
+      signal: controller.signal,
     })
+    abortControllers.delete(controller)
+
     if (!res.ok) throw new Error("posts fetch failed")
     const data = await res.json()
     const list = Array.isArray(data) ? data : data.posts || []
     allPosts.value = list
     stats.posts = userPosts.value.length
     stats.reels = userReels.value.length
-  } catch {
-    const cached = safeJSON(localStorage.getItem("posts")) || []
-    allPosts.value = Array.isArray(cached) ? cached : []
-    stats.posts = userPosts.value.length
-    stats.reels = userReels.value.length
+  } catch (err) {
+    abortControllers.delete(controller)
+    if (err.name !== "AbortError") {
+      const cached = safeJSON(localStorage.getItem("posts")) || []
+      allPosts.value = Array.isArray(cached) ? cached : []
+      stats.posts = userPosts.value.length
+      stats.reels = userReels.value.length
+    }
   }
 }
 
 async function saveProfile() {
   if (!isOwnProfile.value || !token) return
 
+  saveError.value = ""
   saving.value = true
   syncing.value = true
 
@@ -892,21 +1017,7 @@ async function saveProfile() {
       is_private: !!profile.isPrivate,
     }
 
-    profile.displayName = payload.display_name
-    profile.username = payload.username
-    profile.bio = payload.bio
-    profile.location = payload.location
-    profile.country = payload.country
-    profile.website = payload.website
-    profile.coverUrl = payload.cover_url
-
-    saveUserPatch({
-      ...payload,
-      id: profile.id,
-      email: profile.email,
-      created_at: profile.createdAt,
-      is_verified: profile.isVerified,
-    })
+    const controller = createAbortController()
 
     const res = await fetch(`${apiBase}/users/me`, {
       method: "PUT",
@@ -915,9 +1026,14 @@ async function saveProfile() {
         Authorization: `Bearer ${token}`,
       },
       body: JSON.stringify(payload),
+      signal: controller.signal,
     })
+    abortControllers.delete(controller)
 
-    if (!res.ok) throw new Error("Failed to update profile")
+    if (!res.ok) {
+      const errData = await res.json().catch(() => ({}))
+      throw new Error(errData.error || `Failed to update profile (${res.status})`)
+    }
 
     const data = await res.json()
     patchProfileFromUser(data)
@@ -925,50 +1041,109 @@ async function saveProfile() {
 
     openEdit.value = false
   } catch (err) {
-    console.error("saveProfile failed:", err)
+    if (err.name !== "AbortError") {
+      console.error("saveProfile failed:", err)
+      saveError.value = err.message || "Failed to save profile"
+    }
   } finally {
     saving.value = false
     syncing.value = false
   }
 }
 
+// Image compression before upload
+async function compressImage(file, maxWidth = 400, maxHeight = 400, quality = 0.8) {
+  return new Promise((resolve, reject) => {
+    const img = new Image()
+    img.onload = () => {
+      const canvas = document.createElement("canvas")
+      let { width, height } = img
+
+      if (width > maxWidth) {
+        height = (height * maxWidth) / width
+        width = maxWidth
+      }
+      if (height > maxHeight) {
+        width = (width * maxHeight) / height
+        height = maxHeight
+      }
+
+      canvas.width = width
+      canvas.height = height
+      const ctx = canvas.getContext("2d")
+      ctx.drawImage(img, 0, 0, width, height)
+
+      canvas.toBlob(
+        (blob) => {
+          if (!blob) {
+            reject(new Error("Canvas toBlob failed"))
+            return
+          }
+          const reader = new FileReader()
+          reader.onload = () => resolve(String(reader.result))
+          reader.readAsDataURL(blob)
+        },
+        "image/jpeg",
+        quality
+      )
+    }
+    img.onerror = () => reject(new Error("Failed to load image"))
+    img.src = URL.createObjectURL(file)
+  })
+}
+
 async function onPickAvatar(ev) {
   const file = ev.target.files?.[0]
   if (!file) return
 
-  const reader = new FileReader()
-  reader.onload = async () => {
-    const base64 = String(reader.result || "")
+  // Validate
+  const validTypes = ["image/jpeg", "image/png", "image/webp"]
+  if (!validTypes.includes(file.type)) {
+    contentError.value = "Please select a JPEG, PNG, or WebP image"
+    return
+  }
+  if (file.size > 5 * 1024 * 1024) {
+    contentError.value = "Image must be under 5MB"
+    return
+  }
+
+  try {
+    syncing.value = true
+    const base64 = await compressImage(file, 400, 400, 0.8)
+
     profile.avatarUrl = base64
     saveUserPatch({ avatar_url: base64, avatarUrl: base64 })
 
     if (!token || !isOwnProfile.value) return
 
-    try {
-      syncing.value = true
-      const res = await fetch(`${apiBase}/users/me`, {
-        method: "PUT",
-        headers: {
-          "Content-Type": "application/json",
-          Authorization: `Bearer ${token}`,
-        },
-        body: JSON.stringify({
-          avatar_url: base64,
-        }),
-      })
+    const controller = createAbortController()
 
-      if (res.ok) {
-        const data = await res.json()
-        patchProfileFromUser(data)
-        saveUserPatch(data)
-      }
-    } catch (err) {
-      console.error("avatar update failed:", err)
-    } finally {
-      syncing.value = false
+    const res = await fetch(`${apiBase}/users/me`, {
+      method: "PUT",
+      headers: {
+        "Content-Type": "application/json",
+        Authorization: `Bearer ${token}`,
+      },
+      body: JSON.stringify({ avatar_url: base64 }),
+      signal: controller.signal,
+    })
+    abortControllers.delete(controller)
+
+    if (res.ok) {
+      const data = await res.json()
+      patchProfileFromUser(data)
+      saveUserPatch(data)
     }
+  } catch (err) {
+    if (err.name !== "AbortError") {
+      console.error("avatar update failed:", err)
+      contentError.value = "Failed to update avatar"
+    }
+  } finally {
+    syncing.value = false
+    // Reset input so same file can be selected again
+    ev.target.value = ""
   }
-  reader.readAsDataURL(file)
 }
 
 function resolvePostUserId(post) {
@@ -1017,27 +1192,75 @@ async function togglePrivate() {
   }
 }
 
-function toggleFollow() {
-  isFollowing.value = !isFollowing.value
-  stats.followers = Math.max(0, stats.followers + (isFollowing.value ? 1 : -1))
+async function toggleFollow() {
+  if (!viewedUserId.value || followLoading.value) return
+
+  followLoading.value = true
+  const newState = !isFollowing.value
+
+  try {
+    const controller = createAbortController()
+    const res = await fetch(`${apiBase}/users/${viewedUserId.value}/follow`, {
+      method: newState ? "POST" : "DELETE",
+      headers: {
+        "Content-Type": "application/json",
+        Authorization: `Bearer ${token}`,
+      },
+      signal: controller.signal,
+    })
+    abortControllers.delete(controller)
+
+    if (!res.ok) throw new Error("Follow request failed")
+
+    isFollowing.value = newState
+    stats.followers = Math.max(0, stats.followers + (newState ? 1 : -1))
+  } catch (err) {
+    if (err.name !== "AbortError") {
+      console.error("toggleFollow failed:", err)
+      contentError.value = "Failed to update follow status"
+    }
+  } finally {
+    followLoading.value = false
+  }
 }
 
 function onAvatarError(e) {
   e.target.src = defaultAvatar
 }
 
+function onMediaError(e) {
+  e.target.style.display = "none"
+}
+
 async function copyLink() {
   const id = profile.id ? String(profile.id) : ""
   const link = `${window.location.origin}/profile/${id}`
+
   try {
     await navigator.clipboard.writeText(link)
-    alert("Profile link copied!")
+    contentError.value = "Profile link copied!"
+    setTimeout(() => { contentError.value = "" }, 2000)
   } catch {
-    alert(link)
+    // Fallback
+    const textarea = document.createElement("textarea")
+    textarea.value = link
+    textarea.style.position = "fixed"
+    textarea.style.opacity = "0"
+    document.body.appendChild(textarea)
+    textarea.select()
+    document.execCommand("copy")
+    document.body.removeChild(textarea)
+    contentError.value = "Profile link copied!"
+    setTimeout(() => { contentError.value = "" }, 2000)
   }
 }
 
-function logout() {
+function confirmLogout() {
+  showLogoutConfirm.value = true
+}
+
+function doLogout() {
+  pauseAllVideos()
   localStorage.removeItem("token")
   localStorage.removeItem("user")
   localStorage.removeItem("currentUser")
@@ -1078,6 +1301,7 @@ function startCall(callKind = "video") {
 
 async function refreshAll() {
   loading.value = true
+  contentError.value = ""
 
   if (isOwnProfile.value) {
     loadLocalUser()
@@ -1099,9 +1323,18 @@ function onOffline() {
   isOnlineNow.value = false
 }
 
-watch(
+// Reset pagination when tab changes
+watch(tab, () => {
+  postPage.value = 1
+  reelPage.value = 1
+  pauseAllVideos()
+  contentError.value = ""
+})
+
+const stopWatchId = watch(
   () => route.params.id,
   async () => {
+    pauseAllVideos()
     await refreshAll()
   }
 )
@@ -1114,8 +1347,11 @@ onMounted(async () => {
 })
 
 onBeforeUnmount(() => {
+  cleanupControllers()
+  pauseAllVideos()
   window.removeEventListener("online", onOnline)
   window.removeEventListener("offline", onOffline)
+  stopWatchId()
 })
 </script>
 
@@ -1131,6 +1367,7 @@ onBeforeUnmount(() => {
     linear-gradient(180deg, #07101c 0%, #091423 42%, #060d19 100%);
   overflow: hidden;
 }
+
 .bg-grid {
   position: fixed;
   inset: 0;
@@ -1141,6 +1378,7 @@ onBeforeUnmount(() => {
   background-size: 38px 38px;
   mask-image: linear-gradient(to bottom, rgba(255,255,255,.22), transparent 70%);
 }
+
 .bg-orb {
   position: fixed;
   border-radius: 999px;
@@ -1148,6 +1386,7 @@ onBeforeUnmount(() => {
   pointer-events: none;
   opacity: 0.34;
 }
+
 .orb1 {
   width: 260px;
   height: 260px;
@@ -1155,6 +1394,7 @@ onBeforeUnmount(() => {
   top: 90px;
   background: rgba(255, 65, 108, 0.35);
 }
+
 .orb2 {
   width: 300px;
   height: 300px;
@@ -1162,6 +1402,7 @@ onBeforeUnmount(() => {
   top: 220px;
   background: rgba(91, 140, 255, 0.32);
 }
+
 .glass,
 .glassMini {
   background: rgba(255,255,255,0.06);
@@ -1169,34 +1410,41 @@ onBeforeUnmount(() => {
   backdrop-filter: blur(16px);
   box-shadow: 0 14px 44px rgba(0,0,0,0.28), inset 0 1px 0 rgba(255,255,255,0.04);
 }
+
 .glass {
   position: relative;
   z-index: 2;
   border-radius: 28px;
 }
+
 .glassMini {
   border-radius: 20px;
 }
+
 .hero {
   padding: 18px;
 }
+
 .heroTop,
 .heroMain,
 .gridZone {
   position: relative;
   z-index: 2;
 }
+
 .heroTop {
   display: flex;
   justify-content: space-between;
   gap: 12px;
   align-items: center;
 }
+
 .brand {
   display: flex;
   align-items: center;
   gap: 12px;
 }
+
 .brandIcon {
   width: 58px;
   height: 58px;
@@ -1207,19 +1455,23 @@ onBeforeUnmount(() => {
   background: linear-gradient(135deg, #ff2a6d, #5b8cff);
   box-shadow: 0 14px 30px rgba(91,140,255,.22);
 }
+
 .brandTitle {
   font-size: 20px;
   font-weight: 950;
 }
+
 .brandSub {
   opacity: .76;
 }
+
 .topActions {
   display: flex;
   gap: 10px;
   flex-wrap: wrap;
   align-items: center;
 }
+
 .statusPill,
 .onlinePill,
 .locationPill,
@@ -1232,6 +1484,7 @@ onBeforeUnmount(() => {
   gap: 8px;
   border-radius: 999px;
 }
+
 .statusPill,
 .onlinePill {
   padding: 10px 16px;
@@ -1239,11 +1492,13 @@ onBeforeUnmount(() => {
   border: 1px solid rgba(53,227,161,.22);
   font-weight: 800;
 }
+
 .statusPill.offline,
 .onlinePill.offline {
   background: rgba(255,255,255,.08);
   border-color: rgba(255,255,255,.12);
 }
+
 .statusDot,
 .onlineDot {
   width: 10px;
@@ -1251,16 +1506,19 @@ onBeforeUnmount(() => {
   border-radius: 50%;
   background: #35e3a1;
 }
+
 .statusPill.offline .statusDot,
 .onlinePill.offline .onlineDot {
   background: #9aa4b2;
 }
+
 .heroMain {
   display: grid;
   grid-template-columns: 260px 1fr;
   gap: 18px;
   margin-top: 18px;
 }
+
 .coverCard {
   position: relative;
   min-height: 260px;
@@ -1272,17 +1530,20 @@ onBeforeUnmount(() => {
     linear-gradient(135deg, rgba(255,42,109,.35), rgba(91,140,255,.35));
   border: 1px solid rgba(255,255,255,.14);
 }
+
 .coverGlow {
   position: absolute;
   inset: 0;
   background: radial-gradient(circle at 50% 30%, rgba(255,255,255,.16), transparent 55%);
 }
+
 .avatarWrap {
   position: relative;
   width: 152px;
   height: 152px;
   margin: 18px auto 0;
 }
+
 .avatarGlow {
   position: absolute;
   inset: -7px;
@@ -1291,6 +1552,7 @@ onBeforeUnmount(() => {
   filter: blur(12px);
   opacity: .55;
 }
+
 .avatar {
   position: relative;
   width: 152px;
@@ -1300,6 +1562,7 @@ onBeforeUnmount(() => {
   border: 2px solid rgba(255,255,255,0.16);
   background: rgba(255,255,255,0.08);
 }
+
 .avatarEdit {
   position: absolute;
   right: -6px;
@@ -1315,6 +1578,7 @@ onBeforeUnmount(() => {
   box-shadow: 0 12px 24px rgba(0,0,0,0.28);
   z-index: 3;
 }
+
 .miniBadges {
   margin-top: 22px;
   display: flex;
@@ -1322,6 +1586,7 @@ onBeforeUnmount(() => {
   flex-wrap: wrap;
   gap: 10px;
 }
+
 .miniBadge,
 .username,
 .locationPill,
@@ -1332,13 +1597,16 @@ onBeforeUnmount(() => {
   border: 1px solid rgba(255,255,255,.12);
   font-weight: 800;
 }
+
 .miniBadge.ghost,
 .locationPill.ghost {
   background: rgba(255,255,255,.06);
 }
+
 .identity {
   min-width: 0;
 }
+
 .nameRow,
 .usernameRow,
 .actionRow,
@@ -1350,12 +1618,14 @@ onBeforeUnmount(() => {
   gap: 10px;
   flex-wrap: wrap;
 }
+
 .displayName {
   margin: 0;
   font-size: 38px;
   font-weight: 950;
   line-height: 1.02;
 }
+
 .verifiedBadge {
   display: inline-block;
   margin-left: 8px;
@@ -1363,15 +1633,18 @@ onBeforeUnmount(() => {
   vertical-align: middle;
   color: #7fd0ff;
 }
+
 .usernameRow {
   margin-top: 10px;
 }
+
 .connectDeck {
   margin-top: 16px;
   display: grid;
   grid-template-columns: repeat(2, minmax(0, 1fr));
   gap: 12px;
 }
+
 .connectCard {
   width: 100%;
   padding: 16px;
@@ -1383,11 +1656,13 @@ onBeforeUnmount(() => {
   cursor: pointer;
   transition: transform .18s ease, border-color .18s ease, background .18s ease;
 }
+
 .connectCard:hover {
   transform: translateY(-2px);
   border-color: rgba(127, 208, 255, 0.28);
   background: rgba(255,255,255,.08);
 }
+
 .connectIcon {
   width: 52px;
   height: 52px;
@@ -1399,37 +1674,45 @@ onBeforeUnmount(() => {
   background: linear-gradient(135deg, rgba(255,42,109,.24), rgba(91,140,255,.24));
   border: 1px solid rgba(255,255,255,.12);
 }
+
 .connectMeta {
   min-width: 0;
 }
+
 .connectTitle {
   font-size: 15px;
   font-weight: 900;
 }
+
 .connectSub {
   margin-top: 4px;
   opacity: .72;
   font-size: 13px;
   line-height: 1.35;
 }
+
 .signalCard {
   padding: 14px;
   margin-bottom: 14px;
 }
+
 .signalRow {
   display: flex;
   justify-content: space-between;
   gap: 12px;
   align-items: center;
 }
+
 .signalRow + .signalRow {
   margin-top: 10px;
   padding-top: 10px;
   border-top: 1px solid rgba(255,255,255,.08);
 }
+
 .signalLabel {
   opacity: .74;
 }
+
 .premiumActions {
   margin-top: 0;
 }
@@ -1441,34 +1724,41 @@ onBeforeUnmount(() => {
   opacity: .94;
   max-width: 900px;
 }
+
 .quickFacts {
   margin-top: 16px;
   display: grid;
   grid-template-columns: repeat(3, minmax(0,1fr));
   gap: 12px;
 }
+
 .fact {
   padding: 14px;
 }
+
 .factLabel,
 .infoKey {
   font-size: 13px;
   opacity: .72;
 }
+
 .factValue,
 .infoVal {
   margin-top: 6px;
   font-weight: 800;
 }
+
 .factValue {
   font-size: 15px;
 }
+
 .stats {
   margin-top: 16px;
   display: grid;
   grid-template-columns: repeat(4, minmax(0,1fr));
   gap: 12px;
 }
+
 .statCard {
   padding: 16px;
   border: 1px solid rgba(255,255,255,.10);
@@ -1478,56 +1768,98 @@ onBeforeUnmount(() => {
   cursor: pointer;
   text-align: left;
 }
+
 .statNum {
   font-size: 34px;
   font-weight: 950;
 }
+
 .statLabel {
   margin-top: 4px;
   font-size: 13px;
   opacity: .72;
 }
+
 .actionRow {
   margin-top: 16px;
 }
+
 .featureRail {
   margin-top: 18px;
 }
+
 .featureChip {
   cursor: pointer;
   color: rgba(255,255,255,.9);
 }
+
 .featureChip.active {
   background: linear-gradient(90deg, #ff2a6d, #5b8cff);
   border-color: transparent;
   box-shadow: 0 10px 28px rgba(91,140,255,.20);
 }
+
 .gridZone {
   display: grid;
   grid-template-columns: minmax(0,1fr) 320px;
   gap: 14px;
   margin-top: 14px;
 }
+
 .content,
 .sidePanel {
   padding: 18px;
 }
+
+.content-error {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  padding: 12px 16px;
+  margin-bottom: 16px;
+  background: rgba(255, 80, 80, 0.12);
+  border: 1px solid rgba(255, 80, 80, 0.25);
+  border-radius: 14px;
+  color: #ffb4b4;
+}
+
+.content-error button {
+  background: none;
+  border: none;
+  color: inherit;
+  font-size: 18px;
+  cursor: pointer;
+}
+
+.save-error {
+  padding: 12px 16px;
+  margin-bottom: 12px;
+  background: rgba(255, 80, 80, 0.12);
+  border: 1px solid rgba(255, 80, 80, 0.25);
+  border-radius: 12px;
+  color: #ffb4b4;
+  font-size: 14px;
+}
+
 .sectionHead {
   display: flex;
   align-items: center;
   justify-content: space-between;
   gap: 12px;
 }
+
 .sectionTitle {
   margin: 0 0 14px;
   font-size: 28px;
   font-weight: 950;
 }
+
 .sectionSub {
   margin: 0 0 12px;
   font-size: 16px;
   font-weight: 900;
 }
+
 .sectionMeta,
 .panelSub,
 .emptySub,
@@ -1535,30 +1867,37 @@ onBeforeUnmount(() => {
 .hint {
   opacity: .72;
 }
+
 .aboutGrid {
   display: grid;
   grid-template-columns: repeat(2, minmax(0,1fr));
   gap: 12px;
 }
+
 .aboutCard {
   padding: 16px;
 }
+
 .infoVal.big {
   font-size: 20px;
 }
+
 .multiline {
   white-space: pre-wrap;
   line-height: 1.5;
 }
+
 .profileLink {
   color: #a9d6ff;
   text-decoration: none;
 }
+
 .divider {
   height: 1px;
   background: rgba(255,255,255,.08);
   margin: 18px 0;
 }
+
 .emptyBox,
 .state {
   min-height: 260px;
@@ -1567,14 +1906,17 @@ onBeforeUnmount(() => {
   text-align: center;
   gap: 8px;
 }
+
 .emptyIcon {
   font-size: 32px;
 }
+
 .emptyTitle,
 .postTitle,
 .panelTitle {
   font-weight: 900;
 }
+
 .postList,
 .reelsGrid,
 .settingsList,
@@ -1582,11 +1924,13 @@ onBeforeUnmount(() => {
   display: grid;
   gap: 12px;
 }
+
 .postCard,
 .reelCard,
 .sideStat {
   padding: 14px;
 }
+
 .postHead,
 .infoRow,
 .modalHead,
@@ -1596,10 +1940,12 @@ onBeforeUnmount(() => {
   align-items: center;
   gap: 10px;
 }
+
 .postText {
   margin-top: 10px;
   line-height: 1.5;
 }
+
 .postMedia,
 .reelVideo {
   width: 100%;
@@ -1607,49 +1953,60 @@ onBeforeUnmount(() => {
   margin-top: 12px;
   background: rgba(255,255,255,.05);
 }
+
 .postMedia {
   max-height: 420px;
   object-fit: cover;
 }
+
 .reelsGrid {
   grid-template-columns: repeat(2, minmax(0,1fr));
 }
+
 .reelVideo {
   aspect-ratio: 9 / 14;
   object-fit: cover;
 }
+
 .reelInfo {
   margin-top: 10px;
 }
+
 .clamp1,
 .clamp2 {
   display: -webkit-box;
   -webkit-box-orient: vertical;
   overflow: hidden;
 }
+
 .clamp1 { 
   -webkit-line-clamp: 1;
   line-clamp: 1;
 }
+
 .clamp2 { 
   -webkit-line-clamp: 2;
   line-clamp: 2;
 }
+
 .sidePanel {
   height: fit-content;
   position: sticky;
   top: 12px;
 }
+
 .powerScore {
   font-size: 52px;
   font-weight: 950;
   margin-top: 10px;
 }
+
 .sideStat {
   display: flex;
   justify-content: space-between;
   align-items: center;
 }
+
 .btn {
   border: none;
   border-radius: 999px;
@@ -1659,24 +2016,53 @@ onBeforeUnmount(() => {
   font-weight: 800;
   background: rgba(255,255,255,0.10);
 }
+
 .btn.primary {
   background: linear-gradient(90deg, #ff2a6d, #5b8cff);
   box-shadow: 0 12px 30px rgba(91,140,255,.22);
 }
+
 .btn.ghost {
   background: rgba(255,255,255,0.08);
   border: 1px solid rgba(255,255,255,0.12);
 }
+
 .btn.danger {
   background: rgba(255,0,70,.14);
   border: 1px solid rgba(255,0,70,.24);
 }
+
 .smallBtn {
   padding: 9px 12px;
 }
+
 .fullBtn {
   width: 100%;
 }
+
+.pagination {
+  display: flex;
+  justify-content: center;
+  align-items: center;
+  gap: 16px;
+  padding: 20px;
+}
+
+.pagination button {
+  padding: 10px 20px;
+  border-radius: 12px;
+  border: none;
+  background: rgba(255, 255, 255, 0.1);
+  color: white;
+  font-weight: 700;
+  cursor: pointer;
+}
+
+.pagination button:disabled {
+  opacity: 0.4;
+  cursor: not-allowed;
+}
+
 .modalBack {
   position: fixed;
   inset: 0;
@@ -1686,28 +2072,34 @@ onBeforeUnmount(() => {
   place-items: center;
   padding: 14px;
 }
+
 .modal {
   width: min(780px, 100%);
   padding: 16px;
 }
+
 .modalTitle {
   font-size: 18px;
   font-weight: 900;
 }
+
 .editGrid {
   display: grid;
   grid-template-columns: repeat(2, minmax(0,1fr));
   gap: 12px;
 }
+
 .fieldWide {
   grid-column: 1 / -1;
 }
+
 .field label {
   display: block;
   margin-bottom: 6px;
   font-size: 13px;
   opacity: .78;
 }
+
 .inputField {
   width: 100%;
   border: 1px solid rgba(255,255,255,.10);
@@ -1717,19 +2109,23 @@ onBeforeUnmount(() => {
   padding: 12px 14px;
   outline: none;
 }
+
 .textareaField {
   min-height: 110px;
   resize: vertical;
 }
+
 .fade-up-enter-active,
 .fade-up-leave-active {
   transition: all .22s ease;
 }
+
 .fade-up-enter-from,
 .fade-up-leave-to {
   opacity: 0;
   transform: translateY(8px);
 }
+
 @media (max-width: 1100px) {
   .gridZone {
     grid-template-columns: 1fr;
@@ -1738,6 +2134,7 @@ onBeforeUnmount(() => {
     position: static;
   }
 }
+
 @media (max-width: 900px) {
   .heroMain,
   .quickFacts,
@@ -1751,6 +2148,7 @@ onBeforeUnmount(() => {
     grid-template-columns: 1fr;
   }
 }
+
 @media (max-width: 700px) {
   .heroTop {
     flex-direction: column;

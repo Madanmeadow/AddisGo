@@ -138,20 +138,42 @@ export class LiveSfuClient {
     await this.createSendTransport();
 
     this.localStream = await navigator.mediaDevices.getUserMedia({
-      video: true,
-      audio: true,
-    });
+    video: {
+      width: { ideal: 1280 },
+      height: { ideal: 720 },
+      frameRate: { ideal: 30, max: 30 },
+      facingMode: "user",
+    },
+    audio: {
+      echoCancellation: true,
+      noiseSuppression: true,
+      autoGainControl: true,
+    },
+  });
 
     const videoTrack = this.localStream.getVideoTracks()[0];
     const audioTrack = this.localStream.getAudioTracks()[0];
 
     if (videoTrack) {
       await this.sendTransport.produce({
-        track: videoTrack,
-        appData: { mediaTag: "host-video" },
-      });
-    }
+      track: videoTrack,
+      appData: {
+        mediaTag: "host-video",
+      },
 
+      encodings: [
+        {
+          maxBitrate: 2500000,
+          scalabilityMode: "L1T3",
+        },
+      ],
+
+      codecOptions: {
+        videoGoogleStartBitrate: 1500,
+      },
+    });
+
+    }
     if (audioTrack) {
       await this.sendTransport.produce({
         track: audioTrack,

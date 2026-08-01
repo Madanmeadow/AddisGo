@@ -1,4 +1,3 @@
-<!-- src/views/People.vue -->
 <template>
   <Layout>
     <div class="people-page">
@@ -18,10 +17,10 @@
 
           <div class="top-actions">
             <button type="button" class="chip" @click="refreshAll" :disabled="loading">
-              {{ loading ? "Refreshing..." : "Refresh" }}
+              {{ loading ? 'Refreshing...' : 'Refresh' }}
             </button>
             <button type="button" class="chip ghost" @click="toggleOffline">
-              {{ showOffline ? "Hide Offline" : "Show Offline" }}
+              {{ showOffline ? 'Hide Offline' : 'Show Offline' }}
             </button>
           </div>
         </header>
@@ -33,39 +32,51 @@
               class="search"
               type="text"
               placeholder="Search people..."
+              @input="onSearchInput"
             />
           </div>
 
           <div class="toolbar-right">
             <div class="status-pill" :class="{ on: socketConnected }">
               <span class="dot"></span>
-              <span>{{ socketConnected ? "Connected" : "Offline" }}</span>
+              <span>{{ socketConnected ? 'Connected' : 'Offline' }}</span>
             </div>
 
             <div class="count-pill">
-              {{ onlineCount }} online
+              {{ onlineCount }} online / {{ people.length }} total
             </div>
           </div>
         </section>
 
         <section v-if="error" class="error-card">
           {{ error }}
+          <button class="error-close" @click="error = ''">×</button>
         </section>
 
-        <section v-if="loading && !filteredPeople.length" class="empty-card">
-          Loading people...
+        <!-- Skeleton Loading -->
+        <section v-if="loading && !filteredPeople.length" class="skeleton-list">
+          <div v-for="i in 6" :key="i" class="skeleton-row">
+            <div class="skeleton-avatar"></div>
+            <div class="skeleton-content">
+              <div class="skeleton-line short"></div>
+              <div class="skeleton-line"></div>
+            </div>
+          </div>
         </section>
 
         <section v-else-if="!filteredPeople.length" class="empty-card">
-          No people found.
+          {{ search ? 'No people match your search.' : 'No people found.' }}
         </section>
 
         <section v-else class="people-list">
           <article
-            v-for="person in filteredPeople"
+            v-for="person in paginatedPeople"
             :key="person.id"
             class="person-card glassy"
+            :class="{ online: isOnline(person.id) }"
             @click="goProfile(person)"
+            tabindex="0"
+            @keydown.enter="goProfile(person)"
           >
             <div class="person-main">
               <div class="avatar-wrap">
@@ -74,6 +85,8 @@
                   :src="mediaUrl(person.avatar || person.avatar_url || person.photo_url)"
                   class="avatar"
                   alt="avatar"
+                  loading="lazy"
+                  @error="onAvatarError($event, person)"
                 />
                 <div v-else class="avatar fallback">
                   {{ initialOf(person) }}
@@ -90,10 +103,15 @@
 
                 <div class="sub-row">
                   <span class="presence-label" :class="{ on: isOnline(person.id) }">
-                    {{ isOnline(person.id) ? "Online" : "Offline" }}
+                    {{ isOnline(person.id) ? 'Online' : lastSeen(person) }}
                   </span>
-
-                  <span v-if="person.bio" class="bio-line">
+                  <div
+                    v-if="distanceFor(person) !== null"
+                    style="font-size:13px;color:#8ef0ae;margin-top:4px;"
+                  >
+                    📍 {{ distanceFor(person).toFixed(1) }} mi away
+                  </div>
+                  <span v-if="person.bio" class="bio-line" :title="person.bio">
                     {{ person.bio }}
                   </span>
                 </div>
@@ -101,6 +119,17 @@
             </div>
 
             <div class="person-actions" @click.stop>
+              <!-- Message (always available) -->
+              <button
+                type="button"
+                class="mini-action msg-btn"
+                title="Message"
+                @click.stop.prevent="openChat(person)"
+              >
+                💬
+              </button>
+
+              <!-- Audio Call (online only) -->
               <button
                 type="button"
                 class="mini-action"
@@ -111,15 +140,18 @@
                 📞
               </button>
 
+              <!-- Video Call (online only) -->
               <button
                 type="button"
                 class="mini-action"
-                title="Message"
-                @click.stop.prevent="openChat(person)"
+                title="Video Call"
+                :disabled="!isOnline(person.id)"
+                @click.stop.prevent="startVideoCall(person)"
               >
-                💬
+                🎥
               </button>
 
+              <!-- Profile -->
               <button
                 type="button"
                 class="mini-action"
@@ -131,256 +163,428 @@
             </div>
           </article>
         </section>
+
+        <!-- Pagination -->
+        <div v-if="filteredPeople.length > itemsPerPage" class="pagination">
+          <button
+            :disabled="currentPage === 1"
+            @click="currentPage--"
+          >
+            ← Prev
+          </button>
+          <span>Page {{ currentPage }} of {{ totalPages }}</span>
+          <button
+            :disabled="currentPage >= totalPages"
+            @click="currentPage++"
+          >
+            Next →
+          </button>
+        </div>
       </section>
     </div>
   </Layout>
 </template>
 
 <script setup>
-import { computed, onBeforeUnmount, onMounted, ref } from "vue";
-import { useRouter } from "vue-router";
-import Layout from "../components/Layout.vue";
-import socket, { ensurePulseSocket, refreshSocketAuth } from "../socket";
+import { computed, onBeforeUnmount, onMounted, ref, watch } from 'vue'
+import { useRouter } from 'vue-router'
+import Layout from '../components/Layout.vue'
+import socket, { ensurePulseSocket, refreshSocketAuth } from '../socket'
 
-const router = useRouter();
+const router = useRouter()
 
 const API_URL = (
   import.meta.env.VITE_API_URL ||
-  "https://addisgo-production-63ae.up.railway.app"
-).replace(/\/$/, "");
+  'https://addisgo-production-63ae.up.railway.app'
+).replace(/\/$/, '')
 
-const people = ref([]);
-const loading = ref(false);
-const error = ref("");
-const search = ref("");
-const showOffline = ref(true);
-const socketConnected = ref(socket.connected);
-const onlineUserIds = ref([]);
+// State
+const people = ref([])
+const loading = ref(false)
+const error = ref('')
+const search = ref('')
+const showOffline = ref(true)
+const socketConnected = ref(socket.connected)
+const onlineUserIds = ref([])
+const currentPage = ref(1)
+const itemsPerPage = ref(20)
+const lastSeenMap = ref(new Map())
+const nearbyUsers = ref([])
+const abortControllers = new Set()
 
 function getToken() {
-  return localStorage.getItem("token") || "";
+  return localStorage.getItem('token') || ''
 }
 
 function getMe() {
   try {
-    return JSON.parse(localStorage.getItem("user") || "{}");
+    return JSON.parse(localStorage.getItem('user') || '{}')
   } catch {
-    return {};
+    return {}
   }
 }
 
-const me = ref(getMe());
-const myUserId = computed(() => String(me.value?.id || "").trim());
+const me = ref(getMe())
+const myUserId = computed(() => String(me.value?.id || '').trim())
 
 function authHeaders() {
-  const token = getToken();
+  const token = getToken()
   return {
-    "Content-Type": "application/json",
+    'Content-Type': 'application/json',
     ...(token ? { Authorization: `Bearer ${token}` } : {}),
-  };
+  }
+}
+
+function createAbortController() {
+  const controller = new AbortController()
+  abortControllers.add(controller)
+  return controller
+}
+
+function cleanupControllers() {
+  for (const controller of abortControllers) {
+    controller.abort()
+  }
+  abortControllers.clear()
 }
 
 function mediaUrl(url) {
-  if (!url) return "";
-  if (/^https?:\/\//i.test(url)) return url;
-  return `${API_URL}${url.startsWith("/") ? "" : "/"}${url}`;
+  if (!url) return ''
+  if (/^https?:\/\//i.test(url)) return url
+  return `${API_URL}${url.startsWith('/') ? '' : '/'}${url}`
 }
 
 function displayName(person) {
-  return person?.username || person?.name || person?.display_name || `User ${person?.id || ""}`;
+  return person?.username || person?.name || person?.display_name || `User ${person?.id || ''}`
 }
 
 function initialOf(person) {
-  return String(displayName(person)).trim().charAt(0).toUpperCase() || "U";
+  return String(displayName(person)).trim().charAt(0).toUpperCase() || 'U'
 }
 
 function normalizeUser(user) {
   return {
     ...user,
-    id: String(user?.id || user?.userId || "").trim(),
-  };
+    id: String(user?.id || user?.userId || '').trim(),
+    lastSeenAt: user?.last_seen_at || user?.updated_at || null,
+  }
 }
 
 function isOnline(userId) {
-  return onlineUserIds.value.includes(String(userId));
+  return onlineUserIds.value.includes(String(userId))
 }
 
-const onlineCount = computed(() => onlineUserIds.value.length);
+function lastSeen(person) {
+  const ts = lastSeenMap.value.get(String(person.id)) || person.lastSeenAt
+  if (!ts) return 'Offline'
+
+  const d = new Date(ts)
+  if (Number.isNaN(d.getTime())) return 'Offline'
+
+  const now = new Date()
+  const diffMs = now - d
+  const diffMins = Math.floor(diffMs / 60000)
+  const diffHours = Math.floor(diffMs / 3600000)
+  const diffDays = Math.floor(diffMs / 86400000)
+
+  if (diffMins < 1) return 'Just now'
+  if (diffMins < 60) return `${diffMins}m ago`
+  if (diffHours < 24) return `${diffHours}h ago`
+  if (diffDays === 1) return 'Yesterday'
+  if (diffDays < 7) return `${diffDays}d ago`
+  return d.toLocaleDateString([], { month: 'short', day: 'numeric' })
+}
+
+function distanceFor(person) {
+  const found = nearbyUsers.value.find(
+    (u) => String(u.userId) === String(person.id)
+  )
+  return found?.distance ?? null
+}
+
+function onAvatarError(event, person) {
+  const img = event.target
+  img.style.display = 'none'
+  const fallback = document.createElement('div')
+  fallback.className = 'avatar fallback'
+  fallback.textContent = initialOf(person)
+  img.parentNode.appendChild(fallback)
+}
+
+const onlineCount = computed(() => onlineUserIds.value.length)
+
+let searchDebounce = null
+function onSearchInput() {
+  clearTimeout(searchDebounce)
+  searchDebounce = setTimeout(() => {
+    currentPage.value = 1
+  }, 150)
+}
 
 const filteredPeople = computed(() => {
-  const q = search.value.toLowerCase().trim();
-
-  let list = people.value.filter((p) => p.id && p.id !== myUserId.value);
+  const q = search.value.toLowerCase().trim()
+  let list = people.value.filter((p) => p.id && p.id !== myUserId.value)
 
   if (!showOffline.value) {
-    list = list.filter((p) => isOnline(p.id));
+    list = list.filter((p) => isOnline(p.id))
   }
 
   if (!q) {
     return [...list].sort((a, b) => {
-      const aOn = isOnline(a.id) ? 1 : 0;
-      const bOn = isOnline(b.id) ? 1 : 0;
-      return bOn - aOn;
-    });
+      const aOn = isOnline(a.id) ? 1 : 0
+      const bOn = isOnline(b.id) ? 1 : 0
+      if (aOn !== bOn) return bOn - aOn
+      return displayName(a).localeCompare(displayName(b))
+    })
   }
 
   return list
     .filter((p) => {
       const hay =
-        `${displayName(p)} ${p.email || ""} ${p.bio || ""} ${p.id || ""}`.toLowerCase();
-      return hay.includes(q);
+        `${displayName(p)} ${p.email || ''} ${p.bio || ''} ${p.id || ''}`.toLowerCase()
+      return hay.includes(q)
     })
     .sort((a, b) => {
-      const aOn = isOnline(a.id) ? 1 : 0;
-      const bOn = isOnline(b.id) ? 1 : 0;
-      return bOn - aOn;
-    });
-});
+      const aOn = isOnline(a.id) ? 1 : 0
+      const bOn = isOnline(b.id) ? 1 : 0
+      return bOn - aOn
+    })
+})
+
+const totalPages = computed(() => Math.ceil(filteredPeople.value.length / itemsPerPage.value))
+
+const paginatedPeople = computed(() => {
+  const start = (currentPage.value - 1) * itemsPerPage.value
+  return filteredPeople.value.slice(start, start + itemsPerPage.value)
+})
+
+watch([showOffline, search], () => {
+  currentPage.value = 1
+})
 
 async function fetchPeople() {
-  loading.value = true;
-  error.value = "";
+  loading.value = true
+  error.value = ''
 
   try {
+    const controller = createAbortController()
     const res = await fetch(`${API_URL}/users`, {
       headers: authHeaders(),
-    });
+      signal: controller.signal,
+    })
 
-    const data = await res.json().catch(() => []);
+    abortControllers.delete(controller)
+
+    const data = await res.json().catch(() => [])
     if (!res.ok) {
-      throw new Error(data?.error || "Failed to load people");
+      throw new Error(data?.error || 'Failed to load people')
     }
 
-    const list = Array.isArray(data) ? data : Array.isArray(data?.users) ? data.users : [];
-    people.value = list.map(normalizeUser).filter((u) => u.id);
+    const list = Array.isArray(data) ? data : Array.isArray(data?.users) ? data.users : []
+    people.value = list.map(normalizeUser).filter((u) => u.id)
+
+    for (const user of people.value) {
+      if (user.lastSeenAt) {
+        lastSeenMap.value.set(user.id, user.lastSeenAt)
+      }
+    }
   } catch (e) {
-    error.value = e?.message || "Failed to load people";
+    if (e.name !== 'AbortError') {
+      error.value = e?.message || 'Failed to load people'
+    }
   } finally {
-    loading.value = false;
+    loading.value = false
   }
 }
 
+/* =========================
+   MESSAGE → INBOX
+========================= */
 function openChat(person) {
-  const targetId = String(person?.id || person?.userId || "").trim();
-  const targetName = displayName(person);
+  const targetId = String(person?.id || person?.userId || '').trim()
+  const targetName = displayName(person)
 
   if (!targetId) {
-    error.value = "Missing user id for chat";
-    return;
+    error.value = 'Missing user id for chat'
+    return
   }
 
   router.push({
-    path: "/messages",
+    path: '/messages',
     query: {
       userId: targetId,
       name: targetName,
     },
-  });
+  })
 }
 
 function startAudioCall(person) {
-  const targetId = String(person?.id || person?.userId || "").trim();
-  const targetName = displayName(person);
+  const targetId = String(person?.id || person?.userId || '').trim()
+  const targetName = displayName(person)
 
   if (!targetId) {
-    error.value = "Missing user id for call";
-    return;
+    error.value = 'Missing user id for call'
+    return
   }
 
   router.push({
-    path: "/call",
+    path: '/call',
     query: {
       toUserId: targetId,
       name: targetName,
-      video: "0",
+      kind: 'audio',
     },
-  });
+  })
+}
+
+function startVideoCall(person) {
+  const targetId = String(person?.id || person?.userId || '').trim()
+  const targetName = displayName(person)
+
+  if (!targetId) {
+    error.value = 'Missing user id for call'
+    return
+  }
+
+  router.push({
+    path: '/call',
+    query: {
+      toUserId: targetId,
+      name: targetName,
+      kind: 'video',
+    },
+  })
 }
 
 function goProfile(person) {
-  const targetId = String(person?.id || person?.userId || "").trim();
+  const targetId = String(person?.id || person?.userId || '').trim()
   if (!targetId) {
-    error.value = "Missing user id for profile";
-    return;
+    error.value = 'Missing user id for profile'
+    return
   }
-  router.push(`/profile/${targetId}`);
+  router.push(`/profile/${targetId}`)
 }
 
 function goBack() {
-  router.push("/dashboard");
+  router.push('/dashboard')
 }
 
 function toggleOffline() {
-  showOffline.value = !showOffline.value;
+  showOffline.value = !showOffline.value
 }
 
 async function refreshAll() {
-  await fetchPeople();
-  socket.emit("presence:list:get");
+  await fetchPeople()
+  if (socketConnected.value) {
+    socket.emit('presence:list:get')
+  }
 }
 
 function onPresenceList(payload) {
-  const ids = Array.isArray(payload?.onlineUserIds) ? payload.onlineUserIds : [];
-  onlineUserIds.value = ids.map((id) => String(id));
+  const ids = Array.isArray(payload?.onlineUserIds) ? payload.onlineUserIds : []
+  onlineUserIds.value = ids.map((id) => String(id))
 }
 
 function onPresenceUpdate(payload) {
-  const uid = String(payload?.userId || "").trim();
-  const online = !!payload?.online;
+  const uid = String(payload?.userId || '').trim()
+  const online = !!payload?.online
+  const lastSeen = payload?.lastSeenAt || payload?.timestamp
 
-  if (!uid) return;
+  if (!uid) return
 
-  const set = new Set(onlineUserIds.value);
-  if (online) set.add(uid);
-  else set.delete(uid);
-  onlineUserIds.value = Array.from(set);
+  const set = new Set(onlineUserIds.value)
+  if (online) {
+    set.add(uid)
+  } else {
+    set.delete(uid)
+    if (lastSeen) {
+      lastSeenMap.value.set(uid, lastSeen)
+    }
+  }
+  onlineUserIds.value = Array.from(set)
 }
 
 function onOnlineUsersLegacy(entries) {
-  if (!Array.isArray(entries)) return;
-  const ids = entries.map((entry) => String(Array.isArray(entry) ? entry[0] : entry)).filter(Boolean);
-  onlineUserIds.value = Array.from(new Set(ids));
+  if (!Array.isArray(entries)) return
+  const ids = entries
+    .map((entry) => String(Array.isArray(entry) ? entry[0] : entry))
+    .filter(Boolean)
+  onlineUserIds.value = Array.from(new Set(ids))
+}
+
+function onNearbyUsers(users) {
+  nearbyUsers.value = Array.isArray(users) ? users : []
 }
 
 function onSocketConnect() {
-  socketConnected.value = true;
-  const username = me.value?.username || me.value?.name || "User";
+  socketConnected.value = true
+  const username = me.value?.username || me.value?.name || 'User'
   if (myUserId.value) {
-    socket.emit("user:online", { userId: myUserId.value, username });
+    socket.emit('user:online', { userId: myUserId.value, username })
   }
-  socket.emit("presence:list:get");
+  socket.emit('presence:list:get')
 }
 
 function onSocketDisconnect() {
-  socketConnected.value = false;
+  socketConnected.value = false
+}
+
+let refreshInterval = null
+
+function startAutoRefresh() {
+  stopAutoRefresh()
+  refreshInterval = setInterval(() => {
+    if (!loading.value) {
+      fetchPeople().catch(() => {})
+    }
+  }, 60000)
+}
+
+function stopAutoRefresh() {
+  if (refreshInterval) {
+    clearInterval(refreshInterval)
+    refreshInterval = null
+  }
 }
 
 onMounted(async () => {
-  me.value = getMe();
+  me.value = getMe()
 
-  ensurePulseSocket();
-  refreshSocketAuth(true);
+  ensurePulseSocket()
+  refreshSocketAuth(true)
 
-  socket.on("connect", onSocketConnect);
-  socket.on("disconnect", onSocketDisconnect);
-  socket.on("presence:list", onPresenceList);
-  socket.on("presence:update", onPresenceUpdate);
-  socket.on("online-users", onOnlineUsersLegacy);
+  socket.on('connect', onSocketConnect)
+  socket.on('disconnect', onSocketDisconnect)
+  socket.on('presence:list', onPresenceList)
+  socket.on('location:nearby', onNearbyUsers)
+  socket.on('presence:update', onPresenceUpdate)
+  socket.on('online-users', onOnlineUsersLegacy)
 
-  await fetchPeople();
+  await fetchPeople()
 
   if (socket.connected) {
-    onSocketConnect();
+    onSocketConnect()
   }
-});
+
+  startAutoRefresh()
+})
 
 onBeforeUnmount(() => {
-  socket.off("connect", onSocketConnect);
-  socket.off("disconnect", onSocketDisconnect);
-  socket.off("presence:list", onPresenceList);
-  socket.off("presence:update", onPresenceUpdate);
-  socket.off("online-users", onOnlineUsersLegacy);
-});
+  cleanupControllers()
+  stopAutoRefresh()
+  clearTimeout(searchDebounce)
+
+  if (myUserId.value) {
+    socket.emit('user:offline', { userId: myUserId.value })
+  }
+
+  socket.off('connect', onSocketConnect)
+  socket.off('disconnect', onSocketDisconnect)
+  socket.off('presence:list', onPresenceList)
+  socket.off('presence:update', onPresenceUpdate)
+  socket.off('online-users', onOnlineUsersLegacy)
+  socket.off('location:nearby', onNearbyUsers)
+})
 </script>
 
 <style scoped>
@@ -528,6 +732,12 @@ onBeforeUnmount(() => {
   color: #f4f7ff;
   padding: 0 14px;
   font-size: 15px;
+  outline: none;
+  transition: border-color 0.2s;
+}
+
+.search:focus {
+  border-color: rgba(102, 126, 234, 0.5);
 }
 
 .toolbar-right {
@@ -572,15 +782,72 @@ onBeforeUnmount(() => {
 }
 
 .error-card {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
   color: #ffd7df;
   background: rgba(120, 15, 35, 0.28);
   border: 1px solid rgba(255, 102, 140, 0.3);
+}
+
+.error-close {
+  background: none;
+  border: none;
+  color: #ffd7df;
+  font-size: 20px;
+  cursor: pointer;
 }
 
 .empty-card {
   color: #d7def6;
   background: rgba(255,255,255,0.05);
   border: 1px solid rgba(255,255,255,0.06);
+}
+
+.skeleton-list {
+  display: flex;
+  flex-direction: column;
+  gap: 14px;
+}
+
+.skeleton-row {
+  display: flex;
+  gap: 14px;
+  align-items: center;
+  padding: 16px;
+  border-radius: 22px;
+  background: rgba(255, 255, 255, 0.04);
+  animation: skeletonPulse 1.5s ease-in-out infinite;
+}
+
+@keyframes skeletonPulse {
+  0%, 100% { opacity: 0.4; }
+  50% { opacity: 0.8; }
+}
+
+.skeleton-avatar {
+  width: 60px;
+  height: 60px;
+  border-radius: 18px;
+  background: rgba(255, 255, 255, 0.1);
+  flex-shrink: 0;
+}
+
+.skeleton-content {
+  flex: 1;
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
+}
+
+.skeleton-line {
+  height: 12px;
+  border-radius: 6px;
+  background: rgba(255, 255, 255, 0.1);
+}
+
+.skeleton-line.short {
+  width: 30%;
 }
 
 .people-list {
@@ -597,6 +864,18 @@ onBeforeUnmount(() => {
   justify-content: space-between;
   gap: 16px;
   cursor: pointer;
+  transition: all 0.2s;
+  outline: none;
+}
+
+.person-card:hover,
+.person-card:focus {
+  background: rgba(255, 255, 255, 0.1);
+  transform: translateY(-1px);
+}
+
+.person-card.online {
+  border-color: rgba(52, 211, 108, 0.2);
 }
 
 .person-main {
@@ -717,12 +996,53 @@ onBeforeUnmount(() => {
   color: #eef2ff;
   background: rgba(255,255,255,0.07);
   font-size: 18px;
+  display: grid;
+  place-items: center;
+}
+
+.mini-action:hover {
+  background: rgba(255,255,255,0.14);
+}
+
+/* Message button stands out */
+.mini-action.msg-btn {
+  background: linear-gradient(135deg, rgba(236,72,153,0.25), rgba(139,92,246,0.2));
+  border: 1px solid rgba(139,92,246,0.25);
+}
+
+.mini-action.msg-btn:hover {
+  background: linear-gradient(135deg, rgba(236,72,153,0.35), rgba(139,92,246,0.3));
+  transform: translateY(-2px);
+  box-shadow: 0 8px 20px rgba(139,92,246,0.15);
 }
 
 .mini-action:disabled {
   opacity: 0.38;
   cursor: not-allowed;
   transform: none;
+}
+
+.pagination {
+  display: flex;
+  justify-content: center;
+  align-items: center;
+  gap: 16px;
+  padding: 20px;
+}
+
+.pagination button {
+  padding: 10px 20px;
+  border-radius: 12px;
+  border: none;
+  background: rgba(255, 255, 255, 0.1);
+  color: white;
+  font-weight: 700;
+  cursor: pointer;
+}
+
+.pagination button:disabled {
+  opacity: 0.4;
+  cursor: not-allowed;
 }
 
 @media (max-width: 720px) {

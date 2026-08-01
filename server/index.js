@@ -23,7 +23,9 @@ import uploadRoutes from "./routes/upload.routes.js";
 import likesRoutes from "./routes/likes.routes.js";
 import { initMediasoupWorker } from "./mediasoup/workers.js";
 import { registerLiveSfuHandlers } from "./mediasoup/socketLiveSfu.js";
-
+import { registerLocationHandlers } from "./location/socketLocation.js";
+import socketAuth from "./middleware/socketAuth.js";
+import initZoomServer from "./handlers/zoom.js";   
 await initMediasoupWorker();
 dotenv.config();
 
@@ -289,6 +291,7 @@ io.use((socket, next) => {
   try {
     const token =
       socket.handshake.auth?.token ||
+      socket.handshake.query?.token ||
       socket.handshake.headers?.authorization?.replace("Bearer ", "");
 
     if (!token) return next();
@@ -299,13 +302,20 @@ io.use((socket, next) => {
 
     socket.userId = userId;
     socket.username = payload?.username || `User${userId}`;
+
+    // ✅ ADD THESE 3 LINES
+    socket.data.user = {
+      id: userId,
+      username: socket.username,
+    };
+    socket.user = socket.data.user;   
     return next();
   } catch (e) {
     logWARN("Socket auth failed (continuing as guest):", e?.message || e);
     return next();
   }
 });
-
+initZoomServer(io);   
 /* ---------- PRESENCE ---------- */
 const onlineUsers = new Map();    // userId -> socketId
 const socketToUserId = new Map(); // socketId -> userId
@@ -357,16 +367,20 @@ function emitLiveList() {
 
 function emitLivePresence(liveId) {
   const id = String(liveId);
-  const viewers = ensureLiveViewerSet(id);
+  const roomName = `live:${id}`;
+  const room = io.sockets.adapter.rooms.get(roomName);
   const hostSocketId = liveHosts.get(id);
 
-  io.to(`live:${id}`).emit("live:presence", {
+  // Room size includes host, so subtract 1. Math.max prevents negative if host somehow left.
+  const viewerCount = room ? Math.max(0, room.size - 1) : 0;
+
+  // Emit to EVERYONE in the room (host sees it update, viewers see it too if you show it)
+  io.to(roomName).emit("live:presence", {
     liveId: id,
-    viewerCount: viewers.size,
+    viewerCount,
     hostSocketId: hostSocketId || null,
   });
 }
-
 /* ---------- LIVE MIC CONTROL ---------- */
 const liveSpeakers = new Map();     // liveId -> Set<userId>
 const liveMicRequests = new Map();  // liveId -> Map<userId -> payload>
@@ -776,6 +790,7 @@ io.on("connection", (socket) => {
   // ✅ ADD THIS (merge point)
   registerLiveSfuHandlers(io, socket);
   registerCallSfuHandlers(io, socket);
+  registerLocationHandlers(io, socket);
 
   /* ✅ Auto-register if JWT auth succeeded */
   if (socket.userId) {
@@ -1639,7 +1654,59 @@ io.on("connection", (socket) => {
 
     logLIVE("live:mic:deny", { liveId: String(liveId), userId: uid });
   });
+    /* ---------- DIRECT MESSAGES ---------- */
+  function getDmRoomId(u1, u2) {
+    return `dm-${[String(u1), String(u2)].sort().join('-')}`;
+  }
 
+  socket.on('join_room', (roomId) => {
+    if (!roomId || typeof roomId !== 'string') return;
+    socket.join(roomId);
+    console.log(`👥 ${socket.id} joined room ${roomId}`);
+  });
+
+  socket.on('leave_room', (roomId) => {
+    if (!roomId) return;
+    socket.leave(roomId);
+    console.log(`🚪 ${socket.id} left room ${roomId}`);
+  });
+
+  socket.on('send_message', async (data, ack) => {
+    try {
+      const { roomId, sender_id, receiver_id, content, text } = data || {};
+
+      if (!sender_id || !receiver_id) {
+        if (typeof ack === 'function') ack({ error: 'Missing sender_id or receiver_id' });
+        return;
+      }
+
+      const messageText = String(text || content || '').trim();
+      if (!messageText) {
+        if (typeof ack === 'function') ack({ error: 'Message text is empty' });
+        return;
+      }
+
+      const finalRoom = roomId || getDmRoomId(sender_id, receiver_id);
+
+      const message = {
+        id: `${Date.now()}-${Math.random().toString(36).slice(2, 8)}`,
+        roomId: finalRoom,
+        sender_id: String(sender_id),
+        sender_name: data.sender_name || 'User',
+        receiver_id: String(receiver_id),
+        content: messageText,
+        text: messageText,
+        created_at: new Date().toISOString(),
+      };
+
+      io.to(finalRoom).emit('receive_message', message);
+
+      if (typeof ack === 'function') ack({ id: message.id, ok: true });
+    } catch (err) {
+      console.error('send_message error:', err);
+      if (typeof ack === 'function') ack({ error: 'Server error' });
+    }
+  });
   /* =========================
      DISCONNECT CLEANUP
   ========================= */
