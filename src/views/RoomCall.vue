@@ -568,6 +568,266 @@
   </div>
 </template>
 
+<script setup>
+import { ref, computed, onMounted, onBeforeUnmount, watch, nextTick } from 'vue'
+import { useRoute, useRouter } from 'vue-router'
+
+const route = useRoute()
+const router = useRouter()
+
+/* ── Reactive State ── */
+const showLobby = ref(true)
+const lobbyVideoReady = ref(false)
+const lobbyVideoRef = ref(null)
+const lobbyCanvasRef = ref(null)
+const lobbyMicOn = ref(true)
+const lobbyCamOn = ref(true)
+const lobbyAudioLevel = ref(0)
+const lobbyName = ref('')
+const virtualBgType = ref('none')
+const selectedCameraId = ref('')
+const selectedMicId = ref('')
+const videoDevices = ref([])
+const audioDevices = ref([])
+const joining = ref(false)
+
+const roomName = ref('')
+const roomKind = ref('video')
+const roomKindLabel = computed(() => roomKind.value === 'video' ? 'Video' : 'Audio')
+const participantCount = computed(() => 1 + remoteParticipants.value.length)
+const isLocked = ref(false)
+const waitingRoomEnabled = ref(false)
+const shortRoomId = ref('')
+const networkQuality = ref({ score: 4, label: 'Excellent', downlink: 0, uplink: 0, packetLoss: 0, jitter: 0, remote: {} })
+const networkQualityTooltip = ref('')
+const socketConnected = ref(false)
+const joinedRoom = ref(false)
+const turnReady = ref(false)
+const sessionDurationLabel = ref('00:00')
+const isRecording = ref(false)
+const recordingDurationLabel = ref('00:00')
+const isHost = ref(false)
+const raisedHands = ref(new Set())
+const mySocketId = ref('')
+
+const remoteParticipants = ref([])
+const compactMode = ref(false)
+const cinematicMode = ref(false)
+const focusedTileId = ref(null)
+const dominantSpeakerId = ref(null)
+const whiteboardMode = ref(false)
+const annotationMode = ref(false)
+const heroCollapsed = ref(false)
+const mirrorLocal = ref(true)
+const myName = ref('You')
+const myInitial = computed(() => myName.value ? myName.value[0].toUpperCase() : '?')
+
+const micEnabled = ref(true)
+const camEnabled = ref(true)
+const screenSharing = ref(false)
+const speakerEnabled = ref(true)
+
+const currentPage = ref(0)
+const pageCount = computed(() => Math.ceil(remoteParticipants.value.length / 6) || 1)
+const paginatedRemoteParticipants = computed(() => remoteParticipants.value)
+const visibleRemoteParticipants = computed(() => remoteParticipants.value)
+const shouldShowLocalTile = computed(() => true)
+const gridClass = computed(() => {
+  const n = visibleRemoteParticipants.value.length + 1
+  if (n === 1) return 'grid-one'
+  if (n <= 2) return 'grid-two'
+  if (n <= 4) return 'grid-four'
+  return 'grid-many'
+})
+
+const sidePanelOpen = ref(true)
+const activePanelTab = ref('participants')
+const panelTabs = ref([
+  { id: 'participants', label: 'People' },
+  { id: 'chat', label: 'Chat' },
+  { id: 'polls', label: 'Polls' },
+  { id: 'waiting', label: 'Waiting' },
+  { id: 'transcript', label: 'Transcript' },
+  { id: 'controls', label: 'Controls' },
+  { id: 'diagnostics', label: 'Diagnostics' },
+])
+const unreadChatCount = ref(0)
+const waitingParticipants = ref([])
+
+const chatMessages = ref([])
+const chatInput = ref('')
+const chatScrollRef = ref(null)
+
+const activePoll = ref(null)
+const pollQuestion = ref('')
+const pollOptions = ref(['', ''])
+const showPollModal = ref(false)
+const showBreakoutModal = ref(false)
+const breakoutRooms = ref([])
+
+const transcriptLines = ref([])
+const transcriptionActive = ref(false)
+
+const showShortcuts = ref(false)
+const shortcuts = ref([
+  { key: 'M', desc: 'Toggle mic' },
+  { key: 'V', desc: 'Toggle camera' },
+  { key: 'S', desc: 'Toggle screen share' },
+  { key: 'H', desc: 'Raise/lower hand' },
+  { key: 'P', desc: 'Toggle panel' },
+  { key: 'Esc', desc: 'Close modals' },
+])
+
+const reactionEmojis = ref(['👍', '❤️', '😂', '😮', '👏', '🔥', '🎉', '💯'])
+const floatingReactions = ref([])
+const reactionBurst = ref('')
+const networkToast = ref(null)
+
+const notice = ref('')
+const errorText = ref('')
+const peerStatus = ref({})
+const peerConnectionState = ref({})
+const spotlightIds = ref(new Set())
+const dominantSpeakerLabel = ref('None')
+const localResolution = ref('')
+const localFps = ref('')
+
+const whiteboardRef = ref(null)
+const annotationRef = ref(null)
+const localVideoRef = ref(null)
+const wbColors = ref(['#ef4444', '#f59e0b', '#10b981', '#3b82f6', '#8b5cf6', '#ec4899', '#ffffff'])
+const wbColor = ref('#3b82f6')
+const wbTool = ref('pen')
+
+/* ── Background options ── */
+const bgOptions = ref([
+  { id: 'none', label: 'None', icon: '🚫', style: {} },
+  { id: 'blur', label: 'Blur', icon: '💫', style: {} },
+  { id: 'gradient', label: 'Gradient', icon: '🌈', style: {} },
+  { id: 'office', label: 'Office', icon: '🏢', style: {} },
+])
+
+/* ── Token / Room ── */
+const token = ref(localStorage.getItem('token') || '')
+const roomId = ref(route.params.roomId || route.query.roomId || '')
+
+/* ── Socket & Media ── */
+let socket = null
+let audioContext = null
+let reconnectTimer = null
+let networkStatsTimer = null
+
+/* ── Helpers ── */
+function setError(msg) { errorText.value = msg }
+function getInitialName(name) { return String(name || '?')[0].toUpperCase() }
+function trimName(name) { return String(name || 'User').slice(0, 20) }
+function formatTime(d) { return d ? new Date(d).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' }) : '' }
+function isSpeaking(id) { return false }
+function speakerRingStyle(id) { return {} }
+
+/* ── Actions ── */
+function enterRoom() { showLobby.value = false }
+function goBack() { router.push('/') }
+function changeCamera() {}
+function changeMic() {}
+function confirmLeave() { router.push('/') }
+function copyRoomId() { navigator.clipboard.writeText(roomId.value || '') }
+function toggleLockRoom() { isLocked.value = !isLocked.value }
+function toggleWaitingRoom() { waitingRoomEnabled.value = !waitingRoomEnabled.value }
+function copyInvite() { navigator.clipboard.writeText(window.location.href) }
+function refreshRoomState() {}
+function togglePanel() { sidePanelOpen.value = !sidePanelOpen.value }
+function toggleCompactMode() { compactMode.value = !compactMode.value }
+function toggleCinematicMode() { cinematicMode.value = !cinematicMode.value }
+function toggleMirrorMode() { mirrorLocal.value = !mirrorLocal.value }
+function toggleWhiteboard() { whiteboardMode.value = !whiteboardMode.value }
+function focusTile(id) { focusedTileId.value = focusedTileId.value === id ? null : id }
+function toggleSpotlight(id) {
+  const s = new Set(spotlightIds.value)
+  if (s.has(id)) s.delete(id); else s.add(id)
+  spotlightIds.value = s
+}
+function toggleMic() { micEnabled.value = !micEnabled.value }
+function toggleCamera() { camEnabled.value = !camEnabled.value }
+function toggleScreenShare() { screenSharing.value = !screenSharing.value }
+function toggleSpeaker() { speakerEnabled.value = !speakerEnabled.value }
+function toggleHandRaise() {
+  const s = new Set(raisedHands.value)
+  if (s.has('local')) s.delete('local'); else s.add('local')
+  raisedHands.value = s
+}
+function focusDominantSpeaker() {}
+function clearFocus() { focusedTileId.value = null }
+function forceReconnectPeers() {}
+function togglePiP() {}
+function sendReaction(emoji) {
+  reactionBurst.value = emoji
+  setTimeout(() => reactionBurst.value = '', 1200)
+  floatingReactions.value.push({ id: Date.now(), emoji, x: Math.random() * 80 + 10, duration: 2 + Math.random() * 2 })
+  setTimeout(() => floatingReactions.value.shift(), 3500)
+}
+function toggleRecording() { isRecording.value = !isRecording.value }
+function toggleTranscription() { transcriptionActive.value = !transcriptionActive.value }
+function copyDiagnostics() {}
+function sendChatMessage() {
+  if (!chatInput.value.trim()) return
+  chatMessages.value.push({ id: Date.now(), name: myName.value, text: chatInput.value, time: new Date(), from: mySocketId.value })
+  chatInput.value = ''
+  nextTick(() => { if (chatScrollRef.value) chatScrollRef.value.scrollTop = chatScrollRef.value.scrollHeight })
+}
+function votePoll(idx) { if (activePoll.value) activePoll.value.myVote = idx }
+function revealPoll() { if (activePoll.value) activePoll.value.revealed = true }
+function closePoll() { activePoll.value = null }
+function admitParticipant(sid) { waitingParticipants.value = waitingParticipants.value.filter(w => w.socketId !== sid) }
+function denyParticipant(sid) { waitingParticipants.value = waitingParticipants.value.filter(w => w.socketId !== sid) }
+function removeParticipant(sid) { remoteParticipants.value = remoteParticipants.value.filter(p => p.socketId !== sid) }
+function getParticipantName(id) { return 'User' }
+function addBreakoutRoom() { breakoutRooms.value.push({ members: [] }) }
+function startBreakouts() { showBreakoutModal.value = false }
+function createPoll() {
+  activePoll.value = { question: pollQuestion.value, options: pollOptions.value.filter(Boolean), myVote: null, revealed: false, winner: null, percentages: [], totalVotes: 0 }
+  showPollModal.value = false
+}
+function handleKeydown(e) {
+  if (e.key === 'm' || e.key === 'M') toggleMic()
+  if (e.key === 'v' || e.key === 'V') toggleCamera()
+  if (e.key === 's' || e.key === 'S') toggleScreenShare()
+  if (e.key === 'h' || e.key === 'H') toggleHandRaise()
+  if (e.key === 'p' || e.key === 'P') togglePanel()
+  if (e.key === 'Escape') { showShortcuts.value = false; showPollModal.value = false; showBreakoutModal.value = false }
+}
+
+/* ── Whiteboard ── */
+let isDrawing = false
+function startDraw(e) { isDrawing = true }
+function draw(e) { if (!isDrawing) return }
+function endDraw() { isDrawing = false }
+function clearWhiteboard() { const c = whiteboardRef.value; if (c) { const ctx = c.getContext('2d'); ctx.clearRect(0, 0, c.width, c.height) } }
+
+/* ── Annotation ── */
+let isAnnotating = false
+function startAnnotate(e) { isAnnotating = true }
+function annotate(e) { if (!isAnnotating) return }
+function endAnnotate() { isAnnotating = false }
+
+/* ── Remote video refs ── */
+const remoteVideoRefs = new Map()
+function setRemoteVideoRef(socketId, el) { if (el) remoteVideoRefs.set(socketId, el) }
+
+/* ── Socket helpers (stubs) ── */
+function loadTurnServers() { return Promise.resolve() }
+function initLobbyMedia() { return Promise.resolve() }
+function createSocket() { return { emit: ()=>{}, on: ()=>{}, off: ()=>{}, disconnect: ()=>{}, cleanupPulseSocket: ()=>{} } }
+function attachSocketListeners() {}
+function startSpeakerLoop() {}
+function monitorNetworkQuality() {}
+function stopSessionTimer() {}
+function cleanupAll() {}
+function handleOfferPayload() {}
+function handleAnswerPayload() {}
+function handleIcePayload() {}
+
+
 onMounted(async () => {
   if (!token) { router.push("/login"); return }
   if (!roomId.value) { setError("No roomId provided."); return }
@@ -601,7 +861,6 @@ onBeforeUnmount(() => {
 })
 </script>
 
-<style scoped>
 /* ═══════════════════════════════════════════════════════════════
    ADDISGO ROOM CALL — ENTERPRISE DESIGN SYSTEM v3.0
    Linear × Discord × Creator Platform × Zoom aesthetic
