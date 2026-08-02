@@ -1346,6 +1346,7 @@
 import { ref, computed, onMounted, onBeforeUnmount, nextTick, watch } from "vue"
 import { useRouter } from "vue-router"
 import Layout from "../components/Layout.vue"
+import { useFeed } from "../composables/useFeed.js"
 import TikTokFeed from "../components/TikTokFeed.vue"
 import CommentsPanel from "../components/Comments.vue"
 import { createSocket } from "../api/socket"
@@ -1358,6 +1359,25 @@ const token = localStorage.getItem("token") || ""
 const me = (() => {
   try { return JSON.parse(localStorage.getItem("user") || "null") } catch { return null }
 })()
+
+const {
+  feed,
+  fetchPosts: feedFetchPosts,
+  ensureLikeState: feedEnsureLikeState,
+  toggleLike: feedToggleLike,
+  isSaved: feedIsSaved,
+  isPinned: feedIsPinned,
+  toggleSave: feedToggleSave,
+  togglePin: feedTogglePin,
+} = useFeed()
+
+const posts = computed(() => feed.posts)
+const loading = computed(() => feed.loading)
+const error = computed(() => feed.error)
+const likesByPost = computed(() => feed.likesByPost)
+const likeBusyByPost = computed(() => feed.likeBusyByPost)
+const savedPostIds = computed(() => feed.savedPostIds)
+const pinnedPostIds = computed(() => feed.pinnedPostIds)
 const { coords, status: locStatus, hasLocation, isApproximate, locationLabel, computeDistances, sortByDistance } = useLocation()
 /* =========================
    STORAGE KEYS
@@ -1600,8 +1620,8 @@ async function flushOfflineQueue() {
 
       const clean = normalizePost(data)
       if (clean) {
-        posts.value.unshift(clean)
-        await ensureLikeState(clean.id)
+        feed.posts.unshift(clean)
+        await feedEnsureLikeState(clean.id, apiUrl, token)
       }
     }
 
@@ -2267,10 +2287,7 @@ function joinCallRoom(room) {
 /* =========================
    POSTS
 ========================= */
-const posts = ref([])
-const loading = ref(true)
 const posting = ref(false)
-const error = ref("")
 
 const composerRef = ref(null)
 const caption = ref("")
@@ -2295,43 +2312,20 @@ function clearDraft() {
 }
 
 async function fetchPosts() {
-  try {
-    loading.value = true
-    error.value = ""
-
-    const res = await fetch(`${apiUrl}/posts`)
-    const data = await res.json()
-
-    if (!Array.isArray(data)) {
-      posts.value = []
-      error.value = data?.error || "Failed to load posts"
-      return
-    }
-
-    posts.value = data.map(normalizePost).filter(Boolean)
-
-    pageSize.value = 8
-    reelsPageSize.value = 8
-
-    await preloadLikesForPosts(posts.value.slice(0, 24))
-    await nextTick()
-
-    if (feedMode.value === "foryou") {
-      setupLoadMoreObserver()
-      setupVideoObserver()
-      applyMuteToAllVideos()
-    }
-
-    if (feedMode.value === "reels") {
-      setupReelsLoadMoreObserver()
-      setupVideoObserver()
-      applyMuteToAllVideos()
-    }
-  } catch {
-    posts.value = []
-    error.value = "Failed to fetch posts"
-  } finally {
-    loading.value = false
+  await feedFetchPosts(apiUrl, token)
+  pageSize.value = 8
+  reelsPageSize.value = 8
+  await preloadLikesForPosts(feed.posts.slice(0, 24))
+  await nextTick()
+  if (feedMode.value === "foryou") {
+    setupLoadMoreObserver()
+    setupVideoObserver()
+    applyMuteToAllVideos()
+  }
+  if (feedMode.value === "reels") {
+    setupReelsLoadMoreObserver()
+    setupVideoObserver()
+    applyMuteToAllVideos()
   }
 }
 
@@ -2349,7 +2343,7 @@ async function submitPost() {
 
   try {
     posting.value = true
-    error.value = ""
+    feed.error = ""
 
     const form = new FormData()
     form.append("caption", caption.value || "")
@@ -2364,14 +2358,14 @@ async function submitPost() {
 
     const data = await res.json()
     if (!res.ok) {
-      error.value = data?.error || "Post failed"
+      feed.error = data?.error || "Post failed"
       return
     }
 
     const clean = normalizePost(data)
     if (clean) {
-      posts.value.unshift(clean)
-      await ensureLikeState(clean.id)
+      feed.posts.unshift(clean)
+      await feedEnsureLikeState(clean.id, apiUrl, token)
       addActivity("Post", "Created a new post")
     }
 
@@ -2388,7 +2382,7 @@ async function submitPost() {
       queuePostDraft("offline")
       clearDraft()
     } else {
-      error.value = "Post failed"
+      feed.error = "Post failed"
     }
   } finally {
     posting.value = false
@@ -2401,7 +2395,7 @@ async function submitReel() {
 
   try {
     posting.value = true
-    error.value = ""
+    feed.error = ""
 
     const form = new FormData()
     form.append("caption", caption.value || "")
@@ -2415,14 +2409,14 @@ async function submitReel() {
 
     const data = await res.json()
     if (!res.ok) {
-      error.value = data?.error || "Reel failed"
+      feed.error = data?.error || "Reel failed"
       return
     }
 
     const clean = normalizePost(data?.post || data)
     if (clean) {
-      posts.value.unshift(clean)
-      await ensureLikeState(clean.id)
+      feed.posts.unshift(clean)
+      await feedEnsureLikeState(clean.id, apiUrl, token)
       addActivity("Reel", "Created a new reel")
     }
 
@@ -2433,7 +2427,7 @@ async function submitReel() {
     setupVideoObserver()
     applyMuteToAllVideos()
   } catch {
-    error.value = "Reel failed"
+    feed.error = "Reel failed"
   } finally {
     posting.value = false
   }
@@ -2462,8 +2456,6 @@ async function refreshAll() {
    FILTERS / SORT / TRENDING
 ========================= */
 const filteredBaseCount = computed(() => sortedFilteredPosts.value.length)
-const likesByPost = ref({})
-const likeBusyByPost = ref({})
 
 const baseFiltered = computed(() => {
   const q = search.value.trim().toLowerCase()
@@ -2561,53 +2553,37 @@ function surpriseMe() {
 /* =========================
    SAVED / PINNED
 ========================= */
-const savedPostIds = ref(Array.isArray(initialSavedIds) ? initialSavedIds.map(Number) : [])
-const pinnedPostIds = ref(Array.isArray(initialPinnedIds) ? initialPinnedIds.map(Number) : [])
 
 function persistSaved() {
-  try { localStorage.setItem(DASH_SAVED_POSTS_KEY, JSON.stringify(savedPostIds.value)) } catch {}
+  /* handled by useFeed */
 }
 
 function persistPinned() {
-  try { localStorage.setItem(DASH_PINNED_POSTS_KEY, JSON.stringify(pinnedPostIds.value)) } catch {}
+  /* handled by useFeed */
 }
 
 function isSaved(postId) {
-  return savedPostIds.value.includes(Number(postId))
+  return feedIsSaved(postId)
 }
 
 function isPinned(postId) {
-  return pinnedPostIds.value.includes(Number(postId))
+  return feedIsPinned(postId)
 }
 
 function toggleSavePost(post) {
   const id = Number(post?.id)
   if (!id) return
-
-  if (isSaved(id)) {
-    savedPostIds.value = savedPostIds.value.filter((x) => x !== id)
-    addActivity("Saved", `Removed post #${id} from saved`)
-  } else {
-    savedPostIds.value = [id, ...savedPostIds.value].slice(0, 300)
-    addActivity("Saved", `Saved post #${id}`)
-  }
-
-  persistSaved()
+  const wasSaved = feedIsSaved(id)
+  feedToggleSave(id)
+  addActivity("Saved", wasSaved ? `Removed post #${id} from saved` : `Saved post #${id}`)
 }
 
 function togglePinPost(post) {
   const id = Number(post?.id)
   if (!id) return
-
-  if (isPinned(id)) {
-    pinnedPostIds.value = pinnedPostIds.value.filter((x) => x !== id)
-    addActivity("Pinned", `Unpinned post #${id}`)
-  } else {
-    pinnedPostIds.value = [id, ...pinnedPostIds.value].slice(0, 100)
-    addActivity("Pinned", `Pinned post #${id}`)
-  }
-
-  persistPinned()
+  const wasPinned = feedIsPinned(id)
+  feedTogglePin(id)
+  addActivity("Pinned", wasPinned ? `Unpinned post #${id}` : `Pinned post #${id}`)
 }
 
 const savedPosts = computed(() => {
@@ -2731,62 +2707,20 @@ function toggleThreadMedia(postId) {
 ========================= */
 async function preloadLikesForPosts(list) {
   if (!token) return
-  await Promise.allSettled(list.map((p) => ensureLikeState(p.id)))
+  await Promise.allSettled(list.map((p) => feedEnsureLikeState(p.id, apiUrl, token)))
 }
 
 async function ensureLikeState(postId) {
-  if (!token) return
-  if (likesByPost.value[postId]) return
-
-  try {
-    const res = await fetch(`${apiUrl}/likes/${postId}`, {
-      headers: { Authorization: `Bearer ${token}` },
-    })
-    const data = await res.json()
-    if (!res.ok) return
-
-    likesByPost.value = {
-      ...likesByPost.value,
-      [postId]: { count: data?.count ?? 0, likedByMe: !!data?.likedByMe },
-    }
-  } catch {}
+  await feedEnsureLikeState(postId, apiUrl, token)
 }
 
 async function toggleLike(post) {
   const postId = post.id
   if (!token) return alert("Please login again to like posts.")
-  await ensureLikeState(postId)
-
-  const prev = likesByPost.value[postId] || { count: 0, likedByMe: false }
-  const optimisticLiked = !prev.likedByMe
-  const optimisticCount = Math.max(0, prev.count + (optimisticLiked ? 1 : -1))
-
-  likesByPost.value = {
-    ...likesByPost.value,
-    [postId]: { count: optimisticCount, likedByMe: optimisticLiked },
-  }
-  likeBusyByPost.value = { ...likeBusyByPost.value, [postId]: true }
-
   try {
-    const res = await fetch(`${apiUrl}/likes/${postId}/toggle`, {
-      method: "POST",
-      headers: { Authorization: `Bearer ${token}` },
-    })
-    const data = await res.json()
-
-    if (!res.ok) {
-      likesByPost.value = { ...likesByPost.value, [postId]: prev }
-      return
-    }
-
-    likesByPost.value = {
-      ...likesByPost.value,
-      [postId]: { count: data?.count ?? optimisticCount, likedByMe: !!data?.likedByMe },
-    }
-  } catch {
-    likesByPost.value = { ...likesByPost.value, [postId]: prev }
-  } finally {
-    likeBusyByPost.value = { ...likeBusyByPost.value, [postId]: false }
+    await feedToggleLike(postId, apiUrl, token)
+  } catch (err) {
+    alert(err.message || "Failed to like")
   }
 }
 
@@ -2834,7 +2768,7 @@ async function reloadCommentCount(postId) {
       [postId]: items.length,
     }
 
-    posts.value = posts.value.map((p) =>
+    feed.posts = feed.posts.map((p) =>
       Number(p.id) === Number(postId)
         ? { ...p, comment_count: items.length }
         : p
