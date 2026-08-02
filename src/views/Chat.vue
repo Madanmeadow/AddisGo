@@ -1,9 +1,9 @@
 <template>
   <div class="chat-container">
     <div class="chat-header">
-      <span>💬 Conversation</span>
+      <span>💬 {{ roomName }}</span>
       <span class="connection-status" :class="{ connected: isConnected }">
-        {{ isConnected ? '● Online' : '○ Offline' }}
+        {{ isConnected ? "● Online" : "○ Offline" }}
       </span>
     </div>
 
@@ -12,7 +12,7 @@
     </div>
 
     <div ref="messagesContainer" class="messages">
-      <div v-if="messages.length === 0" class="empty-state">
+      <div v-if="messages.length === 0 && !historyLoading" class="empty-state">
         No messages yet. Say hi! 👋
       </div>
 
@@ -23,10 +23,12 @@
       >
         <div class="message-content">{{ msg.content }}</div>
         <div class="message-meta">
-          <span class="sender">{{ msg.sender_name || 'User' }}</span>
+          <span class="sender">{{ msg.sender_name || "User" }}</span>
           <span class="time">{{ formatTime(msg.created_at) }}</span>
         </div>
       </div>
+
+      <div v-if="historyLoading" class="empty-state">Loading history…</div>
     </div>
 
     <div class="chat-input">
@@ -40,39 +42,45 @@
         @click="sendMessage"
         :disabled="!message.trim() || !isConnected || sending"
       >
-        {{ sending ? 'Sending...' : 'Send 🚀' }}
+        {{ sending ? "Sending..." : "Send 🚀" }}
       </button>
     </div>
   </div>
 </template>
 
 <script setup>
-import { ref, computed, onMounted, onBeforeUnmount, nextTick, watch } from 'vue'
-import { io } from 'socket.io-client'
+import { ref, computed, onMounted, onBeforeUnmount, nextTick, watch } from "vue"
+import { io } from "socket.io-client"
 
-// Config
-const API_URL = import.meta.env.VITE_API_URL || 'http://localhost:5000'
-const ROOM_ID = 'room-1' // TODO: make this dynamic via props
+/* ── Props ── */
+const props = defineProps({
+  roomId: { type: String, default: "global" },
+  roomName: { type: String, default: "Conversation" },
+})
 
-// State
+/* ── Config ── */
+const API_URL = (import.meta.env.VITE_API_URL || "http://localhost:5000").replace(/\/$/, "")
+const token = localStorage.getItem("token") || ""
+
+/* ── State ── */
 const user = ref(null)
-const message = ref('')
+const message = ref("")
 const messages = ref([])
 const isConnected = ref(false)
-const connectionError = ref('')
+const connectionError = ref("")
 const sending = ref(false)
+const historyLoading = ref(false)
 const messagesContainer = ref(null)
+const historyFetched = ref(false)
 
-// Socket (created per-component, not module-level)
 let socket = null
 
-// Initialize user safely
+/* ── User ── */
 function initUser() {
   try {
-    const stored = localStorage.getItem('user')
+    const stored = localStorage.getItem("user")
     user.value = stored ? JSON.parse(stored) : null
-  } catch (err) {
-    console.error('Failed to parse user from localStorage:', err)
+  } catch {
     user.value = null
   }
 }
@@ -81,147 +89,190 @@ const isMyMessage = computed(() => (msg) => {
   return String(msg.sender_id) === String(user.value?.id)
 })
 
+/* ── Time ── */
 function formatTime(timestamp) {
-  if (!timestamp) return ''
+  if (!timestamp) return ""
   const d = new Date(timestamp)
-  if (Number.isNaN(d.getTime())) return ''
-  return d.toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })
+  if (Number.isNaN(d.getTime())) return ""
+  return d.toLocaleTimeString([], { hour: "2-digit", minute: "2-digit" })
 }
 
-function scrollToBottom() {
+/* ── Scroll ── */
+function scrollToBottom(force = false) {
   nextTick(() => {
-    if (messagesContainer.value) {
-      messagesContainer.value.scrollTop = messagesContainer.value.scrollHeight
+    const el = messagesContainer.value
+    if (!el) return
+    const nearBottom = el.scrollHeight - el.scrollTop - el.clientHeight < 120
+    if (force || nearBottom) {
+      el.scrollTop = el.scrollHeight
     }
   })
 }
 
+/* ── Deduplication ── */
 function hasMessage(msg) {
-  return messages.value.some(m =>
-    m.id && msg.id && String(m.id) === String(msg.id)
+  return messages.value.some(
+    (m) =>
+      (m.id && msg.id && String(m.id) === String(msg.id)) ||
+      (m.tempId && msg.tempId && String(m.tempId) === String(msg.tempId))
   )
 }
 
+/* ── Normalize incoming data ── */
+function normalizeMsg(data) {
+  return {
+    id: data.id || data.message_id || `local-${Date.now()}-${Math.random().toString(36).slice(2, 6)}`,
+    tempId: data.tempId || null,
+    sender_id: data.sender_id ?? data.senderId ?? data.user_id ?? data.userId ?? data.from ?? "",
+    sender_name: data.sender_name ?? data.senderName ?? data.username ?? data.from ?? "User",
+    content: String(data.content ?? data.text ?? data.message ?? ""),
+    created_at: data.created_at ?? data.createdAt ?? data.timestamp ?? new Date().toISOString(),
+  }
+}
+
+/* ── Fetch history via REST ── */
+async function fetchHistory() {
+  if (!token || historyFetched.value) return
+  historyLoading.value = true
+  try {
+    const res = await fetch(
+      `${API_URL}/messages?roomId=${encodeURIComponent(props.roomId)}`,
+      { headers: { Authorization: `Bearer ${token}` } }
+    )
+    if (!res.ok) throw new Error(`HTTP ${res.status}`)
+    const data = await res.json()
+    const list = Array.isArray(data) ? data : data.messages || data.items || []
+    const normalized = list.map(normalizeMsg).filter((m) => m.content)
+    const existingIds = new Set(messages.value.map((m) => String(m.id)))
+    const newMsgs = normalized.filter((m) => !existingIds.has(String(m.id)))
+    messages.value = [...messages.value, ...newMsgs].sort(
+      (a, b) => new Date(a.created_at) - new Date(b.created_at)
+    )
+    historyFetched.value = true
+    scrollToBottom(true)
+  } catch (err) {
+    connectionError.value = `Failed to load history: ${err.message}`
+  } finally {
+    historyLoading.value = false
+  }
+}
+
+/* ── Socket ── */
 function connectSocket() {
   socket = io(API_URL, {
-    transports: ['websocket', 'polling'],
+    transports: ["websocket", "polling"],
     reconnection: true,
     reconnectionAttempts: 5,
     reconnectionDelay: 1000,
+    auth: token ? { token } : undefined,
   })
 
-  socket.on('connect', () => {
+  socket.on("connect", () => {
     isConnected.value = true
-    connectionError.value = ''
-    socket.emit('join_room', ROOM_ID)
+    connectionError.value = ""
+    socket.emit("join-room", props.roomId)
+    if (!historyFetched.value) fetchHistory()
   })
 
-  socket.on('disconnect', (reason) => {
+  socket.on("disconnect", (reason) => {
     isConnected.value = false
-    if (reason === 'io server disconnect') {
-      connectionError.value = 'Disconnected by server'
+    if (reason === "io server disconnect") {
+      connectionError.value = "Disconnected by server"
     }
   })
 
-  socket.on('connect_error', (err) => {
+  socket.on("connect_error", (err) => {
     isConnected.value = false
     connectionError.value = `Connection error: ${err.message}`
   })
 
-  socket.on('receive_message', (data) => {
-    // Prevent duplicates
-    if (hasMessage(data)) return
+  socket.on("receive-message", (data) => {
+    const msg = normalizeMsg(data)
+    if (hasMessage(msg)) return
+    messages.value.push(msg)
+    scrollToBottom()
+  })
 
-    messages.value.push({
-      id: data.id || Date.now(),
-      sender_id: data.sender_id,
-      sender_name: data.sender_name || 'User',
-      content: String(data.content || ''),
-      created_at: data.created_at || new Date().toISOString(),
-    })
-
+  socket.on("receive_message", (data) => {
+    const msg = normalizeMsg(data)
+    if (hasMessage(msg)) return
+    messages.value.push(msg)
     scrollToBottom()
   })
 }
 
 function disconnectSocket() {
   if (!socket) return
-
-  socket.off('connect')
-  socket.off('disconnect')
-  socket.off('connect_error')
-  socket.off('receive_message')
-
-  if (socket.connected) {
-    socket.emit('leave_room', ROOM_ID)
-  }
-
+  socket.off("connect")
+  socket.off("disconnect")
+  socket.off("connect_error")
+  socket.off("receive-message")
+  socket.off("receive_message")
+  if (socket.connected) socket.emit("leave-room", props.roomId)
   socket.disconnect()
   socket = null
 }
 
+/* ── Send ── */
 async function sendMessage() {
   const content = message.value.trim()
   if (!content || !isConnected.value || sending.value) return
   if (!user.value?.id) {
-    connectionError.value = 'Please log in to send messages'
+    connectionError.value = "Please log in to send messages"
     return
   }
 
   sending.value = true
 
+  const tempId = `local-${Date.now()}-${Math.random().toString(36).slice(2, 6)}`
   const msgData = {
-    roomId: ROOM_ID,
+    room: props.roomId,
+    roomId: props.roomId,
     sender_id: user.value.id,
-    sender_name: user.value.username || user.value.name || 'You',
+    sender_name: user.value.username || user.value.name || user.value.display_name || "You",
     content,
     created_at: new Date().toISOString(),
+    tempId,
   }
 
-  // Optimistic local update
-  const localMsg = {
-    id: `local-${Date.now()}`,
-    ...msgData,
-  }
-
+  const localMsg = normalizeMsg({ ...msgData, id: tempId })
   messages.value.push(localMsg)
-  message.value = ''
-  scrollToBottom()
+  message.value = ""
+  scrollToBottom(true)
 
   try {
-    socket.emit('send_message', msgData, (ack) => {
+    socket.emit("send-room-message", msgData, (ack) => {
       sending.value = false
       if (ack?.error) {
         connectionError.value = ack.error
-        // Remove optimistic message on error
-        const idx = messages.value.findIndex(m => m.id === localMsg.id)
+        const idx = messages.value.findIndex((m) => m.id === tempId)
         if (idx !== -1) messages.value.splice(idx, 1)
       } else if (ack?.id) {
-        // Update with server-assigned ID
-        const idx = messages.value.findIndex(m => m.id === localMsg.id)
+        const idx = messages.value.findIndex((m) => m.id === tempId)
         if (idx !== -1) {
           messages.value[idx] = { ...messages.value[idx], id: ack.id }
         }
       }
     })
 
-    // Timeout fallback if server doesn't acknowledge
     setTimeout(() => {
       sending.value = false
     }, 5000)
   } catch (err) {
     sending.value = false
-    connectionError.value = 'Failed to send message'
-    console.error('Send error:', err)
+    connectionError.value = "Failed to send message"
+    console.error("Send error:", err)
   }
 }
 
-// Auto-scroll when messages change
-watch(messages, scrollToBottom, { deep: true })
+/* ── Watchers ── */
+watch(messages, () => scrollToBottom(), { deep: true })
 
+/* ── Lifecycle ── */
 onMounted(() => {
   initUser()
   connectSocket()
+  fetchHistory()
 })
 
 onBeforeUnmount(() => {
@@ -281,7 +332,6 @@ onBeforeUnmount(() => {
   gap: 8px;
 }
 
-/* Custom scrollbar */
 .messages::-webkit-scrollbar {
   width: 6px;
 }
