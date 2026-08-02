@@ -617,6 +617,7 @@
 import { computed, onMounted, onBeforeUnmount, reactive, ref, watch } from "vue"
 import { useRoute, useRouter } from "vue-router"
 import Layout from "../components/Layout.vue"
+import { useFeed } from "../composables/useFeed.js"
 
 const router = useRouter()
 const route = useRoute()
@@ -666,9 +667,9 @@ const syncing = ref(false)
 const saving = ref(false)
 const contentError = ref("")
 const saveError = ref("")
-const allPosts = ref([])
 const isFollowing = ref(false)
 const followLoading = ref(false)
+const { feed, getUserPosts, getUserReels, ensurePosts } = useFeed()
 
 // Pagination
 const postPage = ref(1)
@@ -719,17 +720,11 @@ const joinedText = computed(() => {
 })
 
 const userPosts = computed(() => {
-  const targetId = String(profile.id || viewedUserId.value || "")
-  return allPosts.value.filter(
-    (p) => String(resolvePostUserId(p)) === targetId && !p.video_url
-  )
+  return getUserPosts(profile.id || viewedUserId.value)
 })
 
 const userReels = computed(() => {
-  const targetId = String(profile.id || viewedUserId.value || "")
-  return allPosts.value.filter(
-    (p) => String(resolvePostUserId(p)) === targetId && !!p.video_url
-  )
+  return getUserReels(profile.id || viewedUserId.value)
 })
 
 const paginatedPosts = computed(() => {
@@ -777,7 +772,7 @@ const creatorLevel = computed(() => {
 })
 
 const latestPostText = computed(() => {
-  const first = [...allPosts.value]
+  const first = [...feed.posts]
     .filter((p) => String(resolvePostUserId(p)) === String(profile.id || ""))
     .sort((a, b) => new Date(b.created_at || b.createdAt || 0) - new Date(a.created_at || a.createdAt || 0))[0]
 
@@ -967,33 +962,6 @@ async function fetchViewedUser() {
     }
   } finally {
     syncing.value = false
-  }
-}
-
-async function fetchPostsRemote() {
-  const controller = createAbortController()
-
-  try {
-    const res = await fetch(`${apiBase}/posts`, {
-      headers: token ? { Authorization: `Bearer ${token}` } : {},
-      signal: controller.signal,
-    })
-    abortControllers.delete(controller)
-
-    if (!res.ok) throw new Error("posts fetch failed")
-    const data = await res.json()
-    const list = Array.isArray(data) ? data : data.posts || []
-    allPosts.value = list
-    stats.posts = userPosts.value.length
-    stats.reels = userReels.value.length
-  } catch (err) {
-    abortControllers.delete(controller)
-    if (err.name !== "AbortError") {
-      const cached = safeJSON(localStorage.getItem("posts")) || []
-      allPosts.value = Array.isArray(cached) ? cached : []
-      stats.posts = userPosts.value.length
-      stats.reels = userReels.value.length
-    }
   }
 }
 
@@ -1310,7 +1278,7 @@ async function refreshAll() {
     await fetchViewedUser()
   }
 
-  await fetchPostsRemote()
+  await ensurePosts(apiBase, token)
 
   loading.value = false
 }
@@ -1338,6 +1306,17 @@ const stopWatchId = watch(
     await refreshAll()
   }
 )
+
+
+// Sync stats from shared feed whenever posts or target user changes
+watch([() => feed.posts, () => profile.id, () => viewedUserId.value], () => {
+  const list = feed.posts
+  if (!list || list.length === 0) return
+  const targetId = String(profile.id || viewedUserId.value || "")
+  if (!targetId) return
+  stats.posts = list.filter((p) => String(resolvePostUserId(p)) === targetId && !p.video_url).length
+  stats.reels = list.filter((p) => String(resolvePostUserId(p)) === targetId && !!p.video_url).length
+}, { immediate: true, deep: true })
 
 onMounted(async () => {
   window.addEventListener("online", onOnline)
