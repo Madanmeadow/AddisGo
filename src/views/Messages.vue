@@ -269,41 +269,62 @@ function connectSocket() {
   })
 
   socket.on('connect_error', (err) => {
-    socketConnected.value = false
-    console.error('[Messages] socket error:', err.message)
+      socketConnected.value = false
+      console.error('[Messages] socket error:', err.message)
+    })
+    socket.on('users_online', (ids) => {
+    onlineIds.value = new Set((ids || []).map(String))
   })
-
-  socket.on('receive_message', (data) => {
-    const msgRoom = data.roomId || data.room_id
-    const fromId = String(data.sender_id || data.from || data.fromUserId || '')
-    const toId = String(data.receiver_id || data.to || data.toUserId || '')
-    const activeId = String(activeOtherId.value || '')
-    const myId = String(me.value?.id || '')
-
-    const relevant = msgRoom === currentRoomId.value ||
-      (fromId === activeId && toId === myId) ||
-      (fromId === myId && toId === activeId)
-
-    if (!relevant) return
-
-    if (!messages.value.some(m =>
-      (m.id && data.id && String(m.id) === String(data.id)) ||
-      (m._tempId && data._tempId && String(m._tempId) === String(data._tempId))
-    )) {
-      messages.value.push({
-        id: data.id || Date.now(),
-        text: String(data.content || data.text || ''),
-        from: fromId,
-        fromUserId: fromId,
-        senderId: fromId,
-        created_at: data.created_at || new Date().toISOString(),
-        createdAt: data.created_at || new Date().toISOString(),
-      })
-      nextTick(scrollToBottom)
-    }
+  socket.on('user_online', (userId) => {
+    onlineIds.value.add(String(userId))
   })
-}
+  socket.on('user_offline', (userId) => {
+    onlineIds.value.delete(String(userId))
+  })
+socket.on('receive_message', (data) => {
+  const msgRoom = data.roomId || data.room_id
+  const fromId = String(data.sender_id || data.from || data.fromUserId || '')
+  const toId = String(data.receiver_id || data.to || data.toUserId || '')
+  const activeId = String(activeOtherId.value || '')
+  const myId = String(me.value?.id || '')
 
+  // Build normalized message
+  const newMsg = {
+    id: data.id || Date.now(),
+    text: String(data.content || data.text || ''),
+    from: fromId,
+    fromUserId: fromId,
+    senderId: fromId,
+    created_at: data.created_at || new Date().toISOString(),
+    createdAt: data.created_at || new Date().toISOString(),
+  }
+
+  // Always update sidebar for incoming messages from others
+  if (fromId !== myId) {
+    const isActive = activeId === fromId
+    upsertConversation(
+      fromId,
+      data.sender_name || data.name || `User #${fromId}`,
+      newMsg.text,
+      !isActive // only increment unread if not currently viewing that chat
+    )
+  }
+
+  // Only show in chat window if this is the active conversation
+  const relevant = msgRoom === currentRoomId.value ||
+    (fromId === activeId && toId === myId) ||
+    (fromId === myId && toId === activeId)
+
+  if (!relevant) return
+
+  if (!messages.value.some(m =>
+    (m.id && data.id && String(m.id) === String(data.id)) ||
+    (m._tempId && data._tempId && String(m._tempId) === String(data._tempId))
+  )) {
+    messages.value.push(newMsg)
+    nextTick(scrollToBottom)
+  }
+})
 function disconnectSocket() {
   if (!socket) return
   socket.off('connect')
@@ -430,7 +451,21 @@ async function fetchConversations() {
   conversations.value = []
   loadingConversations.value = false
 }
-
+function upsertConversation(otherId, name, lastMessage, incrementUnread = true) {
+  const id = String(otherId)
+  const existing = conversations.value.find(c => String(c.otherUserId) === id)
+  if (existing) {
+    existing.lastMessage = lastMessage
+    if (incrementUnread) existing.unread = (existing.unread || 0) + 1
+  } else {
+    conversations.value.unshift({
+      otherUserId: id,
+      name: name || `User #${id}`,
+      lastMessage,
+      unread: incrementUnread ? 1 : 0
+    })
+  }
+}
 /* =========================
    MESSAGES (REST fallback for history)
 ========================= */
@@ -624,6 +659,11 @@ function openConversation(conv) {
   activeOtherId.value = conv.otherUserId
   activeName.value = conv.name || `User #${conv.otherUserId}`
   error.value = ''
+  
+  // Clear unread badge when opening
+  const c = conversations.value.find(x => String(x.otherUserId) === String(conv.otherUserId))
+  if (c) c.unread = 0
+  
   loadMessages(conv.otherUserId)
   if (socket?.connected && currentRoomId.value) {
     socket.emit('join_room', currentRoomId.value)

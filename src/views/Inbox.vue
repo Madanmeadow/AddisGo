@@ -260,20 +260,21 @@ async function loadMore() {
   await load(false)
 }
 
-function openConversation(c) {
-  if (!c.other_user_id) {
-    error.value = 'Cannot open conversation: missing user info'
-    return
+function openConversation(conv) {
+  activeOtherId.value = conv.otherUserId
+  activeName.value = conv.name || `User #${conv.otherUserId}`
+  error.value = ''
+  
+  // Clear unread badge when opening
+  const c = conversations.value.find(x => String(x.otherUserId) === String(conv.otherUserId))
+  if (c) c.unread = 0
+  
+  loadMessages(conv.otherUserId)
+  if (socket?.connected && currentRoomId.value) {
+    socket.emit('join_room', currentRoomId.value)
   }
-
-  router.push({
-    path: '/messages',
-    query: {
-      conversationId: c.id,
-      userId: String(c.other_user_id),
-      name: c.other_username || c.other_name || 'Chat',
-    },
-  })
+  fetchMessages()
+  nextTick(() => inputRef.value?.focus())
 }
 
 // Auto-refresh interval
