@@ -1,4 +1,4 @@
-import { reactive, computed } from "vue"
+import { reactive } from "vue"
 
 const feed = reactive({
   posts: [],
@@ -33,6 +33,7 @@ function persistPinned() {
 }
 
 export function useFeed() {
+  /* ---------- posts ---------- */
   async function fetchPosts(apiUrl, token) {
     feed.loading = true
     feed.error = ""
@@ -55,6 +56,37 @@ export function useFeed() {
     }
   }
 
+  /* ---------- ensure posts (for Profile.vue) ---------- */
+  async function ensurePosts(apiUrl, token) {
+    if (feed.posts.length > 0) return
+    await fetchPosts(apiUrl, token)
+  }
+
+  /* ---------- get user posts ---------- */
+  function getUserPosts(userId) {
+    if (!userId) return []
+    const id = String(userId)
+    return feed.posts.filter(p => {
+      const postUserId = String(
+        p.user_id ?? p.userId ?? p.author_id ?? p.authorId ?? p.created_by ?? p.user?.id ?? p.author?.id ?? ""
+      )
+      return postUserId === id && !p.video_url
+    })
+  }
+
+  /* ---------- get user reels ---------- */
+  function getUserReels(userId) {
+    if (!userId) return []
+    const id = String(userId)
+    return feed.posts.filter(p => {
+      const postUserId = String(
+        p.user_id ?? p.userId ?? p.author_id ?? p.authorId ?? p.created_by ?? p.user?.id ?? p.author?.id ?? ""
+      )
+      return postUserId === id && !!p.video_url
+    })
+  }
+
+  /* ---------- likes ---------- */
   async function ensureLikeState(postId, apiUrl, token) {
     if (!token) return
     const id = Number(postId)
@@ -95,6 +127,7 @@ export function useFeed() {
     }
   }
 
+  /* ---------- saved ---------- */
   function isSaved(postId) { return feed.savedPostIds.includes(Number(postId)) }
   function toggleSave(postId) {
     const id = Number(postId)
@@ -104,6 +137,7 @@ export function useFeed() {
     persistSaved()
   }
 
+  /* ---------- pinned ---------- */
   function isPinned(postId) { return feed.pinnedPostIds.includes(Number(postId)) }
   function togglePin(postId) {
     const id = Number(postId)
@@ -116,6 +150,9 @@ export function useFeed() {
   return {
     feed,
     fetchPosts,
+    ensurePosts,
+    getUserPosts,
+    getUserReels,
     ensureLikeState,
     toggleLike,
     isSaved,
