@@ -325,6 +325,7 @@ socket.on('receive_message', (data) => {
     nextTick(scrollToBottom)
   }
 })
+}
 function disconnectSocket() {
   if (!socket) return
   socket.off('connect')

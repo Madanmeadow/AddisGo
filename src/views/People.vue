@@ -1,240 +1,800 @@
 <template>
   <Layout>
-    <div class="people-page">
+    <div class="profilePage">
       <div class="bg-orb orb1"></div>
       <div class="bg-orb orb2"></div>
-      <div class="bg-orb orb3"></div>
+      <div class="bg-grid"></div>
 
-      <section class="people-shell glassy">
-        <header class="people-top">
-          <div class="title-wrap">
-            <button type="button" class="back-btn" @click="goBack">← Back</button>
+      <section class="hero glass">
+        <div class="heroTop">
+          <div class="brand">
+            <div class="brandIcon">🔥</div>
             <div>
-              <h1>People</h1>
-              <p>Call, message, and open profiles instantly.</p>
+              <div class="brandTitle">Profile Studio</div>
+              <div class="brandSub">
+                {{ isOwnProfile ? "Identity • creator stats • posts • reels" : "Public profile • posts • reels • connect" }}
+              </div>
             </div>
           </div>
 
-          <div class="top-actions">
-            <button type="button" class="chip" @click="refreshAll" :disabled="loading">
-              {{ loading ? 'Refreshing...' : 'Refresh' }}
+          <div class="topActions">
+            <span class="statusPill" :class="{ offline: !isOnlineNow }">
+              <span class="statusDot"></span>
+              {{ isOnlineNow ? (syncing ? "Syncing" : "Online") : "Offline" }}
+            </span>
+
+            <button class="btn ghost" @click="refreshAll" :disabled="loading">
+              {{ loading ? "Loading…" : "↻ Refresh" }}
             </button>
-            <button type="button" class="chip ghost" @click="toggleOffline">
-              {{ showOffline ? 'Hide Offline' : 'Show Offline' }}
-            </button>
+
+            <template v-if="isOwnProfile">
+              <button class="btn danger" @click="confirmLogout">Logout</button>
+            </template>
+
+            <template v-else>
+              <button
+                class="btn primary"
+                @click="toggleFollow"
+                :disabled="followLoading"
+              >
+                {{ followLoading ? "..." : (isFollowing ? "Following" : "Follow") }}
+              </button>
+            </template>
           </div>
-        </header>
+        </div>
 
-        <section class="toolbar glassy">
-          <div class="search-wrap">
-            <input
-              v-model.trim="search"
-              class="search"
-              type="text"
-              placeholder="Search people..."
-              @input="onSearchInput"
-            />
-          </div>
+        <div class="heroMain">
+          <div class="avatarBlock">
+            <div class="coverCard" :style="coverStyle">
+              <div class="coverGlow"></div>
 
-          <div class="toolbar-right">
-            <div class="status-pill" :class="{ on: socketConnected }">
-              <span class="dot"></span>
-              <span>{{ socketConnected ? 'Connected' : 'Offline' }}</span>
-            </div>
-
-            <div class="count-pill">
-              {{ onlineCount }} online / {{ people.length }} total
-            </div>
-          </div>
-        </section>
-
-        <section v-if="error" class="error-card">
-          {{ error }}
-          <button class="error-close" @click="error = ''">×</button>
-        </section>
-
-        <!-- Skeleton Loading -->
-        <section v-if="loading && !filteredPeople.length" class="skeleton-list">
-          <div v-for="i in 6" :key="i" class="skeleton-row">
-            <div class="skeleton-avatar"></div>
-            <div class="skeleton-content">
-              <div class="skeleton-line short"></div>
-              <div class="skeleton-line"></div>
-            </div>
-          </div>
-        </section>
-
-        <section v-else-if="!filteredPeople.length" class="empty-card">
-          {{ search ? 'No people match your search.' : 'No people found.' }}
-        </section>
-
-        <section v-else class="people-list">
-          <article
-            v-for="person in paginatedPeople"
-            :key="person.id"
-            class="person-card glassy"
-            :class="{ online: isOnline(person.id) }"
-            @click="goProfile(person)"
-            tabindex="0"
-            @keydown.enter="goProfile(person)"
-          >
-            <div class="person-main">
-              <div class="avatar-wrap">
+              <div class="avatarWrap">
+                <div class="avatarGlow"></div>
                 <img
-                  v-if="person.avatar || person.avatar_url || person.photo_url"
-                  :src="mediaUrl(person.avatar || person.avatar_url || person.photo_url)"
                   class="avatar"
+                  :src="profile.avatarUrl || defaultAvatar"
                   alt="avatar"
-                  loading="lazy"
-                  @error="onAvatarError($event, person)"
+                  @error="onAvatarError"
                 />
-                <div v-else class="avatar fallback">
-                  {{ initialOf(person) }}
-                </div>
 
-                <span class="presence" :class="{ on: isOnline(person.id) }"></span>
+                <label
+                  v-if="isOwnProfile"
+                  class="avatarEdit"
+                  title="Change avatar"
+                >
+                  📷
+                  <input type="file" accept="image/jpeg,image/png,image/webp" hidden @change="onPickAvatar" />
+                </label>
               </div>
 
-              <div class="meta">
-                <div class="name-row">
-                  <h3>{{ displayName(person) }}</h3>
-                  <span class="mini-id">#{{ person.id }}</span>
-                </div>
+              <div class="miniBadges">
+                <span class="miniBadge">{{ creatorLevel }}</span>
+                <span class="miniBadge ghost">{{ stats.posts }} Posts</span>
+                <span v-if="stats.reels > 0" class="miniBadge ghost">{{ stats.reels }} Reels</span>
+              </div>
+            </div>
+          </div>
 
-                <div class="sub-row">
-                  <span class="presence-label" :class="{ on: isOnline(person.id) }">
-                    {{ isOnline(person.id) ? 'Online' : lastSeen(person) }}
-                  </span>
-                  <div
-                    v-if="distanceFor(person) !== null"
-                    style="font-size:13px;color:#8ef0ae;margin-top:4px;"
-                  >
-                    📍 {{ distanceFor(person).toFixed(1) }} mi away
+          <div class="identity">
+            <div class="nameRow">
+              <h1 class="displayName">
+                {{ displayName }}
+                <span v-if="profile.isVerified" class="verifiedBadge">✔</span>
+              </h1>
+
+              <span class="onlinePill" :class="{ offline: !isOnlineNow }">
+                <span class="onlineDot"></span>
+                {{ isOnlineNow ? "Online" : "Offline" }}
+              </span>
+            </div>
+
+            <div class="usernameRow">
+              <span class="username">@{{ username }}</span>
+
+              <span v-if="profile.location" class="locationPill">
+                📍 {{ profile.location }}
+              </span>
+
+              <span v-if="profile.country" class="locationPill ghost">
+                🌍 {{ profile.country }}
+              </span>
+
+              <span v-if="joinedText !== '—'" class="locationPill ghost">
+                🗓 {{ joinedText }}
+              </span>
+            </div>
+
+            <p class="bio">
+              {{ profile.bio || (isOwnProfile ? "Tell people about yourself. Add a short bio ✨" : "No bio added yet.") }}
+            </p>
+
+            <div class="quickFacts">
+              <div class="fact glassMini">
+                <div class="factLabel">Email</div>
+                <div class="factValue">{{ profile.email || "—" }}</div>
+              </div>
+
+              <div class="fact glassMini">
+                <div class="factLabel">Location</div>
+                <div class="factValue">{{ profile.location || "Add location" }}</div>
+              </div>
+
+              <div class="fact glassMini">
+                <div class="factLabel">Joined</div>
+                <div class="factValue">{{ joinedText }}</div>
+              </div>
+            </div>
+
+            <div class="stats">
+              <button class="statCard" @click="tab = 'posts'">
+                <div class="statNum">{{ stats.posts }}</div>
+                <div class="statLabel">Posts</div>
+              </button>
+
+              <button class="statCard" @click="tab = 'reels'">
+                <div class="statNum">{{ stats.reels }}</div>
+                <div class="statLabel">Reels</div>
+              </button>
+
+              <button class="statCard" @click="tab = 'about'">
+                <div class="statNum">{{ stats.followers }}</div>
+                <div class="statLabel">Followers</div>
+              </button>
+
+              <button class="statCard" @click="tab = 'about'">
+                <div class="statNum">{{ stats.following }}</div>
+                <div class="statLabel">Following</div>
+              </button>
+            </div>
+
+            <div class="actionRow">
+              <template v-if="isOwnProfile">
+                <button class="btn primary" @click="openEdit = true">Edit Profile</button>
+                <button class="btn ghost" @click="copyLink">Share</button>
+                <button class="btn ghost" @click="goInbox">Inbox</button>
+                <button class="btn ghost" @click="goLive">Go Live</button>
+                <button class="btn ghost" @click="goHome">Home</button>
+              </template>
+
+              <template v-else>
+                <button class="btn primary" @click="toggleFollow" :disabled="followLoading">
+                  {{ followLoading ? "..." : (isFollowing ? "Following" : "Follow") }}
+                </button>
+                <button class="btn ghost" @click="goInbox">Message</button>
+                <button class="btn ghost" @click="startCall('audio')">Audio Call</button>
+                <button class="btn ghost" @click="startCall('video')">Video Call</button>
+                <button class="btn ghost" @click="copyLink">Share</button>
+              </template>
+            </div>
+
+            <div class="connectDeck">
+              <button class="connectCard glassMini" @click="goInbox">
+                <div class="connectIcon">💬</div>
+                <div class="connectMeta">
+                  <div class="connectTitle">{{ isOwnProfile ? "Open Inbox" : "Message" }}</div>
+                  <div class="connectSub">
+                    {{ isOwnProfile ? "Jump back into chats fast." : "Start a direct conversation now." }}
                   </div>
-                  <span v-if="person.bio" class="bio-line" :title="person.bio">
-                    {{ person.bio }}
-                  </span>
                 </div>
-              </div>
-            </div>
-
-            <div class="person-actions" @click.stop>
-              <!-- Message (always available) -->
-              <button
-                type="button"
-                class="mini-action msg-btn"
-                title="Message"
-                @click.stop.prevent="openChat(person)"
-              >
-                💬
               </button>
 
-              <!-- Audio Call (online only) -->
               <button
-                type="button"
-                class="mini-action"
-                title="Audio Call"
-                :disabled="!isOnline(person.id)"
-                @click.stop.prevent="startAudioCall(person)"
+                v-if="!isOwnProfile"
+                class="connectCard glassMini"
+                @click="startCall('audio')"
               >
-                📞
+                <div class="connectIcon">📞</div>
+                <div class="connectMeta">
+                  <div class="connectTitle">Audio Call</div>
+                  <div class="connectSub">Quick voice connection from the profile.</div>
+                </div>
               </button>
 
-              <!-- Video Call (online only) -->
               <button
-                type="button"
-                class="mini-action"
-                title="Video Call"
-                :disabled="!isOnline(person.id)"
-                @click.stop.prevent="startVideoCall(person)"
+                class="connectCard glassMini"
+                @click="isOwnProfile ? goLive() : copyLink()"
               >
-                🎥
+                <div class="connectIcon">{{ isOwnProfile ? "🔴" : "🔗" }}</div>
+                <div class="connectMeta">
+                  <div class="connectTitle">{{ isOwnProfile ? "Start Live" : "Share Profile" }}</div>
+                  <div class="connectSub">
+                    {{ isOwnProfile ? "Go live directly from your profile hub." : "Send this profile to other people." }}
+                  </div>
+                </div>
               </button>
 
-              <!-- Profile -->
               <button
-                type="button"
-                class="mini-action"
-                title="Profile"
-                @click.stop.prevent="goProfile(person)"
+                v-if="!isOwnProfile"
+                class="connectCard glassMini"
+                @click="startCall('video')"
               >
-                👤
+                <div class="connectIcon">🎥</div>
+                <div class="connectMeta">
+                  <div class="connectTitle">Video Call</div>
+                  <div class="connectSub">Launch a face-to-face call in one tap.</div>
+                </div>
               </button>
             </div>
-          </article>
-        </section>
+          </div>
+        </div>
 
-        <!-- Pagination -->
-        <div v-if="filteredPeople.length > itemsPerPage" class="pagination">
+        <div class="featureRail">
+          <button class="featureChip" :class="{ active: tab === 'about' }" @click="tab = 'about'">About</button>
+          <button class="featureChip" :class="{ active: tab === 'posts' }" @click="tab = 'posts'">Posts</button>
+          <button class="featureChip" :class="{ active: tab === 'reels' }" @click="tab = 'reels'">Reels</button>
+          <button class="featureChip" :class="{ active: tab === 'saved' }" @click="tab = 'saved'">Saved</button>
           <button
-            :disabled="currentPage === 1"
-            @click="currentPage--"
+            v-if="isOwnProfile"
+            class="featureChip"
+            :class="{ active: tab === 'settings' }"
+            @click="tab = 'settings'"
           >
-            ← Prev
-          </button>
-          <span>Page {{ currentPage }} of {{ totalPages }}</span>
-          <button
-            :disabled="currentPage >= totalPages"
-            @click="currentPage++"
-          >
-            Next →
+            Settings
           </button>
         </div>
       </section>
+
+      <section class="gridZone">
+        <section class="content glass mainContent">
+          <!-- Error Banner -->
+          <div v-if="contentError" class="content-error">
+            {{ contentError }}
+            <button @click="contentError = ''">×</button>
+          </div>
+
+          <template v-if="tab === 'about'">
+            <h2 class="sectionTitle">About</h2>
+
+            <div class="aboutGrid">
+              <div class="aboutCard glassMini">
+                <div class="infoKey">Display name</div>
+                <div class="infoVal big">{{ displayName }}</div>
+              </div>
+
+              <div class="aboutCard glassMini">
+                <div class="infoKey">Username</div>
+                <div class="infoVal big">@{{ username }}</div>
+              </div>
+
+              <div class="aboutCard glassMini">
+                <div class="infoKey">Email</div>
+                <div class="infoVal">{{ profile.email || "—" }}</div>
+              </div>
+
+              <div class="aboutCard glassMini">
+                <div class="infoKey">Location</div>
+                <div class="infoVal">{{ profile.location || "—" }}</div>
+              </div>
+
+              <div class="aboutCard glassMini">
+                <div class="infoKey">Country</div>
+                <div class="infoVal">{{ profile.country || "—" }}</div>
+              </div>
+
+              <div class="aboutCard glassMini">
+                <div class="infoKey">Joined</div>
+                <div class="infoVal">{{ joinedText }}</div>
+              </div>
+
+              <div class="aboutCard glassMini">
+                <div class="infoKey">Website</div>
+                <div class="infoVal">
+                  <a
+                    v-if="profile.website"
+                    :href="normalizedWebsite"
+                    target="_blank"
+                    rel="noopener noreferrer"
+                    class="profileLink"
+                  >
+                    {{ profile.website }}
+                  </a>
+                  <span v-else>—</span>
+                </div>
+              </div>
+
+              <div class="aboutCard glassMini">
+                <div class="infoKey">Bio</div>
+                <div class="infoVal multiline">{{ profile.bio || "No bio yet." }}</div>
+              </div>
+            </div>
+
+            <div class="divider"></div>
+
+            <h3 class="sectionSub">Highlights</h3>
+            <div class="chips">
+              <span class="chip">🔥 {{ creatorLevel }}</span>
+              <span class="chip">🎬 {{ stats.reels }} Reels</span>
+              <span class="chip">💬 Chat Ready</span>
+              <span class="chip">📞 Live Calls</span>
+              <span class="chip">⚡ Pulse / Pulse</span>
+              <span v-if="profile.isVerified" class="chip">✔ Verified</span>
+            </div>
+          </template>
+
+          <template v-else-if="tab === 'posts'">
+            <div class="sectionHead">
+              <h2 class="sectionTitle">Posts</h2>
+              <span class="sectionMeta">{{ userPosts.length }} item{{ userPosts.length === 1 ? "" : "s" }}</span>
+            </div>
+
+            <div v-if="loading" class="state">Loading posts…</div>
+
+            <div v-else-if="userPosts.length === 0" class="emptyBox">
+              <div class="emptyIcon">📝</div>
+              <div class="emptyTitle">No posts yet</div>
+              <div class="emptySub">
+                {{ isOwnProfile ? "Create your first post and your profile will light up." : "This user has not posted yet." }}
+              </div>
+              <button v-if="isOwnProfile" class="btn primary" @click="goHome">Create from Dashboard</button>
+            </div>
+
+            <div v-else class="postList">
+              <article v-for="post in paginatedPosts" :key="`post-${post.id}`" class="postCard glassMini">
+                <div class="postHead">
+                  <div>
+                    <div class="postTitle">{{ firstLine(post.caption) || "Untitled post" }}</div>
+                    <div class="postTime">{{ formatDate(post.created_at || post.createdAt) }}</div>
+                  </div>
+                  <span class="miniBadge ghost">
+                    {{ post.video_url ? "Video" : post.image_url ? "Image" : "Text" }}
+                  </span>
+                </div>
+
+                <div v-if="post.caption" class="postText clamp2">{{ post.caption }}</div>
+
+                <img
+                  v-if="post.image_url"
+                  class="postMedia"
+                  :src="mediaUrl(post.image_url)"
+                  loading="lazy"
+                  @error="onMediaError"
+                />
+
+                <video
+                  v-else-if="post.video_url"
+                  class="postMedia"
+                  :src="mediaUrl(post.video_url)"
+                  controls
+                  playsinline
+                  preload="metadata"
+                  @play="onVideoPlay"
+                  @pause="onVideoPause"
+                ></video>
+              </article>
+            </div>
+
+            <!-- Posts Pagination -->
+            <div v-if="totalPostPages > 1" class="pagination">
+              <button :disabled="postPage === 1" @click="postPage--">← Prev</button>
+              <span>{{ postPage }} / {{ totalPostPages }}</span>
+              <button :disabled="postPage >= totalPostPages" @click="postPage++">Next →</button>
+            </div>
+          </template>
+
+          <template v-else-if="tab === 'reels'">
+            <div class="sectionHead">
+              <h2 class="sectionTitle">Reels</h2>
+              <span class="sectionMeta">{{ userReels.length }} reel{{ userReels.length === 1 ? "" : "s" }}</span>
+            </div>
+
+            <div v-if="loading" class="state">Loading reels…</div>
+
+            <div v-else-if="userReels.length === 0" class="emptyBox">
+              <div class="emptyIcon">🎥</div>
+              <div class="emptyTitle">No reels yet</div>
+              <div class="emptySub">
+                {{ isOwnProfile ? "Post short videos and they will show here." : "This user has no reels yet." }}
+              </div>
+              <button v-if="isOwnProfile" class="btn primary" @click="goHome">Open Dashboard</button>
+            </div>
+
+            <div v-else class="reelsGrid">
+              <article v-for="reel in paginatedReels" :key="`reel-${reel.id}`" class="reelCard glassMini">
+                <video
+                  class="reelVideo"
+                  :src="mediaUrl(reel.video_url)"
+                  controls
+                  playsinline
+                  preload="metadata"
+                  @play="onVideoPlay"
+                  @pause="onVideoPause"
+                ></video>
+
+                <div class="reelInfo">
+                  <div class="postTitle clamp1">{{ firstLine(reel.caption) || "My reel" }}</div>
+                  <div class="postTime">{{ formatDate(reel.created_at || reel.createdAt) }}</div>
+                </div>
+              </article>
+            </div>
+
+            <!-- Reels Pagination -->
+            <div v-if="totalReelPages > 1" class="pagination">
+              <button :disabled="reelPage === 1" @click="reelPage--">← Prev</button>
+              <span>{{ reelPage }} / {{ totalReelPages }}</span>
+              <button :disabled="reelPage >= totalReelPages" @click="reelPage++">Next →</button>
+            </div>
+          </template>
+
+          <template v-else-if="tab === 'saved'">
+            <div class="sectionHead">
+              <h2 class="sectionTitle">Saved</h2>
+              <span class="sectionMeta">Private library</span>
+            </div>
+
+            <div class="emptyBox">
+              <div class="emptyIcon">💾</div>
+              <div class="emptyTitle">Saved items can live here</div>
+              <div class="emptySub">Connect this later to your dashboard saved-post IDs.</div>
+            </div>
+          </template>
+
+          <template v-else>
+            <h2 class="sectionTitle">Settings</h2>
+
+            <div class="settingsList">
+              <div class="infoRow">
+                <span class="infoKey">Sound</span>
+                <button class="btn ghost smallBtn" @click="toggleSound">
+                  {{ soundOn ? "🔊 On" : "🔇 Off" }}
+                </button>
+              </div>
+
+              <div class="infoRow">
+                <span class="infoKey">Realtime profile sync</span>
+                <span class="infoVal">{{ syncing ? "Working…" : "Ready ✅" }}</span>
+              </div>
+
+              <div class="infoRow">
+                <span class="infoKey">Dark Mode</span>
+                <span class="infoVal">Enabled ✅</span>
+              </div>
+
+              <div class="infoRow">
+                <span class="infoKey">Private profile</span>
+                <button class="btn ghost smallBtn" @click="togglePrivate" :disabled="saving">
+                  {{ profile.isPrivate ? "🔒 Private" : "🌐 Public" }}
+                </button>
+              </div>
+            </div>
+
+            <div class="divider"></div>
+
+            <div class="bottomActions">
+              <button class="btn ghost" @click="goLive">🔴 Go Live</button>
+              <button class="btn ghost" @click="goInbox">💬 Inbox</button>
+              <button class="btn ghost" @click="goHome">🏠 Home</button>
+              <button class="btn danger fullBtn" @click="confirmLogout">Logout</button>
+            </div>
+          </template>
+        </section>
+
+        <aside class="sidePanel glass">
+          <div class="panelTitle">Profile Power</div>
+          <div class="powerScore">{{ powerScore }}</div>
+          <div class="panelSub">Your creator profile score based on activity and setup.</div>
+
+          <div class="sideStats">
+            <div class="sideStat glassMini">
+              <span>Profile completion</span>
+              <strong>{{ completionPercent }}%</strong>
+            </div>
+
+            <div class="sideStat glassMini">
+              <span>Latest post</span>
+              <strong>{{ latestPostText }}</strong>
+            </div>
+
+            <div class="sideStat glassMini">
+              <span>Main mode</span>
+              <strong>{{ userReels.length ? "Video creator" : "Text creator" }}</strong>
+            </div>
+
+            <div class="sideStat glassMini">
+              <span>Visibility</span>
+              <strong>{{ profile.isPrivate ? "Private" : "Public" }}</strong>
+            </div>
+          </div>
+
+          <div class="divider"></div>
+
+          <div class="panelTitle small">{{ isOwnProfile ? "Command Center" : "Connect" }}</div>
+          <div class="signalCard glassMini">
+            <div class="signalRow">
+              <span class="signalLabel">Status</span>
+              <strong>{{ isOnlineNow ? "Online now" : "Offline now" }}</strong>
+            </div>
+            <div class="signalRow">
+              <span class="signalLabel">Best next move</span>
+              <strong>{{ isOwnProfile ? "Post, message, or go live" : "Message or call from here" }}</strong>
+            </div>
+          </div>
+
+          <div class="sideActions premiumActions">
+            <template v-if="isOwnProfile">
+              <button class="btn ghost fullBtn" @click="goHome">Create Post</button>
+              <button class="btn ghost fullBtn" @click="goInbox">Open Inbox</button>
+              <button class="btn ghost fullBtn" @click="goLive">Start Live</button>
+              <button class="btn primary fullBtn" @click="openEdit = true">Update Profile</button>
+            </template>
+
+            <template v-else>
+              <button class="btn primary fullBtn" @click="goInbox">Message User</button>
+              <button class="btn ghost fullBtn" @click="startCall('video')">Video Call</button>
+              <button class="btn ghost fullBtn" @click="startCall('audio')">Audio Call</button>
+              <button class="btn ghost fullBtn" @click="toggleFollow" :disabled="followLoading">
+                {{ followLoading ? "..." : (isFollowing ? "Following" : "Follow User") }}
+              </button>
+            </template>
+          </div>
+        </aside>
+      </section>
+
+      <!-- Edit Modal -->
+      <transition name="fade-up">
+        <div v-if="openEdit" class="modalBack" @click.self="openEdit = false">
+          <div class="modal glass">
+            <div class="modalHead">
+              <div class="modalTitle">Edit Profile</div>
+              <button class="btn ghost smallBtn" @click="openEdit = false">✕</button>
+            </div>
+
+            <div v-if="saveError" class="save-error">{{ saveError }}</div>
+
+            <div class="editGrid">
+              <div class="field">
+                <label>Display name</label>
+                <input v-model="edit.displayName" class="inputField" placeholder="Your name" />
+              </div>
+
+              <div class="field">
+                <label>Username</label>
+                <input v-model="edit.username" class="inputField" placeholder="@username" />
+              </div>
+
+              <div class="field fieldWide">
+                <label>Bio</label>
+                <textarea v-model="edit.bio" class="inputField textareaField" placeholder="Short bio..."></textarea>
+              </div>
+
+              <div class="field">
+                <label>Email</label>
+                <input v-model="edit.email" class="inputField" placeholder="you@example.com" />
+              </div>
+
+              <div class="field">
+                <label>Location</label>
+                <input v-model="edit.location" class="inputField" placeholder="Minneapolis, MN" />
+              </div>
+
+              <div class="field">
+                <label>Country</label>
+                <input v-model="edit.country" class="inputField" placeholder="USA" />
+              </div>
+
+              <div class="field">
+                <label>Website</label>
+                <input v-model="edit.website" class="inputField" placeholder="https://example.com" />
+              </div>
+
+              <div class="field">
+                <label>Cover image URL</label>
+                <input v-model="edit.coverUrl" class="inputField" placeholder="https://..." />
+              </div>
+            </div>
+
+            <div class="modalActions">
+              <button class="btn ghost" @click="openEdit = false">Cancel</button>
+              <button class="btn primary" @click="saveProfile" :disabled="saving">
+                {{ saving ? "Saving..." : "Save" }}
+              </button>
+            </div>
+
+            <div class="hint">
+              This version saves locally and syncs to your `/users/me` route.
+            </div>
+          </div>
+        </div>
+      </transition>
+
+      <!-- Logout Confirmation -->
+      <transition name="fade-up">
+        <div v-if="showLogoutConfirm" class="modalBack" @click.self="showLogoutConfirm = false">
+          <div class="modal glass" style="max-width: 400px; text-align: center;">
+            <div class="modalTitle" style="margin-bottom: 12px;">Logout?</div>
+            <p style="opacity: 0.8; margin-bottom: 20px;">Are you sure you want to log out?</p>
+            <div class="modalActions" style="justify-content: center;">
+              <button class="btn ghost" @click="showLogoutConfirm = false">Cancel</button>
+              <button class="btn danger" @click="doLogout">Logout</button>
+            </div>
+          </div>
+        </div>
+      </transition>
     </div>
   </Layout>
 </template>
 
 <script setup>
-import { computed, onBeforeUnmount, onMounted, ref, watch } from 'vue'
-import { useRouter } from 'vue-router'
-import Layout from '../components/Layout.vue'
-import socket, { ensurePulseSocket, refreshSocketAuth } from '../socket'
+import { computed, onMounted, onBeforeUnmount, reactive, ref, watch } from "vue"
+import { useRoute, useRouter } from "vue-router"
+import Layout from "../components/Layout.vue"
+import { useFeed } from "../composables/useFeed"
 
 const router = useRouter()
+const route = useRoute()
 
-const API_URL = (
-  import.meta.env.VITE_API_URL ||
-  'https://addisgo-production-63ae.up.railway.app'
-).replace(/\/$/, '')
+const apiBase = (import.meta.env.VITE_API_URL || "http://localhost:5000").replace(/\/$/, "")
+const token = localStorage.getItem("token") || ""
 
-// State
-const people = ref([])
+const me = (() => {
+  try {
+    return JSON.parse(localStorage.getItem("user") || "null")
+  } catch {
+    return null
+  }
+})()
+
+// Profile state
+const profile = reactive({
+  id: "",
+  displayName: "Pulse User",
+  username: "user",
+  email: "",
+  avatarUrl: "",
+  bio: "",
+  location: "",
+  country: "",
+  website: "",
+  coverUrl: "",
+  createdAt: "",
+  isPrivate: false,
+  isVerified: false,
+})
+
+const stats = reactive({
+  posts: 0,
+  reels: 0,
+  followers: 0,
+  following: 0,
+})
+
+const tab = ref("about")
+const openEdit = ref(false)
+const showLogoutConfirm = ref(false)
+const soundOn = ref(localStorage.getItem("soundOn") !== "0")
+const isOnlineNow = ref(navigator.onLine)
 const loading = ref(false)
-const error = ref('')
-const search = ref('')
-const showOffline = ref(true)
-const socketConnected = ref(socket.connected)
-const onlineUserIds = ref([])
-const currentPage = ref(1)
-const itemsPerPage = ref(20)
-const lastSeenMap = ref(new Map())
-const nearbyUsers = ref([])
+const syncing = ref(false)
+const saving = ref(false)
+const contentError = ref("")
+const saveError = ref("")
+const isFollowing = ref(false)
+const followLoading = ref(false)
+const { feed, getUserPosts, getUserReels, ensurePosts } = useFeed()
+
+// Pagination
+const postPage = ref(1)
+const reelPage = ref(1)
+const itemsPerPage = ref(6)
+
+const edit = reactive({
+  displayName: "",
+  username: "",
+  bio: "",
+  email: "",
+  location: "",
+  country: "",
+  website: "",
+  coverUrl: "",
+})
+
+// Abort controllers
 const abortControllers = new Set()
 
-function getToken() {
-  return localStorage.getItem('token') || ''
-}
+const defaultAvatar =
+  "data:image/svg+xml;utf8," +
+  encodeURIComponent(`
+  <svg xmlns='http://www.w3.org/2000/svg' width='200' height='200'>
+    <defs>
+      <linearGradient id='g' x1='0' x2='1'>
+        <stop offset='0' stop-color='#ff2a6d'/>
+        <stop offset='1' stop-color='#5b8cff'/>
+      </linearGradient>
+    </defs>
+    <rect width='200' height='200' rx='40' fill='url(#g)'/>
+    <circle cx='100' cy='78' r='34' fill='rgba(255,255,255,.75)'/>
+    <rect x='42' y='124' width='116' height='56' rx='28' fill='rgba(255,255,255,.55)'/>
+  </svg>`)
 
-function getMe() {
-  try {
-    return JSON.parse(localStorage.getItem('user') || '{}')
-  } catch {
-    return {}
-  }
-}
+const viewedUserId = computed(() => String(route.params.id || "").trim())
+const myUserId = computed(() => String(me?.id || ""))
+const isOwnProfile = computed(() => !viewedUserId.value || viewedUserId.value === myUserId.value)
 
-const me = ref(getMe())
-const myUserId = computed(() => String(me.value?.id || '').trim())
+const displayName = computed(() => profile.displayName || "Pulse User")
+const username = computed(() => String(profile.username || "user").replace("@", ""))
 
-function authHeaders() {
-  const token = getToken()
+const joinedText = computed(() => {
+  if (!profile.createdAt) return "—"
+  const d = new Date(profile.createdAt)
+  if (Number.isNaN(d.getTime())) return String(profile.createdAt)
+  return d.toLocaleDateString()
+})
+
+const userPosts = computed(() => {
+  return getUserPosts(profile.id || viewedUserId.value)
+})
+
+const userReels = computed(() => {
+  return getUserReels(profile.id || viewedUserId.value)
+})
+
+const paginatedPosts = computed(() => {
+  const start = (postPage.value - 1) * itemsPerPage.value
+  return userPosts.value.slice(start, start + itemsPerPage.value)
+})
+
+const totalPostPages = computed(() => Math.ceil(userPosts.value.length / itemsPerPage.value))
+
+const paginatedReels = computed(() => {
+  const start = (reelPage.value - 1) * itemsPerPage.value
+  return userReels.value.slice(start, start + itemsPerPage.value)
+})
+
+const totalReelPages = computed(() => Math.ceil(userReels.value.length / itemsPerPage.value))
+
+const completionPercent = computed(() => {
+  const fields = [
+    !!profile.displayName,
+    !!profile.username,
+    !!profile.bio,
+    !!profile.email,
+    !!profile.location,
+    !!profile.avatarUrl,
+    !!profile.createdAt,
+  ]
+  const done = fields.filter(Boolean).length
+  return Math.round((done / fields.length) * 100)
+})
+
+const powerScore = computed(() => {
+  return (
+    completionPercent.value +
+    stats.posts * 8 +
+    stats.reels * 12 +
+    stats.followers * 2 +
+    stats.following
+  )
+})
+
+const creatorLevel = computed(() => {
+  if (powerScore.value >= 220) return "Elite Creator"
+  if (powerScore.value >= 120) return "Rising Creator"
+  return "New Creator"
+})
+
+const latestPostText = computed(() => {
+  const first = [...feed.posts]
+    .filter((p) => String(resolvePostUserId(p)) === String(profile.id || ""))
+    .sort((a, b) => new Date(b.created_at || b.createdAt || 0) - new Date(a.created_at || a.createdAt || 0))[0]
+
+  if (!first) return "No posts yet"
+  return formatDate(first.created_at || first.createdAt)
+})
+
+const normalizedWebsite = computed(() => {
+  if (!profile.website) return ""
+  return /^https?:\/\//i.test(profile.website) ? profile.website : `https://${profile.website}`
+})
+
+const coverStyle = computed(() => {
+  if (!profile.coverUrl) return {}
   return {
-    'Content-Type': 'application/json',
-    ...(token ? { Authorization: `Bearer ${token}` } : {}),
+    backgroundImage: `linear-gradient(rgba(10,14,28,.28), rgba(10,14,28,.28)), url('${profile.coverUrl}')`,
+    backgroundSize: "cover",
+    backgroundPosition: "center",
   }
-}
+})
 
+// Abort controller helpers
 function createAbortController() {
   const controller = new AbortController()
   abortControllers.add(controller)
@@ -248,778 +808,1215 @@ function cleanupControllers() {
   abortControllers.clear()
 }
 
-function mediaUrl(url) {
-  if (!url) return ''
-  if (/^https?:\/\//i.test(url)) return url
-  return `${API_URL}${url.startsWith('/') ? '' : '/'}${url}`
+// Video tracking for cleanup
+const activeVideos = new Set()
+
+function onVideoPlay(event) {
+  activeVideos.add(event.target)
 }
 
-function displayName(person) {
-  return person?.username || person?.name || person?.display_name || `User ${person?.id || ''}`
+function onVideoPause(event) {
+  activeVideos.delete(event.target)
 }
 
-function initialOf(person) {
-  return String(displayName(person)).trim().charAt(0).toUpperCase() || 'U'
+function pauseAllVideos() {
+  for (const video of activeVideos) {
+    try { video.pause() } catch {}
+  }
+  activeVideos.clear()
 }
 
-function normalizeUser(user) {
-  return {
-    ...user,
-    id: String(user?.id || user?.userId || '').trim(),
-    lastSeenAt: user?.last_seen_at || user?.updated_at || null,
+function safeJSON(v) {
+  try {
+    return v ? JSON.parse(v) : null
+  } catch {
+    return null
   }
 }
 
-function isOnline(userId) {
-  return onlineUserIds.value.includes(String(userId))
+function loadLocalUser() {
+  const user =
+    safeJSON(localStorage.getItem("user")) ||
+    safeJSON(localStorage.getItem("currentUser")) ||
+    {}
+
+  profile.id = user.id || user.userId || user.user_id || profile.id || ""
+  profile.displayName =
+    user.display_name ||
+    user.displayName ||
+    user.name ||
+    user.full_name ||
+    profile.displayName ||
+    "Pulse User"
+
+  profile.username =
+    user.username ||
+    user.handle ||
+    user.email?.split("@")?.[0] ||
+    profile.username ||
+    "user"
+
+  profile.email = user.email || profile.email || ""
+  profile.avatarUrl = user.avatar_url || user.avatarUrl || user.profile_image || profile.avatarUrl || ""
+  profile.bio = user.bio || user.about || profile.bio || ""
+  profile.location = user.location || user.city || profile.location || ""
+  profile.country = user.country || profile.country || ""
+  profile.website = user.website || profile.website || ""
+  profile.coverUrl = user.cover_url || user.coverUrl || profile.coverUrl || ""
+  profile.createdAt = user.created_at || user.createdAt || user.joined_at || user.joinedAt || profile.createdAt || ""
+  profile.isPrivate = !!(user.is_private ?? user.isPrivate ?? profile.isPrivate)
+  profile.isVerified = !!(user.is_verified ?? user.isVerified ?? profile.isVerified)
+
+  stats.posts = Number(user.postsCount ?? user.posts_count ?? stats.posts ?? 0)
+  stats.reels = Number(user.reelsCount ?? user.reels_count ?? stats.reels ?? 0)
+  stats.followers = Number(user.followers ?? user.followers_count ?? 0)
+  stats.following = Number(user.following ?? user.following_count ?? 0)
+
+  edit.displayName = profile.displayName
+  edit.username = profile.username
+  edit.bio = profile.bio
+  edit.email = profile.email
+  edit.location = profile.location
+  edit.country = profile.country
+  edit.website = profile.website
+  edit.coverUrl = profile.coverUrl
 }
 
-function lastSeen(person) {
-  const ts = lastSeenMap.value.get(String(person.id)) || person.lastSeenAt
-  if (!ts) return 'Offline'
+function patchProfileFromUser(u = {}) {
+  profile.id = u.id || u.userId || u.user_id || profile.id
+  profile.displayName = u.display_name || u.displayName || u.name || u.full_name || profile.displayName
+  profile.username = u.username || u.handle || u.email?.split("@")?.[0] || profile.username
+  profile.email = u.email || profile.email
+  profile.avatarUrl = u.avatar_url || u.avatarUrl || u.profile_image || u.image || profile.avatarUrl
+  profile.bio = u.bio || u.about || profile.bio
+  profile.location = u.location || u.city || profile.location
+  profile.country = u.country || profile.country
+  profile.website = u.website || profile.website
+  profile.coverUrl = u.cover_url || u.coverUrl || profile.coverUrl
+  profile.createdAt = u.created_at || u.createdAt || u.joined_at || u.joinedAt || profile.createdAt
+  profile.isPrivate = !!(u.is_private ?? u.isPrivate ?? profile.isPrivate)
+  profile.isVerified = !!(u.is_verified ?? u.isVerified ?? profile.isVerified)
 
-  const d = new Date(ts)
-  if (Number.isNaN(d.getTime())) return 'Offline'
-
-  const now = new Date()
-  const diffMs = now - d
-  const diffMins = Math.floor(diffMs / 60000)
-  const diffHours = Math.floor(diffMs / 3600000)
-  const diffDays = Math.floor(diffMs / 86400000)
-
-  if (diffMins < 1) return 'Just now'
-  if (diffMins < 60) return `${diffMins}m ago`
-  if (diffHours < 24) return `${diffHours}h ago`
-  if (diffDays === 1) return 'Yesterday'
-  if (diffDays < 7) return `${diffDays}d ago`
-  return d.toLocaleDateString([], { month: 'short', day: 'numeric' })
+  stats.followers = Number(u.followers ?? u.followers_count ?? stats.followers ?? 0)
+  stats.following = Number(u.following ?? u.following_count ?? stats.following ?? 0)
 }
 
-function distanceFor(person) {
-  const found = nearbyUsers.value.find(
-    (u) => String(u.userId) === String(person.id)
+function saveUserPatch(patch) {
+  try {
+    const existing = safeJSON(localStorage.getItem("user")) || safeJSON(localStorage.getItem("currentUser")) || {}
+    const merged = { ...existing, ...patch }
+    localStorage.setItem("user", JSON.stringify(merged))
+    localStorage.setItem("currentUser", JSON.stringify(merged))
+  } catch (err) {
+    console.error("saveUserPatch failed (quota exceeded?):", err)
+    // Don't throw — non-critical
+  }
+}
+
+async function fetchOwnProfileRemote() {
+  if (!token) return
+
+  syncing.value = true
+  const controller = createAbortController()
+
+  try {
+    const res = await fetch(`${apiBase}/users/me`, {
+      headers: { Authorization: `Bearer ${token}` },
+      signal: controller.signal,
+    })
+    abortControllers.delete(controller)
+
+    if (!res.ok) throw new Error(`HTTP ${res.status}`)
+    const data = await res.json()
+    patchProfileFromUser(data)
+    saveUserPatch(data)
+  } catch (err) {
+    if (err.name !== "AbortError") {
+      console.error("fetchOwnProfileRemote failed:", err)
+    }
+  } finally {
+    syncing.value = false
+  }
+}
+
+async function fetchViewedUser() {
+  if (!token || !viewedUserId.value) return
+
+  syncing.value = true
+  const controller = createAbortController()
+
+  try {
+    const res = await fetch(`${apiBase}/users/${viewedUserId.value}`, {
+      headers: { Authorization: `Bearer ${token}` },
+      signal: controller.signal,
+    })
+    abortControllers.delete(controller)
+
+    if (!res.ok) throw new Error(`HTTP ${res.status}`)
+    const data = await res.json()
+    patchProfileFromUser(data)
+  } catch (err) {
+    if (err.name !== "AbortError") {
+      console.error("fetchViewedUser failed:", err)
+      contentError.value = "Failed to load profile"
+    }
+  } finally {
+    syncing.value = false
+  }
+}
+
+async function saveProfile() {
+  if (!isOwnProfile.value || !token) return
+
+  saveError.value = ""
+  saving.value = true
+  syncing.value = true
+
+  try {
+    const payload = {
+      display_name: edit.displayName.trim() || profile.displayName,
+      username: String(edit.username || profile.username).replace("@", "").trim(),
+      bio: edit.bio?.trim() || "",
+      location: edit.location?.trim() || "",
+      country: edit.country?.trim() || "",
+      website: edit.website?.trim() || "",
+      cover_url: edit.coverUrl?.trim() || "",
+      avatar_url: profile.avatarUrl || "",
+      is_private: !!profile.isPrivate,
+    }
+
+    const controller = createAbortController()
+
+    const res = await fetch(`${apiBase}/users/me`, {
+      method: "PUT",
+      headers: {
+        "Content-Type": "application/json",
+        Authorization: `Bearer ${token}`,
+      },
+      body: JSON.stringify(payload),
+      signal: controller.signal,
+    })
+    abortControllers.delete(controller)
+
+    if (!res.ok) {
+      const errData = await res.json().catch(() => ({}))
+      throw new Error(errData.error || `Failed to update profile (${res.status})`)
+    }
+
+    const data = await res.json()
+    patchProfileFromUser(data)
+    saveUserPatch(data)
+
+    openEdit.value = false
+  } catch (err) {
+    if (err.name !== "AbortError") {
+      console.error("saveProfile failed:", err)
+      saveError.value = err.message || "Failed to save profile"
+    }
+  } finally {
+    saving.value = false
+    syncing.value = false
+  }
+}
+
+// Image compression before upload
+async function compressImage(file, maxWidth = 400, maxHeight = 400, quality = 0.8) {
+  return new Promise((resolve, reject) => {
+    const img = new Image()
+    img.onload = () => {
+      const canvas = document.createElement("canvas")
+      let { width, height } = img
+
+      if (width > maxWidth) {
+        height = (height * maxWidth) / width
+        width = maxWidth
+      }
+      if (height > maxHeight) {
+        width = (width * maxHeight) / height
+        height = maxHeight
+      }
+
+      canvas.width = width
+      canvas.height = height
+      const ctx = canvas.getContext("2d")
+      ctx.drawImage(img, 0, 0, width, height)
+
+      canvas.toBlob(
+        (blob) => {
+          if (!blob) {
+            reject(new Error("Canvas toBlob failed"))
+            return
+          }
+          const reader = new FileReader()
+          reader.onload = () => resolve(String(reader.result))
+          reader.readAsDataURL(blob)
+        },
+        "image/jpeg",
+        quality
+      )
+    }
+    img.onerror = () => reject(new Error("Failed to load image"))
+    img.src = URL.createObjectURL(file)
+  })
+}
+
+async function onPickAvatar(ev) {
+  const file = ev.target.files?.[0]
+  if (!file) return
+
+  // Validate
+  const validTypes = ["image/jpeg", "image/png", "image/webp"]
+  if (!validTypes.includes(file.type)) {
+    contentError.value = "Please select a JPEG, PNG, or WebP image"
+    return
+  }
+  if (file.size > 5 * 1024 * 1024) {
+    contentError.value = "Image must be under 5MB"
+    return
+  }
+
+  try {
+    syncing.value = true
+    const base64 = await compressImage(file, 400, 400, 0.8)
+
+    profile.avatarUrl = base64
+    saveUserPatch({ avatar_url: base64, avatarUrl: base64 })
+
+    if (!token || !isOwnProfile.value) return
+
+    const controller = createAbortController()
+
+    const res = await fetch(`${apiBase}/users/me`, {
+      method: "PUT",
+      headers: {
+        "Content-Type": "application/json",
+        Authorization: `Bearer ${token}`,
+      },
+      body: JSON.stringify({ avatar_url: base64 }),
+      signal: controller.signal,
+    })
+    abortControllers.delete(controller)
+
+    if (res.ok) {
+      const data = await res.json()
+      patchProfileFromUser(data)
+      saveUserPatch(data)
+    }
+  } catch (err) {
+    if (err.name !== "AbortError") {
+      console.error("avatar update failed:", err)
+      contentError.value = "Failed to update avatar"
+    }
+  } finally {
+    syncing.value = false
+    // Reset input so same file can be selected again
+    ev.target.value = ""
+  }
+}
+
+function resolvePostUserId(post) {
+  return (
+    post.user_id ??
+    post.userId ??
+    post.author_id ??
+    post.authorId ??
+    post.created_by ??
+    post.user?.id ??
+    post.author?.id ??
+    ""
   )
-  return found?.distance ?? null
 }
 
-function onAvatarError(event, person) {
-  const img = event.target
-  img.style.display = 'none'
-  const fallback = document.createElement('div')
-  fallback.className = 'avatar fallback'
-  fallback.textContent = initialOf(person)
-  img.parentNode.appendChild(fallback)
+function mediaUrl(path) {
+  if (!path) return ""
+  if (/^https?:\/\//i.test(path) || path.startsWith("blob:") || path.startsWith("data:")) return path
+  return `${apiBase}${path.startsWith("/") ? "" : "/"}${path}`
 }
 
-const onlineCount = computed(() => onlineUserIds.value.length)
-
-let searchDebounce = null
-function onSearchInput() {
-  clearTimeout(searchDebounce)
-  searchDebounce = setTimeout(() => {
-    currentPage.value = 1
-  }, 150)
+function firstLine(text) {
+  return String(text || "").split("\n")[0].trim()
 }
 
-const filteredPeople = computed(() => {
-  const q = search.value.toLowerCase().trim()
-  let list = people.value.filter((p) => p.id && p.id !== myUserId.value)
+function formatDate(value) {
+  if (!value) return "Recently"
+  const d = new Date(value)
+  if (Number.isNaN(d.getTime())) return String(value)
+  return d.toLocaleDateString(undefined, {
+    month: "short",
+    day: "numeric",
+    year: "numeric",
+  })
+}
 
-  if (!showOffline.value) {
-    list = list.filter((p) => isOnline(p.id))
+function toggleSound() {
+  soundOn.value = !soundOn.value
+  localStorage.setItem("soundOn", soundOn.value ? "1" : "0")
+}
+
+async function togglePrivate() {
+  profile.isPrivate = !profile.isPrivate
+  if (isOwnProfile.value) {
+    await saveProfile()
   }
+}
 
-  if (!q) {
-    return [...list].sort((a, b) => {
-      const aOn = isOnline(a.id) ? 1 : 0
-      const bOn = isOnline(b.id) ? 1 : 0
-      if (aOn !== bOn) return bOn - aOn
-      return displayName(a).localeCompare(displayName(b))
-    })
-  }
+async function toggleFollow() {
+  if (!viewedUserId.value || followLoading.value) return
 
-  return list
-    .filter((p) => {
-      const hay =
-        `${displayName(p)} ${p.email || ''} ${p.bio || ''} ${p.id || ''}`.toLowerCase()
-      return hay.includes(q)
-    })
-    .sort((a, b) => {
-      const aOn = isOnline(a.id) ? 1 : 0
-      const bOn = isOnline(b.id) ? 1 : 0
-      return bOn - aOn
-    })
-})
-
-const totalPages = computed(() => Math.ceil(filteredPeople.value.length / itemsPerPage.value))
-
-const paginatedPeople = computed(() => {
-  const start = (currentPage.value - 1) * itemsPerPage.value
-  return filteredPeople.value.slice(start, start + itemsPerPage.value)
-})
-
-watch([showOffline, search], () => {
-  currentPage.value = 1
-})
-
-async function fetchPeople() {
-  loading.value = true
-  error.value = ''
+  followLoading.value = true
+  const newState = !isFollowing.value
 
   try {
     const controller = createAbortController()
-    const res = await fetch(`${API_URL}/users`, {
-      headers: authHeaders(),
+    const res = await fetch(`${apiBase}/users/${viewedUserId.value}/follow`, {
+      method: newState ? "POST" : "DELETE",
+      headers: {
+        "Content-Type": "application/json",
+        Authorization: `Bearer ${token}`,
+      },
       signal: controller.signal,
     })
-
     abortControllers.delete(controller)
 
-    const data = await res.json().catch(() => [])
-    if (!res.ok) {
-      throw new Error(data?.error || 'Failed to load people')
-    }
+    if (!res.ok) throw new Error("Follow request failed")
 
-    const list = Array.isArray(data) ? data : Array.isArray(data?.users) ? data.users : []
-    people.value = list.map(normalizeUser).filter((u) => u.id)
-
-    for (const user of people.value) {
-      if (user.lastSeenAt) {
-        lastSeenMap.value.set(user.id, user.lastSeenAt)
-      }
-    }
-  } catch (e) {
-    if (e.name !== 'AbortError') {
-      error.value = e?.message || 'Failed to load people'
+    isFollowing.value = newState
+    stats.followers = Math.max(0, stats.followers + (newState ? 1 : -1))
+  } catch (err) {
+    if (err.name !== "AbortError") {
+      console.error("toggleFollow failed:", err)
+      contentError.value = "Failed to update follow status"
     }
   } finally {
-    loading.value = false
+    followLoading.value = false
   }
 }
 
-/* =========================
-   MESSAGE → INBOX
-========================= */
-function openChat(person) {
-  const targetId = String(person?.id || person?.userId || '').trim()
-  const targetName = displayName(person)
+function onAvatarError(e) {
+  e.target.src = defaultAvatar
+}
 
-  if (!targetId) {
-    error.value = 'Missing user id for chat'
-    return
+function onMediaError(e) {
+  e.target.style.display = "none"
+}
+
+async function copyLink() {
+  const id = profile.id ? String(profile.id) : ""
+  const link = `${window.location.origin}/profile/${id}`
+
+  try {
+    await navigator.clipboard.writeText(link)
+    contentError.value = "Profile link copied!"
+    setTimeout(() => { contentError.value = "" }, 2000)
+  } catch {
+    // Fallback
+    const textarea = document.createElement("textarea")
+    textarea.value = link
+    textarea.style.position = "fixed"
+    textarea.style.opacity = "0"
+    document.body.appendChild(textarea)
+    textarea.select()
+    document.execCommand("copy")
+    document.body.removeChild(textarea)
+    contentError.value = "Profile link copied!"
+    setTimeout(() => { contentError.value = "" }, 2000)
+  }
+}
+
+function confirmLogout() {
+  showLogoutConfirm.value = true
+}
+
+function doLogout() {
+  pauseAllVideos()
+  localStorage.removeItem("token")
+  localStorage.removeItem("user")
+  localStorage.removeItem("currentUser")
+  router.push("/login")
+}
+
+function goHome() {
+  router.push("/dashboard")
+}
+
+function goInbox() {
+  const query = {}
+
+  if (!isOwnProfile.value && profile.id) {
+    query.userId = String(profile.id)
+    query.name = displayName.value
   }
 
+  router.push({ path: "/messages", query })
+}
+
+function goLive() {
+  router.push("/live")
+}
+
+function startCall(callKind = "video") {
+  if (!profile.id) return
   router.push({
-    path: '/messages',
+    path: "/call",
     query: {
-      userId: targetId,
-      name: targetName,
+      toUserId: String(profile.id),
+      kind: callKind,
+      mode: "caller",
+      name: displayName.value,
     },
   })
-}
-
-function startAudioCall(person) {
-  const targetId = String(person?.id || person?.userId || '').trim()
-  const targetName = displayName(person)
-
-  if (!targetId) {
-    error.value = 'Missing user id for call'
-    return
-  }
-
-  router.push({
-    path: '/call',
-    query: {
-      toUserId: targetId,
-      name: targetName,
-      kind: 'audio',
-    },
-  })
-}
-
-function startVideoCall(person) {
-  const targetId = String(person?.id || person?.userId || '').trim()
-  const targetName = displayName(person)
-
-  if (!targetId) {
-    error.value = 'Missing user id for call'
-    return
-  }
-
-  router.push({
-    path: '/call',
-    query: {
-      toUserId: targetId,
-      name: targetName,
-      kind: 'video',
-    },
-  })
-}
-
-function goProfile(person) {
-  const targetId = String(person?.id || person?.userId || '').trim()
-  if (!targetId) {
-    error.value = 'Missing user id for profile'
-    return
-  }
-  router.push(`/profile/${targetId}`)
-}
-
-function goBack() {
-  router.push('/dashboard')
-}
-
-function toggleOffline() {
-  showOffline.value = !showOffline.value
 }
 
 async function refreshAll() {
-  await fetchPeople()
-  if (socketConnected.value) {
-    socket.emit('presence:list:get')
-  }
-}
+  loading.value = true
+  contentError.value = ""
 
-function onPresenceList(payload) {
-  const ids = Array.isArray(payload?.onlineUserIds) ? payload.onlineUserIds : []
-  onlineUserIds.value = ids.map((id) => String(id))
-}
-
-function onPresenceUpdate(payload) {
-  const uid = String(payload?.userId || '').trim()
-  const online = !!payload?.online
-  const lastSeen = payload?.lastSeenAt || payload?.timestamp
-
-  if (!uid) return
-
-  const set = new Set(onlineUserIds.value)
-  if (online) {
-    set.add(uid)
+  if (isOwnProfile.value) {
+    loadLocalUser()
+    await fetchOwnProfileRemote()
   } else {
-    set.delete(uid)
-    if (lastSeen) {
-      lastSeenMap.value.set(uid, lastSeen)
-    }
+    await fetchViewedUser()
   }
-  onlineUserIds.value = Array.from(set)
+
+  await ensurePosts(apiBase, token)
+
+  loading.value = false
 }
 
-function onOnlineUsersLegacy(entries) {
-  if (!Array.isArray(entries)) return
-  const ids = entries
-    .map((entry) => String(Array.isArray(entry) ? entry[0] : entry))
-    .filter(Boolean)
-  onlineUserIds.value = Array.from(new Set(ids))
+function onOnline() {
+  isOnlineNow.value = true
 }
 
-function onNearbyUsers(users) {
-  nearbyUsers.value = Array.isArray(users) ? users : []
+function onOffline() {
+  isOnlineNow.value = false
 }
 
-function onSocketConnect() {
-  socketConnected.value = true
-  const username = me.value?.username || me.value?.name || 'User'
-  if (myUserId.value) {
-    socket.emit('user:online', { userId: myUserId.value, username })
+// Reset pagination when tab changes
+watch(tab, () => {
+  postPage.value = 1
+  reelPage.value = 1
+  pauseAllVideos()
+  contentError.value = ""
+})
+
+const stopWatchId = watch(
+  () => route.params.id,
+  async () => {
+    pauseAllVideos()
+    await refreshAll()
   }
-  socket.emit('presence:list:get')
-}
+)
 
-function onSocketDisconnect() {
-  socketConnected.value = false
-}
 
-let refreshInterval = null
-
-function startAutoRefresh() {
-  stopAutoRefresh()
-  refreshInterval = setInterval(() => {
-    if (!loading.value) {
-      fetchPeople().catch(() => {})
-    }
-  }, 60000)
-}
-
-function stopAutoRefresh() {
-  if (refreshInterval) {
-    clearInterval(refreshInterval)
-    refreshInterval = null
-  }
-}
+// Sync stats from shared feed whenever posts or target user changes
+watch([() => feed.posts, () => profile.id, () => viewedUserId.value], () => {
+  const list = feed.posts
+  if (!list || list.length === 0) return
+  const targetId = String(profile.id || viewedUserId.value || "")
+  if (!targetId) return
+  stats.posts = list.filter((p) => String(resolvePostUserId(p)) === targetId && !p.video_url).length
+  stats.reels = list.filter((p) => String(resolvePostUserId(p)) === targetId && !!p.video_url).length
+}, { immediate: true, deep: true })
 
 onMounted(async () => {
-  me.value = getMe()
-
-  ensurePulseSocket()
-  refreshSocketAuth(true)
-
-  socket.on('connect', onSocketConnect)
-  socket.on('disconnect', onSocketDisconnect)
-  socket.on('presence:list', onPresenceList)
-  socket.on('location:nearby', onNearbyUsers)
-  socket.on('presence:update', onPresenceUpdate)
-  socket.on('online-users', onOnlineUsersLegacy)
-
-  await fetchPeople()
-
-  if (socket.connected) {
-    onSocketConnect()
-  }
-
-  startAutoRefresh()
+  window.addEventListener("online", onOnline)
+  window.addEventListener("offline", onOffline)
+  loadLocalUser()
+  await refreshAll()
 })
 
 onBeforeUnmount(() => {
   cleanupControllers()
-  stopAutoRefresh()
-  clearTimeout(searchDebounce)
-
-  if (myUserId.value) {
-    socket.emit('user:offline', { userId: myUserId.value })
-  }
-
-  socket.off('connect', onSocketConnect)
-  socket.off('disconnect', onSocketDisconnect)
-  socket.off('presence:list', onPresenceList)
-  socket.off('presence:update', onPresenceUpdate)
-  socket.off('online-users', onOnlineUsersLegacy)
-  socket.off('location:nearby', onNearbyUsers)
+  pauseAllVideos()
+  window.removeEventListener("online", onOnline)
+  window.removeEventListener("offline", onOffline)
+  stopWatchId()
 })
 </script>
 
 <style scoped>
-.people-page {
+.profilePage {
   position: relative;
   min-height: 100vh;
-  padding: 22px;
-  overflow: hidden;
+  padding: 16px;
+  color: white;
   background:
-    radial-gradient(circle at top left, rgba(255, 75, 120, 0.16), transparent 26%),
-    radial-gradient(circle at top right, rgba(87, 112, 255, 0.18), transparent 30%),
-    linear-gradient(180deg, #07111f 0%, #081325 55%, #08101d 100%);
-  color: #f6f8ff;
+    radial-gradient(1000px 620px at 10% 0%, rgba(255, 75, 120, 0.16), transparent),
+    radial-gradient(1000px 680px at 100% 0%, rgba(91, 140, 255, 0.18), transparent),
+    linear-gradient(180deg, #07101c 0%, #091423 42%, #060d19 100%);
+  overflow: hidden;
+}
+
+.bg-grid {
+  position: fixed;
+  inset: 0;
+  pointer-events: none;
+  background-image:
+    linear-gradient(rgba(255,255,255,0.022) 1px, transparent 1px),
+    linear-gradient(90deg, rgba(255,255,255,0.022) 1px, transparent 1px);
+  background-size: 38px 38px;
+  mask-image: linear-gradient(to bottom, rgba(255,255,255,.22), transparent 70%);
 }
 
 .bg-orb {
-  position: absolute;
+  position: fixed;
   border-radius: 999px;
-  filter: blur(70px);
+  filter: blur(80px);
   pointer-events: none;
-  opacity: 0.42;
+  opacity: 0.34;
 }
 
 .orb1 {
   width: 260px;
   height: 260px;
-  top: -60px;
-  left: -40px;
-  background: rgba(255, 76, 123, 0.24);
+  left: -60px;
+  top: 90px;
+  background: rgba(255, 65, 108, 0.35);
 }
 
 .orb2 {
-  width: 280px;
-  height: 280px;
-  top: 24%;
-  right: -90px;
-  background: rgba(109, 127, 255, 0.2);
+  width: 300px;
+  height: 300px;
+  right: -80px;
+  top: 220px;
+  background: rgba(91, 140, 255, 0.32);
 }
 
-.orb3 {
-  width: 240px;
-  height: 240px;
-  bottom: -50px;
-  left: 18%;
-  background: rgba(72, 222, 128, 0.12);
+.glass,
+.glassMini {
+  background: rgba(255,255,255,0.06);
+  border: 1px solid rgba(255,255,255,0.11);
+  backdrop-filter: blur(16px);
+  box-shadow: 0 14px 44px rgba(0,0,0,0.28), inset 0 1px 0 rgba(255,255,255,0.04);
 }
 
-.glassy {
-  background: rgba(14, 20, 38, 0.72);
-  border: 1px solid rgba(255, 255, 255, 0.08);
-  box-shadow:
-    0 12px 40px rgba(0, 0, 0, 0.28),
-    inset 0 1px 0 rgba(255, 255, 255, 0.05);
-  backdrop-filter: blur(18px);
-}
-
-.people-shell {
+.glass {
   position: relative;
   z-index: 2;
-  max-width: 1080px;
-  margin: 0 auto;
   border-radius: 28px;
-  padding: 20px;
 }
 
-.people-top {
+.glassMini {
+  border-radius: 20px;
+}
+
+.hero {
+  padding: 18px;
+}
+
+.heroTop,
+.heroMain,
+.gridZone {
+  position: relative;
+  z-index: 2;
+}
+
+.heroTop {
+  display: flex;
+  justify-content: space-between;
+  gap: 12px;
+  align-items: center;
+}
+
+.brand {
   display: flex;
   align-items: center;
-  justify-content: space-between;
-  gap: 16px;
-  margin-bottom: 16px;
+  gap: 12px;
 }
 
-.title-wrap {
+.brandIcon {
+  width: 58px;
+  height: 58px;
+  border-radius: 18px;
+  display: grid;
+  place-items: center;
+  font-size: 30px;
+  background: linear-gradient(135deg, #ff2a6d, #5b8cff);
+  box-shadow: 0 14px 30px rgba(91,140,255,.22);
+}
+
+.brandTitle {
+  font-size: 20px;
+  font-weight: 950;
+}
+
+.brandSub {
+  opacity: .76;
+}
+
+.topActions {
+  display: flex;
+  gap: 10px;
+  flex-wrap: wrap;
+  align-items: center;
+}
+
+.statusPill,
+.onlinePill,
+.locationPill,
+.username,
+.miniBadge,
+.featureChip,
+.chip {
+  display: inline-flex;
+  align-items: center;
+  gap: 8px;
+  border-radius: 999px;
+}
+
+.statusPill,
+.onlinePill {
+  padding: 10px 16px;
+  background: rgba(53,227,161,.12);
+  border: 1px solid rgba(53,227,161,.22);
+  font-weight: 800;
+}
+
+.statusPill.offline,
+.onlinePill.offline {
+  background: rgba(255,255,255,.08);
+  border-color: rgba(255,255,255,.12);
+}
+
+.statusDot,
+.onlineDot {
+  width: 10px;
+  height: 10px;
+  border-radius: 50%;
+  background: #35e3a1;
+}
+
+.statusPill.offline .statusDot,
+.onlinePill.offline .onlineDot {
+  background: #9aa4b2;
+}
+
+.heroMain {
+  display: grid;
+  grid-template-columns: 260px 1fr;
+  gap: 18px;
+  margin-top: 18px;
+}
+
+.coverCard {
+  position: relative;
+  min-height: 260px;
+  border-radius: 28px;
+  padding: 16px;
+  overflow: hidden;
+  background:
+    radial-gradient(180px 120px at 15% 10%, rgba(255,255,255,.12), transparent),
+    linear-gradient(135deg, rgba(255,42,109,.35), rgba(91,140,255,.35));
+  border: 1px solid rgba(255,255,255,.14);
+}
+
+.coverGlow {
+  position: absolute;
+  inset: 0;
+  background: radial-gradient(circle at 50% 30%, rgba(255,255,255,.16), transparent 55%);
+}
+
+.avatarWrap {
+  position: relative;
+  width: 152px;
+  height: 152px;
+  margin: 18px auto 0;
+}
+
+.avatarGlow {
+  position: absolute;
+  inset: -7px;
+  border-radius: 34px;
+  background: linear-gradient(135deg, #ff2a6d, #5b8cff);
+  filter: blur(12px);
+  opacity: .55;
+}
+
+.avatar {
+  position: relative;
+  width: 152px;
+  height: 152px;
+  border-radius: 34px;
+  object-fit: cover;
+  border: 2px solid rgba(255,255,255,0.16);
+  background: rgba(255,255,255,0.08);
+}
+
+.avatarEdit {
+  position: absolute;
+  right: -6px;
+  bottom: -6px;
+  width: 48px;
+  height: 48px;
+  border-radius: 999px;
+  display: grid;
+  place-items: center;
+  cursor: pointer;
+  background: rgba(20, 28, 44, 0.82);
+  border: 1px solid rgba(255,255,255,0.12);
+  box-shadow: 0 12px 24px rgba(0,0,0,0.28);
+  z-index: 3;
+}
+
+.miniBadges {
+  margin-top: 22px;
+  display: flex;
+  justify-content: center;
+  flex-wrap: wrap;
+  gap: 10px;
+}
+
+.miniBadge,
+.username,
+.locationPill,
+.chip,
+.featureChip {
+  padding: 10px 14px;
+  background: rgba(255,255,255,.09);
+  border: 1px solid rgba(255,255,255,.12);
+  font-weight: 800;
+}
+
+.miniBadge.ghost,
+.locationPill.ghost {
+  background: rgba(255,255,255,.06);
+}
+
+.identity {
+  min-width: 0;
+}
+
+.nameRow,
+.usernameRow,
+.actionRow,
+.featureRail,
+.chips,
+.bottomActions,
+.sideActions {
+  display: flex;
+  gap: 10px;
+  flex-wrap: wrap;
+}
+
+.displayName {
+  margin: 0;
+  font-size: 38px;
+  font-weight: 950;
+  line-height: 1.02;
+}
+
+.verifiedBadge {
+  display: inline-block;
+  margin-left: 8px;
+  font-size: 20px;
+  vertical-align: middle;
+  color: #7fd0ff;
+}
+
+.usernameRow {
+  margin-top: 10px;
+}
+
+.connectDeck {
+  margin-top: 16px;
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: 12px;
+}
+
+.connectCard {
+  width: 100%;
+  padding: 16px;
   display: flex;
   align-items: center;
   gap: 14px;
+  color: white;
+  text-align: left;
+  cursor: pointer;
+  transition: transform .18s ease, border-color .18s ease, background .18s ease;
 }
 
-.title-wrap h1 {
-  margin: 0;
-  font-size: 28px;
-  line-height: 1.05;
+.connectCard:hover {
+  transform: translateY(-2px);
+  border-color: rgba(127, 208, 255, 0.28);
+  background: rgba(255,255,255,.08);
 }
 
-.title-wrap p {
-  margin: 4px 0 0;
-  color: #aeb7d8;
+.connectIcon {
+  width: 52px;
+  height: 52px;
+  border-radius: 18px;
+  display: grid;
+  place-items: center;
+  font-size: 24px;
+  flex: 0 0 52px;
+  background: linear-gradient(135deg, rgba(255,42,109,.24), rgba(91,140,255,.24));
+  border: 1px solid rgba(255,255,255,.12);
+}
+
+.connectMeta {
+  min-width: 0;
+}
+
+.connectTitle {
+  font-size: 15px;
+  font-weight: 900;
+}
+
+.connectSub {
+  margin-top: 4px;
+  opacity: .72;
+  font-size: 13px;
+  line-height: 1.35;
+}
+
+.signalCard {
+  padding: 14px;
+  margin-bottom: 14px;
+}
+
+.signalRow {
+  display: flex;
+  justify-content: space-between;
+  gap: 12px;
+  align-items: center;
+}
+
+.signalRow + .signalRow {
+  margin-top: 10px;
+  padding-top: 10px;
+  border-top: 1px solid rgba(255,255,255,.08);
+}
+
+.signalLabel {
+  opacity: .74;
+}
+
+.premiumActions {
+  margin-top: 0;
+}
+
+.bio {
+  margin: 16px 0 0;
+  font-size: 16px;
+  line-height: 1.55;
+  opacity: .94;
+  max-width: 900px;
+}
+
+.quickFacts {
+  margin-top: 16px;
+  display: grid;
+  grid-template-columns: repeat(3, minmax(0,1fr));
+  gap: 12px;
+}
+
+.fact {
+  padding: 14px;
+}
+
+.factLabel,
+.infoKey {
+  font-size: 13px;
+  opacity: .72;
+}
+
+.factValue,
+.infoVal {
+  margin-top: 6px;
+  font-weight: 800;
+}
+
+.factValue {
+  font-size: 15px;
+}
+
+.stats {
+  margin-top: 16px;
+  display: grid;
+  grid-template-columns: repeat(4, minmax(0,1fr));
+  gap: 12px;
+}
+
+.statCard {
+  padding: 16px;
+  border: 1px solid rgba(255,255,255,.10);
+  border-radius: 20px;
+  background: rgba(255,255,255,.06);
+  color: white;
+  cursor: pointer;
+  text-align: left;
+}
+
+.statNum {
+  font-size: 34px;
+  font-weight: 950;
+}
+
+.statLabel {
+  margin-top: 4px;
+  font-size: 13px;
+  opacity: .72;
+}
+
+.actionRow {
+  margin-top: 16px;
+}
+
+.featureRail {
+  margin-top: 18px;
+}
+
+.featureChip {
+  cursor: pointer;
+  color: rgba(255,255,255,.9);
+}
+
+.featureChip.active {
+  background: linear-gradient(90deg, #ff2a6d, #5b8cff);
+  border-color: transparent;
+  box-shadow: 0 10px 28px rgba(91,140,255,.20);
+}
+
+.gridZone {
+  display: grid;
+  grid-template-columns: minmax(0,1fr) 320px;
+  gap: 14px;
+  margin-top: 14px;
+}
+
+.content,
+.sidePanel {
+  padding: 18px;
+}
+
+.content-error {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  padding: 12px 16px;
+  margin-bottom: 16px;
+  background: rgba(255, 80, 80, 0.12);
+  border: 1px solid rgba(255, 80, 80, 0.25);
+  border-radius: 14px;
+  color: #ffb4b4;
+}
+
+.content-error button {
+  background: none;
+  border: none;
+  color: inherit;
+  font-size: 18px;
+  cursor: pointer;
+}
+
+.save-error {
+  padding: 12px 16px;
+  margin-bottom: 12px;
+  background: rgba(255, 80, 80, 0.12);
+  border: 1px solid rgba(255, 80, 80, 0.25);
+  border-radius: 12px;
+  color: #ffb4b4;
   font-size: 14px;
 }
 
-.back-btn,
-.chip,
-.mini-action {
-  border: 0;
-  outline: none;
-  cursor: pointer;
-  transition: transform 0.16s ease, opacity 0.16s ease, background 0.16s ease;
-}
-
-.back-btn,
-.chip {
-  border-radius: 14px;
-  padding: 12px 16px;
-  color: #eef2ff;
-  background: rgba(255, 255, 255, 0.08);
-}
-
-.back-btn:hover,
-.chip:hover,
-.mini-action:hover {
-  transform: translateY(-1px);
-}
-
-.chip.ghost {
-  background: rgba(255, 255, 255, 0.05);
-}
-
-.top-actions {
-  display: flex;
-  align-items: center;
-  gap: 10px;
-}
-
-.toolbar {
+.sectionHead {
   display: flex;
   align-items: center;
   justify-content: space-between;
-  gap: 14px;
-  padding: 14px;
-  border-radius: 20px;
-  margin-bottom: 16px;
+  gap: 12px;
 }
 
-.search-wrap {
-  flex: 1;
+.sectionTitle {
+  margin: 0 0 14px;
+  font-size: 28px;
+  font-weight: 950;
 }
 
-.search {
-  width: 100%;
-  height: 48px;
-  border-radius: 14px;
-  border: 1px solid rgba(255,255,255,0.08);
-  background: rgba(8, 12, 24, 0.78);
-  color: #f4f7ff;
-  padding: 0 14px;
-  font-size: 15px;
-  outline: none;
-  transition: border-color 0.2s;
+.sectionSub {
+  margin: 0 0 12px;
+  font-size: 16px;
+  font-weight: 900;
 }
 
-.search:focus {
-  border-color: rgba(102, 126, 234, 0.5);
+.sectionMeta,
+.panelSub,
+.emptySub,
+.postTime,
+.hint {
+  opacity: .72;
 }
 
-.toolbar-right {
-  display: flex;
-  align-items: center;
-  gap: 10px;
-  flex-wrap: wrap;
-}
-
-.status-pill,
-.count-pill {
-  height: 42px;
-  padding: 0 14px;
-  border-radius: 999px;
-  display: inline-flex;
-  align-items: center;
-  gap: 8px;
-  background: rgba(255,255,255,0.06);
-  color: #eaf0ff;
-  font-size: 13px;
-  font-weight: 700;
-}
-
-.status-pill .dot {
-  width: 8px;
-  height: 8px;
-  border-radius: 999px;
-  background: #ff637e;
-  box-shadow: 0 0 14px rgba(255, 99, 126, 0.7);
-}
-
-.status-pill.on .dot {
-  background: #3ee07f;
-  box-shadow: 0 0 14px rgba(62, 224, 127, 0.7);
-}
-
-.error-card,
-.empty-card {
-  padding: 16px 18px;
-  border-radius: 18px;
-  margin-bottom: 16px;
-}
-
-.error-card {
-  display: flex;
-  justify-content: space-between;
-  align-items: center;
-  color: #ffd7df;
-  background: rgba(120, 15, 35, 0.28);
-  border: 1px solid rgba(255, 102, 140, 0.3);
-}
-
-.error-close {
-  background: none;
-  border: none;
-  color: #ffd7df;
-  font-size: 20px;
-  cursor: pointer;
-}
-
-.empty-card {
-  color: #d7def6;
-  background: rgba(255,255,255,0.05);
-  border: 1px solid rgba(255,255,255,0.06);
-}
-
-.skeleton-list {
-  display: flex;
-  flex-direction: column;
-  gap: 14px;
-}
-
-.skeleton-row {
-  display: flex;
-  gap: 14px;
-  align-items: center;
-  padding: 16px;
-  border-radius: 22px;
-  background: rgba(255, 255, 255, 0.04);
-  animation: skeletonPulse 1.5s ease-in-out infinite;
-}
-
-@keyframes skeletonPulse {
-  0%, 100% { opacity: 0.4; }
-  50% { opacity: 0.8; }
-}
-
-.skeleton-avatar {
-  width: 60px;
-  height: 60px;
-  border-radius: 18px;
-  background: rgba(255, 255, 255, 0.1);
-  flex-shrink: 0;
-}
-
-.skeleton-content {
-  flex: 1;
-  display: flex;
-  flex-direction: column;
-  gap: 10px;
-}
-
-.skeleton-line {
-  height: 12px;
-  border-radius: 6px;
-  background: rgba(255, 255, 255, 0.1);
-}
-
-.skeleton-line.short {
-  width: 30%;
-}
-
-.people-list {
+.aboutGrid {
   display: grid;
-  grid-template-columns: 1fr;
-  gap: 14px;
+  grid-template-columns: repeat(2, minmax(0,1fr));
+  gap: 12px;
 }
 
-.person-card {
-  border-radius: 22px;
+.aboutCard {
   padding: 16px;
+}
+
+.infoVal.big {
+  font-size: 20px;
+}
+
+.multiline {
+  white-space: pre-wrap;
+  line-height: 1.5;
+}
+
+.profileLink {
+  color: #a9d6ff;
+  text-decoration: none;
+}
+
+.divider {
+  height: 1px;
+  background: rgba(255,255,255,.08);
+  margin: 18px 0;
+}
+
+.emptyBox,
+.state {
+  min-height: 260px;
+  display: grid;
+  place-items: center;
+  text-align: center;
+  gap: 8px;
+}
+
+.emptyIcon {
+  font-size: 32px;
+}
+
+.emptyTitle,
+.postTitle,
+.panelTitle {
+  font-weight: 900;
+}
+
+.postList,
+.reelsGrid,
+.settingsList,
+.sideStats {
+  display: grid;
+  gap: 12px;
+}
+
+.postCard,
+.reelCard,
+.sideStat {
+  padding: 14px;
+}
+
+.postHead,
+.infoRow,
+.modalHead,
+.modalActions {
   display: flex;
-  align-items: center;
   justify-content: space-between;
-  gap: 16px;
-  cursor: pointer;
-  transition: all 0.2s;
-  outline: none;
-}
-
-.person-card:hover,
-.person-card:focus {
-  background: rgba(255, 255, 255, 0.1);
-  transform: translateY(-1px);
-}
-
-.person-card.online {
-  border-color: rgba(52, 211, 108, 0.2);
-}
-
-.person-main {
-  min-width: 0;
-  display: flex;
   align-items: center;
-  gap: 14px;
-  flex: 1;
+  gap: 10px;
 }
 
-.avatar-wrap {
-  position: relative;
-  flex: 0 0 auto;
+.postText {
+  margin-top: 10px;
+  line-height: 1.5;
 }
 
-.avatar,
-.avatar.fallback {
-  width: 60px;
-  height: 60px;
+.postMedia,
+.reelVideo {
+  width: 100%;
   border-radius: 18px;
+  margin-top: 12px;
+  background: rgba(255,255,255,.05);
+}
+
+.postMedia {
+  max-height: 420px;
   object-fit: cover;
 }
 
-.avatar.fallback {
-  display: grid;
-  place-items: center;
-  font-weight: 800;
-  font-size: 24px;
-  color: white;
-  background: linear-gradient(135deg, #ff5f7d, #6f7cff);
+.reelsGrid {
+  grid-template-columns: repeat(2, minmax(0,1fr));
 }
 
-.presence {
-  position: absolute;
-  right: -2px;
-  bottom: -2px;
-  width: 14px;
-  height: 14px;
-  border-radius: 999px;
-  border: 2px solid #0b1220;
-  background: #64748b;
+.reelVideo {
+  aspect-ratio: 9 / 14;
+  object-fit: cover;
 }
 
-.presence.on {
-  background: #31e074;
-  box-shadow: 0 0 10px rgba(49, 224, 116, 0.75);
+.reelInfo {
+  margin-top: 10px;
 }
 
-.meta {
-  min-width: 0;
-  flex: 1;
-}
-
-.name-row {
-  display: flex;
-  align-items: center;
-  gap: 8px;
-  flex-wrap: wrap;
-}
-
-.name-row h3 {
-  margin: 0;
-  font-size: 18px;
-  font-weight: 800;
-}
-
-.mini-id {
-  color: #9aa5cc;
-  font-size: 12px;
-  font-weight: 700;
-}
-
-.sub-row {
-  margin-top: 6px;
-  display: flex;
-  align-items: center;
-  gap: 10px;
-  flex-wrap: wrap;
-}
-
-.presence-label {
-  display: inline-flex;
-  align-items: center;
-  height: 26px;
-  padding: 0 10px;
-  border-radius: 999px;
-  background: rgba(255,255,255,0.06);
-  color: #b2bedf;
-  font-size: 12px;
-  font-weight: 800;
-}
-
-.presence-label.on {
-  background: rgba(52, 211, 108, 0.12);
-  color: #8ef0ae;
-}
-
-.bio-line {
-  color: #afbadb;
-  font-size: 13px;
+.clamp1,
+.clamp2 {
+  display: -webkit-box;
+  -webkit-box-orient: vertical;
   overflow: hidden;
-  text-overflow: ellipsis;
-  white-space: nowrap;
-  max-width: 100%;
 }
 
-.person-actions {
+.clamp1 { 
+  -webkit-line-clamp: 1;
+  line-clamp: 1;
+}
+
+.clamp2 { 
+  -webkit-line-clamp: 2;
+  line-clamp: 2;
+}
+
+.sidePanel {
+  height: fit-content;
+  position: sticky;
+  top: 12px;
+}
+
+.powerScore {
+  font-size: 52px;
+  font-weight: 950;
+  margin-top: 10px;
+}
+
+.sideStat {
   display: flex;
+  justify-content: space-between;
   align-items: center;
-  gap: 10px;
-  flex: 0 0 auto;
 }
 
-.mini-action {
-  width: 46px;
-  height: 46px;
-  border-radius: 14px;
-  color: #eef2ff;
-  background: rgba(255,255,255,0.07);
-  font-size: 18px;
-  display: grid;
-  place-items: center;
+.btn {
+  border: none;
+  border-radius: 999px;
+  padding: 11px 16px;
+  color: white;
+  cursor: pointer;
+  font-weight: 800;
+  background: rgba(255,255,255,0.10);
 }
 
-.mini-action:hover {
-  background: rgba(255,255,255,0.14);
+.btn.primary {
+  background: linear-gradient(90deg, #ff2a6d, #5b8cff);
+  box-shadow: 0 12px 30px rgba(91,140,255,.22);
 }
 
-/* Message button stands out */
-.mini-action.msg-btn {
-  background: linear-gradient(135deg, rgba(236,72,153,0.25), rgba(139,92,246,0.2));
-  border: 1px solid rgba(139,92,246,0.25);
+.btn.ghost {
+  background: rgba(255,255,255,0.08);
+  border: 1px solid rgba(255,255,255,0.12);
 }
 
-.mini-action.msg-btn:hover {
-  background: linear-gradient(135deg, rgba(236,72,153,0.35), rgba(139,92,246,0.3));
-  transform: translateY(-2px);
-  box-shadow: 0 8px 20px rgba(139,92,246,0.15);
+.btn.danger {
+  background: rgba(255,0,70,.14);
+  border: 1px solid rgba(255,0,70,.24);
 }
 
-.mini-action:disabled {
-  opacity: 0.38;
-  cursor: not-allowed;
-  transform: none;
+.smallBtn {
+  padding: 9px 12px;
+}
+
+.fullBtn {
+  width: 100%;
 }
 
 .pagination {
@@ -1045,45 +2042,131 @@ onBeforeUnmount(() => {
   cursor: not-allowed;
 }
 
-@media (max-width: 720px) {
-  .people-page {
-    padding: 14px;
-  }
+.modalBack {
+  position: fixed;
+  inset: 0;
+  z-index: 9999;
+  background: rgba(0,0,0,.56);
+  display: grid;
+  place-items: center;
+  padding: 14px;
+}
 
-  .people-shell {
-    padding: 14px;
-    border-radius: 22px;
-  }
+.modal {
+  width: min(780px, 100%);
+  padding: 16px;
+}
 
-  .people-top,
-  .toolbar,
-  .person-card {
+.modalTitle {
+  font-size: 18px;
+  font-weight: 900;
+}
+
+.editGrid {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0,1fr));
+  gap: 12px;
+}
+
+.fieldWide {
+  grid-column: 1 / -1;
+}
+
+.field label {
+  display: block;
+  margin-bottom: 6px;
+  font-size: 13px;
+  opacity: .78;
+}
+
+.inputField {
+  width: 100%;
+  border: 1px solid rgba(255,255,255,.10);
+  background: rgba(255,255,255,.06);
+  color: white;
+  border-radius: 14px;
+  padding: 12px 14px;
+  outline: none;
+}
+
+.textareaField {
+  min-height: 110px;
+  resize: vertical;
+}
+
+.fade-up-enter-active,
+.fade-up-leave-active {
+  transition: all .22s ease;
+}
+
+.fade-up-enter-from,
+.fade-up-leave-to {
+  opacity: 0;
+  transform: translateY(8px);
+}
+
+@media (max-width: 1100px) {
+  .gridZone {
+    grid-template-columns: 1fr;
+  }
+  .sidePanel {
+    position: static;
+  }
+}
+
+@media (max-width: 900px) {
+  .heroMain,
+  .quickFacts,
+  .aboutGrid,
+  .editGrid,
+  .stats,
+  .reelsGrid {
+    grid-template-columns: repeat(2, minmax(0,1fr));
+  }
+  .heroMain {
+    grid-template-columns: 1fr;
+  }
+}
+
+@media (max-width: 700px) {
+  .heroTop {
     flex-direction: column;
-    align-items: stretch;
-  }
-
-  .title-wrap {
     align-items: flex-start;
   }
-
-  .top-actions,
-  .toolbar-right,
-  .person-actions {
-    width: 100%;
+  .displayName {
+    font-size: 30px;
   }
-
-  .top-actions,
-  .person-actions {
-    justify-content: stretch;
+  .identity {
+    text-align: center;
   }
-
-  .chip,
-  .mini-action {
-    flex: 1;
+  .nameRow,
+  .usernameRow,
+  .actionRow,
+  .featureRail,
+  .chips,
+  .bottomActions,
+  .sideActions {
+    justify-content: center;
   }
-
-  .person-main {
-    width: 100%;
+  .avatarWrap {
+    margin-inline: auto;
+  }
+  .quickFacts,
+  .stats,
+  .aboutGrid,
+  .editGrid,
+  .reelsGrid {
+    grid-template-columns: 1fr;
+  }
+  .sectionHead,
+  .infoRow,
+  .modalHead,
+  .modalActions {
+    flex-direction: column;
+    align-items: flex-start;
+  }
+  .statCard {
+    text-align: center;
   }
 }
 </style>
