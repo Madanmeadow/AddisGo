@@ -130,17 +130,27 @@
         </div>
 
         <div class="heroActions">
-          <button class="btn btn-primary" @click="focusComposer">Create Post</button>
-          <button class="btn ghostBtn" @click="setFeedMode('rooms')">Open Rooms</button>
-          <button class="btn ghostBtn" @click="setFeedMode('live')">Go Live Area</button>
-          <button class="btn ghostBtn" @click="toggleStudio">Creator Studio</button>
-          <button class="btn ghostBtn" @click="createFastRoom">Start Room</button>
+          <button class="btn btn-primary" @click="focusComposer">✨ Create Post</button>
+          <button class="btn ghostBtn" @click="startLive">🔴 Go Live</button>
+          <button class="btn ghostBtn" @click="createFastRoom">🚪 Start Room</button>
+          <button class="btn ghostBtn" @click="toggleStudio">Creator Studio →</button>
         </div>
 
-        <div class="trendingRow mt10">
-          <span class="badgePill accent">Creator Score {{ creatorScore }}</span>
-          <span class="badgePill">Streak {{ todayStreak }} day{{ todayStreak === 1 ? "" : "s" }}</span>
-          <span class="badgePill">{{ quickStatusText }}</span>
+        <div class="heroStatsCompact">
+          <div class="hscard">
+            <div class="hscard-num">{{ creatorScore }}</div>
+            <div class="hscard-label">Score</div>
+          </div>
+          <div class="hscard">
+            <div class="hscard-num">{{ todayStreak }}d</div>
+            <div class="hscard-label">Streak</div>
+          </div>
+          <div class="hscard">
+            <div class="hscard-num">
+              <span class="hscard-dot" :class="{ on: socketConnected }"></span>
+            </div>
+            <div class="hscard-label">{{ quickStatusText }}</div>
+          </div>
         </div>
       </div>
 
@@ -266,17 +276,23 @@
 
   <!-- MODEBAR -->
   <div class="modebar">
-    <button class="mode" :class="{ on: feedMode === 'foryou' }" @click="setFeedMode('foryou')">🎬 For You</button>
-    <button class="mode reels" :class="{ on: feedMode === 'reels' }" @click="setFeedMode('reels')">🎞️ Reels</button>
     <button class="mode" :class="{ on: feedMode === 'following' }" @click="setFeedMode('following')">📸 Following</button>
-    <button class="mode" :class="{ on: feedMode === 'threads' }" @click="setFeedMode('threads')">✍️ Threads</button>
-    <button class="mode" :class="{ on: feedMode === 'rooms' }" @click="setFeedMode('rooms')">🎧 Rooms</button>
+    <button class="mode" :class="{ on: feedMode === 'foryou' }" @click="setFeedMode('foryou')">🎬 For You</button>
     <button class="mode" :class="{ on: feedMode === 'live' }" @click="setFeedMode('live')">🔴 Live</button>
-    <button class="mode" :class="{ on: feedMode === 'saved' }" @click="setFeedMode('saved')">💾 Saved</button>
-    <button class="mode" :class="{ on: feedMode === 'pinned' }" @click="setFeedMode('pinned')">📌 Pinned</button>
-    <button class="chip primary" @click="goCallSFU">
-      🚀 SFU Call
-    </button>
+    <button class="mode" :class="{ on: feedMode === 'rooms' }" @click="setFeedMode('rooms')">🎧 Rooms</button>
+
+    <div class="mode-more" style="position:relative;">
+      <button class="mode" @click="modeMoreOpen = !modeMoreOpen">More ▾</button>
+      <div v-if="modeMoreOpen" class="mode-more-menu glassy" style="position:absolute; top:calc(100% + 6px); left:0; min-width:150px; padding:8px; border-radius:16px; display:flex; flex-direction:column; gap:4px; z-index:50;">
+        <button class="mode" :class="{ on: feedMode === 'reels' }" @click="setFeedMode('reels'); modeMoreOpen = false" style="width:100%; text-align:left;">🎞️ Reels</button>
+        <button class="mode" :class="{ on: feedMode === 'threads' }" @click="setFeedMode('threads'); modeMoreOpen = false" style="width:100%; text-align:left;">✍️ Threads</button>
+        <button class="mode" :class="{ on: feedMode === 'saved' }" @click="setFeedMode('saved'); modeMoreOpen = false" style="width:100%; text-align:left;">💾 Saved</button>
+        <button class="mode" :class="{ on: feedMode === 'pinned' }" @click="setFeedMode('pinned'); modeMoreOpen = false" style="width:100%; text-align:left;">📌 Pinned</button>
+        <div style="height:1px; background:rgba(255,255,255,0.08); margin:4px 0;"></div>
+        <button class="mode" @click="goCallSFU(); modeMoreOpen = false" style="width:100%; text-align:left;">🚀 SFU Call</button>
+      </div>
+    </div>
+
     <div class="mode-right">
       <div class="searchWrap">
         <input ref="searchRef" v-model="search" class="search" placeholder="Search…" />
@@ -341,14 +357,10 @@
       <div v-if="statusNote" class="hint mt10">{{ statusNote }}</div>
     </section>
 
-    <!-- TRENDING -->
-    <section v-if="trendingTags.length" class="panel glassy">
-      <div class="panel-head">
-        <div class="panel-title">🔥 Trending</div>
-        <button class="btn ghostBtn" @click="search = ''">Clear Search</button>
-      </div>
-
-      <div class="trendingRow">
+    <!-- TRENDING INLINE -->
+    <div v-if="trendingTags.length" class="trendingInline">
+      <span class="trendingInline-label">🔥 Trending</span>
+      <div class="trendingInline-scroll">
         <button
           v-for="tag in trendingTags"
           :key="tag"
@@ -358,7 +370,8 @@
           {{ tag }}
         </button>
       </div>
-    </section>
+      <button class="chip ghost mini" @click="search = ''">Clear</button>
+    </div>
 
     
 
@@ -1546,6 +1559,8 @@ const isNetworkOnline = ref(typeof navigator !== "undefined" ? navigator.onLine 
 const isSyncingQueue = ref(false)
 const quickCreateOpen = ref(false)
 const quickCreateIntent = ref("post")
+const topbarMenuOpen = ref(false)
+const modeMoreOpen = ref(false)
 const offlineQueue = ref(readJson(DASH_OFFLINE_QUEUE_KEY, []))
 const offlineQueueCount = computed(() => Array.isArray(offlineQueue.value) ? offlineQueue.value.length : 0)
 
@@ -6037,4 +6052,97 @@ onBeforeUnmount(() => {
     display: none;
   }
 }
+
+/* =========================================================
+   OPTION A SIMPLIFICATION
+========================================================= */
+.heroStatsCompact {
+  display: flex;
+  gap: 10px;
+  margin-top: 16px;
+  flex-wrap: wrap;
+}
+.hscard {
+  background: rgba(255,255,255,0.04);
+  border: 1px solid rgba(255,255,255,0.06);
+  border-radius: 14px;
+  padding: 10px 16px;
+  text-align: center;
+  min-width: 80px;
+  transition: all 0.2s ease;
+}
+.hscard:hover {
+  background: rgba(255,255,255,0.07);
+  border-color: rgba(255,255,255,0.1);
+  transform: translateY(-1px);
+}
+.hscard-num {
+  font-size: 18px;
+  font-weight: 800;
+  background: linear-gradient(135deg, #fff, #c7d2fe);
+  -webkit-background-clip: text;
+  -webkit-text-fill-color: transparent;
+  background-clip: text;
+}
+.hscard-label {
+  font-size: 10px;
+  opacity: 0.55;
+  font-weight: 600;
+  text-transform: uppercase;
+  letter-spacing: 0.04em;
+  margin-top: 4px;
+}
+.hscard-dot {
+  width: 8px;
+  height: 8px;
+  border-radius: 50%;
+  background: #ef4444;
+  display: inline-block;
+}
+.hscard-dot.on {
+  background: #22c55e;
+  box-shadow: 0 0 8px rgba(34,197,94,0.5);
+}
+.topbar-more-menu .chip,
+.mode-more-menu .mode {
+  border-radius: 10px;
+  padding: 8px 12px;
+  font-size: 12px;
+  justify-content: flex-start;
+}
+.mode-more-menu .mode.on {
+  box-shadow: none;
+  background: linear-gradient(135deg, #ec4899 0%, #8b5cf6 100%);
+}
+.trendingInline {
+  max-width: 1100px;
+  margin: 12px auto 0;
+  padding: 0 20px;
+  display: flex;
+  align-items: center;
+  gap: 10px;
+}
+.trendingInline-label {
+  font-size: 12px;
+  font-weight: 800;
+  color: #f59e0b;
+  white-space: nowrap;
+}
+.trendingInline-scroll {
+  display: flex;
+  gap: 8px;
+  overflow-x: auto;
+  flex: 1;
+  padding-bottom: 4px;
+  scrollbar-width: thin;
+  scrollbar-color: rgba(255,255,255,0.1) transparent;
+}
+.trendingInline-scroll::-webkit-scrollbar {
+  height: 4px;
+}
+.trendingInline-scroll::-webkit-scrollbar-thumb {
+  background: rgba(255,255,255,0.15);
+  border-radius: 4px;
+}
+
 </style>
