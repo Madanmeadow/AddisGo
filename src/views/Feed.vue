@@ -6,8 +6,11 @@
       <textarea
         v-model="newPostText"
         placeholder="What's happening?"
+        :disabled="isPosting"
       ></textarea>
-      <button @click="createPost">Post</button>
+      <button @click="createPost" :disabled="isPosting">
+        {{ isPosting ? 'Posting...' : 'Post' }}
+      </button>
     </div>
 
     <!-- POSTS -->
@@ -16,7 +19,7 @@
       :key="post._id"
       class="post-card"
     >
-      <h4>{{ post.user?.name }}</h4>
+      <h4>{{ post.user?.name || 'Unknown' }}</h4>
 
       <!-- TEXT -->
       <p v-if="post.text">{{ post.text }}</p>
@@ -26,36 +29,49 @@
         v-if="post.videoUrl"
         :src="post.videoUrl"
         controls
-        autoplay
         muted
         playsinline
         class="video"
       ></video>
 
-      <!-- ACTIONS -->
+      <!-- REACTIONS -->
       <div class="actions">
-        <button @click="likePost(post)">
-          ❤️ {{ post.likes.length }}
+        <button
+          v-for="reaction in reactions"
+          :key="reaction.type"
+          @click="reactToPost(post, reaction.type)"
+          :class="{ active: post.userReaction === reaction.type }"
+          :disabled="post._reacting"
+        >
+          {{ reaction.emoji }} {{ (post.reactions?.[reaction.type] || 0) }}
         </button>
+
+        <button @click="savePost(post)" :disabled="post._saving">
+          💾 {{ post.isSaved ? 'Saved' : 'Save' }}
+        </button>
+        <button @click="sharePost(post)">🔗 Share</button>
       </div>
 
       <!-- COMMENTS -->
       <div class="comments">
         <div
-          v-for="c in post.comments"
+          v-for="c in post.comments || []"
           :key="c._id"
           class="comment"
         >
-          💬 {{ c.text }}
+          <strong>{{ c.user?.name || 'User' }}:</strong> {{ c.text }}
         </div>
 
-        <input
-          v-model="post.newComment"
-          placeholder="Write comment..."
-        />
-        <button @click="addComment(post)">
-          Send
-        </button>
+        <div class="comment-input">
+          <input
+            v-model="post.newComment"
+            placeholder="Write comment..."
+            :disabled="post._commenting"
+          />
+          <button @click="addComment(post)" :disabled="post._commenting">
+            {{ post._commenting ? '...' : 'Send' }}
+          </button>
+        </div>
       </div>
 
     </div>
@@ -71,6 +87,13 @@ export default {
     return {
       posts: [],
       newPostText: "",
+      isPosting: false,
+      reactions: [
+        { type: 'like', emoji: '❤️' },
+        { type: 'fire', emoji: '🔥' },
+        { type: 'laugh', emoji: '😂' },
+        { type: 'thumbsup', emoji: '👍' },
+      ],
     };
   },
 
@@ -80,35 +103,116 @@ export default {
 
   methods: {
     async fetchPosts() {
-      const res = await api.get("/api/posts");
-      this.posts = res.data;
+      try {
+        const res = await api.get("/api/posts");
+        // Ensure every post has reactive comment input & flags
+        this.posts = (res.data || []).map(p => ({
+          ...p,
+          newComment: "",
+          _reacting: false,
+          _commenting: false,
+          _saving: false,
+        }));
+      } catch (err) {
+        console.error("Failed to fetch posts:", err);
+        alert("Could not load feed. Please refresh.");
+      }
     },
 
     async createPost() {
-      if (!this.newPostText) return;
+      if (!this.newPostText.trim()) return;
+      this.isPosting = true;
 
-      await api.post("/api/posts/create", {
-        text: this.newPostText,
-      });
-
-      this.newPostText = "";
-      this.fetchPosts();
+      try {
+        await api.post("/api/posts/create", {
+          text: this.newPostText.trim(),
+        });
+        this.newPostText = "";
+        await this.fetchPosts(); // refresh feed
+      } catch (err) {
+        console.error("Create post failed:", err);
+        alert("Post failed. Please try again.");
+      } finally {
+        this.isPosting = false;
+      }
     },
 
-    async likePost(post) {
-      await api.put(`/api/posts/${post._id}/like`);
-      this.fetchPosts();
+    async reactToPost(post, reactionType) {
+      if (post._reacting) return;
+      post._reacting = true;
+
+      // Optimistic UI update
+      const previous = post.userReaction;
+      const wasSame = previous === reactionType;
+
+      if (!post.reactions) post.reactions = {};
+      if (previous) post.reactions[previous] = Math.max(0, (post.reactions[previous] || 1) - 1);
+      if (!wasSame) {
+        post.reactions[reactionType] = (post.reactions[reactionType] || 0) + 1;
+        post.userReaction = reactionType;
+      } else {
+        post.userReaction = null;
+      }
+
+      try {
+        await api.put(`/api/posts/${post._id}/react`, { type: reactionType });
+      } catch (err) {
+        // Rollback on error
+        post.userReaction = previous;
+        if (wasSame) {
+          post.reactions[reactionType] = (post.reactions[reactionType] || 0) + 1;
+        } else {
+          if (previous) post.reactions[previous] = (post.reactions[previous] || 0) + 1;
+          post.reactions[reactionType] = Math.max(0, (post.reactions[reactionType] || 1) - 1);
+        }
+        console.error("Reaction failed:", err);
+        alert("Reaction failed.");
+      } finally {
+        post._reacting = false;
+      }
+    },
+
+    async savePost(post) {
+      if (post._saving) return;
+      post._saving = true;
+      const previous = post.isSaved;
+
+      try {
+        post.isSaved = !post.isSaved;
+        await api.put(`/api/posts/${post._id}/save`);
+      } catch (err) {
+        post.isSaved = previous;
+        console.error("Save failed:", err);
+        alert("Save failed.");
+      } finally {
+        post._saving = false;
+      }
+    },
+
+    sharePost(post) {
+      const url = `${window.location.origin}/post/${post._id}`;
+      navigator.clipboard.writeText(url).then(() => {
+        alert("Link copied to clipboard!");
+      }).catch(() => {
+        alert("Copy failed.");
+      });
     },
 
     async addComment(post) {
-      if (!post.newComment) return;
+      const text = post.newComment?.trim();
+      if (!text) return;
 
-      await api.post(`/api/posts/${post._id}/comment`, {
-        text: post.newComment,
-      });
-
-      post.newComment = "";
-      this.fetchPosts();
+      post._commenting = true;
+      try {
+        await api.post(`/api/posts/${post._id}/comment`, { text });
+        post.newComment = "";
+        await this.fetchPosts(); // refresh to show new comment
+      } catch (err) {
+        console.error("Comment failed:", err);
+        alert("Comment failed.");
+      } finally {
+        post._commenting = false;
+      }
     },
   },
 };
@@ -118,6 +222,7 @@ export default {
 .feed {
   max-width: 600px;
   margin: auto;
+  padding: 10px;
 }
 
 .create-post {
@@ -131,11 +236,35 @@ textarea {
   width: 100%;
   padding: 10px;
   margin-bottom: 10px;
+  background: #222;
+  color: #fff;
+  border: 1px solid #333;
+  border-radius: 6px;
+  resize: vertical;
 }
 
 button {
-  padding: 8px 12px;
+  padding: 8px 14px;
   cursor: pointer;
+  background: #333;
+  color: #fff;
+  border: none;
+  border-radius: 6px;
+  font-size: 14px;
+  transition: background 0.2s;
+}
+
+button:hover:not(:disabled) {
+  background: #444;
+}
+
+button:disabled {
+  opacity: 0.5;
+  cursor: not-allowed;
+}
+
+button.active {
+  background: #ff4757;
 }
 
 .post-card {
@@ -143,24 +272,57 @@ button {
   padding: 15px;
   border-radius: 10px;
   margin-bottom: 20px;
+  color: #eee;
+}
+
+.post-card h4 {
+  margin: 0 0 8px 0;
+  color: #fff;
 }
 
 .video {
   width: 100%;
   border-radius: 10px;
   margin-top: 10px;
+  display: block;
 }
 
 .actions {
-  margin-top: 10px;
+  margin-top: 12px;
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px;
 }
 
 .comments {
   margin-top: 15px;
+  padding-top: 12px;
+  border-top: 1px solid #333;
 }
 
 .comment {
   font-size: 14px;
-  margin-bottom: 5px;
+  margin-bottom: 8px;
+  color: #ccc;
+}
+
+.comment strong {
+  color: #fff;
+  margin-right: 6px;
+}
+
+.comment-input {
+  display: flex;
+  gap: 8px;
+  margin-top: 10px;
+}
+
+.comment-input input {
+  flex: 1;
+  padding: 8px 10px;
+  background: #222;
+  color: #fff;
+  border: 1px solid #333;
+  border-radius: 6px;
 }
 </style>
