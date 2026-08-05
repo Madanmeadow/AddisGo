@@ -1449,6 +1449,9 @@ function normalizePost(p) {
     username: obj.username ?? "",
     avatar_url: obj.avatar_url ?? obj.avatarUrl ?? "",
     comment_count: Number(obj.comment_count ?? 0),
+    // ✅ keep what the backend sends
+    likes: Array.isArray(obj.likes) ? obj.likes : [],
+    likedByMe: !!obj.likedByMe,
   }
 }
 
