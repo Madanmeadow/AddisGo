@@ -2725,20 +2725,79 @@ function toggleThreadMedia(postId) {
 ========================= */
 async function preloadLikesForPosts(list) {
   if (!token) return
-  await Promise.allSettled(list.map((p) => feedEnsureLikeState(p.id, apiUrl, token)))
+  // Seed from post data first so counts aren't 0
+  list.forEach((p) => {
+    if (!likesByPost.value[p.id]) {
+      likesByPost.value[p.id] = {
+        count: p.likes?.length ?? 0,
+        likedByMe: p.likedByMe ?? false,
+      }
+    }
+  })
+  // Optional: fetch fresh counts (swallows 404 if endpoint missing)
+  await Promise.allSettled(list.map((p) => fetchLikeState(p.id)))
 }
 
-async function ensureLikeState(postId) {
-  await feedEnsureLikeState(postId, apiUrl, token)
+async function fetchLikeState(postId) {
+  try {
+    const res = await fetch(`${apiUrl}/api/posts/${postId}/likes`, {
+      headers: token ? { Authorization: `Bearer ${token}` } : {},
+    })
+    if (res.status === 404) return // no GET endpoint? ignore
+    if (!res.ok) return
+    const data = await res.json().catch(() => ({}))
+    likesByPost.value = {
+      ...likesByPost.value,
+      [postId]: {
+        count: Number(data.count ?? data.likes ?? 0),
+        likedByMe: !!data.likedByMe,
+      },
+    }
+  } catch {
+    // silent
+  }
 }
 
 async function toggleLike(post) {
   const postId = post.id
   if (!token) return alert("Please login again to like posts.")
+  if (likeBusyByPost.value[postId]) return
+
+  likeBusyByPost.value = { ...likeBusyByPost.value, [postId]: true }
+
+  const prev = likesByPost.value[postId] || { count: 0, likedByMe: false }
+  const next = {
+    count: Math.max(0, prev.count + (prev.likedByMe ? -1 : 1)),
+    likedByMe: !prev.likedByMe,
+  }
+
+  // Optimistic UI
+  likesByPost.value = { ...likesByPost.value, [postId]: next }
+
   try {
-    await feedToggleLike(postId, apiUrl, token)
+    const res = await fetch(`${apiUrl}/api/posts/${postId}/like`, {
+      method: "PUT",
+      headers: token ? { Authorization: `Bearer ${token}` } : {},
+    })
+    if (!res.ok) throw new Error("Like failed")
+
+    // Sync with server if it returns useful data
+    const data = await res.json().catch(() => null)
+    if (data) {
+      likesByPost.value = {
+        ...likesByPost.value,
+        [postId]: {
+          count: Number(data.count ?? data.likes?.length ?? next.count),
+          likedByMe: !!data.likedByMe,
+        },
+      }
+    }
   } catch (err) {
+    // Rollback on error
+    likesByPost.value = { ...likesByPost.value, [postId]: prev }
     alert(err.message || "Failed to like")
+  } finally {
+    likeBusyByPost.value = { ...likeBusyByPost.value, [postId]: false }
   }
 }
 
