@@ -46,22 +46,42 @@
               : `Offline ${offlineQueueCount ? "• " + offlineQueueCount + " queued" : ""}`
         }}
       </span>
-      
-      <button class="chip eliteChip" @click="openQuickCreate('post')">✍️ Post</button>
-      <button class="chip ghost eliteChip" @click="toggleChat">
-        {{ chatOpen ? "Close Chat" : "Chat" }}
-      </button>
-      <button class="chip ghost hide-sm" @click="toggleTools">
-        {{ toolsOpen ? "Close Tools" : "Tools" }}
-      </button>
-      <button class="chip ghost hide-sm" @click="toggleStudio">
-        {{ studioOpen ? "Close Studio" : "Studio" }}
-      </button>
-      <button class="chip ghost hide-sm" @click="toggleFocusMode">
-        {{ focusMode ? "Exit Focus" : "Focus Mode" }}
-      </button>
-      <button class="chip danger hide-sm" @click="logout">Logout</button>
-    </div>
+
+      <!-- SINGLE DROPDOWN -->
+      <div class="topbar-dropdown" style="position:relative;">
+        <button class="chip eliteChip menuTrigger" @click="topbarMenuOpen = !topbarMenuOpen">
+          ☰ Menu
+        </button>
+
+        <div
+          v-if="topbarMenuOpen"
+          class="topbar-menu glassy"
+          style="position:absolute; top:calc(100% + 10px); right:0; min-width:200px; padding:10px; border-radius:20px; display:flex; flex-direction:column; gap:6px; z-index:100;"
+        >
+          <button class="menuItem" @click="openQuickCreate('post'); topbarMenuOpen = false">
+            ✍️ Post
+          </button>
+          <button class="menuItem" @click="toggleChat(); topbarMenuOpen = false">
+            {{ chatOpen ? "💬 Close Chat" : "💬 Chat" }}
+          </button>
+          <button class="menuItem" @click="toggleTools(); topbarMenuOpen = false">
+            {{ toolsOpen ? "🧰 Close Tools" : "🧰 Tools" }}
+          </button>
+          <button class="menuItem" @click="toggleStudio(); topbarMenuOpen = false">
+            {{ studioOpen ? "🪄 Close Studio" : "🪄 Studio" }}
+          </button>
+          <button class="menuItem" @click="toggleFocusMode(); topbarMenuOpen = false">
+            {{ focusMode ? "🧘 Exit Focus" : "🧘 Focus Mode" }}
+          </button>
+
+          <div style="height:1px; background:rgba(255,255,255,0.08); margin:4px 0;"></div>
+
+          <button class="menuItem dangerItem" @click="logout(); topbarMenuOpen = false">
+            🚪 Logout
+          </button>
+        </div>
+      </div>
+    </div>>
   </header>
 
   <!-- CLEAN HERO -->
@@ -3620,6 +3640,51 @@ onBeforeUnmount(() => {
 }
 .hero-more-menu .btn:hover {
   background: rgba(255, 255, 255, 0.1);
+}
+/* Topbar dropdown */
+.topbar-dropdown .menuTrigger {
+  min-height: 42px;
+  padding: 10px 18px;
+  font-weight: 700;
+  background: rgba(255, 255, 255, 0.08);
+  border: 1px solid rgba(255, 255, 255, 0.1);
+}
+.topbar-dropdown .menuTrigger:hover {
+  background: rgba(255, 255, 255, 0.14);
+  transform: translateY(-1px);
+}
+.topbar-menu {
+  animation: fadeIn 0.15s ease;
+}
+.menuItem {
+  width: 100%;
+  text-align: left;
+  border: none;
+  background: transparent;
+  color: #e2e8f0;
+  padding: 10px 12px;
+  border-radius: 12px;
+  cursor: pointer;
+  font-weight: 600;
+  font-size: 13px;
+  transition: all 0.15s ease;
+  display: flex;
+  align-items: center;
+  gap: 8px;
+}
+.menuItem:hover {
+  background: rgba(255, 255, 255, 0.08);
+  transform: translateX(2px);
+}
+.menuItem.dangerItem {
+  color: #fca5a5;
+}
+.menuItem.dangerItem:hover {
+  background: rgba(239, 68, 68, 0.1);
+}
+@keyframes fadeIn {
+  from { opacity: 0; transform: translateY(-6px); }
+  to   { opacity: 1; transform: translateY(0); }
 }
 /* =========================================================
    AMBIENT ORBS
