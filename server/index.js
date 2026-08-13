@@ -100,9 +100,140 @@ app.use("/messages", messagesRoutes);
 // Optional backwards compat
 app.use("/api/upload", uploadRoutes);
 
+app.use("/reels", reelsRoutes);
+app.use("/upload", uploadRoutes);
+app.use("/likes", likesRoutes);
+app.use("/posts", postsRoutes);
+app.use("/users", usersRoutes);
+app.use("/conversations", conversationsRoutes);
+app.use("/messages", messagesRoutes);
+
+// Optional backwards compat
+app.use("/api/upload", uploadRoutes);
+
+/* =========================
+   POST REACTIONS
+========================= */
+function authenticate(req, res, next) {
+  try {
+    const authHeader = req.headers.authorization;
+    if (!authHeader?.startsWith('Bearer ')) {
+      return res.status(401).json({ error: 'Unauthorized' });
+    }
+    const token = authHeader.slice(7);
+    const decoded = jwt.verify(token, JWT_SECRET);
+    req.user = decoded;
+    next();
+  } catch {
+    res.status(401).json({ error: 'Invalid token' });
+  }
+}
+
+// GET /posts/:id/reactions
+app.get('/posts/:id/reactions', async (req, res) => {
+  try {
+    const postId = parseInt(req.params.id);
+    if (!postId) return res.status(400).json({ error: 'Invalid post ID' });
+
+    const countsResult = await pool.query(
+      `SELECT reaction_type, COUNT(*)::int as count 
+       FROM post_reactions 
+       WHERE post_id = $1 
+       GROUP BY reaction_type`,
+      [postId]
+    );
+
+    let myReactions = [];
+    try {
+      const authHeader = req.headers.authorization;
+      if (authHeader?.startsWith('Bearer ')) {
+        const token = authHeader.slice(7);
+        const decoded = jwt.verify(token, JWT_SECRET);
+        const userId = decoded?.id || decoded?.userId;
+        if (userId) {
+          const mine = await pool.query(
+            `SELECT reaction_type FROM post_reactions WHERE post_id = $1 AND user_id = $2`,
+            [postId, userId]
+          );
+          myReactions = mine.rows.map(r => r.reaction_type);
+        }
+      }
+    } catch {
+      // ignore — optional auth
+    }
+
+    res.json({
+      counts: countsResult.rows,
+      myReactions
+    });
+  } catch (err) {
+    console.error('GET /posts/:id/reactions error:', err);
+    res.status(500).json({ error: err.message });
+  }
+});
+
+// POST /posts/:id/react
+app.post('/posts/:id/react', authenticate, async (req, res) => {
+  try {
+    const postId = parseInt(req.params.id);
+    const userId = req.user.id || req.user.userId;
+    const { reaction } = req.body;
+
+    if (!postId) return res.status(400).json({ error: 'Invalid post ID' });
+    if (!reaction || typeof reaction !== 'string') {
+      return res.status(400).json({ error: 'Missing reaction type' });
+    }
+
+    const existing = await pool.query(
+      `SELECT reaction_type FROM post_reactions WHERE post_id = $1 AND user_id = $2`,
+      [postId, userId]
+    );
+
+    if (existing.rows.length > 0 && existing.rows[0].reaction_type === reaction) {
+      // Same reaction clicked again → toggle off (remove)
+      await pool.query(
+        `DELETE FROM post_reactions WHERE post_id = $1 AND user_id = $2`,
+        [postId, userId]
+      );
+    } else {
+      // Replace any existing reaction with the new one
+      await pool.query(
+        `DELETE FROM post_reactions WHERE post_id = $1 AND user_id = $2`,
+        [postId, userId]
+      );
+      await pool.query(
+        `INSERT INTO post_reactions (post_id, user_id, reaction_type) VALUES ($1, $2, $3)`,
+        [postId, userId, reaction]
+      );
+    }
+
+    const countsResult = await pool.query(
+      `SELECT reaction_type, COUNT(*)::int as count 
+       FROM post_reactions 
+       WHERE post_id = $1 
+       GROUP BY reaction_type`,
+      [postId]
+    );
+
+    const myResult = await pool.query(
+      `SELECT reaction_type FROM post_reactions WHERE post_id = $1 AND user_id = $2`,
+      [postId, userId]
+    );
+
+    res.json({
+      counts: countsResult.rows,
+      myReactions: myResult.rows.map(r => r.reaction_type)
+    });
+  } catch (err) {
+    console.error('POST /posts/:id/react error:', err);
+    res.status(500).json({ error: err.message });
+  }
+});
+
 /* =========================
    DB HEALTH
 ========================= */
+
 pool.on("connect", () => logOK("PostgreSQL Connected"));
 
 /* =========================
