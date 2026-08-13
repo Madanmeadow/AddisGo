@@ -56,8 +56,26 @@
         <div
           v-if="topbarMenuOpen"
           class="topbar-menu glassy"
-          style="position:absolute; top:calc(100% + 10px); right:0; min-width:200px; padding:10px; border-radius:20px; display:flex; flex-direction:column; gap:6px; z-index:100;"
+          style="position:absolute; top:calc(100% + 10px); right:0; min-width:220px; padding:10px; border-radius:20px; display:flex; flex-direction:column; gap:6px; z-index:100;"
         >
+          <!-- Stats row -->
+          <div style="display:flex; gap:6px; padding:4px 4px 10px; border-bottom:1px solid rgba(255,255,255,0.06); margin-bottom:2px;">
+            <div style="flex:1; text-align:center;">
+              <div style="font-size:16px; font-weight:800; background:linear-gradient(135deg,#fff,#c7d2fe); -webkit-background-clip:text; -webkit-text-fill-color:transparent;">{{ creatorScore }}</div>
+              <div style="font-size:10px; opacity:0.5; text-transform:uppercase; font-weight:600; letter-spacing:0.04em; margin-top:2px;">Score</div>
+            </div>
+            <div style="flex:1; text-align:center;">
+              <div style="font-size:16px; font-weight:800; background:linear-gradient(135deg,#fff,#c7d2fe); -webkit-background-clip:text; -webkit-text-fill-color:transparent;">{{ todayStreak }}d</div>
+              <div style="font-size:10px; opacity:0.5; text-transform:uppercase; font-weight:600; letter-spacing:0.04em; margin-top:2px;">Streak</div>
+            </div>
+            <div style="flex:1; text-align:center;">
+              <div style="font-size:16px; font-weight:800;">
+                <span class="hscard-dot" :class="{ on: socketConnected }"></span>
+              </div>
+              <div style="font-size:10px; opacity:0.5; text-transform:uppercase; font-weight:600; letter-spacing:0.04em; margin-top:2px;">{{ quickStatusText }}</div>
+            </div>
+          </div>
+
           <button class="menuItem" @click="focusComposer(); topbarMenuOpen = false">
             ✨ Create Post
           </button>
@@ -106,22 +124,7 @@
           {{ moodGreeting }} Build, post, call, stream, chat, save ideas, and run your whole world from one magical dashboard.
         </div>
 
-                <div class="heroStatsCompact">
-          <div class="hscard">
-            <div class="hscard-num">{{ creatorScore }}</div>
-            <div class="hscard-label">Score</div>
-          </div>
-          <div class="hscard">
-            <div class="hscard-num">{{ todayStreak }}d</div>
-            <div class="hscard-label">Streak</div>
-          </div>
-          <div class="hscard">
-            <div class="hscard-num">
-              <span class="hscard-dot" :class="{ on: socketConnected }"></span>
-            </div>
-            <div class="hscard-label">{{ quickStatusText }}</div>
-          </div>
-        </div>
+        
       </div>
 
       <!-- only shown when NOT logged in -->
@@ -249,12 +252,11 @@
   <div class="modebar">
     <button class="mode" :class="{ on: feedMode === 'following' }" @click="setFeedMode('following')">📸 Following</button>
     <button class="mode" :class="{ on: feedMode === 'foryou' }" @click="setFeedMode('foryou')">🎬 For You</button>
-    <button class="mode" :class="{ on: feedMode === 'live' }" @click="setFeedMode('live')">🔴 Live</button>
-    <button class="mode" :class="{ on: feedMode === 'rooms' }" @click="setFeedMode('rooms')">🎧 Rooms</button>
-
     <div class="mode-more" style="position:relative;">
       <button class="mode" @click="modeMoreOpen = !modeMoreOpen">More ▾</button>
       <div v-if="modeMoreOpen" class="mode-more-menu glassy" style="position:absolute; top:calc(100% + 6px); left:0; min-width:150px; padding:8px; border-radius:16px; display:flex; flex-direction:column; gap:4px; z-index:50;">
+        <button class="mode" :class="{ on: feedMode === 'live' }" @click="setFeedMode('live'); modeMoreOpen = false" style="width:100%; text-align:left;">🔴 Live</button>
+        <button class="mode" :class="{ on: feedMode === 'rooms' }" @click="setFeedMode('rooms'); modeMoreOpen = false" style="width:100%; text-align:left;">🎧 Rooms</button>
         <button class="mode" :class="{ on: feedMode === 'reels' }" @click="setFeedMode('reels'); modeMoreOpen = false" style="width:100%; text-align:left;">🎞️ Reels</button>
         <button class="mode" :class="{ on: feedMode === 'threads' }" @click="setFeedMode('threads'); modeMoreOpen = false" style="width:100%; text-align:left;">✍️ Threads</button>
         <button class="mode" :class="{ on: feedMode === 'saved' }" @click="setFeedMode('saved'); modeMoreOpen = false" style="width:100%; text-align:left;">💾 Saved</button>
@@ -296,6 +298,28 @@
     <button class="filterChip" :class="{ on: postFilter === 'image' }" @click="postFilter = 'image'">Images</button>
     <button class="filterChip" :class="{ on: postFilter === 'text' }" @click="postFilter = 'text'">Text</button>
 
+    <div class="trending-dropdown" style="position:relative;">
+      <button class="filterChip" :class="{ on: trendingDropdownOpen }" @click="trendingDropdownOpen = !trendingDropdownOpen">🔥 Trending ▾</button>
+      <div
+        v-if="trendingDropdownOpen"
+        class="glassy"
+        style="position:absolute; top:calc(100% + 6px); left:0; min-width:180px; padding:8px; border-radius:16px; display:flex; flex-direction:column; gap:4px; z-index:50;"
+      >
+        <button
+          v-for="tag in trendingTags"
+          :key="tag"
+          class="menuItem"
+          style="font-size:12px;"
+          @click="applyTrendTag(tag); trendingDropdownOpen = false"
+        >
+          {{ tag }}
+        </button>
+        <div v-if="!trendingTags.length" class="hint" style="padding:8px;">No trending tags yet</div>
+        <div style="height:1px; background:rgba(255,255,255,0.08); margin:4px 0;"></div>
+        <button class="menuItem" style="font-size:12px; color:#fca5a5;" @click="search = ''; trendingDropdownOpen = false">Clear search</button>
+      </div>
+    </div>
+
     <div class="filterHint">
       <span class="badgePill accent">{{ feedModeLabel }}</span>
       <span class="badgePill">{{ filteredBaseCount }} shown</span>
@@ -328,21 +352,7 @@
       <div v-if="statusNote" class="hint mt10">{{ statusNote }}</div>
     </section>
 
-    <!-- TRENDING INLINE -->
-    <div v-if="trendingTags.length" class="trendingInline">
-      <span class="trendingInline-label">🔥 Trending</span>
-      <div class="trendingInline-scroll">
-        <button
-          v-for="tag in trendingTags"
-          :key="tag"
-          class="trendChip"
-          @click="applyTrendTag(tag)"
-        >
-          {{ tag }}
-        </button>
-      </div>
-      <button class="chip ghost mini" @click="search = ''">Clear</button>
-    </div>
+
 
     
 
@@ -1535,6 +1545,7 @@ const quickCreateOpen = ref(false)
 const quickCreateIntent = ref("post")
 const topbarMenuOpen = ref(false)
 const modeMoreOpen = ref(false)
+const trendingDropdownOpen = ref(false)
 const offlineQueue = ref(readJson(DASH_OFFLINE_QUEUE_KEY, []))
 const offlineQueueCount = computed(() => Array.isArray(offlineQueue.value) ? offlineQueue.value.length : 0)
 
