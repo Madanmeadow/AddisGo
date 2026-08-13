@@ -58,8 +58,17 @@
           class="topbar-menu glassy"
           style="position:absolute; top:calc(100% + 10px); right:0; min-width:200px; padding:10px; border-radius:20px; display:flex; flex-direction:column; gap:6px; z-index:100;"
         >
-          <button class="menuItem" @click="openQuickCreate('post'); topbarMenuOpen = false">
-            ✍️ Post
+          <button class="menuItem" @click="focusComposer(); topbarMenuOpen = false">
+            ✨ Create Post
+          </button>
+          <button class="menuItem" @click="startLive(); topbarMenuOpen = false">
+            🔴 Go Live
+          </button>
+          <button class="menuItem" @click="createFastRoom(); topbarMenuOpen = false">
+            🚪 Start Room
+          </button>
+          <button class="menuItem" @click="createZoomRoom(); topbarMenuOpen = false">
+            🎥 New Meet
           </button>
           <button class="menuItem" @click="toggleChat(); topbarMenuOpen = false">
             {{ chatOpen ? "💬 Close Chat" : "💬 Chat" }}
@@ -73,6 +82,9 @@
           <button class="menuItem" @click="toggleFocusMode(); topbarMenuOpen = false">
             {{ focusMode ? "🧘 Exit Focus" : "🧘 Focus Mode" }}
           </button>
+          <button class="menuItem" @click="refreshAll(); topbarMenuOpen = false">
+            🔄 Refresh
+          </button>
 
           <div style="height:1px; background:rgba(255,255,255,0.08); margin:4px 0;"></div>
 
@@ -81,7 +93,7 @@
           </button>
         </div>
       </div>
-    </div>>
+    </div>
   </header>
 
   <!-- CLEAN HERO -->
@@ -94,36 +106,7 @@
           {{ moodGreeting }} Build, post, call, stream, chat, save ideas, and run your whole world from one magical dashboard.
         </div>
 
-        <div class="heroActions">
-          <button class="btn btn-primary" @click="focusComposer">✨ Create Post</button>
-          <button class="btn ghostBtn" @click="startLive">🔴 Go Live</button>
-
-          <!-- More dropdown: everything else lives here -->
-          <div class="hero-more" style="position:relative;">
-            <button class="btn ghostBtn" @click="heroMoreOpen = !heroMoreOpen">⋯ More</button>
-            <div
-              v-if="heroMoreOpen"
-              class="hero-more-menu glassy"
-              style="position:absolute; top:calc(100% + 8px); left:0; min-width:180px; padding:8px; border-radius:16px; display:flex; flex-direction:column; gap:6px; z-index:50;"
-            >
-              <button class="btn ghostBtn" style="justify-content:flex-start;" @click="createFastRoom(); heroMoreOpen = false">
-                🚪 Start Room
-              </button>
-              <button class="btn ghostBtn" style="justify-content:flex-start;" @click="toggleStudio(); heroMoreOpen = false">
-                🪄 Creator Studio
-              </button>
-              <button class="btn ghostBtn" style="justify-content:flex-start;" @click="createZoomRoom(); heroMoreOpen = false">
-                🎥 New Meet
-              </button>
-              <div style="height:1px; background:rgba(255,255,255,0.08); margin:2px 0;"></div>
-              <button class="btn ghostBtn" style="justify-content:flex-start;" @click="refreshAll(); heroMoreOpen = false">
-                🔄 Refresh
-              </button>
-            </div>
-          </div>
-        </div>
-
-        <div class="heroStatsCompact">
+                <div class="heroStatsCompact">
           <div class="hscard">
             <div class="hscard-num">{{ creatorScore }}</div>
             <div class="hscard-label">Score</div>
@@ -3631,16 +3614,6 @@ onBeforeUnmount(() => {
   box-shadow: 0 0 10px rgba(34, 197, 94, 0.5);
 }
 
-/* Hero dropdown menu items */
-.hero-more-menu .btn {
-  width: 100%;
-  border-radius: 12px;
-  padding: 10px 12px;
-  font-size: 13px;
-}
-.hero-more-menu .btn:hover {
-  background: rgba(255, 255, 255, 0.1);
-}
 /* Topbar dropdown */
 .topbar-dropdown .menuTrigger {
   min-height: 42px;
@@ -3874,13 +3847,6 @@ onBeforeUnmount(() => {
   line-height: 1.65;
   font-size: 14px;
   font-weight: 400;
-}
-
-.heroActions {
-  display: flex;
-  gap: 10px;
-  flex-wrap: wrap;
-  margin-top: 18px;
 }
 
 .heroStats {
@@ -6143,10 +6109,6 @@ onBeforeUnmount(() => {
     flex-direction: column;
     align-items: stretch;
     gap: 12px;
-  }
-
-  .heroActions {
-    flex-direction: column;
   }
 
   .heroStats {
