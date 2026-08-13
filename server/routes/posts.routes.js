@@ -310,5 +310,254 @@ router.delete("/:postId/comments/:commentId", authenticateToken, async (req, res
     res.status(500).json({ error: err.message || "Delete failed" });
   }
 });
+/* =========================
+   LIKES (FIXED ENDPOINTS)
+========================= */
 
+// GET /api/posts/:postId/likes  (matches frontend)
+router.get("/:postId/likes", async (req, res) => {
+  try {
+    const postId = Number(req.params.postId);
+    if (!postId) return res.status(400).json({ error: "Invalid postId" });
+
+    const userId = req.user?.id || null;
+
+    const countRes = await pool.query(
+      `SELECT COUNT(*)::int AS count FROM post_likes WHERE post_id = $1`,
+      [postId]
+    );
+
+    let likedByMe = false;
+    if (userId) {
+      const meRes = await pool.query(
+        `SELECT 1 FROM post_likes WHERE post_id = $1 AND user_id = $2 LIMIT 1`,
+        [postId, userId]
+      );
+      likedByMe = meRes.rowCount > 0;
+    }
+
+    res.json({ count: countRes.rows[0].count, likedByMe });
+  } catch (err) {
+    console.error("GET /posts/:postId/likes ERROR:", err);
+    res.status(500).json({ error: err.message });
+  }
+});
+
+// PUT /api/posts/:postId/like  (matches frontend toggle)
+router.put("/:postId/like", authenticateToken, async (req, res) => {
+  const client = await pool.connect();
+  try {
+    const postId = Number(req.params.postId);
+    const userId = Number(req.user?.id);
+    if (!postId) return res.status(400).json({ error: "Invalid postId" });
+    if (!userId) return res.status(401).json({ error: "Unauthorized" });
+
+    await client.query("BEGIN");
+
+    const exists = await client.query(
+      `SELECT id FROM post_likes WHERE post_id = $1 AND user_id = $2 LIMIT 1`,
+      [postId, userId]
+    );
+
+    let likedByMe = false;
+    if (exists.rowCount > 0) {
+      await client.query(
+        `DELETE FROM post_likes WHERE post_id = $1 AND user_id = $2`,
+        [postId, userId]
+      );
+      likedByMe = false;
+    } else {
+      await client.query(
+        `INSERT INTO post_likes (post_id, user_id) VALUES ($1, $2) ON CONFLICT DO NOTHING`,
+        [postId, userId]
+      );
+      likedByMe = true;
+    }
+
+    const countRes = await client.query(
+      `SELECT COUNT(*)::int AS count FROM post_likes WHERE post_id = $1`,
+      [postId]
+    );
+
+    await client.query("COMMIT");
+    res.json({ count: countRes.rows[0].count, likedByMe });
+  } catch (err) {
+    await client.query("ROLLBACK");
+    console.error("PUT /posts/:postId/like ERROR:", err);
+    res.status(500).json({ error: err.message });
+  } finally {
+    client.release();
+  }
+});
+
+/* =========================
+   REACTIONS (NEW)
+========================= */
+
+// GET /api/posts/:postId/reactions
+router.get("/:postId/reactions", async (req, res) => {
+  try {
+    const postId = Number(req.params.postId);
+    if (!postId) return res.status(400).json({ error: "Invalid postId" });
+
+    const result = await pool.query(
+      `
+      SELECT reaction_type, COUNT(*)::int AS count
+      FROM post_reactions
+      WHERE post_id = $1
+      GROUP BY reaction_type
+      `,
+      [postId]
+    );
+
+    const userId = req.user?.id || null;
+    let myReactions = [];
+    if (userId) {
+      const meRes = await pool.query(
+        `SELECT reaction_type FROM post_reactions WHERE post_id = $1 AND user_id = $2`,
+        [postId, userId]
+      );
+      myReactions = meRes.rows.map((r) => r.reaction_type);
+    }
+
+    res.json({ counts: result.rows, myReactions });
+  } catch (err) {
+    console.error("GET /posts/:postId/reactions ERROR:", err);
+    res.status(500).json({ error: err.message });
+  }
+});
+
+// POST /api/posts/:postId/react
+router.post("/:postId/react", authenticateToken, async (req, res) => {
+  const client = await pool.connect();
+  try {
+    const postId = Number(req.params.postId);
+    const userId = Number(req.user?.id);
+    const { reaction = "like" } = req.body;
+
+    const VALID = ["like", "love", "fire", "laugh", "wow", "sad", "angry"];
+    const type = VALID.includes(reaction) ? reaction : "like";
+
+    if (!postId) return res.status(400).json({ error: "Invalid postId" });
+    if (!userId) return res.status(401).json({ error: "Unauthorized" });
+
+    await client.query("BEGIN");
+
+    // Toggle: if exists delete it, else add it (and remove other reactions from same user on same post)
+    const existing = await client.query(
+      `SELECT id, reaction_type FROM post_reactions WHERE post_id = $1 AND user_id = $2 LIMIT 1`,
+      [postId, userId]
+    );
+
+    let action = "added";
+    if (existing.rowCount > 0) {
+      if (existing.rows[0].reaction_type === type) {
+        // Same reaction = remove (toggle off)
+        await client.query(
+          `DELETE FROM post_reactions WHERE post_id = $1 AND user_id = $2`,
+          [postId, userId]
+        );
+        action = "removed";
+      } else {
+        // Different reaction = switch
+        await client.query(
+          `UPDATE post_reactions SET reaction_type = $3 WHERE post_id = $1 AND user_id = $2`,
+          [postId, userId, type]
+        );
+        action = "updated";
+      }
+    } else {
+      await client.query(
+        `INSERT INTO post_reactions (post_id, user_id, reaction_type) VALUES ($1, $2, $3)`,
+        [postId, userId, type]
+      );
+    }
+
+    const countsRes = await client.query(
+      `SELECT reaction_type, COUNT(*)::int AS count FROM post_reactions WHERE post_id = $1 GROUP BY reaction_type`,
+      [postId]
+    );
+
+    const myRes = await client.query(
+      `SELECT reaction_type FROM post_reactions WHERE post_id = $1 AND user_id = $2`,
+      [postId, userId]
+    );
+
+    await client.query("COMMIT");
+
+    res.json({
+      action,
+      counts: countsRes.rows,
+      myReactions: myRes.rows.map((r) => r.reaction_type),
+    });
+  } catch (err) {
+    await client.query("ROLLBACK");
+    console.error("POST /posts/:postId/react ERROR:", err);
+    res.status(500).json({ error: err.message });
+  } finally {
+    client.release();
+  }
+});
+
+/* =========================
+   EDIT / DELETE POST
+========================= */
+
+// PUT /api/posts/:postId  (edit caption)
+router.put("/:postId", authenticateToken, async (req, res) => {
+  try {
+    const postId = Number(req.params.postId);
+    const userId = Number(req.user?.id);
+    const caption = String(req.body?.caption || "").trim();
+
+    if (!postId) return res.status(400).json({ error: "Invalid postId" });
+    if (!userId) return res.status(401).json({ error: "Unauthorized" });
+
+    // Verify ownership
+    const ownerCheck = await pool.query(
+      `SELECT user_id FROM posts WHERE id = $1 LIMIT 1`,
+      [postId]
+    );
+    if (!ownerCheck.rows[0]) return res.status(404).json({ error: "Post not found" });
+    if (Number(ownerCheck.rows[0].user_id) !== userId) {
+      return res.status(403).json({ error: "You can only edit your own post" });
+    }
+
+    const result = await pool.query(
+      `UPDATE posts SET caption = $1 WHERE id = $2 RETURNING id, user_id, caption, image_url, video_url, created_at`,
+      [caption, postId]
+    );
+
+    res.json(result.rows[0]);
+  } catch (err) {
+    console.error("PUT /posts/:postId ERROR:", err);
+    res.status(500).json({ error: err.message });
+  }
+});
+
+// DELETE /api/posts/:postId
+router.delete("/:postId", authenticateToken, async (req, res) => {
+  try {
+    const postId = Number(req.params.postId);
+    const userId = Number(req.user?.id);
+
+    if (!postId) return res.status(400).json({ error: "Invalid postId" });
+    if (!userId) return res.status(401).json({ error: "Unauthorized" });
+
+    const ownerCheck = await pool.query(
+      `SELECT user_id FROM posts WHERE id = $1 LIMIT 1`,
+      [postId]
+    );
+    if (!ownerCheck.rows[0]) return res.status(404).json({ error: "Post not found" });
+    if (Number(ownerCheck.rows[0].user_id) !== userId) {
+      return res.status(403).json({ error: "You can only delete your own post" });
+    }
+
+    await pool.query(`DELETE FROM posts WHERE id = $1`, [postId]);
+    res.json({ ok: true, id: postId });
+  } catch (err) {
+    console.error("DELETE /posts/:postId ERROR:", err);
+    res.status(500).json({ error: err.message });
+  }
+});
 export default router;

@@ -919,9 +919,25 @@
         </div>
 
         <div class="actions">
-          <button class="action-btn" :class="{ active: likesByPost[post.id]?.likedByMe }" :disabled="likeBusyByPost[post.id]" @click="toggleLike(post)">
-            ❤️ <span class="label">{{ likesByPost[post.id]?.count ?? 0 }}</span>
-          </button>
+          <!-- REACTIONS BAR -->
+          <div class="reaction-bar">
+            <button
+              v-for="rtype in ['like','love','fire','laugh','wow']"
+              :key="rtype"
+              class="reaction-btn"
+              :class="{ active: hasMyReaction(post.id, rtype) }"
+              :disabled="reactionBusyByPost[post.id]"
+              @click="toggleReaction(post, rtype)"
+              :title="rtype"
+            >
+              <span class="reaction-emoji">{{ REACTION_EMOJI[rtype] }}</span>
+              <span v-if="reactionCount(post.id, rtype)" class="reaction-count">
+                {{ reactionCount(post.id, rtype) }}
+              </span>
+            </button>
+          </div>
+
+          <div class="spacer"></div>
 
           <button class="action-btn" @click="toggleComments(post.id)">
             💬 <span class="label">{{ commentCount(post.id) }}</span>
@@ -935,10 +951,32 @@
             📌 <span class="label">{{ isPinned(post.id) ? "Pinned" : "Pin" }}</span>
           </button>
 
-          <div class="spacer"></div>
+          <!-- EDIT / DELETE (only for owner) -->
+          <template v-if="isMyPost(post)">
+            <button class="action-btn ghost" @click="startEdit(post)">✏️</button>
+            <button class="action-btn danger-ghost" @click="deletePost(post)">🗑️</button>
+          </template>
 
-          <button class="action-btn ghost" @click="sharePost(post)">🔗 <span class="label">Share</span></button>
-          <button class="action-btn ghost" @click="copyPostText(post)">📋 <span class="label">Copy</span></button>
+          <button class="action-btn ghost" @click="sharePost(post)">🔗</button>
+          <button class="action-btn ghost" @click="copyPostText(post)">📋</button>
+        </div>
+
+        <!-- EDIT PANEL -->
+        <div v-if="editingPostId === post.id" class="edit-panel glassy">
+          <div class="edit-head">
+            <span class="edit-title">✏️ Edit Post</span>
+            <button class="mini-x" @click="cancelEdit">✕</button>
+          </div>
+          <textarea
+            v-model="editCaption"
+            class="input"
+            rows="3"
+            placeholder="Edit your caption..."
+          ></textarea>
+          <div class="edit-actions">
+            <button class="btn ghostBtn" @click="cancelEdit">Cancel</button>
+            <button class="btn btn-primary" @click="saveEdit(post.id)">Save Changes</button>
+          </div>
         </div>
 
         <CommentsPanel
@@ -1035,9 +1073,25 @@
         <video v-if="post.video_url" class="media" :src="getMedia(post.video_url)" controls playsinline preload="metadata"></video>
 
         <div class="actions">
-          <button class="action-btn" :class="{ active: likesByPost[post.id]?.likedByMe }" :disabled="likeBusyByPost[post.id]" @click="toggleLike(post)">
-            ❤️ <span class="label">{{ likesByPost[post.id]?.count ?? 0 }}</span>
-          </button>
+          <!-- REACTIONS BAR -->
+          <div class="reaction-bar">
+            <button
+              v-for="rtype in ['like','love','fire','laugh','wow']"
+              :key="rtype"
+              class="reaction-btn"
+              :class="{ active: hasMyReaction(post.id, rtype) }"
+              :disabled="reactionBusyByPost[post.id]"
+              @click="toggleReaction(post, rtype)"
+              :title="rtype"
+            >
+              <span class="reaction-emoji">{{ REACTION_EMOJI[rtype] }}</span>
+              <span v-if="reactionCount(post.id, rtype)" class="reaction-count">
+                {{ reactionCount(post.id, rtype) }}
+              </span>
+            </button>
+          </div>
+
+          <div class="spacer"></div>
 
           <button class="action-btn" @click="toggleComments(post.id)">
             💬 <span class="label">{{ commentCount(post.id) }}</span>
@@ -1051,10 +1105,32 @@
             📌 <span class="label">{{ isPinned(post.id) ? "Pinned" : "Pin" }}</span>
           </button>
 
-          <div class="spacer"></div>
+          <!-- EDIT / DELETE (only for owner) -->
+          <template v-if="isMyPost(post)">
+            <button class="action-btn ghost" @click="startEdit(post)">✏️</button>
+            <button class="action-btn danger-ghost" @click="deletePost(post)">🗑️</button>
+          </template>
 
-          <button class="action-btn ghost" @click="sharePost(post)">🔗 <span class="label">Share</span></button>
-          <button class="action-btn ghost" @click="copyPostText(post)">📋 <span class="label">Copy</span></button>
+          <button class="action-btn ghost" @click="sharePost(post)">🔗</button>
+          <button class="action-btn ghost" @click="copyPostText(post)">📋</button>
+        </div>
+
+        <!-- EDIT PANEL -->
+        <div v-if="editingPostId === post.id" class="edit-panel glassy">
+          <div class="edit-head">
+            <span class="edit-title">✏️ Edit Post</span>
+            <button class="mini-x" @click="cancelEdit">✕</button>
+          </div>
+          <textarea
+            v-model="editCaption"
+            class="input"
+            rows="3"
+            placeholder="Edit your caption..."
+          ></textarea>
+          <div class="edit-actions">
+            <button class="btn ghostBtn" @click="cancelEdit">Cancel</button>
+            <button class="btn btn-primary" @click="saveEdit(post.id)">Save Changes</button>
+          </div>
         </div>
 
         <CommentsPanel
@@ -1371,8 +1447,18 @@ const error = computed(() => feed.error)
 const likesByPost = ref({})       // ← LOCAL (not from useFeed)
 const likeBusyByPost = ref({})    // ← LOCAL (not from useFeed)
 const savedPostIds = computed(() => feed.savedPostIds)
+
+// Reactions state
+const reactionsByPost = ref({})      // { [postId]: { like: 5, fire: 2, ... } }
+const myReactionsByPost = ref({})    // { [postId]: ['fire'] }
+const reactionBusyByPost = ref({})   // { [postId]: true }
+
+// Edit state
+const editingPostId = ref(null)
+const editCaption = ref("")
 const pinnedPostIds = computed(() => feed.pinnedPostIds)
 const { coords, status: locStatus, hasLocation, isApproximate, locationLabel, computeDistances, sortByDistance } = useLocation()
+
 /* =========================
    STORAGE KEYS
 ========================= */
@@ -2703,11 +2789,183 @@ function toggleThreadMedia(postId) {
 }
 
 /* =========================
+   REACTIONS
+========================= */
+const REACTION_EMOJI = {
+  like: "❤️",
+  love: "🩷",
+  fire: "🔥",
+  laugh: "😂",
+  wow: "😮",
+  sad: "😢",
+  angry: "😡",
+}
+
+async function fetchReactions(postId) {
+  try {
+    const res = await fetch(`${apiUrl}/posts/${postId}/reactions`, {
+      headers: token ? { Authorization: `Bearer ${token}` } : {},
+    })
+    if (!res.ok) return
+    const data = await res.json()
+    reactionsByPost.value = {
+      ...reactionsByPost.value,
+      [postId]: data.counts || [],
+    }
+    myReactionsByPost.value = {
+      ...myReactionsByPost.value,
+      [postId]: data.myReactions || [],
+    }
+  } catch {
+    // silent
+  }
+}
+
+async function toggleReaction(post, type = "like") {
+  const postId = post.id
+  if (!token) return alert("Login to react.")
+  if (reactionBusyByPost.value[postId]) return
+
+  reactionBusyByPost.value = { ...reactionBusyByPost.value, [postId]: true }
+
+  // Optimistic UI
+  const prevCounts = reactionsByPost.value[postId] || []
+  const prevMine = myReactionsByPost.value[postId] || []
+  const hadThis = prevMine.includes(type)
+
+  // Build optimistic counts
+  const nextCounts = [...prevCounts]
+  const idx = nextCounts.findIndex((c) => c.reaction_type === type)
+  if (hadThis) {
+    // removing
+    if (idx !== -1) {
+      nextCounts[idx] = { ...nextCounts[idx], count: Math.max(0, nextCounts[idx].count - 1) }
+      if (nextCounts[idx].count === 0) nextCounts.splice(idx, 1)
+    }
+  } else {
+    // adding - also remove previous reaction if any (only one reaction per user)
+    const prevType = prevMine[0]
+    if (prevType) {
+      const pIdx = nextCounts.findIndex((c) => c.reaction_type === prevType)
+      if (pIdx !== -1) {
+        nextCounts[pIdx] = { ...nextCounts[pIdx], count: Math.max(0, nextCounts[pIdx].count - 1) }
+        if (nextCounts[pIdx].count === 0) nextCounts.splice(pIdx, 1)
+      }
+    }
+    if (idx !== -1) {
+      nextCounts[idx] = { ...nextCounts[idx], count: (nextCounts[idx].count || 0) + 1 }
+    } else {
+      nextCounts.push({ reaction_type: type, count: 1 })
+    }
+  }
+
+  const nextMine = hadThis ? [] : [type]
+
+  reactionsByPost.value = { ...reactionsByPost.value, [postId]: nextCounts }
+  myReactionsByPost.value = { ...myReactionsByPost.value, [postId]: nextMine }
+
+  try {
+    const res = await fetch(`${apiUrl}/posts/${postId}/react`, {
+      method: "POST",
+      headers: {
+        "Content-Type": "application/json",
+        Authorization: `Bearer ${token}`,
+      },
+      body: JSON.stringify({ reaction: type }),
+    })
+    if (!res.ok) throw new Error("Reaction failed")
+    const data = await res.json()
+    reactionsByPost.value = { ...reactionsByPost.value, [postId]: data.counts || [] }
+    myReactionsByPost.value = { ...myReactionsByPost.value, [postId]: data.myReactions || [] }
+  } catch (err) {
+    // rollback
+    reactionsByPost.value = { ...reactionsByPost.value, [postId]: prevCounts }
+    myReactionsByPost.value = { ...myReactionsByPost.value, [postId]: prevMine }
+    alert(err.message || "Reaction failed")
+  } finally {
+    reactionBusyByPost.value = { ...reactionBusyByPost.value, [postId]: false }
+  }
+}
+
+function reactionCount(postId, type) {
+  const counts = reactionsByPost.value[postId] || []
+  const found = counts.find((c) => c.reaction_type === type)
+  return found ? found.count : 0
+}
+
+function hasMyReaction(postId, type) {
+  return (myReactionsByPost.value[postId] || []).includes(type)
+}
+
+/* =========================
+   EDIT / DELETE POST
+========================= */
+function startEdit(post) {
+  if (Number(post.user_id) !== Number(me?.id)) return
+  editingPostId.value = post.id
+  editCaption.value = post.caption || ""
+}
+
+function cancelEdit() {
+  editingPostId.value = null
+  editCaption.value = ""
+}
+
+async function saveEdit(postId) {
+  if (!token) return
+  try {
+    const res = await fetch(`${apiUrl}/posts/${postId}`, {
+      method: "PUT",
+      headers: {
+        "Content-Type": "application/json",
+        Authorization: `Bearer ${token}`,
+      },
+      body: JSON.stringify({ caption: editCaption.value }),
+    })
+    const data = await res.json()
+    if (!res.ok) throw new Error(data?.error || "Edit failed")
+
+    // Update local post
+    const idx = feed.posts.findIndex((p) => Number(p.id) === Number(postId))
+    if (idx !== -1) {
+      feed.posts[idx] = { ...feed.posts[idx], caption: data.caption }
+    }
+    editingPostId.value = null
+    editCaption.value = ""
+    addActivity("Post", `Edited post #${postId}`)
+  } catch (err) {
+    alert(err.message || "Edit failed")
+  }
+}
+
+async function deletePost(post) {
+  if (Number(post.user_id) !== Number(me?.id)) return
+  if (!confirm("Delete this post forever?")) return
+
+  try {
+    const res = await fetch(`${apiUrl}/posts/${post.id}`, {
+      method: "DELETE",
+      headers: { Authorization: `Bearer ${token}` },
+    })
+    const data = await res.json()
+    if (!res.ok) throw new Error(data?.error || "Delete failed")
+
+    feed.posts = feed.posts.filter((p) => Number(p.id) !== Number(post.id))
+    addActivity("Post", `Deleted post #${post.id}`)
+  } catch (err) {
+    alert(err.message || "Delete failed")
+  }
+}
+
+function isMyPost(post) {
+  return Number(post.user_id) === Number(me?.id)
+}
+
+/* =========================
    LIKES
 ========================= */
 async function preloadLikesForPosts(list) {
   if (!token) return
-  // Seed from post data first so counts aren't 0
   list.forEach((p) => {
     if (!likesByPost.value[p.id]) {
       likesByPost.value[p.id] = {
@@ -2716,8 +2974,10 @@ async function preloadLikesForPosts(list) {
       }
     }
   })
-  // Optional: fetch fresh counts (swallows 404 if endpoint missing)
-  await Promise.allSettled(list.map((p) => fetchLikeState(p.id)))
+  await Promise.allSettled([
+    ...list.map((p) => fetchLikeState(p.id)),
+    ...list.map((p) => fetchReactions(p.id)),
+  ])
 }
 
 async function fetchLikeState(postId) {
@@ -6238,4 +6498,90 @@ onBeforeUnmount(() => {
   border-radius: 4px;
 }
 
+
+
+/* Reactions */
+.reaction-bar {
+  display: flex;
+  gap: 6px;
+  align-items: center;
+  flex-wrap: wrap;
+}
+
+.reaction-btn {
+  display: inline-flex;
+  align-items: center;
+  gap: 4px;
+  border: 1px solid rgba(255, 255, 255, 0.08);
+  background: rgba(255, 255, 255, 0.04);
+  color: #e2e8f0;
+  padding: 6px 10px;
+  border-radius: 999px;
+  cursor: pointer;
+  font-size: 13px;
+  font-weight: 600;
+  transition: all 0.2s ease;
+}
+
+.reaction-btn:hover {
+  background: rgba(255, 255, 255, 0.1);
+  transform: translateY(-2px);
+}
+
+.reaction-btn.active {
+  background: rgba(236, 72, 153, 0.15);
+  border-color: rgba(236, 72, 153, 0.35);
+  box-shadow: 0 4px 12px rgba(236, 72, 153, 0.15);
+}
+
+.reaction-emoji {
+  font-size: 16px;
+  line-height: 1;
+}
+
+.reaction-count {
+  font-size: 11px;
+  font-weight: 700;
+  opacity: 0.9;
+}
+
+/* Edit panel */
+.edit-panel {
+  margin: 12px 0 4px;
+  padding: 16px;
+  border-radius: 20px;
+  background: rgba(139, 92, 246, 0.06);
+  border: 1px solid rgba(139, 92, 246, 0.15);
+}
+
+.edit-head {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  margin-bottom: 10px;
+}
+
+.edit-title {
+  font-weight: 800;
+  font-size: 14px;
+  color: #c4b5fd;
+}
+
+.edit-actions {
+  display: flex;
+  gap: 10px;
+  justify-content: flex-end;
+  margin-top: 12px;
+}
+
+.action-btn.danger-ghost {
+  color: #fca5a5;
+  border-color: rgba(239, 68, 68, 0.15);
+  background: rgba(239, 68, 68, 0.06);
+}
+
+.action-btn.danger-ghost:hover {
+  background: rgba(239, 68, 68, 0.12);
+  border-color: rgba(239, 68, 68, 0.25);
+}
 </style>
