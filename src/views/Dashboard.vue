@@ -7,15 +7,20 @@
       <div class="bg-orb orb2"></div>
       <div class="bg-orb orb3"></div>
 
-  <!-- ELITE TOPBAR -->
+  <!-- CLEAN TOPBAR -->
   <header class="topbar eliteTopbar glassy">
     <div class="brand" @click="scrollToTop" role="button" tabindex="0">
       <div class="logo eliteLogo">⚡</div>
-
       <div class="brand-text">
         <div class="title">Pulse</div>
         <div class="sub">Elite social cockpit</div>
       </div>
+      <!-- tiny connection dot replaces the island -->
+      <span
+        class="topbarConnDot"
+        :class="{ on: socketConnected }"
+        :title="socketConnected ? 'Realtime Connected' : 'Realtime Offline'"
+      ></span>
     </div>
 
     <div class="eliteCenterSearch">
@@ -43,7 +48,6 @@
       </span>
       
       <button class="chip eliteChip" @click="openQuickCreate('post')">✍️ Post</button>
-
       <button class="chip ghost eliteChip" @click="toggleChat">
         {{ chatOpen ? "Close Chat" : "Chat" }}
       </button>
@@ -60,66 +64,7 @@
     </div>
   </header>
 
-  <!-- ELITE QUICK RAIL -->
-  <section v-if="!token" class="eliteQuickRail">
-    <button class="quickRailBtn" @click="focusComposer">✍️ Create</button>
-    <button class="quickRailBtn" @click="togglePeople">👥 People</button>
-    <button class="quickRailBtn" @click="goInbox">💬 Inbox</button>
-    <button class="quickRailBtn" @click="createFastRoom">🎧 Room</button>
-    <button class="quickRailBtn" @click="startLive">🔴 Live</button>
-    <button class="quickRailBtn" @click="goProfile">👤 Profile</button>
-  </section>
-        <!-- DYNAMIC ISLAND -->
-  <section class="dynamicIsland glassy">
-
-    <div class="islandLeft">
-
-      <span class="islandDot" :class="{ on: socketConnected }"></span>
-
-      <span class="islandText">
-        {{ socketConnected ? "Realtime Connected" : "Realtime Offline" }}
-      </span>
-
-    </div>
-
-    <div class="islandCenter">
-
-      <button class="islandBtn" @click="refreshAll">
-        🔄 Refresh
-      </button>
-
-      <button class="islandBtn" @click="focusComposer">
-        ✍️ Post
-      </button>
-
-      <button class="islandBtn" @click="startLive">
-        🔴 Live
-      </button>
-
-      <button class="islandBtn" @click="createFastRoom">
-        📞 Room
-      </button>
-
-    </div>
-
-    <div class="islandRight">
-
-      <span class="islandStat">
-        👥 {{ onlineCount }}
-      </span>
-
-      <span class="islandStat">
-        🔴 {{ liveStreams.length }}
-      </span>
-
-      <span class="islandStat">
-        📞 {{ callRooms.length }}
-      </span>
-
-    </div>
-
-  </section>
-  <!-- HERO -->
+  <!-- CLEAN HERO -->
   <section class="heroStrip">
     <div class="heroCard glassy" :class="{ 'heroCard--solo': token }">
       <div class="heroLeft">
@@ -132,8 +77,30 @@
         <div class="heroActions">
           <button class="btn btn-primary" @click="focusComposer">✨ Create Post</button>
           <button class="btn ghostBtn" @click="startLive">🔴 Go Live</button>
-          <button class="btn ghostBtn" @click="createFastRoom">🚪 Start Room</button>
-          <button class="btn ghostBtn" @click="toggleStudio">Creator Studio →</button>
+
+          <!-- More dropdown: everything else lives here -->
+          <div class="hero-more" style="position:relative;">
+            <button class="btn ghostBtn" @click="heroMoreOpen = !heroMoreOpen">⋯ More</button>
+            <div
+              v-if="heroMoreOpen"
+              class="hero-more-menu glassy"
+              style="position:absolute; top:calc(100% + 8px); left:0; min-width:180px; padding:8px; border-radius:16px; display:flex; flex-direction:column; gap:6px; z-index:50;"
+            >
+              <button class="btn ghostBtn" style="justify-content:flex-start;" @click="createFastRoom(); heroMoreOpen = false">
+                🚪 Start Room
+              </button>
+              <button class="btn ghostBtn" style="justify-content:flex-start;" @click="toggleStudio(); heroMoreOpen = false">
+                🪄 Creator Studio
+              </button>
+              <button class="btn ghostBtn" style="justify-content:flex-start;" @click="createZoomRoom(); heroMoreOpen = false">
+                🎥 New Meet
+              </button>
+              <div style="height:1px; background:rgba(255,255,255,0.08); margin:2px 0;"></div>
+              <button class="btn ghostBtn" style="justify-content:flex-start;" @click="refreshAll(); heroMoreOpen = false">
+                🔄 Refresh
+              </button>
+            </div>
+          </div>
         </div>
 
         <div class="heroStatsCompact">
@@ -154,6 +121,7 @@
         </div>
       </div>
 
+      <!-- only shown when NOT logged in -->
       <div v-if="!token" class="heroStats">
         <div class="heroStat">
           <div class="heroStatNum">{{ posts.length }}</div>
@@ -3627,7 +3595,32 @@ onBeforeUnmount(() => {
     radial-gradient(900px 600px at 50% 105%, rgba(59, 130, 246, 0.08), transparent 60%),
     linear-gradient(180deg, #070a14 0%, #0a0e1a 40%, #070b14 100%);
 }
+/* Topbar connection dot (replaces the island) */
+.topbarConnDot {
+  width: 8px;
+  height: 8px;
+  border-radius: 50%;
+  background: #ef4444;
+  box-shadow: 0 0 10px rgba(239, 68, 68, 0.5);
+  margin-left: 10px;
+  align-self: center;
+  transition: all 0.3s ease;
+}
+.topbarConnDot.on {
+  background: #22c55e;
+  box-shadow: 0 0 10px rgba(34, 197, 94, 0.5);
+}
 
+/* Hero dropdown menu items */
+.hero-more-menu .btn {
+  width: 100%;
+  border-radius: 12px;
+  padding: 10px 12px;
+  font-size: 13px;
+}
+.hero-more-menu .btn:hover {
+  background: rgba(255, 255, 255, 0.1);
+}
 /* =========================================================
    AMBIENT ORBS
 ========================================================= */
