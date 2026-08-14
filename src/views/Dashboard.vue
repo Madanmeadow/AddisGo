@@ -61,11 +61,11 @@
           <!-- Stats row -->
           <div style="display:flex; gap:6px; padding:4px 4px 10px; border-bottom:1px solid rgba(255,255,255,0.06); margin-bottom:2px;">
             <div style="flex:1; text-align:center;">
-              <div style="font-size:16px; font-weight:800; background:linear-gradient(135deg,#fff,#c7d2fe); -webkit-background-clip:text; -webkit-text-fill-color:transparent;">{{ creatorScore }}</div>
+              <div style="font-size:16px; font-weight:800; background:linear-gradient(135deg,#fff,#c7d2fe); -webkit-background-clip:text; background-clip:text; -webkit-text-fill-color:transparent; color:transparent;">{{ creatorScore }}</div>
               <div style="font-size:10px; opacity:0.5; text-transform:uppercase; font-weight:600; letter-spacing:0.04em; margin-top:2px;">Score</div>
             </div>
             <div style="flex:1; text-align:center;">
-              <div style="font-size:16px; font-weight:800; background:linear-gradient(135deg,#fff,#c7d2fe); -webkit-background-clip:text; -webkit-text-fill-color:transparent;">{{ todayStreak }}d</div>
+              <div style="font-size:16px; font-weight:800; background:linear-gradient(135deg,#fff,#c7d2fe); -webkit-background-clip:text; background-clip:text; -webkit-text-fill-color:transparent; color:transparent;">{{ todayStreak }}d</div>
               <div style="font-size:10px; opacity:0.5; text-transform:uppercase; font-weight:600; letter-spacing:0.04em; margin-top:2px;">Streak</div>
             </div>
             <div style="flex:1; text-align:center;">
