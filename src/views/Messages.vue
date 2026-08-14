@@ -912,7 +912,7 @@ onBeforeUnmount(() => {
 
 .brand { display: flex; align-items: center; gap: 12px; cursor: pointer; }
 .logo { width: 44px; height: 44px; border-radius: 14px; display: grid; place-items: center; background: linear-gradient(135deg, #ec4899, #8b5cf6, #6366f1); border: 1px solid rgba(255,255,255,0.15); font-size: 22px; box-shadow: 0 8px 24px rgba(139, 92, 246, 0.25); }
-.title { font-weight: 900; font-size: 19px; background: linear-gradient(135deg, #fff, #c7d2fe); -webkit-background-clip: text; -webkit-text-fill-color: transparent; }
+.title { font-weight: 900; font-size: 19px; background: linear-gradient(135deg, #fff, #c7d2fe); background-clip: text; -webkit-background-clip: text; -webkit-text-fill-color: transparent; }
 .sub { opacity: 0.55; font-size: 11px; font-weight: 500; text-transform: uppercase; letter-spacing: 0.04em; }
 .top-actions { display: flex; gap: 8px; flex-wrap: wrap; }
 
