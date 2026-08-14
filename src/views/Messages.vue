@@ -1,8 +1,4 @@
-<!-- ============================================================
-  BULLETPROOF MESSAGES.VUE
-  Supports: text, image, video, voice, file, links
-  Offline queue, auto-retry, optimistic UI, read receipts, typing
-============================================================ -->
+<!-- src/views/Messages.vue -->
 <template>
   <Layout>
     <div class="wrap">
@@ -15,7 +11,7 @@
           <div class="logo">💬</div>
           <div class="brand-text">
             <div class="title">Inbox</div>
-            <div class="sub">{{ conversations.length }} chat{{ conversations.length === 1 ? '' : 's' }}</div>
+            <div class="sub">{{ conversationList.length }} chat{{ conversationList.length === 1 ? '' : 's' }}</div>
           </div>
         </div>
         <div class="top-actions">
@@ -26,7 +22,6 @@
 
       <main class="main">
         <div class="chatLayout">
-          <!-- SIDEBAR -->
           <aside class="sidebar glassy">
             <div class="sidebarHead">
               <div class="panel-title">👥 Conversations</div>
@@ -52,55 +47,52 @@
             <div v-else class="convList">
               <button
                 v-for="conv in filteredConversations"
-                :key="conv.id"
+                :key="conv.otherUserId"
                 class="convItem"
-                :class="{ active: activeConversationId === conv.id }"
+                :class="{ active: activeOtherId === conv.otherUserId }"
                 @click="openConversation(conv)"
               >
-                <div class="convAvatar">{{ initials(conv.other_username) }}</div>
+                <div class="convAvatar">{{ conv.name?.[0]?.toUpperCase() || '?' }}</div>
                 <div class="convMeta">
-                  <div class="convName">{{ conv.other_username || conv.other_name || 'User' }}</div>
+                  <div class="convName">{{ conv.name || `User #${conv.otherUserId}` }}</div>
                   <div class="convPreview">
-                    <span v-if="conv.last_media_type === 'image'">📷 Photo</span>
-                    <span v-else-if="conv.last_media_type === 'video'">🎥 Video</span>
-                    <span v-else-if="conv.last_media_type === 'voice'">🎤 Voice</span>
-                    <span v-else>{{ conv.last_message || 'No messages yet' }}</span>
+                    <span v-if="conv.lastMessageType === 'image'">📷 Photo</span>
+                    <span v-else-if="conv.lastMessageType === 'video'">🎥 Video</span>
+                    <span v-else>{{ conv.lastMessage || 'No messages yet' }}</span>
                   </div>
                 </div>
-                <div v-if="conv.unread_count > 0" class="convBadge">{{ conv.unread_count }}</div>
+                <div v-if="conv.unread" class="convBadge">{{ conv.unread }}</div>
               </button>
             </div>
           </aside>
 
-          <!-- CHAT AREA -->
           <section class="chatArea glassy">
-            <div v-if="!activeConversationId" class="emptyChat">
-              <div class="state-emoji" style="font-size:48px">💬</div>
+            <div v-if="!activeOtherId" class="emptyChat">
+              <div class="state-emoji" style="font-size: 48px;">💬</div>
               <div class="state-title">Select a conversation</div>
               <div class="state-sub">Choose someone from the sidebar to start messaging.</div>
             </div>
 
             <template v-else>
-              <!-- Header -->
               <div class="chatHeader">
                 <div class="chatHeaderLeft">
-                  <div class="avatar">{{ initials(activeName) }}</div>
+                  <div class="avatar">{{ activeName?.[0]?.toUpperCase() || '?' }}</div>
                   <div>
-                    <div class="chatHeaderName">{{ activeName || 'User' }}</div>
+                    <div class="chatHeaderName">{{ activeName || `User #${activeOtherId}` }}</div>
                     <div class="chatHeaderStatus">
                       <span class="statusDot" :class="{ on: isOnline(activeOtherId) }"></span>
                       {{ isOnline(activeOtherId) ? 'Online' : 'Offline' }}
                       <span class="socketStatus">{{ socketConnected ? '· ⚡ realtime' : '· ○ offline' }}</span>
-                      <span v-if="typingUser" class="typingIndicator">· typing…</span>
                     </div>
                   </div>
                 </div>
                 <div class="chatHeaderActions">
+                  <button class="iconbtn" title="Audio Call" :disabled="!isOnline(activeOtherId)" @click="callUser('audio')">📞</button>
+                  <button class="iconbtn" title="Video Call" :disabled="!isOnline(activeOtherId)" @click="callUser('video')">🎥</button>
                   <button class="iconbtn" @click="closeChat">✕</button>
                 </div>
               </div>
 
-              <!-- Messages -->
               <div class="messagesWrap" ref="messagesRef">
                 <div v-if="loadingMessages" class="state mini">
                   <div class="state-emoji">⏳</div>
@@ -109,84 +101,61 @@
                 <div v-else-if="messages.length === 0" class="state mini">
                   <div class="state-emoji">👋</div>
                   <div class="state-title">No messages yet</div>
-                  <div class="state-sub">Say hello!</div>
+                  <div class="state-sub">Say hello to {{ activeName || 'them' }}!</div>
                 </div>
 
                 <div
                   v-for="(msg, idx) in messages"
-                  :key="msg.__localId || msg.id || `msg-${idx}`"
+                  :key="msg._id || msg.id || msg.__localId || `msg-${idx}`"
                   class="msgRow"
                   :class="{ me: isMe(msg) }"
                 >
                   <div class="msgBubble" :class="{ pending: msg.pending, failed: msg.failed }">
-                    <!-- Media: Image -->
-                    <div v-if="msg.media_type === 'image'" class="msgMedia">
-                      <img :src="resolveUrl(msg.media_url)" alt="image" loading="lazy" @load="onMediaLoad" />
+                    <div v-if="msg.mediaType === 'image'" class="msgMedia">
+                      <img :src="msg.mediaUrl" alt="image" loading="lazy" @load="onMediaLoad" />
                     </div>
-                    <!-- Media: Video -->
-                    <div v-else-if="msg.media_type === 'video'" class="msgMedia">
-                      <video :src="resolveUrl(msg.media_url)" controls playsinline preload="metadata" @loadedmetadata="onMediaLoad" />
+                    <div v-else-if="msg.mediaType === 'video'" class="msgMedia">
+                      <video :src="msg.mediaUrl" controls playsinline preload="metadata" @loadedmetadata="onMediaLoad" />
                     </div>
-                    <!-- Media: Voice -->
-                    <div v-else-if="msg.media_type === 'voice'" class="msgVoice">
-                      <audio :src="resolveUrl(msg.media_url)" controls preload="metadata" />
-                      <span v-if="msg.voice_duration" class="voiceDuration">{{ formatDuration(msg.voice_duration) }}</span>
-                    </div>
-                    <!-- Media: File -->
-                    <div v-else-if="msg.media_type === 'file'" class="msgFile">
-                      <a :href="resolveUrl(msg.media_url)" target="_blank" rel="noopener" class="fileLink">
-                        📎 {{ msg.file_name || 'File' }}
-                      </a>
-                    </div>
-                    <!-- Text / Link -->
-                    <div v-else class="msgText" v-html="linkify(msg.text || '')"></div>
+                    <div v-else class="msgText" v-html="linkify(msg.text || msg.content || msg.message || '')"></div>
 
                     <div class="msgMeta">
                       <span v-if="msg.pending" class="status">Sending…</span>
                       <span v-else-if="msg.failed" class="status failed" @click="retryMessage(msg)">Failed · Tap to retry</span>
-                      <span v-else class="status delivered">
-                        ✓{{ msg.seen ? '✓' : '' }}
-                      </span>
-                      <span class="time">{{ formatDate(msg.created_at) }}</span>
+                      <span v-else class="status delivered">✓{{ msg.seen ? '✓' : '' }}</span>
+                      <span class="time">{{ formatDate(msg.created_at || msg.createdAt) }}</span>
                     </div>
                   </div>
                 </div>
               </div>
 
-              <!-- Input -->
               <div class="chatInputArea">
                 <div v-if="error" class="alert soft">{{ error }}</div>
 
-                <!-- File preview -->
                 <div v-if="selectedFile" class="filePreview">
                   <span class="filePreviewName">{{ selectedFile.name }}</span>
                   <button class="filePreviewX" @click="clearFile">✕</button>
                 </div>
 
-                <!-- Voice recording indicator -->
-                <div v-if="isRecording" class="recordingBar">
-                  <span class="recDot"></span>
-                  <span>Recording {{ recordingTime }}s</span>
-                  <button class="recStop" @click="stopRecording">⏹ Stop</button>
-                </div>
-
                 <div class="inputRow">
-                  <input ref="fileInput" type="file" accept="image/*,video/*,audio/*" style="display:none" @change="onFileSelected" />
-                  <button class="iconbtn attachBtn" title="Attach" @click="fileInput?.click()">📎</button>
-                  <button class="iconbtn micBtn" :class="{ recording: isRecording }" title="Voice message" @click="toggleRecording">🎤</button>
-
+                  <input
+                    ref="fileInput"
+                    type="file"
+                    accept="image/*,video/*"
+                    style="display:none"
+                    @change="onFileSelected"
+                  />
+                  <button class="iconbtn attachBtn" title="Attach photo/video" @click="fileInput?.click()">📎</button>
                   <input
                     ref="inputRef"
                     v-model="text"
                     class="chatInput"
                     placeholder="Type a message…"
-                    :disabled="isRecording"
                     @keydown.enter.prevent="send"
-                    @input="onTyping"
                   />
                   <button
                     class="btn btn-primary sendBtn"
-                    :disabled="sending || !canSend || isRecording"
+                    :disabled="sending || !canSend"
                     @click="send"
                   >
                     {{ sending ? '…' : '➤' }}
@@ -212,7 +181,7 @@ const router = useRouter()
 
 const apiUrl = (() => {
   const raw = (import.meta.env.VITE_API_URL || '').trim()
-  return (raw || 'http://localhost:5000').replace(/\/$/, '')
+  return (raw || 'https://addisgo-production-63ae.up.railway.app').replace(/\/$/, '')
 })()
 
 const token = ref(localStorage.getItem('token') || '')
@@ -220,26 +189,54 @@ const me = ref((() => {
   try { return JSON.parse(localStorage.getItem('user') || 'null') } catch { return null }
 })())
 
-// ── OFFLINE QUEUE ──
-const DM_QUEUE_KEY = 'pulse_dm_offline_queue_v3'
-function getQueue() {
-  try { return JSON.parse(localStorage.getItem(DM_QUEUE_KEY) || '[]') } catch { return [] }
-}
-function setQueue(q) {
-  try { localStorage.setItem(DM_QUEUE_KEY, JSON.stringify(q.slice(-100))) } catch {}
-}
-function enqueue(payload) {
-  const q = getQueue()
-  q.push({ ...payload, _queuedAt: Date.now() })
-  setQueue(q)
+const DM_QUEUE_KEY = 'pulse_dm_offline_queue_v2'
+
+function getDmStoreKey(otherId) {
+  const myId = me.value?.id || 'unknown'
+  return `pulse_dm_v2_${myId}_${otherId}`
 }
 
-// ── SOCKET ──
+function loadMessages(otherId) {
+  if (!otherId) return
+  try {
+    const saved = JSON.parse(localStorage.getItem(getDmStoreKey(otherId)) || '[]')
+    messages.value = Array.isArray(saved) ? saved : []
+  } catch { messages.value = [] }
+}
+
+function saveMessages(otherId) {
+  if (!otherId) return
+  try { localStorage.setItem(getDmStoreKey(otherId), JSON.stringify(messages.value.slice(-400))) } catch {}
+}
+
+function getMessageQueue() {
+  try { return JSON.parse(localStorage.getItem(DM_QUEUE_KEY) || '[]') } catch { return [] }
+}
+
+function setMessageQueue(q) {
+  try { localStorage.setItem(DM_QUEUE_KEY, JSON.stringify(q.slice(-100))) } catch {}
+}
+
+function queueMessage(payload) {
+  const q = getMessageQueue()
+  q.push({ ...payload, _queuedAt: Date.now() })
+  setMessageQueue(q)
+}
+
 let socket = null
 const socketConnected = ref(false)
-const onlineIds = ref(new Set())
-const typingUser = ref('')
-let typingTimeout = null
+
+function getRoomId(u1, u2) {
+  const a = String(u1 || '')
+  const b = String(u2 || '')
+  if (!a || !b) return null
+  return `dm-${[a, b].sort().join('-')}`
+}
+
+const currentRoomId = computed(() => {
+  if (!me.value?.id || !activeOtherId.value) return null
+  return getRoomId(me.value.id, activeOtherId.value)
+})
 
 function connectSocket() {
   if (socket?.connected) return
@@ -249,63 +246,104 @@ function connectSocket() {
     reconnectionAttempts: 10,
     reconnectionDelay: 1000,
     reconnectionDelayMax: 5000,
-    auth: { token: token.value }
   })
 
   socket.on('connect', () => {
     socketConnected.value = true
-    if (activeConversationId.value) {
-      socket.emit('join_conversation', activeConversationId.value)
-    }
-    flushQueue()
+    if (currentRoomId.value) socket.emit('join_room', currentRoomId.value)
+    flushMessageQueue()
     fetchConversations()
   })
   socket.on('disconnect', () => { socketConnected.value = false })
   socket.on('connect_error', () => { socketConnected.value = false })
   socket.on('users_online', (ids) => { onlineIds.value = new Set((ids || []).map(String)) })
-  socket.on('user_online', (id) => onlineIds.value.add(String(id)))
-  socket.on('user_offline', (id) => onlineIds.value.delete(String(id)))
+  socket.on('user_online', (userId) => onlineIds.value.add(String(userId)))
+  socket.on('user_offline', (userId) => onlineIds.value.delete(String(userId)))
 
-  socket.on('receive_message', (data) => handleIncomingMessage(data))
-  socket.on('new_conversation_message', ({ conversationId, message }) => {
-    if (String(conversationId) === String(activeConversationId.value)) {
-      handleIncomingMessage(message)
-    } else {
-      // Refresh sidebar to show unread
-      fetchConversations()
+  socket.on('receive_message', (data) => {
+    const fromId = String(data.sender_id || data.from || data.fromUserId || '')
+    const toId = String(data.receiver_id || data.to || data.toUserId || '')
+    const myId = String(me.value?.id || '')
+    const activeId = String(activeOtherId.value || '')
+    const room = data.roomId || data.room_id || getRoomId(fromId, toId)
+    const incomingTempId = String(data._tempId || data.tempId || '')
+    const incomingRealId = String(data.id || data.message_id || '')
+
+    if (fromId === myId && incomingTempId) {
+      const idx = messages.value.findIndex(m => String(m._tempId || m.tempId || '') === incomingTempId)
+      if (idx !== -1) {
+        messages.value[idx] = {
+          ...messages.value[idx],
+          id: incomingRealId || messages.value[idx].id,
+          _id: incomingRealId || messages.value[idx]._id,
+          pending: false,
+          failed: false,
+          seen: false,
+          created_at: data.created_at || messages.value[idx].created_at,
+          mediaUrl: data.mediaUrl || data.media_url || messages.value[idx].mediaUrl,
+          mediaType: data.mediaType || data.media_type || messages.value[idx].mediaType,
+        }
+        saveMessages(activeOtherId.value)
+        nextTick(scrollToBottom)
+        updateConvLastMessage(activeId, messages.value[idx].text, messages.value[idx].mediaType)
+        return
+      }
     }
-  })
 
-  socket.on('typing', ({ conversationId }) => {
-    if (String(conversationId) === String(activeConversationId.value)) {
-      typingUser.value = 'typing'
-      if (typingTimeout) clearTimeout(typingTimeout)
-      typingTimeout = setTimeout(() => { typingUser.value = '' }, 3000)
+    const newMsg = {
+      id: incomingRealId || `srv-${Date.now()}`,
+      _id: incomingRealId || `srv-${Date.now()}`,
+      text: String(data.content || data.text || data.message || ''),
+      content: String(data.content || data.text || data.message || ''),
+      from: fromId,
+      fromUserId: fromId,
+      senderId: fromId,
+      sender_name: data.sender_name || data.name || '',
+      created_at: data.created_at || new Date().toISOString(),
+      createdAt: data.created_at || new Date().toISOString(),
+      pending: false,
+      failed: false,
+      seen: false,
+      mediaUrl: data.mediaUrl || data.media_url || null,
+      mediaType: data.mediaType || data.media_type || null,
     }
-  })
-  socket.on('stop_typing', ({ conversationId }) => {
-    if (String(conversationId) === String(activeConversationId.value)) typingUser.value = ''
-  })
 
-  socket.on('messages_read', ({ conversationId, userId }) => {
-    if (String(conversationId) === String(activeConversationId.value) && String(userId) !== String(me.value?.id)) {
-      messages.value.forEach(m => { if (isMe(m)) m.seen = true })
+    const alreadyHave = messages.value.some(m => {
+      if (incomingRealId && (String(m.id) === incomingRealId || String(m._id) === incomingRealId)) return true
+      if (incomingTempId && (String(m._tempId || '') === incomingTempId || String(m.tempId || '') === incomingTempId)) return true
+      if (m.from === fromId && m.text === newMsg.text && Math.abs(new Date(m.created_at) - new Date(newMsg.created_at)) < 3000) return true
+      return false
+    })
+    if (alreadyHave) return
+
+    const relevant = room === currentRoomId.value || (fromId === activeId && toId === myId) || (fromId === myId && toId === activeId)
+    if (relevant) {
+      messages.value.push(newMsg)
+      saveMessages(activeOtherId.value)
+      nextTick(scrollToBottom)
+    }
+    if (fromId !== myId) {
+      upsertConversation(fromId, newMsg.sender_name || `User #${fromId}`, newMsg.text, newMsg.mediaType, !relevant)
     }
   })
 }
 
 function disconnectSocket() {
   if (!socket) return
-  if (activeConversationId.value) socket.emit('leave_conversation', activeConversationId.value)
+  socket.off('connect')
+  socket.off('disconnect')
+  socket.off('connect_error')
+  socket.off('receive_message')
+  socket.off('users_online')
+  socket.off('user_online')
+  socket.off('user_offline')
+  if (currentRoomId.value) socket.emit('leave_room', currentRoomId.value)
   socket.disconnect()
   socket = null
   socketConnected.value = false
 }
 
-// ── STATE ──
 const search = ref('')
-const conversations = ref([])
-const activeConversationId = ref(null)
 const activeOtherId = ref(null)
 const activeName = ref('')
 const messages = ref([])
@@ -320,336 +358,257 @@ const fileInput = ref(null)
 const selectedFile = ref(null)
 const selectedFileType = ref(null)
 
-// Voice recording
-const isRecording = ref(false)
-const recordingTime = ref(0)
-let mediaRecorder = null
-let audioChunks = []
-let recordInterval = null
-let voiceBlob = null
+const conversationList = computed(() => {
+  const list = [...conversations.value]
+  const qId = route.query.userId || route.query.otherUserId
+  const qName = route.query.name || route.query.username
+  if (qId && !list.some(c => String(c.otherUserId) === String(qId))) {
+    list.unshift({ otherUserId: String(qId), name: qName || `User #${qId}`, lastMessage: '', lastMessageType: null, unread: 0 })
+  }
+  return list
+})
 
-// ── COMPUTED ──
 const filteredConversations = computed(() => {
   const q = (search.value || '').toLowerCase()
-  if (!q) return conversations.value
-  return conversations.value.filter(c =>
-    (c.other_username || '').toLowerCase().includes(q) ||
-    String(c.other_user_id).includes(q)
-  )
+  if (!q) return conversationList.value
+  return conversationList.value.filter(c => (c.name || '').toLowerCase().includes(q) || String(c.otherUserId).includes(q))
 })
 
 const canSend = computed(() => {
   const hasText = (text.value || '').trim().length > 0
   const hasFile = !!selectedFile.value
-  const hasVoice = !!voiceBlob
-  return (hasText || hasFile || hasVoice) && !!token.value && !!activeConversationId.value
+  return (hasText || hasFile) && !!token.value && !!activeOtherId.value
 })
 
-// ── HELPERS ──
-function initials(name) {
-  const s = String(name || '').trim()
-  if (!s) return '?'
-  const parts = s.split(/\s+/).filter(Boolean)
-  return ((parts[0]?.[0] || '') + (parts[1]?.[0] || '')).toUpperCase() || s[0].toUpperCase()
-}
-function isOnline(userId) { return onlineIds.value.has(String(userId)) }
-function isMe(msg) { return String(msg.sender_id || msg.senderId || msg.from) === String(me.value?.id) }
-function resolveUrl(url) { return url?.startsWith('http') ? url : `${apiUrl}${url}` }
-function formatDate(d) {
-  if (!d) return ''
-  const date = new Date(d)
-  if (Number.isNaN(date.getTime())) return ''
-  return date.toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })
-}
-function formatDuration(sec) {
-  if (!sec) return ''
-  const m = Math.floor(sec / 60)
-  const s = sec % 60
-  return `${m}:${s.toString().padStart(2, '0')}`
-}
-function scrollToBottom() {
-  nextTick(() => {
-    const el = messagesRef.value
-    if (el) el.scrollTop = el.scrollHeight
-  })
-}
-function onMediaLoad() { scrollToBottom() }
-
-function escapeHtml(t) {
-  if (!t) return ''
-  const d = document.createElement('div')
-  d.textContent = t
-  return d.innerHTML
-}
-function linkify(t) {
-  const e = escapeHtml(t)
-  return e.replace(
-    /(https?:\/\/[^\s<]+)/g,
-    '<a href="$1" target="_blank" rel="noopener noreferrer" class="msgLink">$1</a>'
-  )
-}
-
-// ── CONVERSATION MANAGEMENT ──
-async function ensureConversation(otherUserId) {
-  if (!otherUserId || !token.value) return null
-  try {
-    // Try find existing
-    const res = await fetch(`${apiUrl}/api/conversations/find?otherUserId=${encodeURIComponent(otherUserId)}`, {
-      headers: { Authorization: `Bearer ${token.value}` }
-    })
-    if (res.ok) {
-      const data = await res.json()
-      return data.id
-    }
-    // Create new
-    const createRes = await fetch(`${apiUrl}/api/conversations`, {
-      method: 'POST',
-      headers: { 'Content-Type': 'application/json', Authorization: `Bearer ${token.value}` },
-      body: JSON.stringify({ otherUserId })
-    })
-    if (createRes.ok) {
-      const data = await createRes.json()
-      return data.id
-    }
-  } catch (err) {
-    console.error('ensureConversation error:', err)
+watch(messages, () => { if (activeOtherId.value) saveMessages(activeOtherId.value) }, { deep: true })
+watch(() => route.query.userId, (newId) => {
+  if (newId) {
+    activeOtherId.value = String(newId)
+    activeName.value = route.query.name || `User #${newId}`
+    loadMessages(String(newId))
+    fetchMessages()
   }
-  return null
-}
+})
+watch(currentRoomId, (newRoom, oldRoom) => {
+  if (!socket?.connected) return
+  if (oldRoom) socket.emit('leave_room', oldRoom)
+  if (newRoom) socket.emit('join_room', newRoom)
+})
+
+const onlineIds = ref(new Set())
+function isOnline(userId) { return onlineIds.value.has(String(userId)) }
+
+const conversations = ref([])
 
 async function fetchConversations() {
   if (!token.value) return
   loadingConversations.value = true
   error.value = ''
-  try {
-    const res = await fetch(`${apiUrl}/api/conversations`, {
-      headers: { Authorization: `Bearer ${token.value}` }
-    })
-    if (!res.ok) throw new Error('Failed to load conversations')
-    const data = await res.json()
-    conversations.value = Array.isArray(data) ? data : []
-  } catch (e) {
-    error.value = e.message
-  } finally {
-    loadingConversations.value = false
+  const urls = [`${apiUrl}/messages/conversations`, `${apiUrl}/conversations`, `${apiUrl}/api/messages/conversations`]
+  for (const url of urls) {
+    try {
+      const res = await fetch(url, { headers: { Authorization: `Bearer ${token.value}` } })
+      if (res.ok) {
+        const data = await res.json()
+        const list = Array.isArray(data) ? data : Array.isArray(data?.conversations) ? data.conversations : []
+        conversations.value = list.map(c => ({
+          otherUserId: String(c.otherUserId || c.other_user_id || c.userId || c.id),
+          name: c.name || c.username || c.display_name || `User #${c.otherUserId}`,
+          lastMessage: c.lastMessage || c.last_message || '',
+          lastMessageType: c.lastMessageType || c.media_type || null,
+          unread: Number(c.unread || c.unread_count || 0),
+        }))
+        loadingConversations.value = false
+        return
+      }
+    } catch {}
+  }
+  conversations.value = []
+  loadingConversations.value = false
+}
+
+function upsertConversation(otherId, name, lastMessage, mediaType, incrementUnread = true) {
+  const id = String(otherId)
+  const existing = conversations.value.find(c => String(c.otherUserId) === id)
+  if (existing) {
+    existing.lastMessage = lastMessage
+    existing.lastMessageType = mediaType
+    if (incrementUnread) existing.unread = (existing.unread || 0) + 1
+  } else {
+    conversations.value.unshift({ otherUserId: id, name: name || `User #${id}`, lastMessage, lastMessageType: mediaType, unread: incrementUnread ? 1 : 0 })
   }
 }
 
-async function openConversation(conv) {
-  activeConversationId.value = conv.id
-  activeOtherId.value = String(conv.other_user_id)
-  activeName.value = conv.other_username || conv.other_name || 'User'
-  error.value = ''
-
-  // Clear unread locally
-  const c = conversations.value.find(x => x.id === conv.id)
-  if (c) c.unread_count = 0
-
-  // Join socket room
-  if (socket?.connected) {
-    socket.emit('join_conversation', conv.id)
-  }
-
-  await fetchMessages()
-  nextTick(() => inputRef.value?.focus())
+function updateConvLastMessage(otherId, text, mediaType) {
+  const c = conversations.value.find(x => String(x.otherUserId) === String(otherId))
+  if (c) { c.lastMessage = text; c.lastMessageType = mediaType }
 }
 
-function closeChat() {
-  if (socket?.connected && activeConversationId.value) {
-    socket.emit('leave_conversation', activeConversationId.value)
-  }
-  activeConversationId.value = null
-  activeOtherId.value = null
-  activeName.value = ''
-  messages.value = []
-  error.value = ''
-  clearFile()
-  stopRecording()
-}
-
-// ── MESSAGES ──
 async function fetchMessages() {
-  if (!token.value || !activeConversationId.value) return
+  if (!token.value || !activeOtherId.value) return
   loadingMessages.value = true
   error.value = ''
-  try {
-    const res = await fetch(
-      `${apiUrl}/api/messages?conversationId=${encodeURIComponent(activeConversationId.value)}&limit=100`,
-      { headers: { Authorization: `Bearer ${token.value}` } }
-    )
-    if (!res.ok) throw new Error('Failed to load messages')
-    const data = await res.json()
-    const list = Array.isArray(data) ? data : []
-    messages.value = list.map(m => ({
-      id: m.id,
-      sender_id: String(m.sender_id),
-      sender_name: m.sender_name || 'User',
-      text: m.text || '',
-      media_url: m.media_url,
-      media_type: m.media_type || 'text',
-      voice_duration: m.voice_duration,
-      file_name: m.file_name,
-      file_size: m.file_size,
-      created_at: m.created_at,
-      pending: false,
-      failed: false,
-      seen: false,
-    }))
-    scrollToBottom()
-  } catch (e) {
-    error.value = e.message
-  } finally {
-    loadingMessages.value = false
+  const id = String(activeOtherId.value)
+  const urls = [
+    `${apiUrl}/messages?otherUserId=${encodeURIComponent(id)}`,
+    `${apiUrl}/messages?userId=${encodeURIComponent(id)}`,
+    `${apiUrl}/messages/${encodeURIComponent(id)}`,
+    `${apiUrl}/api/messages?otherUserId=${encodeURIComponent(id)}`,
+    `${apiUrl}/api/messages?userId=${encodeURIComponent(id)}`,
+  ]
+  for (const url of urls) {
+    try {
+      const res = await fetch(url, { headers: { Authorization: `Bearer ${token.value}` } })
+      if (res.ok) {
+        const data = await res.json()
+        const list = Array.isArray(data) ? data : Array.isArray(data?.messages) ? data.messages : []
+        const normalized = list.map(m => ({
+          id: String(m.id || m._id || m.message_id || `hist-${Date.now()}-${Math.random()}`),
+          _id: String(m.id || m._id || m.message_id || `hist-${Date.now()}-${Math.random()}`),
+          text: String(m.content || m.text || m.message || ''),
+          content: String(m.content || m.text || m.message || ''),
+          from: String(m.sender_id || m.senderId || m.from || m.user_id || ''),
+          fromUserId: String(m.sender_id || m.senderId || m.from || m.user_id || ''),
+          senderId: String(m.sender_id || m.senderId || m.from || m.user_id || ''),
+          sender_name: m.sender_name || m.senderName || m.username || '',
+          created_at: m.created_at || m.createdAt || new Date().toISOString(),
+          createdAt: m.created_at || m.createdAt || new Date().toISOString(),
+          pending: false,
+          failed: false,
+          seen: !!m.seen || !!m.read,
+          mediaUrl: m.mediaUrl || m.media_url || m.image_url || m.video_url || null,
+          mediaType: m.mediaType || m.media_type || (m.image_url ? 'image' : m.video_url ? 'video' : null),
+        }))
+        const localPending = messages.value.filter(m => m.pending || m.failed)
+        const serverIds = new Set(normalized.map(m => m._id))
+        const localResolved = messages.value.filter(m => !m.pending && !m.failed && !serverIds.has(m._id))
+        messages.value = [...normalized, ...localResolved, ...localPending].sort((a, b) => new Date(a.created_at) - new Date(b.created_at))
+        nextTick(scrollToBottom)
+        loadingMessages.value = false
+        return
+      }
+    } catch {}
   }
+  loadingMessages.value = false
 }
 
-function handleIncomingMessage(data) {
-  const convId = Number(data.conversation_id || data.conversationId)
-  if (String(convId) !== String(activeConversationId.value)) {
-    fetchConversations() // update unread badges
-    return
-  }
-
-  const newMsg = {
-    id: data.id,
-    sender_id: String(data.sender_id || data.senderId || data.from),
-    sender_name: data.sender_name || 'User',
-    text: data.text || data.content || '',
-    media_url: data.media_url || data.mediaUrl,
-    media_type: data.media_type || data.mediaType || 'text',
-    voice_duration: data.voice_duration || data.voiceDuration,
-    file_name: data.file_name || data.fileName,
-    file_size: data.file_size || data.fileSize,
-    created_at: data.created_at || data.createdAt,
-    pending: false,
-    failed: false,
-    seen: false,
-    tempId: data.tempId || null,
-  }
-
-  // Deduplicate by id or tempId
-  const exists = messages.value.some(m => {
-    if (newMsg.id && m.id === newMsg.id) return true
-    if (newMsg.tempId && (m.__localId === newMsg.tempId || m.tempId === newMsg.tempId)) return true
-    return false
-  })
-  if (exists) {
-    // Update pending message to confirmed
-    const idx = messages.value.findIndex(m => m.__localId === newMsg.tempId || m.tempId === newMsg.tempId)
-    if (idx !== -1) {
-      messages.value[idx] = { ...messages.value[idx], ...newMsg, pending: false, failed: false }
-    }
-    return
-  }
-
-  messages.value.push(newMsg)
-  scrollToBottom()
-
-  // Mark as read immediately if we're active
-  if (socket?.connected && !isMe(newMsg)) {
-    socket.emit('mark_read', { conversationId: activeConversationId.value })
-  }
-}
-
-// ── SEND ──
 async function send() {
-  const trimmed = (text.value || '').trim()
-  if (!trimmed && !selectedFile.value && !voiceBlob) return
-  if (!token.value || !activeConversationId.value) return
+  const rawText = text.value
+  if (!rawText && !selectedFile.value) return
+  const trimmed = (rawText || '').trim()
+  if (!trimmed && !selectedFile.value) return
+  if (!token.value || !activeOtherId.value) return
 
   sending.value = true
   error.value = ''
 
+  const id = String(activeOtherId.value)
+  const myId = String(me.value?.id || '')
+  const room = currentRoomId.value || getRoomId(myId, id)
   const tempId = `tmp-${Date.now()}-${Math.random().toString(36).slice(2, 6)}`
-  let mediaUrl = null
-  let mediaType = 'text'
-  let voiceDuration = null
-  let fileName = null
-  let fileSize = null
 
-  // Upload file if present
-  if (selectedFile.value) {
-    try {
-      const up = await uploadFile(selectedFile.value)
-      mediaUrl = up.url
-      mediaType = up.mediaType
-      fileName = up.fileName
-      fileSize = up.fileSize
-    } catch (e) {
-      error.value = 'Upload failed: ' + e.message
-      sending.value = false
-      return
-    }
-  } else if (voiceBlob) {
-    try {
-      const up = await uploadFile(new File([voiceBlob], 'voice-message.webm', { type: 'audio/webm' }))
-      mediaUrl = up.url
-      mediaType = 'voice'
-      voiceDuration = recordingTime.value
-      fileName = 'Voice message'
-      fileSize = voiceBlob.size
-    } catch (e) {
-      error.value = 'Voice upload failed: ' + e.message
-      sending.value = false
-      return
-    }
-  }
+  const isImage = selectedFileType.value === 'image'
+  const isVideo = selectedFileType.value === 'video'
+  const displayText = trimmed || (isImage ? '📷 Photo' : isVideo ? '🎥 Video' : '')
 
-  const displayText = trimmed || (mediaType === 'image' ? '📷 Photo' : mediaType === 'video' ? '🎥 Video' : mediaType === 'voice' ? '🎤 Voice' : '📎 File')
-
-  const optimistic = {
+  const optimisticMsg = {
     __localId: tempId,
+    _tempId: tempId,
     tempId: tempId,
     id: tempId,
-    sender_id: String(me.value?.id),
-    sender_name: me.value?.username || 'You',
+    _id: tempId,
     text: displayText,
-    media_url: mediaUrl,
-    media_type: mediaType,
-    voice_duration: voiceDuration,
-    file_name: fileName,
-    file_size: fileSize,
+    content: displayText,
+    from: myId,
+    fromUserId: myId,
+    senderId: myId,
+    sender_name: me.value?.username || me.value?.display_name || 'You',
     created_at: new Date().toISOString(),
+    createdAt: new Date().toISOString(),
     pending: true,
     failed: false,
     seen: false,
+    mediaUrl: null,
+    mediaType: selectedFileType.value,
+    rawFile: selectedFile.value,
   }
 
-  messages.value.push(optimistic)
+  messages.value.push(optimisticMsg)
   text.value = ''
+  const fileToUpload = selectedFile.value
   clearFile()
-  stopRecording()
-  scrollToBottom()
+  nextTick(scrollToBottom)
+
+  let mediaUrl = null
+  let mediaType = optimisticMsg.mediaType
+
+  if (fileToUpload) {
+    try {
+      const form = new FormData()
+      form.append('file', fileToUpload)
+      const uploadUrls = [`${apiUrl}/upload`, `${apiUrl}/api/upload`, `${apiUrl}/media/upload`]
+      for (const uu of uploadUrls) {
+        try {
+          const upRes = await fetch(uu, {
+            method: 'POST',
+            headers: token.value ? { Authorization: `Bearer ${token.value}` } : {},
+            body: form,
+          })
+          if (upRes.ok) {
+            const upData = await upRes.json()
+            mediaUrl = upData.url || upData.fileUrl || upData.image_url || upData.video_url || null
+            if (mediaUrl) break
+          }
+        } catch {}
+      }
+      if (!mediaUrl && fileToUpload.size < 500 * 1024) {
+        mediaUrl = await fileToBase64(fileToUpload)
+      }
+    } catch {}
+  }
+
+  if (mediaUrl) {
+    const idx = messages.value.findIndex(m => m.__localId === tempId)
+    if (idx !== -1) messages.value[idx].mediaUrl = mediaUrl
+  }
 
   const payload = {
-    conversationId: activeConversationId.value,
+    roomId: room,
+    room_id: room,
+    sender_id: myId,
+    sender_name: me.value?.username || me.value?.display_name || 'You',
+    receiver_id: id,
+    receiverId: id,
+    content: trimmed,
     text: trimmed,
-    mediaUrl: mediaUrl,
-    mediaType: mediaType,
-    voiceDuration: voiceDuration,
-    fileName: fileName,
-    fileSize: fileSize,
+    message: trimmed,
+    created_at: new Date().toISOString(),
+    _tempId: tempId,
     tempId: tempId,
+    mediaUrl,
+    media_url: mediaUrl,
+    mediaType,
+    media_type: mediaType,
   }
 
-  // Try socket first
   let sent = false
   if (socket?.connected) {
     try {
       socket.emit('send_message', payload, (ack) => {
         sending.value = false
+        const idx = messages.value.findIndex(m => m.__localId === tempId)
         if (ack?.error) {
           error.value = ack.error
-          const idx = messages.value.findIndex(m => m.__localId === tempId)
           if (idx !== -1) { messages.value[idx].pending = false; messages.value[idx].failed = true }
         } else {
-          const idx = messages.value.findIndex(m => m.__localId === tempId)
           if (idx !== -1) {
             messages.value[idx].pending = false
             messages.value[idx].failed = false
-            if (ack?.id) messages.value[idx].id = ack.id
+            messages.value[idx].id = ack?.id || ack?.message_id || messages.value[idx].id
+            messages.value[idx]._id = ack?.id || ack?.message_id || messages.value[idx]._id
+            if (ack?.mediaUrl) messages.value[idx].mediaUrl = ack.mediaUrl
           }
-          fetchConversations() // refresh last message
+          updateConvLastMessage(id, displayText, mediaType)
         }
       })
       setTimeout(() => { sending.value = false }, 5000)
@@ -658,97 +617,74 @@ async function send() {
   }
 
   if (!sent) {
-    // Queue and try REST
-    enqueue(payload)
-    try {
-      const res = await fetch(`${apiUrl}/api/messages`, {
-        method: 'POST',
-        headers: {
-          'Content-Type': 'application/json',
-          Authorization: `Bearer ${token.value}`
-        },
-        body: JSON.stringify(payload)
-      })
-      if (res.ok) {
-        const saved = await res.json()
-        const idx = messages.value.findIndex(m => m.__localId === tempId)
-        if (idx !== -1) {
-          messages.value[idx].pending = false
-          messages.value[idx].failed = false
-          messages.value[idx].id = saved.id
-        }
-        fetchConversations()
-      } else {
-        throw new Error('Server error')
+    queueMessage(payload)
+    const urls = [`${apiUrl}/messages`, `${apiUrl}/api/messages`]
+    const bodies = [
+      { otherUserId: id, text: trimmed, mediaUrl, mediaType },
+      { userId: id, text: trimmed, mediaUrl, mediaType },
+      { receiverId: id, content: trimmed, mediaUrl, mediaType },
+    ]
+    for (const url of urls) {
+      for (const body of bodies) {
+        try {
+          const res = await fetch(url, {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json', Authorization: `Bearer ${token.value}` },
+            body: JSON.stringify(body),
+          })
+          if (res.ok) {
+            const saved = await res.json().catch(() => null)
+            const idx = messages.value.findIndex(m => m.__localId === tempId)
+            if (idx !== -1) {
+              messages.value[idx].pending = false
+              messages.value[idx].failed = false
+              messages.value[idx].id = saved?.id || saved?._id || messages.value[idx].id
+              messages.value[idx]._id = saved?.id || saved?._id || messages.value[idx]._id
+            }
+            sent = true
+            break
+          }
+        } catch {}
       }
-    } catch (e) {
+      if (sent) break
+    }
+    if (!sent) {
       error.value = 'Offline — message queued for retry'
       const idx = messages.value.findIndex(m => m.__localId === tempId)
       if (idx !== -1) { messages.value[idx].pending = false; messages.value[idx].failed = true }
     }
     sending.value = false
   }
+  saveMessages(activeOtherId.value)
 }
 
 async function retryMessage(msg) {
   if (!msg.__localId) return
-  // Reconstruct payload
-  const payload = {
-    conversationId: activeConversationId.value,
-    text: msg.text,
-    mediaUrl: msg.media_url,
-    mediaType: msg.media_type,
-    voiceDuration: msg.voice_duration,
-    fileName: msg.file_name,
-    fileSize: msg.file_size,
-    tempId: msg.__localId,
+  if (!msg.rawFile) {
+    text.value = msg.text
+    await send()
+    const idx = messages.value.findIndex(m => m.__localId === msg.__localId)
+    if (idx !== -1) messages.value.splice(idx, 1)
+    return
   }
+  selectedFile.value = msg.rawFile
+  selectedFileType.value = msg.mediaType
+  text.value = (msg.text === '📷 Photo' || msg.text === '🎥 Video') ? '' : msg.text
   const idx = messages.value.findIndex(m => m.__localId === msg.__localId)
-  if (idx !== -1) { messages.value[idx].pending = true; messages.value[idx].failed = false }
-
-  if (socket?.connected) {
-    socket.emit('send_message', payload, (ack) => {
-      if (ack?.error) {
-        if (idx !== -1) { messages.value[idx].pending = false; messages.value[idx].failed = true }
-      } else {
-        if (idx !== -1) {
-          messages.value[idx].pending = false
-          messages.value[idx].failed = false
-          if (ack?.id) messages.value[idx].id = ack.id
-        }
-        fetchConversations()
-      }
-    })
-  } else {
-    enqueue(payload)
-    error.value = 'Queued for retry when online'
-    if (idx !== -1) { messages.value[idx].pending = false; messages.value[idx].failed = true }
-  }
+  if (idx !== -1) messages.value.splice(idx, 1)
+  await send()
 }
 
-async function flushQueue() {
+function flushMessageQueue() {
   if (!socket?.connected) return
-  const q = getQueue()
+  const q = getMessageQueue()
   if (!q.length) return
-  setQueue([])
+  setMessageQueue([])
   for (const payload of q) {
     socket.emit('send_message', payload, (ack) => {
-      if (ack?.error) console.error('[Queue] send failed:', ack.error)
+      if (ack?.error) console.error('[DM] queued send failed:', ack.error)
     })
   }
-}
-
-// ── UPLOAD ──
-async function uploadFile(file) {
-  const form = new FormData()
-  form.append('file', file)
-  const res = await fetch(`${apiUrl}/api/upload`, {
-    method: 'POST',
-    headers: token.value ? { Authorization: `Bearer ${token.value}` } : {},
-    body: form,
-  })
-  if (!res.ok) throw new Error('Upload failed')
-  return await res.json()
 }
 
 function onFileSelected(e) {
@@ -756,104 +692,121 @@ function onFileSelected(e) {
   if (!file) return
   if (file.size > 50 * 1024 * 1024) { error.value = 'File too large (max 50MB)'; return }
   selectedFile.value = file
-  selectedFileType.value = file.type.startsWith('video/') ? 'video' : file.type.startsWith('audio/') ? 'voice' : 'image'
+  selectedFileType.value = file.type.startsWith('video/') ? 'video' : 'image'
   nextTick(() => inputRef.value?.focus())
 }
+
 function clearFile() {
   selectedFile.value = null
   selectedFileType.value = null
-  voiceBlob = null
   if (fileInput.value) fileInput.value.value = ''
 }
 
-// ── VOICE RECORDING ──
-async function toggleRecording() {
-  if (isRecording.value) {
-    stopRecording()
-  } else {
-    startRecording()
-  }
+function fileToBase64(file) {
+  return new Promise((resolve, reject) => {
+    const reader = new FileReader()
+    reader.onload = () => resolve(reader.result)
+    reader.onerror = reject
+    reader.readAsDataURL(file)
+  })
 }
 
-async function startRecording() {
-  if (!navigator.mediaDevices?.getUserMedia) {
-    error.value = 'Voice recording not supported in this browser'
-    return
-  }
-  try {
-    const stream = await navigator.mediaDevices.getUserMedia({ audio: true })
-    mediaRecorder = new MediaRecorder(stream)
-    audioChunks = []
-    mediaRecorder.ondataavailable = (e) => { if (e.data.size > 0) audioChunks.push(e.data) }
-    mediaRecorder.onstop = () => {
-      voiceBlob = new Blob(audioChunks, { type: 'audio/webm' })
-      stream.getTracks().forEach(t => t.stop())
-    }
-    mediaRecorder.start()
-    isRecording.value = true
-    recordingTime.value = 0
-    recordInterval = setInterval(() => { recordingTime.value++ }, 1000)
-  } catch (e) {
-    error.value = 'Microphone access denied'
-  }
+function onMediaLoad() { nextTick(scrollToBottom) }
+
+function escapeHtml(text) {
+  if (!text) return ''
+  const div = document.createElement('div')
+  div.textContent = text
+  return div.innerHTML
 }
 
-function stopRecording() {
-  if (!isRecording.value) return
-  if (mediaRecorder && mediaRecorder.state !== 'inactive') mediaRecorder.stop()
-  isRecording.value = false
-  if (recordInterval) { clearInterval(recordInterval); recordInterval = null }
+function linkify(text) {
+  const escaped = escapeHtml(text)
+  return escaped.replace(
+    /(https?:\/\/[^\s<]+)/g,
+    '<a href="$1" target="_blank" rel="noopener noreferrer" class="msgLink">$1</a>'
+  )
 }
 
-// ── TYPING ──
-function onTyping() {
-  if (socket?.connected && activeConversationId.value) {
-    socket.emit('typing', activeConversationId.value)
-  }
+function isMe(msg) {
+  if (!msg || !me.value?.id) return false
+  const fromId = msg.from || msg.fromUserId || msg.senderId || msg.user_id || msg.userId
+  return String(fromId) === String(me.value.id)
 }
 
-// ── LIFECYCLE ──
-async function init() {
-  token.value = localStorage.getItem('token') || ''
-  try { me.value = JSON.parse(localStorage.getItem('user') || 'null') } catch { me.value = null }
+function formatDate(d) {
+  if (!d) return ''
+  const date = new Date(d)
+  if (Number.isNaN(date.getTime())) return ''
+  return date.toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })
+}
 
-  connectSocket()
-  await fetchConversations()
+function scrollToBottom() {
+  const el = messagesRef.value
+  if (el) el.scrollTop = el.scrollHeight
+}
 
-  // Handle route query (e.g. from Dashboard)
-  const qOtherId = route.query.userId || route.query.otherUserId
-  const qName = route.query.name || route.query.username
-  if (qOtherId) {
-    const convId = await ensureConversation(qOtherId)
-    if (convId) {
-      activeConversationId.value = convId
-      activeOtherId.value = String(qOtherId)
-      activeName.value = qName || 'User'
-      if (socket?.connected) socket.emit('join_conversation', convId)
-      await fetchMessages()
-      nextTick(() => inputRef.value?.focus())
-    }
-  }
+function openConversation(conv) {
+  activeOtherId.value = conv.otherUserId
+  activeName.value = conv.name || `User #${conv.otherUserId}`
+  error.value = ''
+  const c = conversations.value.find(x => String(x.otherUserId) === String(conv.otherUserId))
+  if (c) c.unread = 0
+  loadMessages(conv.otherUserId)
+  if (socket?.connected && currentRoomId.value) socket.emit('join_room', currentRoomId.value)
+  fetchMessages()
+  nextTick(() => inputRef.value?.focus())
+}
+
+function closeChat() {
+  if (socket?.connected && currentRoomId.value) socket.emit('leave_room', currentRoomId.value)
+  activeOtherId.value = null
+  activeName.value = ''
+  messages.value = []
+  error.value = ''
+  clearFile()
+}
+
+function callUser(kind) {
+  if (!activeOtherId.value) return
+  router.push({ path: '/call', query: { toUserId: String(activeOtherId.value), name: activeName.value || 'User', kind } })
 }
 
 async function refreshAll() {
-  await init()
+  token.value = localStorage.getItem('token') || ''
+  me.value = (() => { try { return JSON.parse(localStorage.getItem('user') || 'null') } catch { return null } })()
+  await fetchConversations()
+  if (activeOtherId.value) await fetchMessages()
 }
 
 onMounted(() => {
-  init()
-  window.addEventListener('online', flushQueue)
+  connectSocket()
+  fetchConversations()
+  const qId = route.query.userId || route.query.otherUserId
+  const qName = route.query.name || route.query.username
+  if (qId) {
+    activeOtherId.value = String(qId)
+    activeName.value = qName || `User #${qId}`
+    loadMessages(String(qId))
+    fetchMessages()
+    nextTick(() => inputRef.value?.focus())
+  }
+  window.addEventListener('online', flushMessageQueue)
 })
 
 onBeforeUnmount(() => {
   disconnectSocket()
-  window.removeEventListener('online', flushQueue)
-  if (typingTimeout) clearTimeout(typingTimeout)
+  window.removeEventListener('online', flushMessageQueue)
 })
 </script>
 
 <style scoped>
-:deep(.sidebar), :deep(.layout-sidebar), :deep(.left-menu), :deep(.sidemenu), :deep(aside.sidebar), :deep(nav.sidebar) {
+:deep(.sidebar),
+:deep(.layout-sidebar),
+:deep(.left-menu),
+:deep(.sidemenu),
+:deep(aside.sidebar),
+:deep(nav.sidebar) {
   display: none !important;
 }
 
@@ -954,18 +907,11 @@ onBeforeUnmount(() => {
 .statusDot { width: 8px; height: 8px; border-radius: 50%; background: rgba(255,255,255,0.3); }
 .statusDot.on { background: #22c55e; box-shadow: 0 0 8px rgba(34,197,94,0.4); }
 .socketStatus { margin-left: 6px; opacity: 0.5; font-size: 11px; }
-.typingIndicator { color: #a5b4fc; font-style: italic; }
 .chatHeaderActions { display: flex; gap: 6px; }
 
 .iconbtn { width: 36px; height: 36px; border-radius: 12px; border: 1px solid rgba(255,255,255,0.08); background: rgba(255,255,255,0.06); color: #e2e8f0; cursor: pointer; display: grid; place-items: center; font-size: 14px; transition: all 0.2s ease; }
 .iconbtn:hover:not(:disabled) { background: rgba(255,255,255,0.12); transform: translateY(-1px); }
 .iconbtn:disabled { opacity: 0.35; cursor: not-allowed; }
-.iconbtn.recording { background: rgba(239, 68, 68, 0.25); border-color: rgba(239, 68, 68, 0.5); animation: pulseRec 1.2s infinite; }
-
-@keyframes pulseRec {
-  0%, 100% { box-shadow: 0 0 0 0 rgba(239,68,68,0.4); }
-  50% { box-shadow: 0 0 0 8px rgba(239,68,68,0); }
-}
 
 .messagesWrap { flex: 1; overflow-y: auto; padding: 18px; display: flex; flex-direction: column; gap: 10px; scrollbar-width: thin; scrollbar-color: rgba(255,255,255,0.1) transparent; }
 
@@ -984,14 +930,6 @@ onBeforeUnmount(() => {
 .msgMedia img { width: 100%; display: block; border-radius: 14px; }
 .msgMedia video { width: 100%; display: block; border-radius: 14px; max-height: 320px; object-fit: cover; }
 
-.msgVoice { display: flex; align-items: center; gap: 10px; margin-bottom: 6px; }
-.msgVoice audio { max-width: 220px; height: 36px; border-radius: 999px; }
-.voiceDuration { font-size: 11px; opacity: 0.7; }
-
-.msgFile { margin-bottom: 6px; }
-.fileLink { color: #a5b4fc; text-decoration: none; font-weight: 600; }
-.fileLink:hover { text-decoration: underline; }
-
 .msgMeta { display: flex; align-items: center; gap: 8px; margin-top: 4px; }
 .msgMeta .status { font-size: 10px; opacity: 0.6; }
 .msgMeta .status.failed { color: #fca5a5; opacity: 1; cursor: pointer; }
@@ -1005,7 +943,6 @@ onBeforeUnmount(() => {
 .chatInput:focus { border-color: rgba(139, 92, 246, 0.4); box-shadow: 0 0 0 3px rgba(139, 92, 246, 0.1); }
 
 .attachBtn { width: 40px; height: 40px; border-radius: 50%; flex-shrink: 0; }
-.micBtn { width: 40px; height: 40px; border-radius: 50%; flex-shrink: 0; }
 
 .btn { border: none; border-radius: 999px; padding: 10px 16px; cursor: pointer; background: rgba(255,255,255,0.08); color: #e2e8f0; font-weight: 600; font-size: 13px; transition: all 0.2s ease; }
 .btn-primary { background: linear-gradient(135deg, #ec4899, #8b5cf6); color: #fff; box-shadow: 0 8px 24px rgba(236, 72, 153, 0.25); }
@@ -1017,10 +954,6 @@ onBeforeUnmount(() => {
 .filePreview { display: flex; align-items: center; gap: 10px; margin-bottom: 10px; padding: 8px 12px; border-radius: 12px; background: rgba(139, 92, 246, 0.1); border: 1px solid rgba(139, 92, 246, 0.2); font-size: 13px; }
 .filePreviewName { font-weight: 600; }
 .filePreviewX { border: none; background: rgba(255,255,255,0.1); color: #fff; width: 22px; height: 22px; border-radius: 50%; cursor: pointer; font-size: 11px; }
-
-.recordingBar { display: flex; align-items: center; gap: 10px; margin-bottom: 10px; padding: 8px 12px; border-radius: 12px; background: rgba(239, 68, 68, 0.1); border: 1px solid rgba(239, 68, 68, 0.25); font-size: 13px; }
-.recDot { width: 10px; height: 10px; border-radius: 50%; background: #ef4444; animation: pulseRec 1.2s infinite; }
-.recStop { margin-left: auto; background: rgba(255,255,255,0.1); border: 1px solid rgba(255,255,255,0.15); color: #fff; border-radius: 8px; padding: 4px 10px; cursor: pointer; font-size: 12px; }
 
 .state { text-align: center; padding: 32px 20px; opacity: 0.9; }
 .state.mini { padding: 20px 10px; }
