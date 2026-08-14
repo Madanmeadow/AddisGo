@@ -10,6 +10,7 @@ import bcrypt from "bcrypt";
 import { registerCallSfuHandlers } from "./mediasoup/socketCallSfu.js";
 import jwt from "jsonwebtoken";
 import twilio from "twilio";
+import multer from "multer";
 
 import { pool } from "./db.js";
 
@@ -69,6 +70,31 @@ const ORIGINS =
     : CLIENT_ORIGIN.split(",").map((s) => s.trim()).filter(Boolean);
 
 const canon = (v) => (v === null || v === undefined ? null : String(v));
+
+
+/* =========================
+   MULTER (Chat Media Upload)
+========================= */
+const MAX_FILE_SIZE = 50 * 1024 * 1024; // 50MB
+const storage = multer.diskStorage({
+  destination: (req, file, cb) => cb(null, "uploads/"),
+  filename: (req, file, cb) => {
+    const unique = Date.now() + "-" + Math.round(Math.random() * 1e9);
+    cb(null, unique + path.extname(file.originalname));
+  },
+});
+const upload = multer({
+  storage,
+  limits: { fileSize: MAX_FILE_SIZE },
+  fileFilter: (req, file, cb) => {
+    const ok =
+      file.mimetype.startsWith("image/") ||
+      file.mimetype.startsWith("video/") ||
+      file.mimetype.startsWith("audio/");
+    if (ok) cb(null, true);
+    else cb(new Error("Only image, video, and audio files are allowed"));
+  },
+});
 
 /* =========================
    MIDDLEWARE
@@ -403,6 +429,225 @@ app.get("/api/turn", async (req, res) => {
   }
 });
 
+
+/* =========================
+   BULLETPROOF CHAT REST API
+   (coexists with legacy /conversations & /messages routes)
+========================= */
+
+// GET /api/conversations — My inbox
+app.get("/api/conversations", authenticate, async (req, res) => {
+  try {
+    const result = await pool.query(
+      `
+      SELECT
+        c.id,
+        c.created_at,
+        c.updated_at,
+        other.id AS other_user_id,
+        COALESCE(other.username, other.name, other.email, 'User') AS other_username,
+        COALESCE(other.name, other.username, 'User') AS other_name,
+        lm.text AS last_message,
+        lm.media_type AS last_media_type,
+        lm.created_at AS last_message_at,
+        (
+          SELECT COUNT(*)::int FROM messages m2
+          WHERE m2.conversation_id = c.id
+            AND m2.sender_id <> $1
+            AND m2.created_at > COALESCE(
+              (SELECT MAX(created_at) FROM messages m3
+               WHERE m3.conversation_id = c.id AND m3.sender_id = $1),
+              '1970-01-01'::timestamptz
+            )
+        ) AS unread_count
+      FROM conversations c
+      JOIN conversation_participants cp ON cp.conversation_id = c.id AND cp.user_id = $1
+      JOIN conversation_participants cp2 ON cp2.conversation_id = c.id AND cp2.user_id <> $1
+      JOIN users other ON other.id = cp2.user_id
+      LEFT JOIN LATERAL (
+        SELECT text, media_type, created_at
+        FROM messages
+        WHERE conversation_id = c.id
+        ORDER BY created_at DESC
+        LIMIT 1
+      ) lm ON true
+      ORDER BY COALESCE(lm.created_at, c.updated_at, c.created_at) DESC
+      `,
+      [req.user.id]
+    );
+    res.json(result.rows);
+  } catch (err) {
+    console.error("GET /api/conversations ERROR:", err);
+    res.status(500).json({ error: "Failed to load conversations" });
+  }
+});
+
+// POST /api/conversations — Create or get 1:1 DM
+app.post("/api/conversations", authenticate, async (req, res) => {
+  try {
+    const { otherUserId } = req.body;
+    if (!otherUserId) return res.status(400).json({ error: "otherUserId required" });
+    if (Number(otherUserId) === Number(req.user.id))
+      return res.status(400).json({ error: "Cannot chat with yourself" });
+
+    const existing = await pool.query(
+      `SELECT cp1.conversation_id AS id
+       FROM conversation_participants cp1
+       JOIN conversation_participants cp2 ON cp1.conversation_id = cp2.conversation_id
+       WHERE cp1.user_id = $1 AND cp2.user_id = $2
+       LIMIT 1`,
+      [req.user.id, otherUserId]
+    );
+
+    if (existing.rows.length) {
+      return res.json({ id: existing.rows[0].id, created: false });
+    }
+
+    const created = await pool.query(
+      `INSERT INTO conversations DEFAULT VALUES RETURNING id`,
+      []
+    );
+    const convId = created.rows[0].id;
+    await pool.query(
+      `INSERT INTO conversation_participants (conversation_id, user_id) VALUES ($1,$2),($1,$3)`,
+      [convId, req.user.id, otherUserId]
+    );
+    res.json({ id: convId, created: true });
+  } catch (err) {
+    console.error("POST /api/conversations ERROR:", err);
+    res.status(500).json({ error: err.message });
+  }
+});
+
+// GET /api/conversations/find?otherUserId= — Find existing conv
+app.get("/api/conversations/find", authenticate, async (req, res) => {
+  try {
+    const { otherUserId } = req.query;
+    if (!otherUserId) return res.status(400).json({ error: "otherUserId required" });
+    const result = await pool.query(
+      `SELECT cp1.conversation_id AS id
+       FROM conversation_participants cp1
+       JOIN conversation_participants cp2 ON cp1.conversation_id = cp2.conversation_id
+       WHERE cp1.user_id = $1 AND cp2.user_id = $2
+       LIMIT 1`,
+      [req.user.id, otherUserId]
+    );
+    if (result.rows.length) res.json({ id: result.rows[0].id });
+    else res.status(404).json({ error: "Conversation not found" });
+  } catch (err) {
+    res.status(500).json({ error: err.message });
+  }
+});
+
+// GET /api/messages?conversationId=&limit=&offset=
+app.get("/api/messages", authenticate, async (req, res) => {
+  try {
+    const { conversationId, limit = 50, offset = 0 } = req.query;
+    if (!conversationId) return res.status(400).json({ error: "conversationId required" });
+
+    const member = await pool.query(
+      `SELECT 1 FROM conversation_participants WHERE conversation_id = $1 AND user_id = $2`,
+      [conversationId, req.user.id]
+    );
+    if (!member.rows.length) return res.status(403).json({ error: "Access denied" });
+
+    const result = await pool.query(
+      `SELECT
+         m.id, m.conversation_id, m.sender_id,
+         COALESCE(u.username, u.name, u.email, 'User') AS sender_name,
+         m.text, m.media_url, m.media_type, m.voice_duration,
+         m.file_name, m.file_size, m.created_at
+       FROM messages m
+       LEFT JOIN users u ON u.id = m.sender_id
+       WHERE m.conversation_id = $1
+       ORDER BY m.created_at DESC
+       LIMIT $2 OFFSET $3`,
+      [conversationId, limit, offset]
+    );
+    res.json(result.rows.reverse()); // oldest first
+  } catch (err) {
+    console.error("GET /api/messages ERROR:", err);
+    res.status(500).json({ error: "Failed to load messages" });
+  }
+});
+
+// POST /api/messages — REST fallback when socket is down
+app.post("/api/messages", authenticate, async (req, res) => {
+  try {
+    const { conversationId, text, mediaUrl, mediaType, voiceDuration, fileName, fileSize } = req.body;
+    if (!conversationId) return res.status(400).json({ error: "conversationId required" });
+    if (!text?.trim() && !mediaUrl) return res.status(400).json({ error: "text or mediaUrl required" });
+
+    const member = await pool.query(
+      `SELECT 1 FROM conversation_participants WHERE conversation_id = $1 AND user_id = $2`,
+      [conversationId, req.user.id]
+    );
+    if (!member.rows.length) return res.status(403).json({ error: "Access denied" });
+
+    const insert = await pool.query(
+      `INSERT INTO messages
+       (conversation_id, sender_id, text, media_url, media_type, voice_duration, file_name, file_size)
+       VALUES ($1,$2,$3,$4,$5,$6,$7,$8)
+       RETURNING *`,
+      [
+        conversationId,
+        req.user.id,
+        text?.trim() || null,
+        mediaUrl || null,
+        mediaType || "text",
+        voiceDuration || null,
+        fileName || null,
+        fileSize || null,
+      ]
+    );
+
+    const senderQ = await pool.query(
+      `SELECT COALESCE(username, name, email, 'User') AS sender_name FROM users WHERE id = $1`,
+      [req.user.id]
+    );
+
+    const msg = { ...insert.rows[0], sender_name: senderQ.rows[0]?.sender_name || "User" };
+
+    io.to(`conv_${conversationId}`).emit("receive_message", msg);
+    const others = await pool.query(
+      `SELECT user_id FROM conversation_participants WHERE conversation_id = $1 AND user_id <> $2`,
+      [conversationId, req.user.id]
+    );
+    for (const row of others.rows) {
+      const oid = String(row.user_id);
+      if (onlineUsers.has(oid)) {
+        io.to(`user:${oid}`).emit("new_conversation_message", { conversationId, message: msg });
+      }
+    }
+
+    res.json(msg);
+  } catch (err) {
+    console.error("POST /api/messages ERROR:", err);
+    res.status(500).json({ error: "Failed to send message" });
+  }
+});
+
+// POST /api/upload — Media upload
+app.post("/api/upload", authenticate, upload.single("file"), (req, res) => {
+  try {
+    if (!req.file) return res.status(400).json({ error: "No file uploaded" });
+    const url = `/uploads/${req.file.filename}`;
+    const mediaType = req.file.mimetype.startsWith("video/")
+      ? "video"
+      : req.file.mimetype.startsWith("audio/")
+      ? "voice"
+      : "image";
+    res.json({
+      url,
+      fileName: req.file.originalname,
+      fileSize: req.file.size,
+      mediaType,
+    });
+  } catch (err) {
+    res.status(500).json({ error: err.message });
+  }
+});
+
 /* =========================
    SOCKET.IO
 ========================= */
@@ -527,6 +772,50 @@ function ensureLiveRequestMap(liveId) {
   if (!liveMicRequests.has(id)) liveMicRequests.set(id, new Map());
   return liveMicRequests.get(id);
 }
+
+  /* =========================
+     CONVERSATION MESSAGES (bulletproof)
+  ========================= */
+  socket.on("join_conversation", async (conversationId) => {
+    try {
+      const uid = socket.data.user?.id ? String(socket.data.user.id) : null;
+      if (!uid) return socket.emit("error", { message: "Not authenticated" });
+      const check = await pool.query(
+        `SELECT 1 FROM conversation_participants WHERE conversation_id = $1 AND user_id = $2`,
+        [conversationId, uid]
+      );
+      if (check.rows.length) {
+        socket.join(`conv_${conversationId}`);
+        socket.emit("joined_conversation", conversationId);
+      } else {
+        socket.emit("error", { message: "Not a participant" });
+      }
+    } catch (err) {
+      socket.emit("error", { message: err.message });
+    }
+  });
+
+  socket.on("leave_conversation", (conversationId) => {
+    socket.leave(`conv_${conversationId}`);
+  });
+
+  socket.on("typing", (conversationId) => {
+    const uid = socket.data.user?.id ? String(socket.data.user.id) : null;
+    if (!uid) return;
+    socket.to(`conv_${conversationId}`).emit("typing", { conversationId, userId: uid });
+  });
+  socket.on("stop_typing", (conversationId) => {
+    const uid = socket.data.user?.id ? String(socket.data.user.id) : null;
+    if (!uid) return;
+    socket.to(`conv_${conversationId}`).emit("stop_typing", { conversationId, userId: uid });
+  });
+
+  socket.on("mark_read", async ({ conversationId }) => {
+    const uid = socket.data.user?.id ? String(socket.data.user.id) : null;
+    if (!uid) return;
+    socket.to(`conv_${conversationId}`).emit("messages_read", { conversationId, userId: uid });
+  });
+
 /* ---------- DIRECT CALLS: OFFLINE QUEUE + BUSY ---------- */
 const pendingIncomingCalls = new Map(); // userId -> Map(roomId -> payload)
 const userBusyRoom = new Map();         // userId -> roomId
@@ -1803,22 +2092,90 @@ io.on("connection", (socket) => {
   });
 
   socket.on('send_message', async (data, ack) => {
+    /* ---------- NEW FORMAT: conversationId (bulletproof DB-backed) ---------- */
+    if (data?.conversationId) {
+      const { conversationId, text, mediaUrl, mediaType, voiceDuration, fileName, fileSize, tempId } = data || {};
+      if (!conversationId) {
+        if (ack) ack({ error: "conversationId required" });
+        return;
+      }
+      if (!text?.trim() && !mediaUrl) {
+        if (ack) ack({ error: "text or mediaUrl required" });
+        return;
+      }
+      const userId = socket.data.user?.id ? String(socket.data.user.id) : null;
+      if (!userId) {
+        if (ack) ack({ error: "Not authenticated" });
+        return;
+      }
+      try {
+        const part = await pool.query(
+          `SELECT 1 FROM conversation_participants WHERE conversation_id = $1 AND user_id = $2`,
+          [conversationId, userId]
+        );
+        if (!part.rows.length) {
+          if (ack) ack({ error: "You are not a participant in this conversation" });
+          return;
+        }
+        const insert = await pool.query(
+          `INSERT INTO messages (conversation_id, sender_id, text, media_url, media_type, voice_duration, file_name, file_size)
+           VALUES ($1,$2,$3,$4,$5,$6,$7,$8) RETURNING *`,
+          [conversationId, userId, text?.trim() || null, mediaUrl || null, mediaType || "text", voiceDuration || null, fileName || null, fileSize || null]
+        );
+        const msgRow = insert.rows[0];
+        const senderQ = await pool.query(
+          `SELECT COALESCE(username, name, email, 'User') as sender_name FROM users WHERE id = $1`,
+          [userId]
+        );
+        const fullMsg = {
+          id: msgRow.id,
+          conversation_id: Number(conversationId),
+          sender_id: Number(userId),
+          sender_name: senderQ.rows[0]?.sender_name || "User",
+          text: msgRow.text,
+          media_url: msgRow.media_url,
+          media_type: msgRow.media_type,
+          voice_duration: msgRow.voice_duration,
+          file_name: msgRow.file_name,
+          file_size: msgRow.file_size,
+          created_at: msgRow.created_at,
+          tempId: tempId || null,
+        };
+        io.to(`conv_${conversationId}`).emit("receive_message", fullMsg);
+        const others = await pool.query(
+          `SELECT user_id FROM conversation_participants WHERE conversation_id = $1 AND user_id <> $2`,
+          [conversationId, userId]
+        );
+        for (const row of others.rows) {
+          const oid = String(row.user_id);
+          if (onlineUsers.has(oid)) {
+            io.to(`user:${oid}`).emit("new_conversation_message", {
+              conversationId: Number(conversationId),
+              message: fullMsg,
+            });
+          }
+        }
+        if (ack) ack({ success: true, id: msgRow.id, message: fullMsg });
+      } catch (err) {
+        console.error("[Socket] send_message (conversation) error:", err);
+        if (ack) ack({ error: err.message });
+      }
+      return;
+    }
+
+    /* ---------- OLD FORMAT: roomId / sender_id / receiver_id (legacy compat) ---------- */
     try {
       const { roomId, sender_id, receiver_id, content, text } = data || {};
-
       if (!sender_id || !receiver_id) {
         if (typeof ack === 'function') ack({ error: 'Missing sender_id or receiver_id' });
         return;
       }
-
-      const messageText = String(text || content || '').trim();
+      const messageText = String((text || content || '')).trim();
       if (!messageText) {
         if (typeof ack === 'function') ack({ error: 'Message text is empty' });
         return;
       }
-
       const finalRoom = roomId || getDmRoomId(sender_id, receiver_id);
-
       const message = {
         id: `${Date.now()}-${Math.random().toString(36).slice(2, 8)}`,
         roomId: finalRoom,
@@ -1829,12 +2186,10 @@ io.on("connection", (socket) => {
         text: messageText,
         created_at: new Date().toISOString(),
       };
-
       io.to(finalRoom).emit('receive_message', message);
-
       if (typeof ack === 'function') ack({ id: message.id, ok: true });
     } catch (err) {
-      console.error('send_message error:', err);
+      console.error('send_message (legacy) error:', err);
       if (typeof ack === 'function') ack({ error: 'Server error' });
     }
   });
