@@ -112,10 +112,12 @@
                 >
                   <div class="msgBubble" :class="{ pending: msg.pending, failed: msg.failed }">
                     <div v-if="msg.mediaType === 'image'" class="msgMedia">
-                      <img :src="msg.mediaUrl" alt="image" loading="lazy" @load="onMediaLoad" />
+                      <img v-if="msg.mediaUrl" :src="msg.mediaUrl" alt="image" loading="lazy" @load="onMediaLoad" />
+                      <div v-else style="opacity:.6;font-size:12px;padding:8px 0;">📷 Image unavailable</div>
                     </div>
                     <div v-else-if="msg.mediaType === 'video'" class="msgMedia">
-                      <video :src="msg.mediaUrl" controls playsinline preload="metadata" @loadedmetadata="onMediaLoad" />
+                      <video v-if="msg.mediaUrl" :src="msg.mediaUrl" controls playsinline preload="metadata" @loadedmetadata="onMediaLoad" />
+                      <div v-else style="opacity:.6;font-size:12px;padding:8px 0;">🎥 Video unavailable</div>
                     </div>
                     <div v-else class="msgText" v-html="linkify(msg.text || msg.content || msg.message || '')"></div>
 
@@ -357,6 +359,7 @@ const inputRef = ref(null)
 const fileInput = ref(null)
 const selectedFile = ref(null)
 const selectedFileType = ref(null)
+const selectedFileBase64 = ref(null)
 
 const conversationList = computed(() => {
   const list = [...conversations.value]
@@ -492,6 +495,27 @@ async function fetchMessages() {
   loadingMessages.value = false
 }
 
+async function tryUpload(file) {
+  const form = new FormData()
+  form.append('file', file)
+  const uploadUrls = [`${apiUrl}/upload`, `${apiUrl}/api/upload`, `${apiUrl}/media/upload`]
+  for (const uu of uploadUrls) {
+    try {
+      const upRes = await fetch(uu, {
+        method: 'POST',
+        headers: token.value ? { Authorization: `Bearer ${token.value}` } : {},
+        body: form,
+      })
+      if (upRes.ok) {
+        const upData = await upRes.json()
+        const url = upData.url || upData.fileUrl || upData.image_url || upData.video_url || null
+        if (url) return url
+      }
+    } catch {}
+  }
+  return null
+}
+
 async function send() {
   const rawText = text.value
   if (!rawText && !selectedFile.value) return
@@ -511,6 +535,9 @@ async function send() {
   const isVideo = selectedFileType.value === 'video'
   const displayText = trimmed || (isImage ? '📷 Photo' : isVideo ? '🎥 Video' : '')
 
+  let mediaUrl = selectedFileBase64.value || null
+  let mediaType = selectedFileType.value
+
   const optimisticMsg = {
     __localId: tempId,
     _tempId: tempId,
@@ -528,8 +555,8 @@ async function send() {
     pending: true,
     failed: false,
     seen: false,
-    mediaUrl: null,
-    mediaType: selectedFileType.value,
+    mediaUrl,
+    mediaType,
     rawFile: selectedFile.value,
   }
 
@@ -539,37 +566,17 @@ async function send() {
   clearFile()
   nextTick(scrollToBottom)
 
-  let mediaUrl = null
-  let mediaType = optimisticMsg.mediaType
-
   if (fileToUpload) {
     try {
-      const form = new FormData()
-      form.append('file', fileToUpload)
-      const uploadUrls = [`${apiUrl}/upload`, `${apiUrl}/api/upload`, `${apiUrl}/media/upload`]
-      for (const uu of uploadUrls) {
-        try {
-          const upRes = await fetch(uu, {
-            method: 'POST',
-            headers: token.value ? { Authorization: `Bearer ${token.value}` } : {},
-            body: form,
-          })
-          if (upRes.ok) {
-            const upData = await upRes.json()
-            mediaUrl = upData.url || upData.fileUrl || upData.image_url || upData.video_url || null
-            if (mediaUrl) break
-          }
-        } catch {}
+      const uploadedUrl = await tryUpload(fileToUpload)
+      if (uploadedUrl) {
+        mediaUrl = uploadedUrl
+        const idx = messages.value.findIndex(m => m.__localId === tempId)
+        if (idx !== -1) messages.value[idx].mediaUrl = mediaUrl
       }
-      if (!mediaUrl && fileToUpload.size < 500 * 1024) {
-        mediaUrl = await fileToBase64(fileToUpload)
-      }
-    } catch {}
-  }
-
-  if (mediaUrl) {
-    const idx = messages.value.findIndex(m => m.__localId === tempId)
-    if (idx !== -1) messages.value[idx].mediaUrl = mediaUrl
+    } catch {
+      // Upload failed — base64 stays in place so the message still works
+    }
   }
 
   const payload = {
@@ -591,10 +598,12 @@ async function send() {
     media_type: mediaType,
   }
 
-  let sent = false
+  let socketAcked = false
+
   if (socket?.connected) {
     try {
       socket.emit('send_message', payload, (ack) => {
+        socketAcked = true
         sending.value = false
         const idx = messages.value.findIndex(m => m.__localId === tempId)
         if (ack?.error) {
@@ -611,19 +620,25 @@ async function send() {
           updateConvLastMessage(id, displayText, mediaType)
         }
       })
-      setTimeout(() => { sending.value = false }, 5000)
-      sent = true
-    } catch {}
+    } catch {
+      socketAcked = false
+    }
   }
 
-  if (!sent) {
+  setTimeout(async () => {
+    if (socketAcked) return
+    const idx = messages.value.findIndex(m => m.__localId === tempId)
+    if (idx === -1 || !messages.value[idx].pending) return
+
     queueMessage(payload)
+
     const urls = [`${apiUrl}/messages`, `${apiUrl}/api/messages`]
     const bodies = [
       { otherUserId: id, text: trimmed, mediaUrl, mediaType },
       { userId: id, text: trimmed, mediaUrl, mediaType },
       { receiverId: id, content: trimmed, mediaUrl, mediaType },
     ]
+    let httpSent = false
     for (const url of urls) {
       for (const body of bodies) {
         try {
@@ -634,32 +649,143 @@ async function send() {
           })
           if (res.ok) {
             const saved = await res.json().catch(() => null)
-            const idx = messages.value.findIndex(m => m.__localId === tempId)
             if (idx !== -1) {
               messages.value[idx].pending = false
               messages.value[idx].failed = false
               messages.value[idx].id = saved?.id || saved?._id || messages.value[idx].id
               messages.value[idx]._id = saved?.id || saved?._id || messages.value[idx]._id
             }
-            sent = true
+            httpSent = true
             break
           }
         } catch {}
       }
-      if (sent) break
+      if (httpSent) break
     }
-    if (!sent) {
+
+    if (!httpSent) {
       error.value = 'Offline — message queued for retry'
-      const idx = messages.value.findIndex(m => m.__localId === tempId)
       if (idx !== -1) { messages.value[idx].pending = false; messages.value[idx].failed = true }
     }
     sending.value = false
-  }
-  saveMessages(activeOtherId.value)
+    saveMessages(activeOtherId.value)
+  }, 3000)
 }
 
 async function retryMessage(msg) {
   if (!msg.__localId) return
+
+  if (!msg.rawFile && msg.mediaUrl) {
+    const id = String(activeOtherId.value || '')
+    const myId = String(me.value?.id || '')
+    const room = currentRoomId.value || getRoomId(myId, id)
+    const newTempId = `tmp-${Date.now()}-${Math.random().toString(36).slice(2, 6)}`
+
+    const payload = {
+      roomId: room,
+      room_id: room,
+      sender_id: myId,
+      sender_name: me.value?.username || me.value?.display_name || 'You',
+      receiver_id: id,
+      receiverId: id,
+      content: msg.text === '📷 Photo' || msg.text === '🎥 Video' ? '' : msg.text,
+      text: msg.text === '📷 Photo' || msg.text === '🎥 Video' ? '' : msg.text,
+      message: msg.text === '📷 Photo' || msg.text === '🎥 Video' ? '' : msg.text,
+      created_at: new Date().toISOString(),
+      _tempId: newTempId,
+      tempId: newTempId,
+      mediaUrl: msg.mediaUrl,
+      media_url: msg.mediaUrl,
+      mediaType: msg.mediaType,
+      media_type: msg.mediaType,
+    }
+
+    const oldIdx = messages.value.findIndex(m => m.__localId === msg.__localId)
+    if (oldIdx !== -1) messages.value.splice(oldIdx, 1)
+
+    messages.value.push({
+      __localId: newTempId,
+      _tempId: newTempId,
+      tempId: newTempId,
+      id: newTempId,
+      _id: newTempId,
+      text: msg.text,
+      content: msg.text,
+      from: myId,
+      fromUserId: myId,
+      senderId: myId,
+      sender_name: me.value?.username || me.value?.display_name || 'You',
+      created_at: new Date().toISOString(),
+      createdAt: new Date().toISOString(),
+      pending: true,
+      failed: false,
+      seen: false,
+      mediaUrl: msg.mediaUrl,
+      mediaType: msg.mediaType,
+    })
+    nextTick(scrollToBottom)
+
+    let sent = false
+    if (socket?.connected) {
+      try {
+        socket.emit('send_message', payload, (ack) => {
+          const idx = messages.value.findIndex(m => m.__localId === newTempId)
+          if (ack?.error) {
+            if (idx !== -1) { messages.value[idx].pending = false; messages.value[idx].failed = true }
+          } else {
+            if (idx !== -1) {
+              messages.value[idx].pending = false
+              messages.value[idx].failed = false
+              messages.value[idx].id = ack?.id || messages.value[idx].id
+              messages.value[idx]._id = ack?.id || messages.value[idx]._id
+            }
+          }
+        })
+        sent = true
+      } catch {}
+    }
+
+    if (!sent) {
+      const urls = [`${apiUrl}/messages`, `${apiUrl}/api/messages`]
+      const bodies = [
+        { otherUserId: id, text: payload.text, mediaUrl: payload.mediaUrl, mediaType: payload.mediaType },
+        { userId: id, text: payload.text, mediaUrl: payload.mediaUrl, mediaType: payload.mediaType },
+        { receiverId: id, content: payload.text, mediaUrl: payload.mediaUrl, mediaType: payload.mediaType },
+      ]
+      let ok = false
+      for (const url of urls) {
+        for (const body of bodies) {
+          try {
+            const res = await fetch(url, {
+              method: 'POST',
+              headers: { 'Content-Type': 'application/json', Authorization: `Bearer ${token.value}` },
+              body: JSON.stringify(body),
+            })
+            if (res.ok) {
+              const saved = await res.json().catch(() => null)
+              const idx = messages.value.findIndex(m => m.__localId === newTempId)
+              if (idx !== -1) {
+                messages.value[idx].pending = false
+                messages.value[idx].failed = false
+                messages.value[idx].id = saved?.id || saved?._id || messages.value[idx].id
+                messages.value[idx]._id = saved?.id || saved?._id || messages.value[idx]._id
+              }
+              ok = true
+              break
+            }
+          } catch {}
+        }
+        if (ok) break
+      }
+      if (!ok) {
+        const idx = messages.value.findIndex(m => m.__localId === newTempId)
+        if (idx !== -1) { messages.value[idx].pending = false; messages.value[idx].failed = true }
+      }
+    }
+    saveMessages(activeOtherId.value)
+    return
+  }
+
   if (!msg.rawFile) {
     text.value = msg.text
     await send()
@@ -667,6 +793,7 @@ async function retryMessage(msg) {
     if (idx !== -1) messages.value.splice(idx, 1)
     return
   }
+
   selectedFile.value = msg.rawFile
   selectedFileType.value = msg.mediaType
   text.value = (msg.text === '📷 Photo' || msg.text === '🎥 Video') ? '' : msg.text
@@ -693,12 +820,18 @@ function onFileSelected(e) {
   if (file.size > 50 * 1024 * 1024) { error.value = 'File too large (max 50MB)'; return }
   selectedFile.value = file
   selectedFileType.value = file.type.startsWith('video/') ? 'video' : 'image'
+
+  const reader = new FileReader()
+  reader.onload = () => { selectedFileBase64.value = reader.result }
+  reader.readAsDataURL(file)
+
   nextTick(() => inputRef.value?.focus())
 }
 
 function clearFile() {
   selectedFile.value = null
   selectedFileType.value = null
+  selectedFileBase64.value = null
   if (fileInput.value) fileInput.value.value = ''
 }
 
@@ -722,10 +855,15 @@ function escapeHtml(text) {
 
 function linkify(text) {
   const escaped = escapeHtml(text)
-  return escaped.replace(
-    /(https?:\/\/[^\s<]+)/g,
-    '<a href="$1" target="_blank" rel="noopener noreferrer" class="msgLink">$1</a>'
-  )
+  return escaped
+    .replace(
+      /(https?:\/\/[^\s<]+)/g,
+      '<a href="$1" target="_blank" rel="noopener noreferrer" class="msgLink">$1</a>'
+    )
+    .replace(
+      /(^|[^\/\w.])(www\.[\w.-]+\.[a-zA-Z]{2,}[^\s<]*)/g,
+      '$1<a href="https://$2" target="_blank" rel="noopener noreferrer" class="msgLink">$2</a>'
+    )
 }
 
 function isMe(msg) {
