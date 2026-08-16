@@ -58,6 +58,7 @@
                   <div class="convPreview">
                     <span v-if="conv.lastMessageType === 'image'">📷 Photo</span>
                     <span v-else-if="conv.lastMessageType === 'video'">🎥 Video</span>
+                    <span v-else-if="conv.lastMessageType === 'audio'">🎙️ Voice</span>
                     <span v-else>{{ conv.lastMessage || 'No messages yet' }}</span>
                   </div>
                 </div>
@@ -119,6 +120,10 @@
                       <video v-if="msg.mediaUrl" :src="msg.mediaUrl" controls playsinline preload="metadata" @loadedmetadata="onMediaLoad" />
                       <div v-else style="opacity:.6;font-size:12px;padding:8px 0;">🎥 Video unavailable</div>
                     </div>
+                    <div v-else-if="msg.mediaType === 'audio'" class="msgMedia audioMsg">
+                      <audio v-if="msg.mediaUrl" :src="msg.mediaUrl" controls preload="metadata" />
+                      <div v-else style="opacity:.6;font-size:12px;padding:8px 0;">🎙️ Voice unavailable</div>
+                    </div>
                     <div v-else class="msgText" v-html="linkify(msg.text || msg.content || msg.message || '')"></div>
 
                     <div class="msgMeta">
@@ -134,7 +139,7 @@
               <div class="chatInputArea">
                 <div v-if="error" class="alert soft">{{ error }}</div>
 
-                <div v-if="selectedFile" class="filePreview">
+                <div v-if="selectedFile && !isRecording" class="filePreview">
                   <span class="filePreviewName">{{ selectedFile.name }}</span>
                   <button class="filePreviewX" @click="clearFile">✕</button>
                 </div>
@@ -143,21 +148,53 @@
                   <input
                     ref="fileInput"
                     type="file"
-                    accept="image/*,video/*"
+                    accept="image/*,video/*,audio/*"
                     style="display:none"
                     @change="onFileSelected"
                   />
-                  <button class="iconbtn attachBtn" title="Attach photo/video" @click="fileInput?.click()">📎</button>
+
+                  <!-- Attach photo/video -->
+                  <button
+                    class="iconbtn attachBtn"
+                    title="Attach photo/video"
+                    @click="fileInput?.click()"
+                    :disabled="isRecording"
+                  >📎</button>
+
+                  <!-- Mic / Recording UI -->
+                  <template v-if="!isRecording">
+                    <button
+                      class="iconbtn micBtn"
+                      title="Hold to record voice"
+                      @mousedown.prevent="startRecording"
+                      @touchstart.prevent="startRecording"
+                      :disabled="!!selectedFile"
+                    >🎙️</button>
+                  </template>
+                  <template v-else>
+                    <div class="recordingBar">
+                      <div class="recDot"></div>
+                      <span class="recTime">{{ formatTime(recordingTime) }}</span>
+                      <button class="iconbtn recStop" @click="stopRecording">⏹️</button>
+                      <button class="iconbtn recCancel" @click="cancelRecording">✕</button>
+                    </div>
+                  </template>
+
+                  <!-- Text input -->
                   <input
+                    v-show="!isRecording"
                     ref="inputRef"
                     v-model="text"
                     class="chatInput"
                     placeholder="Type a message…"
                     @keydown.enter.prevent="send"
+                    :disabled="isRecording"
                   />
+
+                  <!-- Send button -->
                   <button
                     class="btn btn-primary sendBtn"
-                    :disabled="sending || !canSend"
+                    :disabled="sending || (!canSend && !selectedFile)"
                     @click="send"
                   >
                     {{ sending ? '…' : '➤' }}
@@ -198,6 +235,40 @@ function resolveMediaUrl(url) {
   if (!url) return null
   if (url.startsWith('http') || url.startsWith('data:')) return url
   return `${apiUrl}${url.startsWith('/') ? '' : '/'}${url}`
+}
+
+/* ── Image Compression ── */
+function compressImage(file, maxWidth = 1200, quality = 0.8) {
+  return new Promise((resolve) => {
+    if (!file.type.startsWith('image/')) {
+      resolve(file)
+      return
+    }
+    const img = new Image()
+    const url = URL.createObjectURL(file)
+    img.onload = () => {
+      URL.revokeObjectURL(url)
+      let w = img.width
+      let h = img.height
+      if (w > maxWidth) {
+        h = Math.round(h * (maxWidth / w))
+        w = maxWidth
+      }
+      const canvas = document.createElement('canvas')
+      canvas.width = w
+      canvas.height = h
+      const ctx = canvas.getContext('2d')
+      ctx.drawImage(img, 0, 0, w, h)
+      canvas.toBlob((blob) => {
+        if (!blob) { resolve(file); return }
+        const compressed = new File([blob], file.name, { type: 'image/jpeg', lastModified: Date.now() })
+        console.log(`[compress] ${(file.size/1024).toFixed(1)}KB → ${(compressed.size/1024).toFixed(1)}KB`)
+        resolve(compressed)
+      }, 'image/jpeg', quality)
+    }
+    img.onerror = () => resolve(file)
+    img.src = url
+  })
 }
 
 /* ── API Discovery ── */
@@ -392,6 +463,13 @@ const selectedFile = ref(null)
 const selectedFileType = ref(null)
 const selectedFileBase64 = ref(null)
 
+/* ── Voice Recording State ── */
+const isRecording = ref(false)
+const recordingTime = ref(0)
+const mediaRecorder = ref(null)
+const audioChunks = ref([])
+const recordingTimer = ref(null)
+
 const conversationList = computed(() => {
   const list = [...conversations.value]
   const qId = route.query.userId || route.query.otherUserId
@@ -442,7 +520,6 @@ async function fetchConversations() {
   await discoverEndpoints()
 
   if (!DISCOVERED.conversations) {
-    // Socket-only mode: build conversation list from localStorage
     const keys = Object.keys(localStorage).filter(k => k.startsWith('pulse_dm_v2_'))
     const convs = []
     const seen = new Set()
@@ -514,7 +591,6 @@ async function fetchMessages() {
   error.value = ''
   const id = String(activeOtherId.value)
 
-  // Always load local cache first for instant UI
   loadMessages(id)
 
   await discoverEndpoints()
@@ -545,8 +621,8 @@ async function fetchMessages() {
         pending: false,
         failed: false,
         seen: !!m.seen,
-        mediaUrl: resolveMediaUrl(m.mediaUrl || m.media_url || m.image_url || m.video_url),
-        mediaType: m.mediaType || m.media_type || (m.image_url ? 'image' : m.video_url ? 'video' : null),
+        mediaUrl: resolveMediaUrl(m.mediaUrl || m.media_url || m.image_url || m.video_url || m.audio_url),
+        mediaType: m.mediaType || m.media_type || (m.image_url ? 'image' : m.video_url ? 'video' : m.audio_url ? 'audio' : null),
       }))
       const localPending = messages.value.filter(m => m.pending || m.failed)
       const serverIds = new Set(normalized.map(m => m._id))
@@ -605,9 +681,10 @@ async function send() {
 
   const isImage = selectedFileType.value === 'image'
   const isVideo = selectedFileType.value === 'video'
+  const isAudio = selectedFileType.value === 'audio'
 
-  const displayText = trimmed || (isImage ? '📷 Photo' : isVideo ? '🎥 Video' : '·')
-  const backendText = trimmed || (isImage ? '📷 Photo' : isVideo ? '🎥 Video' : '·')
+  const displayText = trimmed || (isImage ? '📷 Photo' : isVideo ? '🎥 Video' : isAudio ? '🎙️ Voice' : '·')
+  const backendText = trimmed || (isImage ? '📷 Photo' : isVideo ? '🎥 Video' : isAudio ? '🎙️ Voice' : '·')
 
   let mediaUrl = selectedFileBase64.value || null
   let mediaType = selectedFileType.value
@@ -778,7 +855,7 @@ async function retryMessage(msg) {
     const room = currentRoomId.value || getRoomId(myId, id)
     const newTempId = `tmp-${Date.now()}-${Math.random().toString(36).slice(2, 6)}`
 
-    const backendText = (msg.text === '📷 Photo' || msg.text === '🎥 Video') ? '📷 Photo' : (msg.text || '·')
+    const backendText = (msg.text === '📷 Photo' || msg.text === '🎥 Video' || msg.text === '🎙️ Voice') ? msg.text : (msg.text || '·')
 
     const payload = {
       roomId: room,
@@ -902,7 +979,7 @@ async function retryMessage(msg) {
 
   selectedFile.value = msg.rawFile
   selectedFileType.value = msg.mediaType
-  text.value = (msg.text === '📷 Photo' || msg.text === '🎥 Video') ? '' : msg.text
+  text.value = (msg.text === '📷 Photo' || msg.text === '🎥 Video' || msg.text === '🎙️ Voice') ? '' : msg.text
   const idx = messages.value.findIndex(m => m.__localId === msg.__localId)
   if (idx !== -1) messages.value.splice(idx, 1)
   await send()
@@ -920,15 +997,26 @@ function flushMessageQueue() {
   }
 }
 
-function onFileSelected(e) {
-  const file = e.target.files?.[0]
+async function onFileSelected(e) {
+  let file = e.target.files?.[0]
   if (!file) return
   if (file.size > 50 * 1024 * 1024) { error.value = 'File too large (max 50MB)'; return }
+
+  file = await compressImage(file)
+
   selectedFile.value = file
-  selectedFileType.value = file.type.startsWith('video/') ? 'video' : 'image'
+  if (file.type.startsWith('video/')) selectedFileType.value = 'video'
+  else if (file.type.startsWith('audio/')) selectedFileType.value = 'audio'
+  else selectedFileType.value = 'image'
 
   const reader = new FileReader()
-  reader.onload = () => { selectedFileBase64.value = reader.result }
+  reader.onload = () => {
+    selectedFileBase64.value = reader.result
+    const approxBytes = reader.result.length * 0.75
+    if (approxBytes > 800000) {
+      console.warn(`[Messages] Large base64 payload (~${Math.round(approxBytes/1024)}KB). Will use HTTP upload.`)
+    }
+  }
   reader.readAsDataURL(file)
 
   nextTick(() => inputRef.value?.focus())
@@ -1023,6 +1111,70 @@ async function refreshAll() {
   DISCOVERED.messages = undefined
   await fetchConversations()
   if (activeOtherId.value) await fetchMessages()
+}
+
+/* ── Voice Recording ── */
+function formatTime(sec) {
+  const m = Math.floor(sec / 60).toString().padStart(2, '0')
+  const s = (sec % 60).toString().padStart(2, '0')
+  return `${m}:${s}`
+}
+
+async function startRecording() {
+  if (!navigator.mediaDevices?.getUserMedia) {
+    error.value = 'Voice recording not supported in this browser'
+    return
+  }
+  try {
+    const stream = await navigator.mediaDevices.getUserMedia({ audio: true })
+    const mimeType = MediaRecorder.isTypeSupported('audio/webm') ? 'audio/webm' : 'audio/ogg'
+    const recorder = new MediaRecorder(stream, { mimeType })
+    audioChunks.value = []
+
+    recorder.ondataavailable = (e) => {
+      if (e.data.size > 0) audioChunks.value.push(e.data)
+    }
+
+    recorder.onstop = () => {
+      const blob = new Blob(audioChunks.value, { type: mimeType })
+      const file = new File([blob], `voice-${Date.now()}.webm`, { type: mimeType })
+      selectedFile.value = file
+      selectedFileType.value = 'audio'
+      const reader = new FileReader()
+      reader.onload = () => { selectedFileBase64.value = reader.result }
+      reader.readAsDataURL(file)
+      stream.getTracks().forEach(t => t.stop())
+    }
+
+    recorder.start()
+    mediaRecorder.value = recorder
+    isRecording.value = true
+    recordingTime.value = 0
+    recordingTimer.value = setInterval(() => recordingTime.value++, 1000)
+  } catch (err) {
+    error.value = 'Mic permission denied or unavailable'
+    console.error(err)
+  }
+}
+
+function stopRecording() {
+  if (mediaRecorder.value && mediaRecorder.value.state !== 'inactive') {
+    mediaRecorder.value.stop()
+  }
+  isRecording.value = false
+  clearInterval(recordingTimer.value)
+  recordingTimer.value = null
+}
+
+function cancelRecording() {
+  if (mediaRecorder.value && mediaRecorder.value.state !== 'inactive') {
+    mediaRecorder.value.stop()
+    audioChunks.value = []
+  }
+  isRecording.value = false
+  clearInterval(recordingTimer.value)
+  recordingTimer.value = null
+  clearFile()
 }
 
 onMounted(() => {
@@ -1211,6 +1363,54 @@ onBeforeUnmount(() => {
 .alert.soft { background: rgba(255, 255, 255, 0.05); border: 1px solid rgba(255, 255, 255, 0.08); color: #cbd5e1; }
 
 .avatar { width: 40px; height: 40px; border-radius: 50%; background: linear-gradient(135deg, #ec4899, #8b5cf6); display: grid; place-items: center; font-weight: 800; font-size: 15px; flex-shrink: 0; }
+
+/* Voice message styles */
+.micBtn { width: 40px; height: 40px; border-radius: 50%; flex-shrink: 0; font-size: 16px; }
+.micBtn:disabled { opacity: 0.35; cursor: not-allowed; }
+
+.recordingBar {
+  flex: 1;
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  padding: 8px 14px;
+  border-radius: 999px;
+  background: rgba(239, 68, 68, 0.12);
+  border: 1px solid rgba(239, 68, 68, 0.25);
+  animation: pulseRec 1.5s ease-in-out infinite;
+}
+
+@keyframes pulseRec {
+  0%, 100% { opacity: 1; }
+  50% { opacity: 0.7; }
+}
+
+.recDot {
+  width: 10px; height: 10px;
+  border-radius: 50%;
+  background: #ef4444;
+  box-shadow: 0 0 8px rgba(239, 68, 68, 0.5);
+  animation: blinkRec 1s step-end infinite;
+}
+
+@keyframes blinkRec {
+  0%, 100% { opacity: 1; }
+  50% { opacity: 0; }
+}
+
+.recTime { font-weight: 700; font-size: 14px; color: #fca5a5; font-variant-numeric: tabular-nums; }
+.recStop { width: 32px; height: 32px; border-radius: 50%; margin-left: auto; }
+.recCancel { width: 32px; height: 32px; border-radius: 50%; }
+
+.audioMsg audio {
+  width: 100%;
+  max-width: 260px;
+  height: 40px;
+  border-radius: 999px;
+}
+.audioMsg audio::-webkit-media-controls-panel {
+  background: rgba(139, 92, 246, 0.15);
+}
 
 @media (max-width: 900px) {
   .chatLayout { grid-template-columns: 1fr; height: auto; min-height: calc(100vh - 100px); }
