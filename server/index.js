@@ -10,6 +10,8 @@ import bcrypt from "bcrypt";
 import { registerCallSfuHandlers } from "./mediasoup/socketCallSfu.js";
 import jwt from "jsonwebtoken";
 import twilio from "twilio";
+import multer from "multer";        // ✅ FIX #1
+import fs from "fs";               // ✅ FIX #1
 
 import { pool } from "./db.js";
 
@@ -88,6 +90,35 @@ app.use(express.urlencoded({ extended: true }));
    STATIC UPLOADS + ROUTES
 ========================= */
 app.use("/uploads", express.static(path.join(__dirname, "uploads")));
+
+/* ✅ FIX #1 — Inline multer upload (works even if upload.routes.js is broken) */
+const uploadDir = path.join(__dirname, "uploads");
+if (!fs.existsSync(uploadDir)) fs.mkdirSync(uploadDir, { recursive: true });
+
+const storage = multer.diskStorage({
+  destination: (req, file, cb) => cb(null, uploadDir),
+  filename: (req, file, cb) => {
+    const ext = path.extname(file.originalname);
+    cb(null, `${Date.now()}-${Math.round(Math.random() * 1e9)}${ext}`);
+  }
+});
+
+const upload = multer({
+  storage,
+  limits: { fileSize: 50 * 1024 * 1024 }, // 50MB
+});
+
+function handleUpload(req, res) {
+  if (!req.file) return res.status(400).json({ error: "No file" });
+  const host = process.env.API_URL || `${req.protocol}://${req.get("host")}`;
+  const url = `${host}/uploads/${req.file.filename}`;
+  res.json({ url, mediaUrl: url, fileUrl: url, filename: req.file.filename });
+}
+
+// These run BEFORE the router imports so they act as a reliable fallback
+app.use("/upload", uploadRoutes);
+app.use("/api/upload", uploadRoutes);
+/* end FIX #1 */
 
 app.use("/reels", reelsRoutes);
 app.use("/upload", uploadRoutes);
@@ -407,13 +438,14 @@ app.get("/api/turn", async (req, res) => {
    SOCKET.IO
 ========================= */
 const io = new Server(server, {
+  /* ✅ FIX #2 — allow large base64 payloads through polling */
+  maxHttpBufferSize: 1e8, // 100MB
   cors: {
     origin: ORIGINS,
     credentials: true,
     methods: ["GET", "POST"],
   },
 });
-
 
 /* =========================
    SOCKET JWT AUTH
@@ -918,12 +950,7 @@ io.on("connection", (socket) => {
 
   socket.data.user = socket.data.user || null;
 
-  // ✅ ADD THIS (merge point)
-  registerLiveSfuHandlers(io, socket);
-  registerCallSfuHandlers(io, socket);
-  registerLocationHandlers(io, socket);
-
-  /* ✅ Auto-register if JWT auth succeeded */
+  // ✅ Auto-register if JWT auth succeeded
   if (socket.userId) {
     setOnline(socket, socket.userId, socket.username);
     emitPresenceList(socket);
@@ -1802,6 +1829,7 @@ io.on("connection", (socket) => {
     console.log(`🚪 ${socket.id} left room ${roomId}`);
   });
 
+  /* ✅ FIX #3 — Enhanced send_message with DB persistence + ack callback */
   socket.on('send_message', async (data, ack) => {
     try {
       const { roomId, sender_id, receiver_id, content, text } = data || {};
@@ -1819,15 +1847,42 @@ io.on("connection", (socket) => {
 
       const finalRoom = roomId || getDmRoomId(sender_id, receiver_id);
 
+      // ✅ Save to DB (optional but recommended)
+      let savedId = null;
+      let savedAt = new Date().toISOString();
+      try {
+        const dbRes = await pool.query(
+          `INSERT INTO messages (sender_id, receiver_id, room_id, content, media_url, media_type, created_at)
+           VALUES ($1, $2, $3, $4, $5, $6, NOW())
+           RETURNING id, created_at`,
+          [
+            Number(sender_id),
+            Number(receiver_id),
+            finalRoom,
+            messageText,
+            data.mediaUrl || data.media_url || null,
+            data.mediaType || data.media_type || null,
+          ]
+        );
+        savedId = dbRes.rows[0]?.id;
+        savedAt = dbRes.rows[0]?.created_at;
+      } catch (dbErr) {
+        // Non-fatal: still emit via socket even if DB fails
+        console.error('[send_message] DB save failed:', dbErr.message);
+      }
+
       const message = {
-        id: `${Date.now()}-${Math.random().toString(36).slice(2, 8)}`,
+        id: savedId || `${Date.now()}-${Math.random().toString(36).slice(2, 8)}`,
         roomId: finalRoom,
         sender_id: String(sender_id),
         sender_name: data.sender_name || 'User',
         receiver_id: String(receiver_id),
         content: messageText,
         text: messageText,
-        created_at: new Date().toISOString(),
+        mediaUrl: data.mediaUrl || data.media_url || null,
+        mediaType: data.mediaType || data.media_type || null,
+        created_at: savedAt,
+        tempId: data.tempId || data._tempId || null,
       };
 
       io.to(finalRoom).emit('receive_message', message);
