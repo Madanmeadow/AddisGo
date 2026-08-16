@@ -407,24 +407,31 @@ async function fetchConversations() {
   if (!token.value) return
   loadingConversations.value = true
   error.value = ''
-  const urls = [`${apiUrl}/messages/conversations`, `${apiUrl}/conversations`, `${apiUrl}/api/messages/conversations`]
+  const urls = [
+    `${apiUrl}/messages/conversations`,
+    `${apiUrl}/conversations`,
+    `${apiUrl}/api/messages/conversations`,
+    `${apiUrl}/api/conversations`,
+    `${apiUrl}/chats`,
+    `${apiUrl}/api/chats`
+  ]
   for (const url of urls) {
     try {
       const res = await fetch(url, { headers: { Authorization: `Bearer ${token.value}` } })
       if (res.ok) {
         const data = await res.json()
-        const list = Array.isArray(data) ? data : Array.isArray(data?.conversations) ? data.conversations : []
+        const list = Array.isArray(data) ? data : Array.isArray(data?.conversations) ? data.conversations : Array.isArray(data?.chats) ? data.chats : []
         conversations.value = list.map(c => ({
-          otherUserId: String(c.otherUserId || c.other_user_id || c.userId || c.id),
-          name: c.name || c.username || c.display_name || `User #${c.otherUserId}`,
-          lastMessage: c.lastMessage || c.last_message || '',
-          lastMessageType: c.lastMessageType || c.media_type || null,
+          otherUserId: String(c.otherUserId || c.other_user_id || c.userId || c.id || c.partner_id || c.partnerId),
+          name: c.name || c.username || c.display_name || c.partner_name || `User #${c.otherUserId}`,
+          lastMessage: c.lastMessage || c.last_message || c.last_message_text || '',
+          lastMessageType: c.lastMessageType || c.media_type || c.last_message_type || null,
           unread: Number(c.unread || c.unread_count || 0),
         }))
         loadingConversations.value = false
         return
       }
-    } catch {}
+    } catch (e) { console.log('conv fetch failed:', url, e) }
   }
   conversations.value = []
   loadingConversations.value = false
@@ -458,29 +465,32 @@ async function fetchMessages() {
     `${apiUrl}/messages/${encodeURIComponent(id)}`,
     `${apiUrl}/api/messages?otherUserId=${encodeURIComponent(id)}`,
     `${apiUrl}/api/messages?userId=${encodeURIComponent(id)}`,
+    `${apiUrl}/api/messages/${encodeURIComponent(id)}`,
+    `${apiUrl}/chats/${encodeURIComponent(id)}`,
+    `${apiUrl}/api/chats/${encodeURIComponent(id)}`,
   ]
   for (const url of urls) {
     try {
       const res = await fetch(url, { headers: { Authorization: `Bearer ${token.value}` } })
       if (res.ok) {
         const data = await res.json()
-        const list = Array.isArray(data) ? data : Array.isArray(data?.messages) ? data.messages : []
+        const list = Array.isArray(data) ? data : Array.isArray(data?.messages) ? data.messages : Array.isArray(data?.items) ? data.items : []
         const normalized = list.map(m => ({
           id: String(m.id || m._id || m.message_id || `hist-${Date.now()}-${Math.random()}`),
           _id: String(m.id || m._id || m.message_id || `hist-${Date.now()}-${Math.random()}`),
           text: String(m.content || m.text || m.message || ''),
           content: String(m.content || m.text || m.message || ''),
-          from: String(m.sender_id || m.senderId || m.from || m.user_id || ''),
-          fromUserId: String(m.sender_id || m.senderId || m.from || m.user_id || ''),
-          senderId: String(m.sender_id || m.senderId || m.from || m.user_id || ''),
-          sender_name: m.sender_name || m.senderName || m.username || '',
+          from: String(m.sender_id || m.senderId || m.from || m.user_id || m.sender?.id || ''),
+          fromUserId: String(m.sender_id || m.senderId || m.from || m.user_id || m.sender?.id || ''),
+          senderId: String(m.sender_id || m.senderId || m.from || m.user_id || m.sender?.id || ''),
+          sender_name: m.sender_name || m.senderName || m.username || m.sender?.username || '',
           created_at: m.created_at || m.createdAt || new Date().toISOString(),
           createdAt: m.created_at || m.createdAt || new Date().toISOString(),
           pending: false,
           failed: false,
           seen: !!m.seen || !!m.read,
-          mediaUrl: m.mediaUrl || m.media_url || m.image_url || m.video_url || null,
-          mediaType: m.mediaType || m.media_type || (m.image_url ? 'image' : m.video_url ? 'video' : null),
+          mediaUrl: m.mediaUrl || m.media_url || m.image_url || m.video_url || m.file_url || m.attachment_url || null,
+          mediaType: m.mediaType || m.media_type || (m.image_url ? 'image' : m.video_url ? 'video' : m.file_url ? 'file' : null),
         }))
         const localPending = messages.value.filter(m => m.pending || m.failed)
         const serverIds = new Set(normalized.map(m => m._id))
@@ -490,7 +500,7 @@ async function fetchMessages() {
         loadingMessages.value = false
         return
       }
-    } catch {}
+    } catch (e) { console.log('msg fetch failed:', e) }
   }
   loadingMessages.value = false
 }
@@ -498,7 +508,13 @@ async function fetchMessages() {
 async function tryUpload(file) {
   const form = new FormData()
   form.append('file', file)
-  const uploadUrls = [`${apiUrl}/upload`, `${apiUrl}/api/upload`, `${apiUrl}/media/upload`]
+  const uploadUrls = [
+    `${apiUrl}/upload`,
+    `${apiUrl}/api/upload`,
+    `${apiUrl}/media/upload`,
+    `${apiUrl}/files/upload`,
+    `${apiUrl}/api/files/upload`
+  ]
   for (const uu of uploadUrls) {
     try {
       const upRes = await fetch(uu, {
@@ -508,7 +524,7 @@ async function tryUpload(file) {
       })
       if (upRes.ok) {
         const upData = await upRes.json()
-        const url = upData.url || upData.fileUrl || upData.image_url || upData.video_url || null
+        const url = upData.url || upData.fileUrl || upData.image_url || upData.video_url || upData.file_url || upData.path || null
         if (url) return url
       }
     } catch {}
@@ -533,7 +549,10 @@ async function send() {
 
   const isImage = selectedFileType.value === 'image'
   const isVideo = selectedFileType.value === 'video'
-  const displayText = trimmed || (isImage ? '📷 Photo' : isVideo ? '🎥 Video' : '')
+  
+  // CRITICAL FIX: Backend rejects empty text, so always send at least a space or emoji description
+  const displayText = trimmed || (isImage ? '📷 Photo' : isVideo ? '🎥 Video' : ' ')
+  const backendText = trimmed || ' '
 
   let mediaUrl = selectedFileBase64.value || null
   let mediaType = selectedFileType.value
@@ -586,9 +605,9 @@ async function send() {
     sender_name: me.value?.username || me.value?.display_name || 'You',
     receiver_id: id,
     receiverId: id,
-    content: trimmed,
-    text: trimmed,
-    message: trimmed,
+    content: backendText,
+    text: backendText,
+    message: backendText,
     created_at: new Date().toISOString(),
     _tempId: tempId,
     tempId: tempId,
@@ -632,11 +651,18 @@ async function send() {
 
     queueMessage(payload)
 
-    const urls = [`${apiUrl}/messages`, `${apiUrl}/api/messages`]
+    const urls = [
+      `${apiUrl}/messages`,
+      `${apiUrl}/api/messages`,
+      `${apiUrl}/chats`,
+      `${apiUrl}/api/chats`
+    ]
     const bodies = [
-      { otherUserId: id, text: trimmed, mediaUrl, mediaType },
-      { userId: id, text: trimmed, mediaUrl, mediaType },
-      { receiverId: id, content: trimmed, mediaUrl, mediaType },
+      { otherUserId: id, text: backendText, content: backendText, mediaUrl, mediaType },
+      { userId: id, text: backendText, content: backendText, mediaUrl, mediaType },
+      { receiverId: id, content: backendText, text: backendText, mediaUrl, mediaType },
+      { toUserId: id, content: backendText, text: backendText, mediaUrl, mediaType },
+      { recipientId: id, content: backendText, text: backendText, mediaUrl, mediaType },
     ]
     let httpSent = false
     for (const url of urls) {
@@ -657,14 +683,20 @@ async function send() {
             }
             httpSent = true
             break
+          } else {
+            const errData = await res.json().catch(() => ({}))
+            console.log('HTTP send failed:', url, body, errData)
+            if (errData?.error?.toLowerCase?.().includes('empty')) {
+              error.value = 'Server requires text. Try typing something with your photo.'
+            }
           }
-        } catch {}
+        } catch (e) { console.log('HTTP send error:', url, e) }
       }
       if (httpSent) break
     }
 
     if (!httpSent) {
-      error.value = 'Offline — message queued for retry'
+      error.value = error.value || 'Offline — message queued for retry'
       if (idx !== -1) { messages.value[idx].pending = false; messages.value[idx].failed = true }
     }
     sending.value = false
@@ -681,6 +713,8 @@ async function retryMessage(msg) {
     const room = currentRoomId.value || getRoomId(myId, id)
     const newTempId = `tmp-${Date.now()}-${Math.random().toString(36).slice(2, 6)}`
 
+    const backendText = (msg.text === '📷 Photo' || msg.text === '🎥 Video') ? ' ' : (msg.text || ' ')
+
     const payload = {
       roomId: room,
       room_id: room,
@@ -688,9 +722,9 @@ async function retryMessage(msg) {
       sender_name: me.value?.username || me.value?.display_name || 'You',
       receiver_id: id,
       receiverId: id,
-      content: msg.text === '📷 Photo' || msg.text === '🎥 Video' ? '' : msg.text,
-      text: msg.text === '📷 Photo' || msg.text === '🎥 Video' ? '' : msg.text,
-      message: msg.text === '📷 Photo' || msg.text === '🎥 Video' ? '' : msg.text,
+      content: backendText,
+      text: backendText,
+      message: backendText,
       created_at: new Date().toISOString(),
       _tempId: newTempId,
       tempId: newTempId,
@@ -746,11 +780,12 @@ async function retryMessage(msg) {
     }
 
     if (!sent) {
-      const urls = [`${apiUrl}/messages`, `${apiUrl}/api/messages`]
+      const urls = [`${apiUrl}/messages`, `${apiUrl}/api/messages`, `${apiUrl}/chats`, `${apiUrl}/api/chats`]
       const bodies = [
-        { otherUserId: id, text: payload.text, mediaUrl: payload.mediaUrl, mediaType: payload.mediaType },
-        { userId: id, text: payload.text, mediaUrl: payload.mediaUrl, mediaType: payload.mediaType },
-        { receiverId: id, content: payload.text, mediaUrl: payload.mediaUrl, mediaType: payload.mediaType },
+        { otherUserId: id, text: backendText, mediaUrl: payload.mediaUrl, mediaType: payload.mediaType },
+        { userId: id, text: backendText, mediaUrl: payload.mediaUrl, mediaType: payload.mediaType },
+        { receiverId: id, content: backendText, mediaUrl: payload.mediaUrl, mediaType: payload.mediaType },
+        { toUserId: id, content: backendText, mediaUrl: payload.mediaUrl, mediaType: payload.mediaType },
       ]
       let ok = false
       for (const url of urls) {
