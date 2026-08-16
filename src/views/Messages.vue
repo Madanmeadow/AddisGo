@@ -193,6 +193,37 @@ const me = ref((() => {
 
 const DM_QUEUE_KEY = 'pulse_dm_offline_queue_v2'
 
+/* ── Helpers ── */
+function resolveMediaUrl(url) {
+  if (!url) return null
+  if (url.startsWith('http') || url.startsWith('data:')) return url
+  return `${apiUrl}${url.startsWith('/') ? '' : '/'}${url}`
+}
+
+/* ── API Discovery ── */
+const DISCOVERED = { conversations: undefined, messages: undefined }
+
+async function discoverEndpoints() {
+  if (DISCOVERED.conversations !== undefined) return
+  const convPaths = ['/api/conversations', '/conversations', '/api/chats', '/chats', '/api/messages/conversations', '/messages/conversations']
+  for (const path of convPaths) {
+    try {
+      const res = await fetch(`${apiUrl}${path}`, { headers: { Authorization: `Bearer ${token.value}` } })
+      if (res.ok) { DISCOVERED.conversations = path; break }
+    } catch {}
+  }
+  if (DISCOVERED.conversations === undefined) DISCOVERED.conversations = null
+
+  const msgPaths = ['/api/messages', '/messages', '/api/chats', '/chats']
+  for (const path of msgPaths) {
+    try {
+      const res = await fetch(`${apiUrl}${path}?otherUserId=0`, { headers: { Authorization: `Bearer ${token.value}` } })
+      if (res.ok || res.status === 400 || res.status === 422) { DISCOVERED.messages = path; break }
+    } catch {}
+  }
+  if (DISCOVERED.messages === undefined) DISCOVERED.messages = null
+}
+
 function getDmStoreKey(otherId) {
   const myId = me.value?.id || 'unknown'
   return `pulse_dm_v2_${myId}_${otherId}`
@@ -282,7 +313,7 @@ function connectSocket() {
           failed: false,
           seen: false,
           created_at: data.created_at || messages.value[idx].created_at,
-          mediaUrl: data.mediaUrl || data.media_url || messages.value[idx].mediaUrl,
+          mediaUrl: resolveMediaUrl(data.mediaUrl || data.media_url || messages.value[idx].mediaUrl),
           mediaType: data.mediaType || data.media_type || messages.value[idx].mediaType,
         }
         saveMessages(activeOtherId.value)
@@ -306,7 +337,7 @@ function connectSocket() {
       pending: false,
       failed: false,
       seen: false,
-      mediaUrl: data.mediaUrl || data.media_url || null,
+      mediaUrl: resolveMediaUrl(data.mediaUrl || data.media_url || null),
       mediaType: data.mediaType || data.media_type || null,
     }
 
@@ -407,33 +438,56 @@ async function fetchConversations() {
   if (!token.value) return
   loadingConversations.value = true
   error.value = ''
-  const urls = [
-    `${apiUrl}/messages/conversations`,
-    `${apiUrl}/conversations`,
-    `${apiUrl}/api/messages/conversations`,
-    `${apiUrl}/api/conversations`,
-    `${apiUrl}/chats`,
-    `${apiUrl}/api/chats`
-  ]
-  for (const url of urls) {
-    try {
-      const res = await fetch(url, { headers: { Authorization: `Bearer ${token.value}` } })
-      if (res.ok) {
-        const data = await res.json()
-        const list = Array.isArray(data) ? data : Array.isArray(data?.conversations) ? data.conversations : Array.isArray(data?.chats) ? data.chats : []
-        conversations.value = list.map(c => ({
-          otherUserId: String(c.otherUserId || c.other_user_id || c.userId || c.id || c.partner_id || c.partnerId),
-          name: c.name || c.username || c.display_name || c.partner_name || `User #${c.otherUserId}`,
-          lastMessage: c.lastMessage || c.last_message || c.last_message_text || '',
-          lastMessageType: c.lastMessageType || c.media_type || c.last_message_type || null,
-          unread: Number(c.unread || c.unread_count || 0),
-        }))
-        loadingConversations.value = false
-        return
-      }
-    } catch (e) { console.log('conv fetch failed:', url, e) }
+
+  await discoverEndpoints()
+
+  if (!DISCOVERED.conversations) {
+    // Socket-only mode: build conversation list from localStorage
+    const keys = Object.keys(localStorage).filter(k => k.startsWith('pulse_dm_v2_'))
+    const convs = []
+    const seen = new Set()
+    for (const key of keys) {
+      const parts = key.split('_')
+      const otherId = parts[parts.length - 1]
+      if (!otherId || otherId === 'unknown' || seen.has(otherId)) continue
+      seen.add(otherId)
+      const msgs = JSON.parse(localStorage.getItem(key) || '[]')
+      const last = msgs[msgs.length - 1]
+      convs.push({
+        otherUserId: otherId,
+        name: last?.sender_name && String(last.from) !== String(me.value?.id) ? last.sender_name : `User #${otherId}`,
+        lastMessage: last?.text || '',
+        lastMessageType: last?.mediaType || null,
+        unread: 0
+      })
+    }
+    const qId = route.query.userId || route.query.otherUserId
+    if (qId && !seen.has(String(qId))) {
+      convs.unshift({ otherUserId: String(qId), name: route.query.name || `User #${qId}`, lastMessage: '', lastMessageType: null, unread: 0 })
+    }
+    conversations.value = convs
+    loadingConversations.value = false
+    return
   }
-  conversations.value = []
+
+  try {
+    const res = await fetch(`${apiUrl}${DISCOVERED.conversations}`, {
+      headers: { Authorization: `Bearer ${token.value}` }
+    })
+    if (res.ok) {
+      const data = await res.json()
+      const list = Array.isArray(data) ? data : data.conversations || data.chats || []
+      conversations.value = list.map(c => ({
+        otherUserId: String(c.otherUserId || c.other_user_id || c.userId || c.id || c.partner_id),
+        name: c.name || c.username || c.display_name || `User #${c.otherUserId}`,
+        lastMessage: c.lastMessage || c.last_message || '',
+        lastMessageType: c.lastMessageType || c.media_type || null,
+        unread: Number(c.unread || c.unread_count || 0),
+      }))
+    }
+  } catch (e) {
+    console.error('fetchConversations error:', e)
+  }
   loadingConversations.value = false
 }
 
@@ -459,48 +513,50 @@ async function fetchMessages() {
   loadingMessages.value = true
   error.value = ''
   const id = String(activeOtherId.value)
-  const urls = [
-    `${apiUrl}/messages?otherUserId=${encodeURIComponent(id)}`,
-    `${apiUrl}/messages?userId=${encodeURIComponent(id)}`,
-    `${apiUrl}/messages/${encodeURIComponent(id)}`,
-    `${apiUrl}/api/messages?otherUserId=${encodeURIComponent(id)}`,
-    `${apiUrl}/api/messages?userId=${encodeURIComponent(id)}`,
-    `${apiUrl}/api/messages/${encodeURIComponent(id)}`,
-    `${apiUrl}/chats/${encodeURIComponent(id)}`,
-    `${apiUrl}/api/chats/${encodeURIComponent(id)}`,
-  ]
-  for (const url of urls) {
-    try {
-      const res = await fetch(url, { headers: { Authorization: `Bearer ${token.value}` } })
-      if (res.ok) {
-        const data = await res.json()
-        const list = Array.isArray(data) ? data : Array.isArray(data?.messages) ? data.messages : Array.isArray(data?.items) ? data.items : []
-        const normalized = list.map(m => ({
-          id: String(m.id || m._id || m.message_id || `hist-${Date.now()}-${Math.random()}`),
-          _id: String(m.id || m._id || m.message_id || `hist-${Date.now()}-${Math.random()}`),
-          text: String(m.content || m.text || m.message || ''),
-          content: String(m.content || m.text || m.message || ''),
-          from: String(m.sender_id || m.senderId || m.from || m.user_id || m.sender?.id || ''),
-          fromUserId: String(m.sender_id || m.senderId || m.from || m.user_id || m.sender?.id || ''),
-          senderId: String(m.sender_id || m.senderId || m.from || m.user_id || m.sender?.id || ''),
-          sender_name: m.sender_name || m.senderName || m.username || m.sender?.username || '',
-          created_at: m.created_at || m.createdAt || new Date().toISOString(),
-          createdAt: m.created_at || m.createdAt || new Date().toISOString(),
-          pending: false,
-          failed: false,
-          seen: !!m.seen || !!m.read,
-          mediaUrl: m.mediaUrl || m.media_url || m.image_url || m.video_url || m.file_url || m.attachment_url || null,
-          mediaType: m.mediaType || m.media_type || (m.image_url ? 'image' : m.video_url ? 'video' : m.file_url ? 'file' : null),
-        }))
-        const localPending = messages.value.filter(m => m.pending || m.failed)
-        const serverIds = new Set(normalized.map(m => m._id))
-        const localResolved = messages.value.filter(m => !m.pending && !m.failed && !serverIds.has(m._id))
-        messages.value = [...normalized, ...localResolved, ...localPending].sort((a, b) => new Date(a.created_at) - new Date(b.created_at))
-        nextTick(scrollToBottom)
-        loadingMessages.value = false
-        return
-      }
-    } catch (e) { console.log('msg fetch failed:', e) }
+
+  // Always load local cache first for instant UI
+  loadMessages(id)
+
+  await discoverEndpoints()
+  if (!DISCOVERED.messages) {
+    loadingMessages.value = false
+    return
+  }
+
+  try {
+    const res = await fetch(
+      `${apiUrl}${DISCOVERED.messages}?otherUserId=${encodeURIComponent(id)}`,
+      { headers: { Authorization: `Bearer ${token.value}` } }
+    )
+    if (res.ok) {
+      const data = await res.json()
+      const list = Array.isArray(data) ? data : data.messages || data.items || []
+      const normalized = list.map(m => ({
+        id: String(m.id || m._id || `hist-${Date.now()}`),
+        _id: String(m.id || m._id || `hist-${Date.now()}`),
+        text: String(m.content || m.text || m.message || ''),
+        content: String(m.content || m.text || m.message || ''),
+        from: String(m.sender_id || m.senderId || m.from || ''),
+        fromUserId: String(m.sender_id || m.senderId || m.from || ''),
+        senderId: String(m.sender_id || m.senderId || m.from || ''),
+        sender_name: m.sender_name || m.senderName || '',
+        created_at: m.created_at || m.createdAt || new Date().toISOString(),
+        createdAt: m.created_at || m.createdAt || new Date().toISOString(),
+        pending: false,
+        failed: false,
+        seen: !!m.seen,
+        mediaUrl: resolveMediaUrl(m.mediaUrl || m.media_url || m.image_url || m.video_url),
+        mediaType: m.mediaType || m.media_type || (m.image_url ? 'image' : m.video_url ? 'video' : null),
+      }))
+      const localPending = messages.value.filter(m => m.pending || m.failed)
+      const serverIds = new Set(normalized.map(m => m._id))
+      const localResolved = messages.value.filter(m => !m.pending && !m.failed && !serverIds.has(m._id))
+      messages.value = [...normalized, ...localResolved, ...localPending].sort((a, b) => new Date(a.created_at) - new Date(b.created_at))
+      saveMessages(id)
+      nextTick(scrollToBottom)
+    }
+  } catch (e) {
+    console.error('fetchMessages error:', e)
   }
   loadingMessages.value = false
 }
@@ -524,8 +580,8 @@ async function tryUpload(file) {
       })
       if (upRes.ok) {
         const upData = await upRes.json()
-        const url = upData.url || upData.fileUrl || upData.image_url || upData.video_url || upData.file_url || upData.path || null
-        if (url) return url
+        const url = upData.url || upData.fileUrl || upData.mediaUrl || upData.image_url || upData.video_url || upData.file_url || upData.path || null
+        if (url) return resolveMediaUrl(url)
       }
     } catch {}
   }
@@ -549,10 +605,9 @@ async function send() {
 
   const isImage = selectedFileType.value === 'image'
   const isVideo = selectedFileType.value === 'video'
-  
-  // CRITICAL FIX: Backend rejects empty text, so always send at least a space or emoji description
-  const displayText = trimmed || (isImage ? '📷 Photo' : isVideo ? '🎥 Video' : ' ')
-  const backendText = trimmed || ' '
+
+  const displayText = trimmed || (isImage ? '📷 Photo' : isVideo ? '🎥 Video' : '·')
+  const backendText = trimmed || (isImage ? '📷 Photo' : isVideo ? '🎥 Video' : '·')
 
   let mediaUrl = selectedFileBase64.value || null
   let mediaType = selectedFileType.value
@@ -592,6 +647,13 @@ async function send() {
         mediaUrl = uploadedUrl
         const idx = messages.value.findIndex(m => m.__localId === tempId)
         if (idx !== -1) messages.value[idx].mediaUrl = mediaUrl
+      } else {
+        if (selectedFileBase64.value) {
+          const approxBytes = selectedFileBase64.value.length * 0.75
+          if (approxBytes > 500000) {
+            console.warn('[Messages] Large base64 payload (~' + Math.round(approxBytes/1024) + 'KB). Server may need maxHttpBufferSize increased.')
+          }
+        }
       }
     } catch {
       // Upload failed — base64 stays in place so the message still works
@@ -634,7 +696,7 @@ async function send() {
             messages.value[idx].failed = false
             messages.value[idx].id = ack?.id || ack?.message_id || messages.value[idx].id
             messages.value[idx]._id = ack?.id || ack?.message_id || messages.value[idx]._id
-            if (ack?.mediaUrl) messages.value[idx].mediaUrl = ack.mediaUrl
+            if (ack?.mediaUrl) messages.value[idx].mediaUrl = resolveMediaUrl(ack.mediaUrl)
           }
           updateConvLastMessage(id, displayText, mediaType)
         }
@@ -651,12 +713,15 @@ async function send() {
 
     queueMessage(payload)
 
-    const urls = [
-      `${apiUrl}/messages`,
-      `${apiUrl}/api/messages`,
-      `${apiUrl}/chats`,
-      `${apiUrl}/api/chats`
-    ]
+    if (!DISCOVERED.messages) {
+      error.value = 'Offline — message queued for retry'
+      if (idx !== -1) { messages.value[idx].pending = false; messages.value[idx].failed = true }
+      sending.value = false
+      saveMessages(activeOtherId.value)
+      return
+    }
+
+    const urls = [`${apiUrl}${DISCOVERED.messages}`]
     const bodies = [
       { otherUserId: id, text: backendText, content: backendText, mediaUrl, mediaType },
       { userId: id, text: backendText, content: backendText, mediaUrl, mediaType },
@@ -713,7 +778,7 @@ async function retryMessage(msg) {
     const room = currentRoomId.value || getRoomId(myId, id)
     const newTempId = `tmp-${Date.now()}-${Math.random().toString(36).slice(2, 6)}`
 
-    const backendText = (msg.text === '📷 Photo' || msg.text === '🎥 Video') ? ' ' : (msg.text || ' ')
+    const backendText = (msg.text === '📷 Photo' || msg.text === '🎥 Video') ? '📷 Photo' : (msg.text || '·')
 
     const payload = {
       roomId: room,
@@ -780,7 +845,13 @@ async function retryMessage(msg) {
     }
 
     if (!sent) {
-      const urls = [`${apiUrl}/messages`, `${apiUrl}/api/messages`, `${apiUrl}/chats`, `${apiUrl}/api/chats`]
+      if (!DISCOVERED.messages) {
+        const idx = messages.value.findIndex(m => m.__localId === newTempId)
+        if (idx !== -1) { messages.value[idx].pending = false; messages.value[idx].failed = true }
+        saveMessages(activeOtherId.value)
+        return
+      }
+      const urls = [`${apiUrl}${DISCOVERED.messages}`]
       const bodies = [
         { otherUserId: id, text: backendText, mediaUrl: payload.mediaUrl, mediaType: payload.mediaType },
         { userId: id, text: backendText, mediaUrl: payload.mediaUrl, mediaType: payload.mediaType },
@@ -948,6 +1019,8 @@ function callUser(kind) {
 async function refreshAll() {
   token.value = localStorage.getItem('token') || ''
   me.value = (() => { try { return JSON.parse(localStorage.getItem('user') || 'null') } catch { return null } })()
+  DISCOVERED.conversations = undefined
+  DISCOVERED.messages = undefined
   await fetchConversations()
   if (activeOtherId.value) await fetchMessages()
 }
