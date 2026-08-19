@@ -1497,8 +1497,6 @@
   </Layout>
 </template>
 
-
-
 <script setup>
 import { ref, computed, onMounted, onBeforeUnmount, nextTick, watch } from "vue"
 import { useRouter } from "vue-router"
@@ -1727,6 +1725,85 @@ function updateDailyStreak() {
   try {
     localStorage.setItem(DASH_STREAK_KEY, JSON.stringify(streak.value))
   } catch {}
+}
+
+/* =========================
+   STORY CREATOR
+========================= */
+const storyCreatorOpen = ref(false)
+const storyFile = ref(null)
+const storyType = ref("") // 'image' | 'video' | 'audio'
+const storyPreview = ref("")
+const storyPosting = ref(false)
+const shareToStory = ref(false)
+
+const storyImageInput = ref(null)
+const storyVideoInput = ref(null)
+const storyAudioInput = ref(null)
+
+function openStoryCreator() {
+  storyCreatorOpen.value = true
+}
+
+function closeStoryCreator() {
+  storyCreatorOpen.value = false
+  clearStory()
+}
+
+function triggerStoryFile(type) {
+  storyType.value = type
+  if (type === "image") storyImageInput.value?.click()
+  if (type === "video") storyVideoInput.value?.click()
+  if (type === "audio") storyAudioInput.value?.click()
+}
+
+function onStoryFileChange(type, e) {
+  const file = e.target.files?.[0] || null
+  if (!file) return
+  storyFile.value = file
+  storyType.value = type
+  storyPreview.value = URL.createObjectURL(file)
+}
+
+function clearStory() {
+  storyFile.value = null
+  storyPreview.value = ""
+  storyType.value = ""
+  if (storyImageInput.value) storyImageInput.value.value = ""
+  if (storyVideoInput.value) storyVideoInput.value.value = ""
+  if (storyAudioInput.value) storyAudioInput.value.value = ""
+}
+
+async function submitStory() {
+  if (!token) return alert("Login to add to your story.")
+  if (!storyFile.value) return
+
+  try {
+    storyPosting.value = true
+    const form = new FormData()
+    form.append("media", storyFile.value)
+    form.append("type", storyType.value)
+    if (caption.value.trim()) form.append("caption", caption.value.trim())
+
+    // NOTE: make sure your backend has a POST /stories endpoint
+    const res = await fetch(`${apiUrl}/stories`, {
+      method: "POST",
+      headers: { Authorization: `Bearer ${token}` },
+      body: form,
+    })
+
+    const data = await res.json()
+    if (!res.ok) throw new Error(data?.error || "Story upload failed")
+
+    draftSavedNote.value = "Added to your story! 🎉"
+    addActivity("Story", `Added ${storyType.value} story`)
+    hasMyStory.value = true
+    closeStoryCreator()
+  } catch (err) {
+    alert(err.message || "Failed to add story")
+  } finally {
+    storyPosting.value = false
+  }
 }
 
 /* =========================
@@ -2520,6 +2597,7 @@ function clearDraft() {
   caption.value = ""
   imageFile.value = null
   videoFile.value = null
+  shareToStory.value = false
   draftSavedNote.value = "Draft cleared"
   try { localStorage.removeItem(DASH_DRAFT_KEY) } catch {}
 }
@@ -2583,7 +2661,30 @@ async function submitPost() {
     }
 
     clearDraft()
-    draftSavedNote.value = "Posted successfully"
+
+    // Optional: also share this media to your story
+    if (shareToStory.value && (imageFile.value || videoFile.value)) {
+      try {
+        const storyForm = new FormData()
+        if (imageFile.value) storyForm.append("media", imageFile.value)
+        if (videoFile.value) storyForm.append("media", videoFile.value)
+        storyForm.append("type", imageFile.value ? "image" : "video")
+        storyForm.append("caption", caption.value || "")
+
+        await fetch(`${apiUrl}/stories`, {
+          method: "POST",
+          headers: { Authorization: `Bearer ${token}` },
+          body: storyForm,
+        })
+        draftSavedNote.value = "Posted & shared to story! 🎉"
+        hasMyStory.value = true
+        addActivity("Story", "Auto-shared post to story")
+      } catch {
+        // silent fail — main post already succeeded
+      }
+    } else {
+      draftSavedNote.value = "Posted successfully"
+    }
 
     await nextTick()
     if (feedMode.value === "foryou" || feedMode.value === "reels") {
@@ -4056,11 +4157,6 @@ onBeforeUnmount(() => {
 @keyframes fadeIn {
   from { opacity: 0; transform: translateY(-6px); }
   to   { opacity: 1; transform: translateY(0); }
-}
-.file-pill.storyOn {
-  background: rgba(236, 72, 153, 0.18);
-  border-color: rgba(236, 72, 153, 0.35);
-  color: #f9a8d4;
 }
 /* =========================================================
    AMBIENT ORBS
@@ -6794,5 +6890,11 @@ onBeforeUnmount(() => {
 
 /* Avatar image polish */
 .avatar, .miniAvatar { object-fit: cover; }
+
+.file-pill.storyOn {
+  background: rgba(236, 72, 153, 0.18);
+  border-color: rgba(236, 72, 153, 0.35);
+  color: #f9a8d4;
+}
 
 </style>
