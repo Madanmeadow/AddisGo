@@ -1,4 +1,3 @@
-// server/routes/stories.routes.js
 import express from "express";
 import multer from "multer";
 import path from "path";
@@ -59,7 +58,8 @@ router.post("/", authenticate, upload.single("media"), async (req, res) => {
 
     const mediaType = req.body.type || "image";
     const caption = (req.body.caption || "").trim();
-    const host = process.env.API_URL || `${req.protocol}://${req.get("host")}`;
+    const host = process.env.API_URL?.replace(/^http:/, 'https:') 
+      || `https://${req.get("host")}`;
     const mediaUrl = `${host}/uploads/stories/${req.file.filename}`;
     const expiresAt = new Date(Date.now() + 24 * 60 * 60 * 1000);
 

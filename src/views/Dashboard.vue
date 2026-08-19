@@ -1504,6 +1504,7 @@ import Layout from "../components/Layout.vue"
 import { useFeed } from "../composables/useFeed.js"
 import TikTokFeed from "../components/TikTokFeed.vue"
 import CommentsPanel from "../components/Comments.vue"
+import { fetchStories } from "@/api/stories.js"
 import { createSocket } from "../api/socket"
 import { startLocation, useLocation, sendLocationNow } from "../composables/useLocation"
 
@@ -1808,7 +1809,7 @@ async function submitStory() {
 
     draftSavedNote.value = "Added to your story! 🎉"
     addActivity("Story", `Added ${storyType.value} story`)
-    hasMyStory.value = true
+    await fetchStoriesData()
     closeStoryCreator()
   } catch (err) {
     alert(err.message || "Failed to add story")
@@ -2073,23 +2074,53 @@ function connectSocket() {
 const peopleOpen = ref(true)
 const people = ref([])
 
-const hasMyStory = ref(false)
+const stories = ref([])
+const storiesLoading = ref(false)
+
+const hasMyStory = computed(() => {
+  return stories.value.some(s => String(s.user_id) === String(me?.id))
+})
 
 const friendStories = computed(() => {
-  return people.value
-    .filter(u => String(u.id) !== String(me?.id))
-    .map(u => ({
-      userId: u.id,
-      name: displayUserName(u).slice(0, 12),
-      avatar: getUserAvatar(u),
-      seen: false,
-    }))
-    .slice(0, 14)
+  const map = new Map()
+  for (const s of stories.value) {
+    const uid = String(s.user_id)
+    if (String(uid) === String(me?.id)) continue
+    if (!map.has(uid)) {
+      map.set(uid, {
+        userId: uid,
+        name: (s.username || s.display_name || s.name || `User ${uid}`).slice(0, 12),
+        avatar: s.avatar_url || `https://ui-avatars.com/api/?name=${encodeURIComponent(s.username || s.display_name || 'User')}&background=random&color=fff`,
+        seen: false,
+        stories: [],
+      })
+    }
+    map.get(uid).stories.push(s)
+  }
+  return Array.from(map.values()).slice(0, 14)
 })
 
 function viewStory(s) {
-  draftSavedNote.value = `Opening ${s.name}'s story… (viewer coming soon)`
-  setTimeout(() => { draftSavedNote.value = "" }, 2500)
+  const first = s.stories?.[0]
+  if (first?.media_url) {
+    window.open(first.media_url, '_blank')
+  } else {
+    draftSavedNote.value = `${s.name}'s story has no media`
+    setTimeout(() => { draftSavedNote.value = "" }, 2500)
+  }
+}
+
+async function fetchStoriesData() {
+  if (!token) return
+  storiesLoading.value = true
+  try {
+    const data = await fetchStories()
+    stories.value = Array.isArray(data) ? data : []
+  } catch (e) {
+    console.error("Dashboard stories fetch error:", e)
+  } finally {
+    storiesLoading.value = false
+  }
 }
 
 const peopleLoading = ref(false)
@@ -2692,7 +2723,7 @@ async function submitPost() {
         const ct = storyRes.headers.get("content-type") || ""
         if (storyRes.ok && ct.includes("application/json")) {
           draftSavedNote.value = "Posted & shared to story! 🎉"
-          hasMyStory.value = true
+          await fetchStoriesData()
           addActivity("Story", "Auto-shared post to story")
         } else {
           draftSavedNote.value = "Posted successfully (story endpoint not ready)"
@@ -3829,6 +3860,7 @@ onMounted(async () => {
 
   await fetchPosts()
   if (token) await fetchPeople()
+  if (token) await fetchStoriesData()
 
   if (typeof window !== "undefined") {
     if (window.innerWidth <= 900) {

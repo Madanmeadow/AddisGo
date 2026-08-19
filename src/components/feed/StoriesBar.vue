@@ -19,6 +19,11 @@ const currentUserId = computed(() => String(props.currentUser?.id || props.curre
 const myGroup = computed(() => grouped.value.find((g) => g.userId === currentUserId.value));
 const others = computed(() => grouped.value.filter((g) => g.userId !== currentUserId.value));
 
+function avatarFallback(name) {
+  const n = encodeURIComponent(name || "User");
+  return `https://ui-avatars.com/api/?name=${n}&background=random&color=fff`;
+}
+
 async function load() {
   try {
     const data = await fetchStories();
@@ -31,7 +36,7 @@ async function load() {
         map.set(uid, {
           userId: uid,
           username: s.username || s.display_name || s.name || `User ${uid}`,
-          avatar: s.avatar_url,
+          avatar: s.avatar_url || avatarFallback(s.username || s.display_name || s.name || `User ${uid}`),
           stories: [],
         });
       }
@@ -67,10 +72,10 @@ onUnmounted(() => {
     <div class="story-item" @click="handleMyClick">
       <div class="story-ring" :class="{ active: myGroup, add: !myGroup }">
         <img
-          :src="currentUser?.avatar_url || '/default-avatar.png'"
+          :src="currentUser?.avatar_url || avatarFallback(currentUser?.username || currentUser?.display_name || 'Me')"
           alt="me"
           class="story-avatar"
-          @error="$event.target.src = '/default-avatar.png'"
+          @error="$event.target.src = avatarFallback('Me')"
         />
       </div>
       <span class="story-label">{{ myGroup ? "Your story" : "Add story" }}</span>
@@ -86,10 +91,10 @@ onUnmounted(() => {
     >
       <div class="story-ring active">
         <img
-          :src="user.avatar || '/default-avatar.png'"
+          :src="user.avatar || avatarFallback(user.username)"
           :alt="user.username"
           class="story-avatar"
-          @error="$event.target.src = '/default-avatar.png'"
+          @error="$event.target.src = avatarFallback(user.username)"
         />
       </div>
       <span class="story-label">{{ user.username }}</span>
