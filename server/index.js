@@ -23,6 +23,7 @@ import conversationsRoutes from "./routes/conversations.routes.js";
 import messagesRoutes from "./routes/messages.routes.js";
 import uploadRoutes from "./routes/upload.routes.js";
 import likesRoutes from "./routes/likes.routes.js";
+import storiesRoutes from "./routes/stories.routes.js";
 import { initMediasoupWorker } from "./mediasoup/workers.js";
 import { registerLiveSfuHandlers } from "./mediasoup/socketLiveSfu.js";
 import { registerLocationHandlers } from "./location/socketLocation.js";
@@ -127,6 +128,7 @@ app.use("/posts", postsRoutes);
 app.use("/users", usersRoutes);
 app.use("/conversations", conversationsRoutes);
 app.use("/messages", messagesRoutes);
+app.use("/stories", storiesRoutes);
 
 // Optional backwards compat
 app.use("/api/upload", uploadRoutes);
