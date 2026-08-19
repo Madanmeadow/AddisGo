@@ -1,182 +1,189 @@
 <template>
-  <section class="tt-feed">
-    <article
-      v-for="item in normalizedItems"
-      :key="`tt-${mode}-${item.id}`"
-      class="tt-card"
-      :class="[modeClass, { active: activeId === item.id }]"
-      :id="`post-${item.id}`"
-      :data-active-id="item.id"
-    >
-      <div class="tt-shell">
-        <div class="tt-video-wrap">
-          <!-- VIDEO -->
-          <template v-if="item.video_url">
-            <video
-              :ref="(el) => setVideoRef(item.id, el)"
-              class="tt-video"
-              :data-post-id="item.id"
-              :src="safeMedia(item.video_url)"
-              playsinline
-              webkit-playsinline
-              preload="metadata"
-              loop
-              :muted="globalMuted"
-              :poster="item.poster_url ? safeMedia(item.poster_url) : ''"
-              @click="togglePlay(item.id)"
-              @loadedmetadata="onLoadedMeta(item.id, $event)"
-              @loadeddata="onLoadedData(item.id)"
-              @canplay="onCanPlay(item.id)"
-              @play="onPlay(item.id)"
-              @pause="onPause(item.id)"
-              @error="onMediaError(item.id, 'video')"
-            ></video>
+  <div>
+    <StoriesBar
+      :current-user="currentUser"
+      @create="showUploadModal = true"
+    />
+    <section class="tt-feed">
+      <article
+        v-for="item in normalizedItems"
+        :key="`tt-${mode}-${item.id}`"
+        class="tt-card"
+        :class="[modeClass, { active: activeId === item.id }]"
+        :id="`post-${item.id}`"
+        :data-active-id="item.id"
+      >
+        <div class="tt-shell">
+          <div class="tt-video-wrap">
+            <!-- VIDEO -->
+            <template v-if="item.video_url">
+              <video
+                :ref="(el) => setVideoRef(item.id, el)"
+                class="tt-video"
+                :data-post-id="item.id"
+                :src="safeMedia(item.video_url)"
+                playsinline
+                webkit-playsinline
+                preload="metadata"
+                loop
+                :muted="globalMuted"
+                :poster="item.poster_url ? safeMedia(item.poster_url) : ''"
+                @click="togglePlay(item.id)"
+                @loadedmetadata="onLoadedMeta(item.id, $event)"
+                @loadeddata="onLoadedData(item.id)"
+                @canplay="onCanPlay(item.id)"
+                @play="onPlay(item.id)"
+                @pause="onPause(item.id)"
+                @error="onMediaError(item.id, 'video')"
+              ></video>
 
-            <div v-if="mediaState[item.id]?.loading" class="tt-loading">
-              <div class="tt-spinner"></div>
-              <div class="tt-loading-text">Loading video…</div>
-            </div>
-
-            <div v-if="mediaState[item.id]?.error" class="tt-fallback">
-              <div class="tt-fallback-icon">🎬</div>
-              <div class="tt-fallback-title">Video unavailable</div>
-              <div class="tt-fallback-sub">Tap Share or refresh the feed.</div>
-            </div>
-          </template>
-
-          <!-- IMAGE -->
-          <template v-else-if="item.image_url">
-            <img
-              class="tt-image"
-              :src="safeMedia(item.image_url)"
-              loading="lazy"
-              :alt="item.caption || 'post media'"
-              @load="onImageLoaded(item.id)"
-              @error="onMediaError(item.id, 'image')"
-            />
-
-            <div v-if="mediaState[item.id]?.error" class="tt-fallback">
-              <div class="tt-fallback-icon">🖼️</div>
-              <div class="tt-fallback-title">Image unavailable</div>
-              <div class="tt-fallback-sub">This media could not load after deployment.</div>
-            </div>
-          </template>
-
-          <!-- TEXT ONLY -->
-          <div v-else class="tt-empty">
-            <div class="tt-empty-icon">✨</div>
-            <div class="tt-empty-title">No media</div>
-            <div class="tt-empty-sub">This post has text only.</div>
-          </div>
-
-          <!-- TOP OVERLAY -->
-          <div class="tt-overlay top">
-            <div class="tt-top-left">
-              <div class="tt-badge liveish">
-                {{ mode === "reels" ? "REELS" : "FOR YOU" }}
+              <div v-if="mediaState[item.id]?.loading" class="tt-loading">
+                <div class="tt-spinner"></div>
+                <div class="tt-loading-text">Loading video…</div>
               </div>
 
-              <div v-if="item.video_url && durationText(item.id)" class="tt-badge soft">
-                {{ durationText(item.id) }}
+              <div v-if="mediaState[item.id]?.error" class="tt-fallback">
+                <div class="tt-fallback-icon">🎬</div>
+                <div class="tt-fallback-title">Video unavailable</div>
+                <div class="tt-fallback-sub">Tap Share or refresh the feed.</div>
               </div>
+            </template>
 
-              <div
-                v-if="item.video_url && mediaState[item.id]?.ready"
-                class="tt-badge soft"
-              >
-                {{ playingMap[item.id] ? "Playing" : "Paused" }}
+            <!-- IMAGE -->
+            <template v-else-if="item.image_url">
+              <img
+                class="tt-image"
+                :src="safeMedia(item.image_url)"
+                loading="lazy"
+                :alt="item.caption || 'post media'"
+                @load="onImageLoaded(item.id)"
+                @error="onMediaError(item.id, 'image')"
+              />
+
+              <div v-if="mediaState[item.id]?.error" class="tt-fallback">
+                <div class="tt-fallback-icon">🖼️</div>
+                <div class="tt-fallback-title">Image unavailable</div>
+                <div class="tt-fallback-sub">This media could not load after deployment.</div>
               </div>
+            </template>
+
+            <!-- TEXT ONLY -->
+            <div v-else class="tt-empty">
+              <div class="tt-empty-icon">✨</div>
+              <div class="tt-empty-title">No media</div>
+              <div class="tt-empty-sub">This post has text only.</div>
             </div>
 
-            <button
-              v-if="item.video_url"
-              class="tt-top-btn"
-              type="button"
-              @click.stop="$emit('toggle-muted')"
-            >
-              {{ globalMuted ? "🔇" : "🔊" }}
-            </button>
-          </div>
-
-          <!-- CENTER PLAY/PAUSE -->
-          <div
-            v-if="item.video_url"
-            class="tt-center"
-            :class="{ show: showCenterIconId === item.id }"
-          >
-            <div class="tt-center-icon">
-              {{ playingMap[item.id] ? "⏸" : "▶" }}
-            </div>
-          </div>
-
-          <!-- BOTTOM OVERLAY -->
-          <div class="tt-overlay bottom">
-            <div class="tt-meta">
-              <div class="tt-user-row">
-                <div class="tt-avatar">
-                  {{ userInitial(item) }}
+            <!-- TOP OVERLAY -->
+            <div class="tt-overlay top">
+              <div class="tt-top-left">
+                <div class="tt-badge liveish">
+                  {{ mode === "reels" ? "REELS" : "FOR YOU" }}
                 </div>
 
-                <div class="tt-user-meta">
-                  <div class="tt-name-row">
-                    <div class="tt-username">{{ displayName(item) }}</div>
-                    <span class="tt-dot">•</span>
-                    <div class="tt-time">{{ safeDate(item.created_at) }}</div>
-                  </div>
-
-                  <div class="tt-mode-line">
-                    {{ mode === "reels" ? "Short video" : "Auto-playing video" }}
-                  </div>
+                <div v-if="item.video_url && durationText(item.id)" class="tt-badge soft">
+                  {{ durationText(item.id) }}
                 </div>
-              </div>
 
-              <div
-                v-if="item.caption"
-                class="tt-caption"
-                :class="{ expanded: expandedCaptions[item.id] }"
-              >
-                <span>{{ item.caption }}</span>
-
-                <button
-                  v-if="needsExpand(item.caption)"
-                  class="tt-more"
-                  type="button"
-                  @click.stop="toggleCaption(item.id)"
+                <div
+                  v-if="item.video_url && mediaState[item.id]?.ready"
+                  class="tt-badge soft"
                 >
-                  {{ expandedCaptions[item.id] ? "less" : "more" }}
+                  {{ playingMap[item.id] ? "Playing" : "Paused" }}
+                </div>
+              </div>
+
+              <button
+                v-if="item.video_url"
+                class="tt-top-btn"
+                type="button"
+                @click.stop="$emit('toggle-muted')"
+              >
+                {{ globalMuted ? "🔇" : "🔊" }}
+              </button>
+            </div>
+
+            <!-- CENTER PLAY/PAUSE -->
+            <div
+              v-if="item.video_url"
+              class="tt-center"
+              :class="{ show: showCenterIconId === item.id }"
+            >
+              <div class="tt-center-icon">
+                {{ playingMap[item.id] ? "⏸" : "▶" }}
+              </div>
+            </div>
+
+            <!-- BOTTOM OVERLAY -->
+            <div class="tt-overlay bottom">
+              <div class="tt-meta">
+                <div class="tt-user-row">
+                  <div class="tt-avatar">
+                    {{ userInitial(item) }}
+                  </div>
+
+                  <div class="tt-user-meta">
+                    <div class="tt-name-row">
+                      <div class="tt-username">{{ displayName(item) }}</div>
+                      <span class="tt-dot">•</span>
+                      <div class="tt-time">{{ safeDate(item.created_at) }}</div>
+                    </div>
+
+                    <div class="tt-mode-line">
+                      {{ mode === "reels" ? "Short video" : "Auto-playing video" }}
+                    </div>
+                  </div>
+                </div>
+
+                <div
+                  v-if="item.caption"
+                  class="tt-caption"
+                  :class="{ expanded: expandedCaptions[item.id] }"
+                >
+                  <span>{{ item.caption }}</span>
+
+                  <button
+                    v-if="needsExpand(item.caption)"
+                    class="tt-more"
+                    type="button"
+                    @click.stop="toggleCaption(item.id)"
+                  >
+                    {{ expandedCaptions[item.id] ? "less" : "more" }}
+                  </button>
+                </div>
+              </div>
+
+              <div class="tt-actions">
+                <button class="tt-action" type="button" @click.stop="$emit('like', item)">
+                  <span class="tt-action-icon">❤️</span>
+                  <span class="tt-action-label">{{ safeLikes(item) }}</span>
+                </button>
+
+                <button class="tt-action" type="button" @click.stop="$emit('comments', item)">
+                  <span class="tt-action-icon">💬</span>
+                  <span class="tt-action-label">{{ safeComments(item) }}</span>
+                </button>
+
+                <button class="tt-action" type="button" @click.stop="$emit('share', item)">
+                  <span class="tt-action-icon">🔗</span>
+                  <span class="tt-action-label">Share</span>
                 </button>
               </div>
             </div>
-
-            <div class="tt-actions">
-              <button class="tt-action" type="button" @click.stop="$emit('like', item)">
-                <span class="tt-action-icon">❤️</span>
-                <span class="tt-action-label">{{ safeLikes(item) }}</span>
-              </button>
-
-              <button class="tt-action" type="button" @click.stop="$emit('comments', item)">
-                <span class="tt-action-icon">💬</span>
-                <span class="tt-action-label">{{ safeComments(item) }}</span>
-              </button>
-
-              <button class="tt-action" type="button" @click.stop="$emit('share', item)">
-                <span class="tt-action-icon">🔗</span>
-                <span class="tt-action-label">Share</span>
-              </button>
-            </div>
           </div>
         </div>
-      </div>
-    </article>
+      </article>
 
-    <div v-if="canLoadMore" ref="sentinelRef" class="tt-load-more">
-      {{ loadingMore ? "Loading more…" : "Keep scrolling…" }}
-    </div>
-  </section>
+      <div v-if="canLoadMore" ref="sentinelRef" class="tt-load-more">
+        {{ loadingMore ? "Loading more…" : "Keep scrolling…" }}
+      </div>
+    </section>
+  </div>
 </template>
 
 <script setup>
 import { computed, ref, watch, onMounted, onBeforeUnmount, nextTick } from "vue"
+import StoriesBar from "./feed/StoriesBar.vue"
 
 const props = defineProps({
   items: { type: Array, default: () => [] },
@@ -231,6 +238,9 @@ const emit = defineEmits([
   "share",
 ])
 
+const currentUser = ref(JSON.parse(localStorage.getItem("user") || "{}"))
+const showUploadModal = ref(false)
+
 const sentinelRef = ref(null)
 let loadObserver = null
 let activeObserver = null
@@ -268,8 +278,7 @@ const normalizedItems = computed(() => {
 })
 
 function displayName(item) {
-  return item.display_name || item.username || `User #${item.user_id || "?"}`
-}
+  return item.display_name || item.username || `User #${item.user_id || "?"}`}
 
 function userInitial(item) {
   try {
