@@ -1343,7 +1343,7 @@
 
   <!-- STORY CREATOR (direct photo / video / voice) -->
   <transition name="fade">
-    <div v-if="storyCreatorOpen" class="quickCreateBackdrop" @click.self="closeStoryCreator">
+    <div v-if="storyCreatorOpen" class="quickCreateBackdrop" @click.self="closeStoryCreator" style="z-index: 100;">
       <div class="quickCreateSheet glassy" style="max-width: 480px;">
         <div class="quickCreateHead">
           <div>
