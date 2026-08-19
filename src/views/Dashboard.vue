@@ -503,9 +503,7 @@
               :title="displayUserName(u)"
               @click="peopleOpen ? null : startCall(u, 'audio')"
             >
-              <div class="miniAvatar">
-                {{ displayUserName(u)[0]?.toUpperCase() }}
-              </div>
+              <img class="miniAvatar" :src="getUserAvatar(u) || defaultAvatar" />
               <span class="miniDot" :class="{ on: isOnline(u.id) }"></span>
             </div>
 
@@ -525,9 +523,7 @@
                 :key="'plist-' + u.id"
                 class="person compact"
               >
-                <div class="avatar small">
-                  {{ displayUserName(u)[0]?.toUpperCase() }}
-                </div>
+                <img class="avatar small" :src="getUserAvatar(u) || defaultAvatar" />
 
                 <div class="person-meta">
                   <div class="person-name">
@@ -596,6 +592,33 @@
       </div>
     </section>
 
+    <!-- STORIES -->
+    <section v-if="!focusMode && token" class="panel glassy" style="margin-bottom: 16px;">
+      <div class="panel-head">
+        <div class="panel-title">📸 Stories</div>
+      </div>
+      <div class="storiesRow">
+        <div class="storyItem" @click="openQuickCreate('photo')">
+          <div class="storyRing" :class="{ unseen: !hasMyStory }">
+            <img class="storyAvatar" :src="myAvatar || defaultAvatar" alt="me" />
+            <div class="storyAdd">+</div>
+          </div>
+          <div class="storyLabel">Your Story</div>
+        </div>
+        <div
+          v-for="s in friendStories"
+          :key="s.userId"
+          class="storyItem"
+          @click="viewStory(s)"
+        >
+          <div class="storyRing" :class="{ unseen: !s.seen }">
+            <img class="storyAvatar" :src="s.avatar || defaultAvatar" alt="story" />
+          </div>
+          <div class="storyLabel">{{ s.name }}</div>
+        </div>
+      </div>
+    </section>
+
     <!-- TOOLS -->
     <section v-if="toolsOpen" class="panel toolsPanel glassy">
       <div class="panel-head">
@@ -628,7 +651,7 @@
     <!-- COMPOSER -->
     <section class="composer glassy">
       <div class="composer-head">
-        <div class="avatar big">{{ myInitial }}</div>
+        <img class="avatar big" :src="myAvatar || defaultAvatar" />
 
         <div class="composer-meta">
           <div class="me">{{ meName }}</div>
@@ -806,7 +829,7 @@
 
       <article v-else v-for="post in savedPosts" :key="'s-'+post.id" class="post glassy">
         <header class="post-head">
-          <div class="avatar">{{ getInitial(post) }}</div>
+          <img class="avatar" :src="getAvatar(post) || defaultAvatar" />
           <div class="who">
             <div class="name">{{ displayPostUser(post) }}</div>
             <div class="time">{{ formatDate(post.created_at) }}</div>
@@ -849,7 +872,7 @@
 
       <article v-else v-for="post in pinnedPosts" :key="'pin-'+post.id" class="post thread glassy">
         <header class="post-head">
-          <div class="avatar">{{ getInitial(post) }}</div>
+          <img class="avatar" :src="getAvatar(post) || defaultAvatar" />
           <div class="who">
             <div class="name">{{ displayPostUser(post) }}</div>
             <div class="time">{{ formatDate(post.created_at) }}</div>
@@ -890,7 +913,7 @@
 
       <article v-else v-for="post in threadsPosts" :key="'t-'+post.id" class="post thread glassy">
         <header class="post-head">
-          <div class="avatar">{{ getInitial(post) }}</div>
+          <img class="avatar" :src="getAvatar(post) || defaultAvatar" />
           <div class="who">
             <div class="name">{{ displayPostUser(post) }}</div>
             <div class="time">{{ formatDate(post.created_at) }}</div>
@@ -1028,7 +1051,7 @@
         class="post comments-shell glassy"
       >
         <header class="post-head compactHead">
-          <div class="avatar">{{ getInitial(post) }}</div>
+          <img class="avatar" :src="getAvatar(post) || defaultAvatar" />
           <div class="who">
             <div class="name">{{ displayPostUser(post) }}</div>
             <div class="time">Comments</div>
@@ -1054,7 +1077,7 @@
 
       <article v-else v-for="post in followingPosts" :key="'f-'+post.id" class="post glassy">
         <header class="post-head">
-          <div class="avatar">{{ getInitial(post) }}</div>
+          <img class="avatar" :src="getAvatar(post) || defaultAvatar" />
           <div class="who">
             <div class="name">{{ displayPostUser(post) }}</div>
             <div class="time">{{ formatDate(post.created_at) }}</div>
@@ -1182,7 +1205,7 @@
         class="post comments-shell glassy"
       >
         <header class="post-head compactHead">
-          <div class="avatar">{{ getInitial(post) }}</div>
+          <img class="avatar" :src="getAvatar(post) || defaultAvatar" />
           <div class="who">
             <div class="name">{{ displayPostUser(post) }}</div>
             <div class="time">Comments</div>
@@ -1353,9 +1376,7 @@
               class="zoom-video"
               :class="{ off: !zoomVideoEnabled }"
             ></video>
-            <div v-if="!zoomVideoEnabled" class="zoom-avatar-tile">
-              {{ myInitial }}
-            </div>
+            <img v-if="!zoomVideoEnabled" class="zoom-avatar-tile" :src="myAvatar || defaultAvatar" />
             <div class="zoom-tile-label">
               You {{ zoomAudioMuted ? "🔇" : "" }}
             </div>
@@ -1370,9 +1391,7 @@
               :srcObject="p.stream"
               class="zoom-video"
             ></video>
-            <div v-else class="zoom-avatar-tile">
-              {{ getInitial(p.username) }}
-            </div>
+            <img v-else class="zoom-avatar-tile" :src="getZoomAvatar(p.id)" />
             <div class="zoom-tile-label">{{ p.username }}</div>
           </div>
         </div>
@@ -1538,6 +1557,26 @@ function getInitial(postOrUser) {
   }
   return String(postOrUser || "U").trim().charAt(0).toUpperCase() || "U"
 }
+
+const defaultAvatar = "data:image/svg+xml;utf8," + encodeURIComponent(`<svg xmlns='http://www.w3.org/2000/svg' width='200' height='200'><defs><linearGradient id='g' x1='0' x2='1'><stop offset='0' stop-color='#ec4899'/><stop offset='1' stop-color='#8b5cf6'/></linearGradient></defs><rect width='200' height='200' rx='100' fill='url(#g)'/></svg>`)
+
+function getAvatar(postOrUser) {
+  if (!postOrUser) return ""
+  return postOrUser.avatar_url || postOrUser.avatarUrl || postOrUser.avatar || ""
+}
+
+function getUserAvatar(u) {
+  if (!u) return ""
+  return u.avatar_url || u.avatarUrl || u.avatar || u.profile_image || ""
+}
+
+const myAvatar = computed(() => me?.avatar_url || me?.avatarUrl || me?.profile_image || "")
+
+function getZoomAvatar(userId) {
+  const u = people.value.find(x => String(x.id) === String(userId))
+  return getUserAvatar(u) || defaultAvatar
+}
+
 
 function formatDate(d) {
   if (!d) return ""
@@ -1877,6 +1916,26 @@ function connectSocket() {
 ========================= */
 const peopleOpen = ref(true)
 const people = ref([])
+
+const hasMyStory = ref(false)
+
+const friendStories = computed(() => {
+  return people.value
+    .filter(u => String(u.id) !== String(me?.id))
+    .map(u => ({
+      userId: u.id,
+      name: displayUserName(u).slice(0, 12),
+      avatar: getUserAvatar(u),
+      seen: false,
+    }))
+    .slice(0, 14)
+})
+
+function viewStory(s) {
+  draftSavedNote.value = `Opening ${s.name}'s story… (viewer coming soon)`
+  setTimeout(() => { draftSavedNote.value = "" }, 2500)
+}
+
 const peopleLoading = ref(false)
 const peopleError = ref("")
 const search = ref(savedPrefs.search || "")
@@ -6584,4 +6643,83 @@ onBeforeUnmount(() => {
   background: rgba(239, 68, 68, 0.12);
   border-color: rgba(239, 68, 68, 0.25);
 }
+
+
+/* ===== STORIES ===== */
+.storiesRow {
+  display: flex;
+  gap: 14px;
+  overflow-x: auto;
+  padding-bottom: 8px;
+  scrollbar-width: thin;
+  scrollbar-color: rgba(255,255,255,0.1) transparent;
+}
+.storiesRow::-webkit-scrollbar { height: 4px; }
+.storiesRow::-webkit-scrollbar-thumb { background: rgba(255,255,255,0.15); border-radius: 4px; }
+
+.storyItem {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 6px;
+  min-width: 64px;
+  cursor: pointer;
+  transition: transform 0.2s ease;
+}
+.storyItem:hover { transform: translateY(-2px); }
+
+.storyRing {
+  width: 68px;
+  height: 68px;
+  border-radius: 50%;
+  padding: 3px;
+  background: #334155;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  position: relative;
+}
+.storyRing.unseen {
+  background: linear-gradient(135deg, #f59e0b, #ec4899, #8b5cf6);
+}
+
+.storyAvatar {
+  width: 62px;
+  height: 62px;
+  border-radius: 50%;
+  object-fit: cover;
+  border: 2px solid #0a0e1a;
+  background: #1e293b;
+}
+
+.storyAdd {
+  position: absolute;
+  bottom: 0;
+  right: 0;
+  width: 22px;
+  height: 22px;
+  background: #a855f7;
+  border-radius: 50%;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  font-size: 16px;
+  font-weight: 700;
+  color: #fff;
+  border: 2px solid #0a0e1a;
+}
+
+.storyLabel {
+  font-size: 11px;
+  color: #94a3b8;
+  text-align: center;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  max-width: 64px;
+}
+
+/* Avatar image polish */
+.avatar, .miniAvatar { object-fit: cover; }
+
 </style>

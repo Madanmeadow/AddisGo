@@ -617,7 +617,7 @@
 import { computed, onMounted, onBeforeUnmount, reactive, ref, watch } from "vue"
 import { useRoute, useRouter } from "vue-router"
 import Layout from "../components/Layout.vue"
-import { useFeed } from "../composables/useFeed.js"
+import { useFeed } from "../composables/useFeed"
 
 const router = useRouter()
 const route = useRoute()
