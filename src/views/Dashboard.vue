@@ -1344,7 +1344,7 @@
   <!-- STORY CREATOR (direct photo / video / voice) -->
   <transition name="fade">
     <div v-if="storyCreatorOpen" class="quickCreateBackdrop" @click.self="closeStoryCreator">
-      <div class="quickCreateSheet glassy" style="max-width: 480px;">
+      <div class="quickCreateSheet glassy" style="max-width: 480px; margin-bottom: 20px;">
         <div class="quickCreateHead">
           <div>
             <div class="panel-title">📸 Add to Story</div>
@@ -6402,12 +6402,13 @@ onBeforeUnmount(() => {
 .quickCreateBackdrop {
   position: fixed;
   inset: 0;
-  z-index: 80;
+  z-index: 110;
   background: rgba(1, 4, 14, 0.6);
   backdrop-filter: blur(8px);
   display: grid;
   place-items: end center;
   padding: 20px;
+  padding-bottom: 90px; /* clear the bottom nav */
 }
 
 .quickCreateSheet {
