@@ -598,7 +598,7 @@
         <div class="panel-title">📸 Stories</div>
       </div>
       <div class="storiesRow">
-        <div class="storyItem" @click="openQuickCreate('photo')">
+        <div class="storyItem" @click="openStoryCreator">
           <div class="storyRing" :class="{ unseen: !hasMyStory }">
             <img class="storyAvatar" :src="myAvatar || defaultAvatar" alt="me" />
             <div class="storyAdd">+</div>
@@ -696,6 +696,17 @@
         <label class="file-pill">
           <input type="file" accept="video/*" @change="onPickVideo" />
           🎥 Video <span v-if="videoFile" class="file-dot">•</span>
+        </label>
+
+        <!-- OPTIONAL: also send this media to your story -->
+        <label
+          v-if="imageFile || videoFile"
+          class="file-pill"
+          :class="{ storyOn: shareToStory }"
+          @click.prevent="shareToStory = !shareToStory"
+          style="cursor: pointer; user-select: none;"
+        >
+          📸 {{ shareToStory ? "Story: On" : "Story: Off" }}
         </label>
 
         <button class="btn btn-primary" :disabled="posting || !token" @click="submitPost">
@@ -1330,6 +1341,61 @@
     </div>
   </transition>
 
+  <!-- STORY CREATOR (direct photo / video / voice) -->
+  <transition name="fade">
+    <div v-if="storyCreatorOpen" class="quickCreateBackdrop" @click.self="closeStoryCreator">
+      <div class="quickCreateSheet glassy" style="max-width: 480px;">
+        <div class="quickCreateHead">
+          <div>
+            <div class="panel-title">📸 Add to Story</div>
+            <div class="tiny muted">Visible for 24 hours. Photo, video, or voice.</div>
+          </div>
+          <button class="mini-x" @click="closeStoryCreator">✕</button>
+        </div>
+
+        <!-- Preview -->
+        <div v-if="storyPreview" style="margin: 14px 0; text-align: center;">
+          <img
+            v-if="storyType === 'image'"
+            :src="storyPreview"
+            style="max-height: 320px; border-radius: 18px; width: 100%; object-fit: cover; border: 1px solid rgba(255,255,255,0.08);"
+          />
+          <video
+            v-else-if="storyType === 'video'"
+            :src="storyPreview"
+            controls
+            playsinline
+            style="max-height: 320px; border-radius: 18px; width: 100%;"
+          />
+          <audio
+            v-else-if="storyType === 'audio'"
+            :src="storyPreview"
+            controls
+            style="width: 100%; margin-top: 20px;"
+          />
+        </div>
+
+        <div class="quickCreateGrid" style="grid-template-columns: repeat(3, minmax(0, 1fr));">
+          <button class="quickCreateCard" @click="triggerStoryFile('image')">📷 Photo</button>
+          <button class="quickCreateCard" @click="triggerStoryFile('video')">🎥 Video</button>
+          <button class="quickCreateCard" @click="triggerStoryFile('audio')">🎙 Voice</button>
+        </div>
+
+        <div v-if="storyFile" style="margin-top: 18px; display: flex; gap: 10px;">
+          <button class="btn ghostBtn" @click="clearStory">Clear</button>
+          <button class="btn btn-primary" style="flex: 1;" @click="submitStory" :disabled="storyPosting">
+            {{ storyPosting ? "Adding…" : "Add to Story" }}
+          </button>
+        </div>
+      </div>
+    </div>
+  </transition>
+
+  <!-- Hidden story file inputs -->
+  <input ref="storyImageInput" type="file" accept="image/*" hidden @change="onStoryFileChange('image', $event)" />
+  <input ref="storyVideoInput" type="file" accept="video/*" hidden @change="onStoryFileChange('video', $event)" />
+  <input ref="storyAudioInput" type="file" accept="audio/*" hidden @change="onStoryFileChange('audio', $event)" />
+
   <!-- ELITE BOTTOM NAV -->
   <nav class="bottomNav eliteBottomNav">
     <button class="bn" :class="{ on: isHomeActive }" @click="goHome">
@@ -1430,6 +1496,8 @@
 
   </Layout>
 </template>
+
+
 
 <script setup>
 import { ref, computed, onMounted, onBeforeUnmount, nextTick, watch } from "vue"
@@ -3988,6 +4056,11 @@ onBeforeUnmount(() => {
 @keyframes fadeIn {
   from { opacity: 0; transform: translateY(-6px); }
   to   { opacity: 1; transform: translateY(0); }
+}
+.file-pill.storyOn {
+  background: rgba(236, 72, 153, 0.18);
+  border-color: rgba(236, 72, 153, 0.35);
+  color: #f9a8d4;
 }
 /* =========================================================
    AMBIENT ORBS
