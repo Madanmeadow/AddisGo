@@ -1343,7 +1343,7 @@
 
   <!-- STORY CREATOR (direct photo / video / voice) -->
   <transition name="fade">
-    <div v-if="storyCreatorOpen" class="quickCreateBackdrop" @click.self="closeStoryCreator" style="z-index: 100;">
+    <div v-if="storyCreatorOpen" class="quickCreateBackdrop" @click.self="closeStoryCreator">
       <div class="quickCreateSheet glassy" style="max-width: 480px;">
         <div class="quickCreateHead">
           <div>
@@ -1792,8 +1792,19 @@ async function submitStory() {
       body: form,
     })
 
-    const data = await res.json()
-    if (!res.ok) throw new Error(data?.error || "Story upload failed")
+    // Handle non-JSON responses (404 HTML pages, etc.)
+    const contentType = res.headers.get("content-type") || ""
+    let data = {}
+    if (contentType.includes("application/json")) {
+      data = await res.json()
+    } else {
+      const text = await res.text()
+      // If server returned HTML (404/500 page), show a helpful message
+      if (text.trim().startsWith("<") || !res.ok) {
+        throw new Error(`Server returned ${res.status}. Make sure your backend has a POST /stories endpoint.`)
+      }
+    }
+    if (!res.ok) throw new Error(data?.error || `Story upload failed (${res.status})`)
 
     draftSavedNote.value = "Added to your story! 🎉"
     addActivity("Story", `Added ${storyType.value} story`)
@@ -2671,16 +2682,23 @@ async function submitPost() {
         storyForm.append("type", imageFile.value ? "image" : "video")
         storyForm.append("caption", caption.value || "")
 
-        await fetch(`${apiUrl}/stories`, {
+        const storyRes = await fetch(`${apiUrl}/stories`, {
           method: "POST",
           headers: { Authorization: `Bearer ${token}` },
           body: storyForm,
         })
-        draftSavedNote.value = "Posted & shared to story! 🎉"
-        hasMyStory.value = true
-        addActivity("Story", "Auto-shared post to story")
+
+        // Only celebrate if the endpoint actually exists
+        const ct = storyRes.headers.get("content-type") || ""
+        if (storyRes.ok && ct.includes("application/json")) {
+          draftSavedNote.value = "Posted & shared to story! 🎉"
+          hasMyStory.value = true
+          addActivity("Story", "Auto-shared post to story")
+        } else {
+          draftSavedNote.value = "Posted successfully (story endpoint not ready)"
+        }
       } catch {
-        // silent fail — main post already succeeded
+        draftSavedNote.value = "Posted successfully (story sync failed)"
       }
     } else {
       draftSavedNote.value = "Posted successfully"
