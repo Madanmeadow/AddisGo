@@ -1544,6 +1544,7 @@
           <template v-if="currentStoryUser.stories[currentStoryIndex]">
             <img
               v-if="!isStoryVideo(currentStoryUser.stories[currentStoryIndex])"
+              v-show="!storyMediaError"
               :key="'story-img-' + currentStoryIndex"
               class="storyViewerMedia"
               :src="getStoryMediaUrl(currentStoryUser.stories[currentStoryIndex])"
@@ -1553,6 +1554,7 @@
             />
             <video
               v-else
+              v-show="!storyMediaError"
               :key="'story-vid-' + currentStoryIndex"
               ref="storyVideoRef"
               class="storyViewerMedia"
