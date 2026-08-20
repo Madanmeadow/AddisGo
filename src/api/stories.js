@@ -1,12 +1,13 @@
-const API_URL = import.meta.env.VITE_API_URL || "http://localhost:5000";
+const API_URL = import.meta.env.VITE_API_URL || "";
 
-function getToken() {
-  return localStorage.getItem("token") || "";
+function authHeaders() {
+  const token = localStorage.getItem("token");
+  return token ? { Authorization: `Bearer ${token}` } : {};
 }
 
 export async function fetchStories() {
   const res = await fetch(`${API_URL}/stories`, {
-    headers: { Authorization: `Bearer ${getToken()}` },
+    headers: { ...authHeaders() },
   });
   if (!res.ok) throw new Error("Failed to fetch stories");
   return res.json();
@@ -15,9 +16,13 @@ export async function fetchStories() {
 export async function createStory(formData) {
   const res = await fetch(`${API_URL}/stories`, {
     method: "POST",
-    headers: { Authorization: `Bearer ${getToken()}` },
+    headers: { ...authHeaders() }, // DO NOT set Content-Type — browser sets it with boundary for FormData
     body: formData,
   });
-  if (!res.ok) throw new Error("Failed to upload story");
+
+  if (!res.ok) {
+    const err = await res.json().catch(() => ({}));
+    throw new Error(err.error || `Upload failed (${res.status})`);
+  }
   return res.json();
 }
