@@ -1492,6 +1492,79 @@
         </div>
       </div>
     </div>
+        <!-- STORY VIEWER OVERLAY -->
+    <transition name="fade">
+      <div
+        v-if="storyViewerOpen && currentStoryUser"
+        class="storyViewer"
+        @click.self="closeStoryViewer"
+      >
+        <!-- Progress bars -->
+        <div class="storyProgressWrap">
+          <div
+            v-for="(st, idx) in currentStoryUser.stories"
+            :key="idx"
+            class="storyProgressTrack"
+          >
+            <div
+              class="storyProgressFill"
+              :style="{
+                width:
+                  idx < currentStoryIndex
+                    ? '100%'
+                    : idx === currentStoryIndex
+                      ? storyProgress + '%'
+                      : '0%'
+              }"
+            ></div>
+          </div>
+        </div>
+
+        <!-- Header -->
+        <div class="storyViewerHead">
+          <img
+            class="storyViewerAvatar"
+            :src="currentStoryUser.avatar || defaultAvatar"
+          />
+          <div class="storyViewerMeta">
+            <div class="storyViewerName">{{ currentStoryUser.name }}</div>
+            <div class="storyViewerTime">
+              {{
+                currentStoryUser.stories[currentStoryIndex]?.created_at
+                  ? formatDate(currentStoryUser.stories[currentStoryIndex].created_at)
+                  : ''
+              }}
+            </div>
+          </div>
+          <button class="storyViewerClose" @click="closeStoryViewer">✕</button>
+        </div>
+
+        <!-- Media -->
+        <div class="storyViewerStage" @click="onStoryTap">
+          <template v-if="currentStoryUser.stories[currentStoryIndex]">
+            <img
+              v-if="!currentStoryUser.stories[currentStoryIndex].video_url"
+              class="storyViewerMedia"
+              :src="getStoryMediaUrl(currentStoryUser.stories[currentStoryIndex])"
+            />
+            <video
+              v-else
+              class="storyViewerMedia"
+              :src="getStoryMediaUrl(currentStoryUser.stories[currentStoryIndex])"
+              autoplay
+              playsinline
+              muted
+            ></video>
+          </template>
+        </div>
+
+        <!-- Tap zones (invisible) -->
+        <div class="storyTapZones">
+          <div class="storyTapLeft"></div>
+          <div class="storyTapRight"></div>
+        </div>
+      </div>
+    </transition>
 </div>
 
   </Layout>
@@ -1534,6 +1607,12 @@ const likesByPost = ref({})       // ← LOCAL (not from useFeed)
 const likeBusyByPost = ref({})    // ← LOCAL (not from useFeed)
 const savedPostIds = computed(() => feed.savedPostIds)
 
+// Story viewer state
+const storyViewerOpen = ref(false)
+const currentStoryUser = ref(null)
+const currentStoryIndex = ref(0)
+const storyProgress = ref(0)
+let storyTimer = null
 // Reactions state
 const reactionsByPost = ref({})      // { [postId]: { like: 5, fire: 2, ... } }
 const myReactionsByPost = ref({})    // { [postId]: ['fire'] }
@@ -2101,13 +2180,66 @@ const friendStories = computed(() => {
 })
 
 function viewStory(s) {
-  const first = s.stories?.[0]
-  if (first?.media_url) {
-    window.open(first.media_url, '_blank')
+  currentStoryUser.value = s
+  currentStoryIndex.value = 0
+  storyProgress.value = 0
+  storyViewerOpen.value = true
+  s.seen = true
+  startStoryTimer()
+}
+
+function closeStoryViewer() {
+  storyViewerOpen.value = false
+  currentStoryUser.value = null
+  currentStoryIndex.value = 0
+  storyProgress.value = 0
+  clearInterval(storyTimer)
+}
+
+function startStoryTimer() {
+  clearInterval(storyTimer)
+  storyProgress.value = 0
+  storyTimer = setInterval(() => {
+    storyProgress.value += 2 // ~5 seconds total
+    if (storyProgress.value >= 100) {
+      nextStory()
+    }
+  }, 100)
+}
+
+function nextStory() {
+  const user = currentStoryUser.value
+  if (!user) return
+  const total = user.stories?.length || 0
+  if (currentStoryIndex.value < total - 1) {
+    currentStoryIndex.value++
+    startStoryTimer()
   } else {
-    draftSavedNote.value = `${s.name}'s story has no media`
-    setTimeout(() => { draftSavedNote.value = "" }, 2500)
+    closeStoryViewer()
   }
+}
+
+function prevStory() {
+  if (currentStoryIndex.value > 0) {
+    currentStoryIndex.value--
+    startStoryTimer()
+  }
+}
+
+function onStoryTap(e) {
+  const rect = e.currentTarget.getBoundingClientRect()
+  const x = e.clientX - rect.left
+  if (x < rect.width * 0.35) {
+    prevStory()
+  } else {
+    nextStory()
+  }
+}
+
+function getStoryMediaUrl(story) {
+  if (!story) return ''
+  const url = story.media_url || story.image_url || story.video_url || ''
+  return getMedia(url)
 }
 
 async function fetchStoriesData() {
@@ -3816,6 +3948,20 @@ function handleKeydown(e) {
   const tag = (e.target?.tagName || "").toLowerCase()
   const typing = tag === "input" || tag === "textarea"
 
+  if (storyViewerOpen.value) {
+    if (e.key === 'Escape') {
+      e.preventDefault()
+      closeStoryViewer()
+    } else if (e.key === 'ArrowRight') {
+      e.preventDefault()
+      nextStory()
+    } else if (e.key === 'ArrowLeft') {
+      e.preventDefault()
+      prevStory()
+    }
+    return
+  }
+
   if (e.key === "/" && !typing) {
     e.preventDefault()
     searchRef.value?.focus?.()
@@ -4081,6 +4227,7 @@ onMounted(async () => {
 })
 
 onBeforeUnmount(() => {
+  clearInterval(storyTimer) //
   window.removeEventListener("keydown", handleKeydown)
   window.removeEventListener("online", handleNetworkOnline)
   window.removeEventListener("offline", handleNetworkOffline)
@@ -5963,7 +6110,123 @@ onBeforeUnmount(() => {
   backdrop-filter: blur(24px) saturate(1.3);
   border-top: 1px solid rgba(255, 255, 255, 0.06);
 }
+/* ===== STORY VIEWER ===== */
+.storyViewer {
+  position: fixed;
+  inset: 0;
+  z-index: 200;
+  background: #000;
+  display: flex;
+  flex-direction: column;
+  animation: fadeIn 0.2s ease;
+}
 
+.storyProgressWrap {
+  position: absolute;
+  top: 12px;
+  left: 12px;
+  right: 12px;
+  z-index: 10;
+  display: flex;
+  gap: 4px;
+}
+
+.storyProgressTrack {
+  flex: 1;
+  height: 3px;
+  background: rgba(255, 255, 255, 0.25);
+  border-radius: 2px;
+  overflow: hidden;
+}
+
+.storyProgressFill {
+  height: 100%;
+  background: #fff;
+  border-radius: 2px;
+  transition: width 0.1s linear;
+}
+
+.storyViewerHead {
+  position: absolute;
+  top: 24px;
+  left: 12px;
+  right: 12px;
+  z-index: 10;
+  display: flex;
+  align-items: center;
+  gap: 10px;
+}
+
+.storyViewerAvatar {
+  width: 36px;
+  height: 36px;
+  border-radius: 50%;
+  object-fit: cover;
+  border: 2px solid rgba(255, 255, 255, 0.2);
+}
+
+.storyViewerMeta {
+  flex: 1;
+}
+
+.storyViewerName {
+  font-weight: 800;
+  font-size: 14px;
+  color: #fff;
+  text-shadow: 0 1px 4px rgba(0, 0, 0, 0.5);
+}
+
+.storyViewerTime {
+  font-size: 12px;
+  color: rgba(255, 255, 255, 0.7);
+  text-shadow: 0 1px 4px rgba(0, 0, 0, 0.5);
+}
+
+.storyViewerClose {
+  width: 32px;
+  height: 32px;
+  border-radius: 50%;
+  border: none;
+  background: rgba(255, 255, 255, 0.15);
+  color: #fff;
+  font-size: 16px;
+  cursor: pointer;
+  backdrop-filter: blur(8px);
+  display: grid;
+  place-items: center;
+  transition: all 0.15s ease;
+}
+
+.storyViewerClose:hover {
+  background: rgba(255, 255, 255, 0.25);
+}
+
+.storyViewerStage {
+  flex: 1;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  cursor: pointer;
+}
+
+.storyViewerMedia {
+  max-width: 100%;
+  max-height: 100%;
+  object-fit: contain;
+}
+
+.storyTapZones {
+  position: absolute;
+  inset: 0;
+  display: flex;
+  pointer-events: none;
+  z-index: 5;
+}
+
+.storyTapLeft,
+.storyTapRight {
+  flex: 1;
+}
 .bn {
   border: none;
   background: transparent;
