@@ -1543,18 +1543,37 @@
         <div class="storyViewerStage" @click="onStoryTap">
           <template v-if="currentStoryUser.stories[currentStoryIndex]">
             <img
-              v-if="!currentStoryUser.stories[currentStoryIndex].video_url"
+              v-if="!isStoryVideo(currentStoryUser.stories[currentStoryIndex])"
+              :key="'story-img-' + currentStoryIndex"
               class="storyViewerMedia"
               :src="getStoryMediaUrl(currentStoryUser.stories[currentStoryIndex])"
+              draggable="false"
+              @error="storyMediaError = true"
+              @load="storyMediaError = false"
             />
             <video
               v-else
+              :key="'story-vid-' + currentStoryIndex"
+              ref="storyVideoRef"
               class="storyViewerMedia"
               :src="getStoryMediaUrl(currentStoryUser.stories[currentStoryIndex])"
               autoplay
               playsinline
               muted
+              loop
+              preload="auto"
+              @loadedmetadata="storyMediaError = false"
+              @error="storyMediaError = true"
             ></video>
+
+            <!-- Fallback when media is missing or broken -->
+            <div
+              v-if="storyMediaError || !getStoryMediaUrl(currentStoryUser.stories[currentStoryIndex])"
+              class="storyFallback"
+            >
+              <div class="storyFallbackEmoji">🖼️</div>
+              <div class="storyFallbackText">Unable to load story</div>
+            </div>
           </template>
         </div>
 
