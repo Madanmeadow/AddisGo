@@ -1632,6 +1632,8 @@ const currentStoryUser = ref(null)
 const currentStoryIndex = ref(0)
 const storyProgress = ref(0)
 let storyTimer = null
+const storyMediaError = ref(false)
+const storyVideoRef = ref(null)
 // Reactions state
 const reactionsByPost = ref({})      // { [postId]: { like: 5, fire: 2, ... } }
 const myReactionsByPost = ref({})    // { [postId]: ['fire'] }
@@ -2202,6 +2204,7 @@ function viewStory(s) {
   currentStoryUser.value = s
   currentStoryIndex.value = 0
   storyProgress.value = 0
+  storyMediaError.value = false
   storyViewerOpen.value = true
   s.seen = true
   startStoryTimer()
@@ -2232,6 +2235,7 @@ function nextStory() {
   const total = user.stories?.length || 0
   if (currentStoryIndex.value < total - 1) {
     currentStoryIndex.value++
+    storyMediaError.value = false
     startStoryTimer()
   } else {
     closeStoryViewer()
@@ -2241,6 +2245,7 @@ function nextStory() {
 function prevStory() {
   if (currentStoryIndex.value > 0) {
     currentStoryIndex.value--
+    storyMediaError.value = false
     startStoryTimer()
   }
 }
@@ -2257,8 +2262,22 @@ function onStoryTap(e) {
 
 function getStoryMediaUrl(story) {
   if (!story) return ''
-  const url = story.media_url || story.image_url || story.video_url || ''
+  const url =
+    story.media_url ||
+    story.image_url ||
+    story.video_url ||
+    story.url ||
+    story.src ||
+    story.file_url ||
+    ''
   return getMedia(url)
+}
+
+function isStoryVideo(story) {
+  const url = getStoryMediaUrl(story)
+  if (!url) return false
+  if (story.video_url) return true
+  return /\.(mp4|webm|ogg|mov|m3u8)(\?.*)?$/i.test(url)
 }
 
 async function fetchStoriesData() {
@@ -6229,9 +6248,37 @@ onBeforeUnmount(() => {
 }
 
 .storyViewerMedia {
+  width: 100%;
+  height: 100%;
   max-width: 100%;
   max-height: 100%;
   object-fit: contain;
+  display: block;
+  background: #000;
+}
+
+.storyFallback {
+  position: absolute;
+  inset: 0;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  gap: 12px;
+  color: rgba(255, 255, 255, 0.55);
+  pointer-events: none;
+  animation: fadeIn 0.3s ease;
+}
+
+.storyFallbackEmoji {
+  font-size: 52px;
+  opacity: 0.6;
+}
+
+.storyFallbackText {
+  font-size: 14px;
+  font-weight: 700;
+  letter-spacing: 0.02em;
 }
 
 .storyTapZones {
