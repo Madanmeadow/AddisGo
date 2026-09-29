@@ -12,6 +12,7 @@
     "@vue/compiler-sfc": "^3.5.28",
     "axios": "^1.13.5",
     "mediasoup-client": "^3.18.7",
+    "nodemailer": "^10.0.12",
     "pinia": "^3.0.4",
     "simple-peer": "^9.11.1",
     "socket.io-client": "^4.8.3",
