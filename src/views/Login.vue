@@ -53,7 +53,11 @@ async function login() {
 
     <p class="error" v-if="error">{{ error }}</p>
 
-    <router-link to="/register">Create account</router-link>
+    <!-- ✅ UPDATED: wrapper div + forgot password link -->
+    <div class="links">
+      <router-link to="/register">Create account</router-link>
+      <router-link to="/forgot-password">Forgot password?</router-link>
+    </div>
   </div>
 </template>
 
@@ -79,6 +83,9 @@ button {
 .error {
   color: red;
 }
+/* ✅ NEW */
+.links {
+  display: flex;
+  justify-content: space-between;
+}
 </style>
-
-

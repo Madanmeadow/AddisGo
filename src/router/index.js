@@ -17,6 +17,9 @@ const routes = [
   { path: "/", redirect: "/login" },
   { path: "/login", component: Login },
   { path: "/register", component: Register },
+  // ✅ NEW: forgot/reset password routes
+  { path: "/forgot-password", component: () => import("../views/ForgotPassword.vue") },
+  { path: "/reset-password", component: () => import("../views/ResetPassword.vue") },
 
   { path: "/dashboard", component: Dashboard },
 
@@ -43,8 +46,6 @@ const router = createRouter({
 });
 
 export default router;
-
-
 
 
 
