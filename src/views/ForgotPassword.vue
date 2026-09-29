@@ -1,3 +1,4 @@
+```vue
 <script setup>
 import { ref } from "vue";
 
@@ -17,20 +18,56 @@ async function sendReset() {
   message.value = "";
 
   try {
-    const res = await fetch(`${import.meta.env.VITE_API_URL}/auth/forgot-password`, {
-      method: "POST",
-      headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({ email: email.value }),
-    });
+    const res = await fetch(
+      `${import.meta.env.VITE_API_URL}/auth/forgot-password`,
+      {
+        method: "POST",
+        headers: {
+          "Content-Type": "application/json",
+        },
+        body: JSON.stringify({
+          email: email.value,
+        }),
+      }
+    );
 
-    const data = await res.json();
-    if (!res.ok) throw new Error(data.error || "Something went wrong");
+    // Safely handle JSON or HTML/text responses
+    const contentType = res.headers.get("content-type") || "";
 
-    // Backend always sends this, even if email doesn't exist (security)
-    message.value = data.message || "If this email exists, a reset link has been sent.";
+    let data;
+
+    if (contentType.includes("application/json")) {
+      data = await res.json();
+    } else {
+      const text = await res.text();
+
+      throw new Error(
+        `Server returned ${res.status}: ${text}`
+      );
+    }
+
+    // Handle backend errors
+    if (!res.ok) {
+      throw new Error(
+        data.error ||
+        data.message ||
+        "Something went wrong"
+      );
+    }
+
+    // Success
+    message.value =
+      data.message ||
+      "If this email exists, a reset link has been sent.";
+
     email.value = "";
   } catch (err) {
-    error.value = err.message;
+    console.error("Forgot password error:", err);
+
+    error.value =
+      err instanceof Error
+        ? err.message
+        : "Something went wrong. Please try again.";
   } finally {
     loading.value = false;
   }
@@ -40,18 +77,43 @@ async function sendReset() {
 <template>
   <div class="auth">
     <h1>⚡ Reset Password</h1>
-    <p>Enter your email and we'll send you a reset link.</p>
 
-    <input v-model="email" type="email" placeholder="Email" />
+    <p>
+      Enter your email and we'll send you a reset link.
+    </p>
 
-    <button @click="sendReset" :disabled="loading">
+    <input
+      v-model="email"
+      type="email"
+      placeholder="Email"
+      autocomplete="email"
+      @keyup.enter="sendReset"
+    />
+
+    <button
+      @click="sendReset"
+      :disabled="loading"
+    >
       {{ loading ? "Sending..." : "Send Reset Link" }}
     </button>
 
-    <p class="error" v-if="error">{{ error }}</p>
-    <p class="success" v-if="message">{{ message }}</p>
+    <p
+      class="error"
+      v-if="error"
+    >
+      {{ error }}
+    </p>
 
-    <router-link to="/login">← Back to Login</router-link>
+    <p
+      class="success"
+      v-if="message"
+    >
+      {{ message }}
+    </p>
+
+    <router-link to="/login">
+      ← Back to Login
+    </router-link>
   </div>
 </template>
 
@@ -63,10 +125,14 @@ async function sendReset() {
   flex-direction: column;
   gap: 15px;
 }
+
 input {
   padding: 12px;
   border-radius: 6px;
+  border: 1px solid #ccc;
+  font-size: 16px;
 }
+
 button {
   padding: 12px;
   background: crimson;
@@ -74,15 +140,29 @@ button {
   border: none;
   border-radius: 6px;
   cursor: pointer;
+  font-size: 16px;
 }
+
 button:disabled {
   opacity: 0.6;
   cursor: not-allowed;
 }
+
 .error {
   color: red;
+  word-break: break-word;
 }
+
 .success {
   color: green;
+  word-break: break-word;
+}
+
+a {
+  color: #c77dff;
+  text-align: center;
 }
 </style>
+```
+
+.
