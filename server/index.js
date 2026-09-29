@@ -7,6 +7,7 @@ import path from "path";
 import { fileURLToPath } from "url";
 import { Server } from "socket.io";
 import bcrypt from "bcrypt";
+import nodemailer from "nodemailer";
 import { registerCallSfuHandlers } from "./mediasoup/socketCallSfu.js";
 import jwt from "jsonwebtoken";
 import twilio from "twilio";
@@ -270,10 +271,15 @@ app.post('/posts/:id/react', authenticate, async (req, res) => {
 pool.on("connect", () => logOK("PostgreSQL Connected"));
 
 /* =========================
-   AUTH (register/login)
+   AUTH
+   REGISTER / LOGIN
+   FORGOT PASSWORD
+   RESET PASSWORD
 ========================= */
+
 function signToken(user) {
   const userId = canon(user?.id);
+
   const username =
     user?.username ||
     user?.display_name ||
@@ -282,43 +288,92 @@ function signToken(user) {
     (userId ? `User${userId}` : "User");
 
   return jwt.sign(
-    { userId, id: userId, username },
+    {
+      userId,
+      id: userId,
+      username,
+    },
     JWT_SECRET,
-    { expiresIn: "7d" }
+    {
+      expiresIn: "7d",
+    }
   );
 }
+
+/* =========================
+   EMAIL CONFIG
+========================= */
+
+const SMTP_HOST = process.env.SMTP_HOST;
+const SMTP_PORT = Number(process.env.SMTP_PORT || 465);
+const SMTP_USER = process.env.SMTP_USER;
+const SMTP_PASS = process.env.SMTP_PASS;
+const EMAIL_FROM = process.env.EMAIL_FROM || SMTP_USER;
+
+const mailer =
+  SMTP_HOST && SMTP_USER && SMTP_PASS
+    ? nodemailer.createTransport({
+        host: SMTP_HOST,
+        port: SMTP_PORT,
+        secure: SMTP_PORT === 465,
+        auth: {
+          user: SMTP_USER,
+          pass: SMTP_PASS,
+        },
+      })
+    : null;
+
+
+/* =========================
+   REGISTER
+========================= */
 
 app.post("/auth/register", async (req, res) => {
   try {
     const { username, name, email, password } = req.body;
+
     if (!email || !password) {
-      return res.status(400).json({ error: "Email and password required" });
+      return res.status(400).json({
+        error: "Email and password required",
+      });
     }
 
-    const display = username || name || email.split("@")[0];
+    const cleanEmail = String(email).trim().toLowerCase();
+
+    const display =
+      username ||
+      name ||
+      cleanEmail.split("@")[0];
+
     const hashed = await bcrypt.hash(password, 10);
 
     let created;
+
     try {
       created = await pool.query(
-        `INSERT INTO users (username, email, password)
-         VALUES ($1,$2,$3)
-         RETURNING id, username, email, display_name, name`,
-        [display, email, hashed]
+        `
+        INSERT INTO users (username, email, password)
+        VALUES ($1, $2, $3)
+        RETURNING id, username, email, display_name, name
+        `,
+        [display, cleanEmail, hashed]
       );
     } catch {
       created = await pool.query(
-        `INSERT INTO users (name, email, password)
-         VALUES ($1,$2,$3)
-         RETURNING id, name, email, display_name, username`,
-        [display, email, hashed]
+        `
+        INSERT INTO users (name, email, password)
+        VALUES ($1, $2, $3)
+        RETURNING id, name, email, display_name, username
+        `,
+        [display, cleanEmail, hashed]
       );
     }
 
     const userRow = created.rows[0];
+
     const token = signToken(userRow);
 
-    res.json({
+    return res.json({
       token,
       user: {
         id: userRow.id,
@@ -329,37 +384,65 @@ app.post("/auth/register", async (req, res) => {
           userRow.email,
       },
     });
+
   } catch (err) {
     logERR("REGISTER ERROR:", err);
-    res.status(500).json({ error: "Register failed" });
+
+    return res.status(500).json({
+      error: "Register failed",
+    });
   }
 });
+
+
+/* =========================
+   LOGIN
+========================= */
 
 app.post("/auth/login", async (req, res) => {
   try {
     const { email, password } = req.body;
+
     if (!email || !password) {
-      return res.status(400).json({ error: "Email and password required" });
+      return res.status(400).json({
+        error: "Email and password required",
+      });
     }
 
+    const cleanEmail = String(email).trim().toLowerCase();
+
     const found = await pool.query(
-      `SELECT * FROM users WHERE email=$1 LIMIT 1`,
-      [email]
+      `
+      SELECT *
+      FROM users
+      WHERE LOWER(email) = $1
+      LIMIT 1
+      `,
+      [cleanEmail]
     );
 
     if (!found.rows.length) {
-      return res.status(400).json({ error: "User not found" });
+      return res.status(400).json({
+        error: "User not found",
+      });
     }
 
     const user = found.rows[0];
-    const ok = await bcrypt.compare(password, user.password);
+
+    const ok = await bcrypt.compare(
+      password,
+      user.password
+    );
+
     if (!ok) {
-      return res.status(400).json({ error: "Wrong password" });
+      return res.status(400).json({
+        error: "Wrong password",
+      });
     }
 
     const token = signToken(user);
 
-    res.json({
+    return res.json({
       token,
       user: {
         id: user.id,
@@ -370,12 +453,373 @@ app.post("/auth/login", async (req, res) => {
           user.email,
       },
     });
+
   } catch (err) {
     logERR("LOGIN ERROR:", err);
-    res.status(500).json({ error: "Login failed" });
+
+    return res.status(500).json({
+      error: "Login failed",
+    });
   }
 });
 
+
+/* =========================
+   FORGOT PASSWORD
+========================= */
+
+app.post("/auth/forgot-password", async (req, res) => {
+  try {
+    const { email } = req.body || {};
+
+    if (!email) {
+      return res.status(400).json({
+        error: "Email is required",
+      });
+    }
+
+    const cleanEmail = String(email)
+      .trim()
+      .toLowerCase();
+
+    console.log("🔐 Password reset requested for:", cleanEmail);
+
+    /*
+      Always return the same response whether
+      the email exists or not.
+    */
+
+    const userResult = await pool.query(
+      `
+      SELECT id, email
+      FROM users
+      WHERE LOWER(email) = $1
+      LIMIT 1
+      `,
+      [cleanEmail]
+    );
+
+    if (!userResult.rows.length) {
+      return res.json({
+        message:
+          "If this email exists, a password reset link has been sent.",
+      });
+    }
+
+    const user = userResult.rows[0];
+
+    /*
+      Generate secure random token.
+    */
+
+    const crypto = await import("crypto");
+
+    const resetToken = crypto.randomBytes(32).toString("hex");
+
+    /*
+      Token expires in 1 hour.
+    */
+
+    const expiresAt = new Date(
+      Date.now() + 60 * 60 * 1000
+    );
+
+    /*
+      Remove previous reset tokens for this user.
+    */
+
+    await pool.query(
+      `
+      DELETE FROM password_resets
+      WHERE user_id = $1
+      `,
+      [user.id]
+    );
+
+    /*
+      Save new reset token.
+    */
+
+    await pool.query(
+      `
+      INSERT INTO password_resets
+      (user_id, token, expires_at, created_at)
+      VALUES ($1, $2, $3, NOW())
+      `,
+      [
+        user.id,
+        resetToken,
+        expiresAt,
+      ]
+    );
+
+    /*
+      Create frontend reset URL.
+    */
+
+    const clientOrigin =
+      process.env.CLIENT_ORIGIN ||
+      "https://addis-go.vercel.app";
+
+    const resetUrl =
+      `${clientOrigin}/reset-password?token=${encodeURIComponent(resetToken)}`;
+
+
+    /* =========================
+       CHECK EMAIL CONFIG
+    ========================= */
+
+    if (!mailer) {
+      console.error(
+        "❌ SMTP is not configured."
+      );
+
+      /*
+        Development fallback:
+        Print the reset URL in Railway logs.
+      */
+
+      console.log(
+        "🔗 PASSWORD RESET URL:",
+        resetUrl
+      );
+
+      return res.json({
+        message:
+          "If this email exists, a password reset link has been sent.",
+      });
+    }
+
+
+    /* =========================
+       SEND EMAIL
+    ========================= */
+
+    await mailer.sendMail({
+      from: EMAIL_FROM,
+      to: cleanEmail,
+      subject: "AddisGo Password Reset",
+
+      text: `
+Hello,
+
+We received a request to reset your AddisGo password.
+
+Use this link to reset your password:
+
+${resetUrl}
+
+This link will expire in 1 hour.
+
+If you did not request this password reset, you can safely ignore this email.
+
+AddisGo
+      `,
+
+      html: `
+        <div style="font-family: Arial, sans-serif; max-width: 600px; margin: auto;">
+
+          <h2>⚡ AddisGo Password Reset</h2>
+
+          <p>
+            We received a request to reset your AddisGo password.
+          </p>
+
+          <p>
+            Click the button below to create a new password.
+          </p>
+
+          <p>
+            <a
+              href="${resetUrl}"
+              style="
+                display:inline-block;
+                padding:12px 20px;
+                background:#e5093f;
+                color:white;
+                text-decoration:none;
+                border-radius:6px;
+                font-weight:bold;
+              "
+            >
+              Reset Password
+            </a>
+          </p>
+
+          <p>
+            Or copy and paste this URL into your browser:
+          </p>
+
+          <p>
+            ${resetUrl}
+          </p>
+
+          <p>
+            This link expires in <strong>1 hour</strong>.
+          </p>
+
+          <p>
+            If you did not request this password reset,
+            you can safely ignore this email.
+          </p>
+
+          <p>
+            — AddisGo
+          </p>
+
+        </div>
+      `,
+    });
+
+    console.log(
+      "✅ Password reset email sent to:",
+      cleanEmail
+    );
+
+    return res.json({
+      message:
+        "If this email exists, a password reset link has been sent.",
+    });
+
+  } catch (err) {
+    console.error(
+      "❌ FORGOT PASSWORD ERROR:",
+      err
+    );
+
+    return res.status(500).json({
+      error: "Unable to send password reset email",
+    });
+  }
+});
+
+
+/* =========================
+   RESET PASSWORD
+========================= */
+
+app.post("/auth/reset-password", async (req, res) => {
+  try {
+    const {
+      token,
+      password,
+    } = req.body || {};
+
+    if (!token || !password) {
+      return res.status(400).json({
+        error: "Token and new password are required",
+      });
+    }
+
+    if (String(password).length < 6) {
+      return res.status(400).json({
+        error:
+          "Password must be at least 6 characters",
+      });
+    }
+
+    /*
+      Find valid reset token.
+    */
+
+    const resetResult = await pool.query(
+      `
+      SELECT
+        id,
+        user_id,
+        expires_at
+      FROM password_resets
+      WHERE token = $1
+      LIMIT 1
+      `,
+      [token]
+    );
+
+    if (!resetResult.rows.length) {
+      return res.status(400).json({
+        error: "Invalid or expired reset link",
+      });
+    }
+
+    const reset = resetResult.rows[0];
+
+    /*
+      Check expiration.
+    */
+
+    if (
+      new Date(reset.expires_at).getTime() <
+      Date.now()
+    ) {
+      await pool.query(
+        `
+        DELETE FROM password_resets
+        WHERE id = $1
+        `,
+        [reset.id]
+      );
+
+      return res.status(400).json({
+        error: "This reset link has expired",
+      });
+    }
+
+    /*
+      Hash new password.
+    */
+
+    const hashedPassword =
+      await bcrypt.hash(password, 10);
+
+    /*
+      Update user's password.
+    */
+
+    await pool.query(
+      `
+      UPDATE users
+      SET password = $1
+      WHERE id = $2
+      `,
+      [
+        hashedPassword,
+        reset.user_id,
+      ]
+    );
+
+    /*
+      Delete used reset token.
+    */
+
+    await pool.query(
+      `
+      DELETE FROM password_resets
+      WHERE id = $1
+      `,
+      [reset.id]
+    );
+
+    console.log(
+      "✅ Password successfully reset for user:",
+      reset.user_id
+    );
+
+    return res.json({
+      message:
+        "Password reset successfully. You can now log in.",
+    });
+
+  } catch (err) {
+    console.error(
+      "❌ RESET PASSWORD ERROR:",
+      err
+    );
+
+    return res.status(500).json({
+      error: "Unable to reset password",
+    });
+  }
+});
 /* =========================
    HEALTH
 ========================= */
